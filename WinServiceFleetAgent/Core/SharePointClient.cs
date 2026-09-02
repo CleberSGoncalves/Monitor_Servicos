@@ -175,7 +175,7 @@ namespace WinServiceFleetAgent.Core
                     {
                         { "Title", title },
                         { "Hostname", hostname },
-                        { "Praca", praca },
+                        { "Pra_x00e7_a", praca },
                         { "CS", cs },
                         { "Nome_Servico", nomeServico },
                         { "Versao_Instalada", versaoInstalada },
