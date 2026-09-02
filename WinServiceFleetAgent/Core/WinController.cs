@@ -1,12 +1,34 @@
 using System;
 using System.ServiceProcess;
-using System.Threading;
 
 namespace WinServiceFleetAgent.Core
 {
     public static class WinController
     {
         public static string GetServiceStatus(string serviceName)
+        {
+            string status = QuerySingleStatus(serviceName);
+            if (status != "Não Encontrado") return status;
+
+            // Se começou com DNA., tentar sem o prefixo DNA.
+            if (serviceName.StartsWith("DNA.", StringComparison.OrdinalIgnoreCase))
+            {
+                string stripped = serviceName.Substring(4);
+                status = QuerySingleStatus(stripped);
+                if (status != "Não Encontrado") return status;
+            }
+            else
+            {
+                // Se não tinha DNA., tentar com DNA.
+                string added = "DNA." + serviceName;
+                status = QuerySingleStatus(added);
+                if (status != "Não Encontrado") return status;
+            }
+
+            return "Não Encontrado";
+        }
+
+        private static string QuerySingleStatus(string serviceName)
         {
             try
             {
@@ -26,88 +48,105 @@ namespace WinServiceFleetAgent.Core
                     }
                 }
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"[WinController] Serviço '{serviceName}' não encontrado ou sem permissão: {ex.Message}");
                 return "Não Encontrado";
             }
         }
 
         public static bool StopService(string serviceName, int timeoutSeconds = 60)
         {
-            var current = GetServiceStatus(serviceName);
+            string actualName = ResolveActualServiceName(serviceName);
+            var current = GetServiceStatus(actualName);
             if (current == "Parado")
             {
-                Console.WriteLine($"[WinController] Serviço '{serviceName}' já está parado.");
+                FileLogger.Log($"[WinController] Serviço '{actualName}' já está parado.");
                 return true;
             }
             if (current == "Não Encontrado")
             {
-                Console.WriteLine($"[WinController] Serviço '{serviceName}' não foi encontrado.");
+                FileLogger.Log($"[WinController] Serviço '{actualName}' não foi encontrado.");
                 return false;
             }
 
-            Console.WriteLine($"[WinController] Parando serviço '{serviceName}'...");
+            FileLogger.Log($"[WinController] Parando serviço '{actualName}'...");
             try
             {
-                using (var sc = new ServiceController(serviceName))
+                using (var sc = new ServiceController(actualName))
                 {
                     if (sc.Status != ServiceControllerStatus.Stopped && sc.Status != ServiceControllerStatus.StopPending)
                     {
                         sc.Stop();
                     }
                     sc.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(timeoutSeconds));
-                    Console.WriteLine($"[WinController] Serviço '{serviceName}' parado com sucesso.");
+                    FileLogger.Log($"[WinController] Serviço '{actualName}' parado com sucesso.");
                     return true;
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[WinController] Erro ao parar serviço '{serviceName}': {ex.Message}");
+                FileLogger.LogError($"Erro ao parar serviço '{actualName}'", ex);
                 throw;
             }
         }
 
         public static bool StartService(string serviceName, int timeoutSeconds = 60)
         {
-            var current = GetServiceStatus(serviceName);
+            string actualName = ResolveActualServiceName(serviceName);
+            var current = GetServiceStatus(actualName);
             if (current == "Em Execução")
             {
-                Console.WriteLine($"[WinController] Serviço '{serviceName}' já está em execução.");
+                FileLogger.Log($"[WinController] Serviço '{actualName}' já está em execução.");
                 return true;
             }
             if (current == "Não Encontrado")
             {
-                Console.WriteLine($"[WinController] Serviço '{serviceName}' não foi encontrado.");
+                FileLogger.Log($"[WinController] Serviço '{actualName}' não foi encontrado.");
                 return false;
             }
 
-            Console.WriteLine($"[WinController] Iniciando serviço '{serviceName}'...");
+            FileLogger.Log($"[WinController] Iniciando serviço '{actualName}'...");
             try
             {
-                using (var sc = new ServiceController(serviceName))
+                using (var sc = new ServiceController(actualName))
                 {
                     if (sc.Status != ServiceControllerStatus.Running && sc.Status != ServiceControllerStatus.StartPending)
                     {
                         sc.Start();
                     }
                     sc.WaitForStatus(ServiceControllerStatus.Running, TimeSpan.FromSeconds(timeoutSeconds));
-                    Console.WriteLine($"[WinController] Serviço '{serviceName}' iniciado com sucesso.");
+                    FileLogger.Log($"[WinController] Serviço '{actualName}' iniciado com sucesso.");
                     return true;
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[WinController] Erro ao iniciar serviço '{serviceName}': {ex.Message}");
+                FileLogger.LogError($"Erro ao iniciar serviço '{actualName}'", ex);
                 throw;
             }
         }
 
         public static bool RestartService(string serviceName, int timeoutSeconds = 60)
         {
-            Console.WriteLine($"[WinController] Reiniciando serviço '{serviceName}'...");
+            FileLogger.Log($"[WinController] Reiniciando serviço '{serviceName}'...");
             StopService(serviceName, timeoutSeconds);
             return StartService(serviceName, timeoutSeconds);
+        }
+
+        private static string ResolveActualServiceName(string serviceName)
+        {
+            if (QuerySingleStatus(serviceName) != "Não Encontrado") return serviceName;
+            if (serviceName.StartsWith("DNA.", StringComparison.OrdinalIgnoreCase))
+            {
+                string stripped = serviceName.Substring(4);
+                if (QuerySingleStatus(stripped) != "Não Encontrado") return stripped;
+            }
+            else
+            {
+                string added = "DNA." + serviceName;
+                if (QuerySingleStatus(added) != "Não Encontrado") return added;
+            }
+            return serviceName;
         }
     }
 }

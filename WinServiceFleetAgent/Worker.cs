@@ -50,7 +50,7 @@ namespace WinServiceFleetAgent
             }
 
             _orchestrator = new FleetOrchestrator(
-                hostname: hostnameOverride,
+                hostnameOverride: hostnameOverride,
                 configXmlPath: configXmlPath,
                 configMonitorConfigPath: configMonitorConfigPath,
                 backupBaseDir: backupBaseDir,

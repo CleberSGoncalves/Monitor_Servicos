@@ -43,7 +43,6 @@ namespace WinServiceFleetAgent.Core
         {
             _listName = string.IsNullOrWhiteSpace(listName) ? "Painel de gestão de serviços dos CS" : listName;
             
-            // Garantir que usa o Client ID que comprovadamente funciona no tenant adgbl
             if (string.IsNullOrWhiteSpace(clientId) || clientId.Contains("COLE_AQUI") || clientId.Equals("4ffd280d-ed8f-402c-8b41-dfad6ab68f62", StringComparison.OrdinalIgnoreCase))
             {
                 _clientId = "1950a258-227b-4e31-a9cf-717495945fc2";
@@ -85,7 +84,7 @@ namespace WinServiceFleetAgent.Core
             if (!tokenResp.IsSuccessStatusCode)
             {
                 string errStr = await tokenResp.Content.ReadAsStringAsync();
-                Console.WriteLine($"[SharePointClient] Erro ao autenticar no Graph API: {errStr}");
+                FileLogger.LogError($"Erro ao autenticar no Graph API: {errStr}");
                 return;
             }
 
@@ -149,7 +148,7 @@ namespace WinServiceFleetAgent.Core
                 await EnsureGraphContextAsync(client);
                 if (string.IsNullOrEmpty(_accessToken) || string.IsNullOrEmpty(_listId))
                 {
-                    Console.WriteLine($"[SharePointClient] Falha ao estabelecer contexto no SharePoint para [{title}]");
+                    FileLogger.LogError($"Falha ao estabelecer contexto no SharePoint para [{title}]");
                     return;
                 }
 
@@ -198,12 +197,12 @@ namespace WinServiceFleetAgent.Core
                         var createResp = await client.PostAsync(createUrl, content);
                         if (createResp.IsSuccessStatusCode)
                         {
-                            Console.WriteLine($"[SharePointClient] ✅ Novo item cadastrado no SharePoint: {title}");
+                            FileLogger.Log($"[SharePointClient] ✅ Novo item cadastrado no SharePoint: {title}");
                         }
                         else
                         {
                             string err = await createResp.Content.ReadAsStringAsync();
-                            Console.WriteLine($"[SharePointClient] ❌ Erro ao criar item no SharePoint [{title}]: {err}");
+                            FileLogger.LogError($"[SharePointClient] ❌ Erro ao criar item no SharePoint [{title}]: {err}");
                         }
                     }
                     else
@@ -215,18 +214,18 @@ namespace WinServiceFleetAgent.Core
                         var patchResp = await client.SendAsync(request);
                         if (patchResp.IsSuccessStatusCode)
                         {
-                            Console.WriteLine($"[SharePointClient] ✅ Registro atualizado no SharePoint: {title}");
+                            FileLogger.Log($"[SharePointClient] ✅ Registro atualizado no SharePoint: {title}");
                         }
                         else
                         {
                             string err = await patchResp.Content.ReadAsStringAsync();
-                            Console.WriteLine($"[SharePointClient] ❌ Erro ao atualizar item no SharePoint [{title}]: {err}");
+                            FileLogger.LogError($"[SharePointClient] ❌ Erro ao atualizar item no SharePoint [{title}]: {err}");
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[SharePointClient] Erro ao sincronizar inventário no SharePoint [{title}]: {ex.Message}");
+                    FileLogger.LogError($"Erro ao sincronizar inventário no SharePoint [{title}]", ex);
                 }
             }
         }
@@ -281,7 +280,7 @@ namespace WinServiceFleetAgent.Core
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[SharePointClient] Erro ao buscar ações pendentes: {ex.Message}");
+                    FileLogger.LogError("Erro ao buscar ações pendentes", ex);
                 }
             }
             return list;
@@ -329,13 +328,13 @@ namespace WinServiceFleetAgent.Core
                             var request = new HttpRequestMessage(new HttpMethod("PATCH"), patchUrl) { Content = content };
 
                             await client.SendAsync(request);
-                            Console.WriteLine($"[SharePointClient] Status atualizado no SharePoint [{title}]: {statusAtualizacao}");
+                            FileLogger.Log($"[SharePointClient] Status atualizado no SharePoint [{title}]: {statusAtualizacao}");
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[SharePointClient] Erro ao atualizar status no SharePoint [{title}]: {ex.Message}");
+                    FileLogger.LogError($"Erro ao atualizar status no SharePoint [{title}]", ex);
                 }
             }
         }
