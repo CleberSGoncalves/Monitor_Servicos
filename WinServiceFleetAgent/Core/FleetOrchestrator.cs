@@ -67,6 +67,16 @@ namespace WinServiceFleetAgent.Core
                 string installedVer = VersionInspector.GetExecutableVersion(exeFullPath);
                 string statusServico = WinController.GetServiceStatus(srv.ServiceName);
 
+                bool exeExists = File.Exists(exeFullPath);
+                bool serviceExists = !statusServico.Equals("Não Encontrado", StringComparison.OrdinalIgnoreCase);
+
+                // Se o serviço não está instalado nem possui executável nesta máquina, ignora sincronização
+                if (!exeExists && !serviceExists)
+                {
+                    Console.WriteLine($"[FleetOrchestrator] Serviço '{srv.ServiceName}' não existe nesta máquina. Ignorando sincronização com SharePoint.");
+                    continue;
+                }
+
                 string title = $"{_hostname}_{srv.ServiceName}";
                 Console.WriteLine($"[FleetOrchestrator] Serviço '{title}' -> Status: '{statusServico}', Versão: '{installedVer}'");
 
