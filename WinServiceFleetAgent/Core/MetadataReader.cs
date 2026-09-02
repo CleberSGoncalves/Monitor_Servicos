@@ -8,6 +8,7 @@ namespace WinServiceFleetAgent.Core
 {
     public class GlobalMetadata
     {
+        public string IdHost { get; set; } = string.Empty;
         public string Praca { get; set; } = "Não Informado";
         public int CS { get; set; } = 1;
         public string UrlComunicacao { get; set; } = string.Empty;
@@ -24,7 +25,6 @@ namespace WinServiceFleetAgent.Core
             {
                 Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
-                // Tentar no caminho informado, ou busca flexível nos drives D:\ e C:\
                 string actualXmlPath = configXmlPath;
                 if (!File.Exists(actualXmlPath))
                 {
@@ -45,12 +45,28 @@ namespace WinServiceFleetAgent.Core
                     {
                         var doc = XDocument.Load(reader);
 
-                        // Busca de Praca: elemento <Praca>, <idHost> ou atributo Praca="..." em qualquer nó (ex: <Channel Praca="Caxias do Sul">)
-                        string extractedPraca = string.Empty;
+                        // Busca de idHost e CS no bloco <hostInformation>
                         var hostInfo = doc.Root?.Element("hostInformation");
                         if (hostInfo != null)
                         {
-                            var pracaElem = hostInfo.Element("Praca") ?? hostInfo.Element("idHost");
+                            var idHostElem = hostInfo.Element("idHost");
+                            if (idHostElem != null && !string.IsNullOrWhiteSpace(idHostElem.Value))
+                            {
+                                metadata.IdHost = idHostElem.Value.Trim();
+                            }
+
+                            var csElem = hostInfo.Element("CS");
+                            if (csElem != null && int.TryParse(csElem.Value.Trim(), out int parsedCs))
+                            {
+                                metadata.CS = parsedCs;
+                            }
+                        }
+
+                        // Busca de Praca: elemento <Praca> ou atributo Praca="..." em qualquer nó (ex: <Channel Praca="Caxias do Sul">)
+                        string extractedPraca = string.Empty;
+                        if (hostInfo != null)
+                        {
+                            var pracaElem = hostInfo.Element("Praca");
                             if (pracaElem != null && !string.IsNullOrWhiteSpace(pracaElem.Value))
                             {
                                 extractedPraca = pracaElem.Value.Trim();
@@ -74,18 +90,8 @@ namespace WinServiceFleetAgent.Core
                             metadata.Praca = extractedPraca;
                         }
 
-                        // Busca de CS: elemento <CS>, atributo CS="..." ou CS1/CS2 do Hostname
-                        int extractedCS = 0;
-                        if (hostInfo != null)
-                        {
-                            var csElem = hostInfo.Element("CS");
-                            if (csElem != null && int.TryParse(csElem.Value.Trim(), out int parsedCs))
-                            {
-                                extractedCS = parsedCs;
-                            }
-                        }
-
-                        if (extractedCS == 0)
+                        // Fallback de CS via atributo se não encontrado
+                        if (metadata.CS == 0)
                         {
                             var csAttr = doc.Descendants()
                                 .Select(e => e.Attribute("CS") ?? e.Attribute("cs"))
@@ -93,13 +99,8 @@ namespace WinServiceFleetAgent.Core
 
                             if (csAttr != null && int.TryParse(csAttr.Value.Trim(), out int parsedCsAttr))
                             {
-                                extractedCS = parsedCsAttr;
+                                metadata.CS = parsedCsAttr;
                             }
-                        }
-
-                        if (extractedCS > 0)
-                        {
-                            metadata.CS = extractedCS;
                         }
                     }
                 }

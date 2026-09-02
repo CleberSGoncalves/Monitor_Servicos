@@ -49,7 +49,7 @@ namespace WinServiceFleetAgent.Core
 
             // Passo 1: Leitura de Metadados Globais
             var metadata = MetadataReader.GetGlobalMachineMetadata(_configXmlPath, _configMonitorConfigPath);
-            FileLogger.Log($"[FleetOrchestrator] Metadados extraídos: Praça='{metadata.Praca}', CS={metadata.CS}, Url_Comunicacao='{metadata.UrlComunicacao}'");
+            FileLogger.Log($"[FleetOrchestrator] Metadados extraídos: idHost='{metadata.IdHost}', Praça='{metadata.Praca}', CS={metadata.CS}, Url_Comunicacao='{metadata.UrlComunicacao}'");
 
             // Passo 2: Inventário e sincronização dos serviços locais no SharePoint
             foreach (var srv in _services)
@@ -99,10 +99,15 @@ namespace WinServiceFleetAgent.Core
                     continue;
                 }
 
-                string title = $"{_hostname}_{srv.ServiceName}";
+                // Título inclui idHost se disponível
+                string title = !string.IsNullOrWhiteSpace(metadata.IdHost)
+                    ? $"{_hostname}_{metadata.IdHost}_{srv.ServiceName}"
+                    : $"{_hostname}_{srv.ServiceName}";
+
                 FileLogger.Log($"[FleetOrchestrator] Processando '{title}' -> Status: '{statusServico}', Versão: '{installedVer}'");
 
                 await _spClient.SyncServiceInventoryAsync(
+                    title: title,
                     hostname: _hostname,
                     praca: metadata.Praca,
                     cs: metadata.CS,
@@ -130,7 +135,7 @@ namespace WinServiceFleetAgent.Core
                     continue;
                 }
 
-                string title = $"{_hostname}_{action.NomeServico}";
+                string title = action.Title;
                 FileLogger.Log($"[FleetOrchestrator] Executando Ação '{action.AcaoSolicitada}' para [{title}]...");
 
                 try
