@@ -51,11 +51,26 @@ namespace WinServiceFleetAgent.Core
             var metadata = MetadataReader.GetGlobalMachineMetadata(_configXmlPath, _configMonitorConfigPath);
             FileLogger.Log($"[FleetOrchestrator] Metadados extraídos: idHost='{metadata.IdHost}', Praça='{metadata.Praca}', CS={metadata.CS}, Url_Comunicacao='{metadata.UrlComunicacao}'");
 
-            // Passo 2: Inventário e sincronização APENAS dos serviços INSTALADOS no SharePoint
+            // Mapeamento do País (Título do SharePoint)
+            string paisTitle = "Brasil";
+            if (!string.IsNullOrWhiteSpace(metadata.UrlComunicacao) && metadata.UrlComunicacao.Contains("mediadna.ibope.com"))
+            {
+                paisTitle = "Brasil";
+            }
+
+            // Passo 2: Inventário e sincronização APENAS dos serviços INSTALADOS no Windows Services
             foreach (var srv in _services)
             {
-                string exeFullPath = Path.Combine(srv.InstallPath, srv.ExeName);
+                string statusServico = WinController.GetServiceStatus(srv.ServiceName);
 
+                // SE O SERVIÇO DO WINDOWS NÃO ESTÁ INSTALADO NA MÁQUINA DA CIDADE, IGNORA COMPLETAMENTE
+                if (statusServico.Equals("Não Encontrado", StringComparison.OrdinalIgnoreCase))
+                {
+                    FileLogger.Log($"[FleetOrchestrator] Serviço '{srv.ServiceName}' NÃO está instalado nesta máquina da cidade. Ignorando sincronização com SharePoint.");
+                    continue;
+                }
+
+                string exeFullPath = Path.Combine(srv.InstallPath, srv.ExeName);
                 if (!File.Exists(exeFullPath))
                 {
                     if (srv.InstallPath.StartsWith("C:\\", StringComparison.OrdinalIgnoreCase))
@@ -86,29 +101,11 @@ namespace WinServiceFleetAgent.Core
                 }
 
                 string installedVer = VersionInspector.GetExecutableVersion(exeFullPath);
-                string statusServico = WinController.GetServiceStatus(srv.ServiceName);
 
-                bool exeExists = File.Exists(exeFullPath);
-                bool serviceExists = !statusServico.Equals("Não Encontrado", StringComparison.OrdinalIgnoreCase);
-
-                // UM SERVIÇO SÓ É SINCRONIZADO SE ESTIVER INSTALADO NA MÁQUINA (Executável ou Serviço do Windows existe)
-                bool isInstalledOnHost = exeExists || serviceExists;
-
-                if (!isInstalledOnHost)
-                {
-                    FileLogger.Log($"[FleetOrchestrator] Serviço '{srv.ServiceName}' NÃO está instalado nesta máquina. Ignorando sincronização com SharePoint.");
-                    continue;
-                }
-
-                // Título inclui idHost se disponível
-                string title = !string.IsNullOrWhiteSpace(metadata.IdHost)
-                    ? $"{_hostname}_{metadata.IdHost}_{srv.ServiceName}"
-                    : $"{_hostname}_{srv.ServiceName}";
-
-                FileLogger.Log($"[FleetOrchestrator] Processando '{title}' -> Status: '{statusServico}', Versão: '{installedVer}'");
+                FileLogger.Log($"[FleetOrchestrator] Processando '{_hostname}_{srv.ServiceName}' -> País: '{paisTitle}', Status: '{statusServico}', Versão: '{installedVer}'");
 
                 await _spClient.SyncServiceInventoryAsync(
-                    title: title,
+                    title: paisTitle,
                     hostname: _hostname,
                     praca: metadata.Praca,
                     cs: metadata.CS,
@@ -119,11 +116,40 @@ namespace WinServiceFleetAgent.Core
                 );
             }
 
-            // Passo 3: Verificação e Execução de Ações Pendentes
+            // Passo 3: Verificação e Execução de Ações Pendentes de URL (Acao_Solicitada_Url = "Atualizar")
+            var pendingUrlActions = await _spClient.GetPendingUrlActionsAsync(_hostname);
+            if (pendingUrlActions != null && pendingUrlActions.Count > 0)
+            {
+                foreach (var urlAction in pendingUrlActions)
+                {
+                    FileLogger.Log($"[FleetOrchestrator] Executando Ação de URL em '{urlAction.NomeServico}' -> Nova URL Desejável: '{urlAction.UrlComunicacaoDesejavel}'...");
+                    try
+                    {
+                        bool updated = ConfigUrlUpdater.UpdateWcfMainUrl(_configMonitorConfigPath, urlAction.UrlComunicacaoDesejavel);
+                        if (updated)
+                        {
+                            // Reiniciar DNA.ConfigMonitorSVC se estiver em execução para aplicar a nova URL
+                            WinController.RestartService("DNA.ConfigMonitorSVC");
+                            await _spClient.UpdateUrlActionStatusAsync(_hostname, urlAction.NomeServico, "Concluído", urlAction.UrlComunicacaoDesejavel);
+                            FileLogger.Log($"[FleetOrchestrator] ✅ Ação de URL concluída com sucesso para '{urlAction.NomeServico}'!");
+                        }
+                        else
+                        {
+                            await _spClient.UpdateUrlActionStatusAsync(_hostname, urlAction.NomeServico, "Erro ao Atualizar Configuração", metadata.UrlComunicacao);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        FileLogger.LogError($"Erro ao atualizar URL de comunicação em '{urlAction.NomeServico}'", ex);
+                    }
+                }
+            }
+
+            // Passo 4: Verificação e Execução de Ações Pendentes de Serviços (Acao_Solicitada = "Reiniciar" / "Atualizar")
             var pendingActions = await _spClient.GetPendingActionsAsync(_hostname);
             if (pendingActions == null || pendingActions.Count == 0)
             {
-                FileLogger.Log("[FleetOrchestrator] Nenhuma ação pendente no SharePoint para este host.");
+                FileLogger.Log("[FleetOrchestrator] Nenhuma ação de serviço pendente no SharePoint para este host.");
                 return;
             }
 
@@ -136,34 +162,34 @@ namespace WinServiceFleetAgent.Core
                     continue;
                 }
 
-                string title = action.Title;
-                FileLogger.Log($"[FleetOrchestrator] Executando Ação '{action.AcaoSolicitada}' para [{title}]...");
+                string actionTitle = action.Title;
+                FileLogger.Log($"[FleetOrchestrator] Executando Ação '{action.AcaoSolicitada}' para [{_hostname}_{action.NomeServico}]...");
 
                 try
                 {
                     if (action.AcaoSolicitada.Equals("Reiniciar", StringComparison.OrdinalIgnoreCase))
                     {
-                        await _spClient.UpdateActionStatusAsync(title, "Em Progresso");
+                        await _spClient.UpdateActionStatusAsync(actionTitle, "Em Progresso");
                         bool ok = WinController.RestartService(srvConfig.ServiceName);
                         if (ok)
                         {
-                            await _spClient.UpdateActionStatusAsync(title, "Concluído", acaoSolicitada: "Nenhuma");
+                            await _spClient.UpdateActionStatusAsync(actionTitle, "Concluído", acaoSolicitada: "Nenhuma");
                             FileLogger.Log($"[FleetOrchestrator] ✅ Serviço '{srvConfig.ServiceName}' reiniciado com sucesso!");
                         }
                         else
                         {
-                            await _spClient.UpdateActionStatusAsync(title, "Erro ao Reiniciar");
+                            await _spClient.UpdateActionStatusAsync(actionTitle, "Erro ao Reiniciar");
                         }
                     }
                     else if (action.AcaoSolicitada.Equals("Atualizar", StringComparison.OrdinalIgnoreCase))
                     {
-                        await ProcessUpdateAsync(srvConfig, action, title);
+                        await ProcessUpdateAsync(srvConfig, action, actionTitle);
                     }
                 }
                 catch (Exception ex)
                 {
-                    FileLogger.LogError($"Erro ao processar ação em [{title}]", ex);
-                    await _spClient.UpdateActionStatusAsync(title, $"Erro: {ex.Message}");
+                    FileLogger.LogError($"Erro ao processar ação em [{actionTitle}]", ex);
+                    await _spClient.UpdateActionStatusAsync(actionTitle, $"Erro: {ex.Message}");
                 }
             }
         }

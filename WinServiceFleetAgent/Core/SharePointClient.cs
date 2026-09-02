@@ -17,6 +17,8 @@ namespace WinServiceFleetAgent.Core
         public string VersaoDesejada { get; set; } = string.Empty;
         public string AcaoSolicitada { get; set; } = string.Empty;
         public string StatusAtualizacao { get; set; } = string.Empty;
+        public string UrlComunicacaoDesejavel { get; set; } = string.Empty;
+        public string AcaoSolicitadaUrl { get; set; } = string.Empty;
     }
 
     public class SharePointClient
@@ -145,7 +147,7 @@ namespace WinServiceFleetAgent.Core
                 await EnsureGraphContextAsync(client);
                 if (string.IsNullOrEmpty(_accessToken) || string.IsNullOrEmpty(_listId))
                 {
-                    FileLogger.LogError($"Falha ao estabelecer contexto no SharePoint para [{title}]");
+                    FileLogger.LogError($"Falha ao estabelecer contexto no SharePoint para [{hostname}_{nomeServico}]");
                     return;
                 }
 
@@ -153,7 +155,7 @@ namespace WinServiceFleetAgent.Core
 
                 try
                 {
-                    // Buscar TODOS os itens da lista para encontrar correspondência exata sem falha de filtro OData
+                    // Buscar itens da lista para fazer match por Hostname + Nome_Servico
                     string getItemsUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items?expand=fields&$top=500";
                     var getResp = await client.GetAsync(getItemsUrl);
 
@@ -168,13 +170,10 @@ namespace WinServiceFleetAgent.Core
                             {
                                 if (item.TryGetProperty("fields", out var fields))
                                 {
-                                    string itemTitle = fields.TryGetProperty("Title", out var t) ? t.GetString() ?? "" : "";
                                     string itemHost = fields.TryGetProperty("Hostname", out var h) ? h.GetString() ?? "" : "";
                                     string itemSrv = fields.TryGetProperty("Nome_Servico", out var ns) ? ns.GetString() ?? "" : "";
 
-                                    // Match por Title OU por Hostname + Nome_Servico
-                                    if (itemTitle.Equals(title, StringComparison.OrdinalIgnoreCase) ||
-                                        (itemHost.Equals(hostname, StringComparison.OrdinalIgnoreCase) && itemSrv.Equals(nomeServico, StringComparison.OrdinalIgnoreCase)))
+                                    if (itemHost.Equals(hostname, StringComparison.OrdinalIgnoreCase) && itemSrv.Equals(nomeServico, StringComparison.OrdinalIgnoreCase))
                                     {
                                         itemId = item.GetProperty("id").GetString() ?? "";
                                         break;
@@ -186,10 +185,11 @@ namespace WinServiceFleetAgent.Core
 
                     string safePraca = string.IsNullOrWhiteSpace(praca) ? "Não Informado" : praca;
                     int safeCS = cs <= 0 ? 1 : cs;
+                    string displayTitle = string.IsNullOrWhiteSpace(title) ? "Brasil" : title;
 
                     var fieldsPayload = new Dictionary<string, object>
                     {
-                        { "Title", title },
+                        { "Title", displayTitle },
                         { "Hostname", hostname },
                         { "Praca", safePraca },
                         { "Pra_x00e7_a", safePraca },
@@ -206,6 +206,8 @@ namespace WinServiceFleetAgent.Core
                         fieldsPayload["Versao_Desejada"] = versaoInstalada;
                         fieldsPayload["Acao_Solicitada"] = "Nenhuma";
                         fieldsPayload["Status_Atualizacao"] = "Aguardando";
+                        fieldsPayload["Url_Comunicacao_Desejavel"] = "https://mediadna.ibope.com/mediadnawcfcs/RemoteHostsService.svc";
+                        fieldsPayload["Acao_Solicitada_Url"] = "Nenhuma";
 
                         var itemPayload = new { fields = fieldsPayload };
                         string createUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items";
@@ -214,12 +216,12 @@ namespace WinServiceFleetAgent.Core
                         var createResp = await client.PostAsync(createUrl, content);
                         if (createResp.IsSuccessStatusCode)
                         {
-                            FileLogger.Log($"[SharePointClient] ✅ Novo item cadastrado no SharePoint: {title}");
+                            FileLogger.Log($"[SharePointClient] ✅ Novo item cadastrado no SharePoint: [{displayTitle}] {hostname}_{nomeServico}");
                         }
                         else
                         {
                             string err = await createResp.Content.ReadAsStringAsync();
-                            FileLogger.LogError($"[SharePointClient] ❌ Erro ao criar item no SharePoint [{title}]: {err}");
+                            FileLogger.LogError($"[SharePointClient] ❌ Erro ao criar item no SharePoint [{hostname}_{nomeServico}]: {err}");
                         }
                     }
                     else
@@ -231,18 +233,144 @@ namespace WinServiceFleetAgent.Core
                         var patchResp = await client.SendAsync(request);
                         if (patchResp.IsSuccessStatusCode)
                         {
-                            FileLogger.Log($"[SharePointClient] ✅ Registro atualizado no SharePoint (ID {itemId}): {title}");
+                            FileLogger.Log($"[SharePointClient] ✅ Registro atualizado no SharePoint (ID {itemId}): [{displayTitle}] {hostname}_{nomeServico}");
                         }
                         else
                         {
                             string err = await patchResp.Content.ReadAsStringAsync();
-                            FileLogger.LogError($"[SharePointClient] ❌ Erro ao atualizar item no SharePoint [{title}]: {err}");
+                            FileLogger.LogError($"[SharePointClient] ❌ Erro ao atualizar item no SharePoint [{hostname}_{nomeServico}]: {err}");
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    FileLogger.LogError($"Erro ao sincronizar inventário no SharePoint [{title}]", ex);
+                    FileLogger.LogError($"Erro ao sincronizar inventário no SharePoint [{hostname}_{nomeServico}]", ex);
+                }
+            }
+        }
+
+        public async Task<List<PendingActionItem>> GetPendingUrlActionsAsync(string hostname)
+        {
+            var list = new List<PendingActionItem>();
+            using (var client = new HttpClient())
+            {
+                await EnsureGraphContextAsync(client);
+                if (string.IsNullOrEmpty(_accessToken) || string.IsNullOrEmpty(_listId))
+                {
+                    return list;
+                }
+
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
+
+                try
+                {
+                    string getItemsUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items?expand=fields&$top=500";
+                    var resp = await client.GetAsync(getItemsUrl);
+                    if (resp.IsSuccessStatusCode)
+                    {
+                        string json = await resp.Content.ReadAsStringAsync();
+                        using var doc = JsonDocument.Parse(json);
+                        if (doc.RootElement.TryGetProperty("value", out var itemsArray))
+                        {
+                            foreach (var item in itemsArray.EnumerateArray())
+                            {
+                                if (item.TryGetProperty("fields", out var fields))
+                                {
+                                    string itemHost = fields.TryGetProperty("Hostname", out var h) ? h.GetString() ?? "" : "";
+                                    string acaoUrl = fields.TryGetProperty("Acao_Solicitada_Url", out var au) ? au.GetString() ?? "" : "";
+
+                                    if (itemHost.Equals(hostname, StringComparison.OrdinalIgnoreCase) &&
+                                        acaoUrl.Equals("Atualizar", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        int idInt = 0;
+                                        if (item.TryGetProperty("id", out var idProp) && int.TryParse(idProp.GetString(), out int parsedId))
+                                        {
+                                            idInt = parsedId;
+                                        }
+
+                                        list.Add(new PendingActionItem
+                                        {
+                                            Id = idInt,
+                                            Title = fields.TryGetProperty("Title", out var t) ? t.GetString() ?? "" : "",
+                                            NomeServico = fields.TryGetProperty("Nome_Servico", out var ns) ? ns.GetString() ?? "" : "",
+                                            UrlComunicacaoDesejavel = fields.TryGetProperty("Url_Comunicacao_Desejavel", out var ud) ? ud.GetString() ?? "" : "",
+                                            AcaoSolicitadaUrl = acaoUrl
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    FileLogger.LogError("Erro ao buscar ações pendentes de URL", ex);
+                }
+            }
+            return list;
+        }
+
+        public async Task UpdateUrlActionStatusAsync(
+            string hostname,
+            string nomeServico,
+            string statusAtualizacao,
+            string newUrl)
+        {
+            using (var client = new HttpClient())
+            {
+                await EnsureGraphContextAsync(client);
+                if (string.IsNullOrEmpty(_accessToken) || string.IsNullOrEmpty(_listId))
+                {
+                    return;
+                }
+
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
+
+                try
+                {
+                    string getItemsUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items?expand=fields&$top=500";
+                    var getResp = await client.GetAsync(getItemsUrl);
+                    if (getResp.IsSuccessStatusCode)
+                    {
+                        string json = await getResp.Content.ReadAsStringAsync();
+                        using var doc = JsonDocument.Parse(json);
+                        if (doc.RootElement.TryGetProperty("value", out var valueArray))
+                        {
+                            foreach (var item in valueArray.EnumerateArray())
+                            {
+                                if (item.TryGetProperty("fields", out var fields))
+                                {
+                                    string itemHost = fields.TryGetProperty("Hostname", out var h) ? h.GetString() ?? "" : "";
+                                    string itemSrv = fields.TryGetProperty("Nome_Servico", out var ns) ? ns.GetString() ?? "" : "";
+
+                                    if (itemHost.Equals(hostname, StringComparison.OrdinalIgnoreCase) && itemSrv.Equals(nomeServico, StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        string itemId = item.GetProperty("id").GetString() ?? "";
+
+                                        var patchData = new Dictionary<string, object>
+                                        {
+                                            { "Acao_Solicitada_Url", "Nenhuma" },
+                                            { "Url_Comunicacao", newUrl },
+                                            { "Status_Atualizacao", statusAtualizacao },
+                                            { "Ultima_atualizacao", DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ") }
+                                        };
+
+                                        string patchUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items/{itemId}/fields";
+                                        var content = new StringContent(JsonSerializer.Serialize(patchData), Encoding.UTF8, "application/json");
+                                        var request = new HttpRequestMessage(new HttpMethod("PATCH"), patchUrl) { Content = content };
+
+                                        await client.SendAsync(request);
+                                        FileLogger.Log($"[SharePointClient] Status de URL atualizado no SharePoint [{hostname}_{nomeServico}]: {statusAtualizacao}");
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    FileLogger.LogError($"Erro ao atualizar status de URL no SharePoint [{hostname}_{nomeServico}]", ex);
                 }
             }
         }
