@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using PublisherApp.Services;
 
@@ -46,10 +47,37 @@ namespace PublisherApp
                     return;
                 }
 
+                // Carregar configurações de SharePoint do appsettings.json se disponível
+                string siteUrl = string.Empty;
+                string listName = "Controle_Servicos";
+                string clientId = string.Empty;
+                string clientSecret = string.Empty;
+
+                try
+                {
+                    string appSettingsFile = Path.Combine(baseDir, "appsettings.json");
+                    if (!File.Exists(appSettingsFile))
+                    {
+                        appSettingsFile = Path.Combine(baseDir, "..", "agent", "appsettings.json");
+                    }
+
+                    if (File.Exists(appSettingsFile))
+                    {
+                        using var doc = JsonDocument.Parse(File.ReadAllText(appSettingsFile));
+                        if (doc.RootElement.TryGetProperty("SharePoint", out var sp))
+                        {
+                            siteUrl = sp.TryGetProperty("SiteUrl", out var su) ? su.GetString() ?? "" : "";
+                            listName = sp.TryGetProperty("ListName", out var ln) ? ln.GetString() ?? "Controle_Servicos" : "Controle_Servicos";
+                            clientId = sp.TryGetProperty("ClientId", out var ci) ? ci.GetString() ?? "" : "";
+                            clientSecret = sp.TryGetProperty("ClientSecret", out var cs) ? cs.GetString() ?? "" : "";
+                        }
+                    }
+                }
+                catch { }
+
                 // 1. Obter Token implícito por argumento, arquivo local github_token.txt ou variável de ambiente
                 string token = args.Length > 0 ? args[0] : string.Empty;
                 string orgName = args.Length > 1 && !string.IsNullOrWhiteSpace(args[1]) ? args[1] : "CleberSGoncalves";
-                bool autoMode = args.Length > 2 && args[2].Equals("--auto", StringComparison.OrdinalIgnoreCase) || true; // Padrão automático para execução sem atrito
 
                 if (string.IsNullOrWhiteSpace(token))
                 {
@@ -99,7 +127,7 @@ namespace PublisherApp
 
                     Console.WriteLine($"🏷️  Versão detectada e atribuída automaticamente: '{tag}'");
 
-                    // Gerar arquivo ZIP temporário na pasta TEMP do sistema Windows (evita poluição da pasta servicos)
+                    // Gerar arquivo ZIP temporário na pasta TEMP
                     string tempZipPath = Path.Combine(Path.GetTempPath(), $"{serviceFolderName}_{tag}_{Guid.NewGuid():N}.zip");
                     if (File.Exists(tempZipPath)) File.Delete(tempZipPath);
 
@@ -121,8 +149,21 @@ namespace PublisherApp
                             githubToken: token
                         );
 
-                        Console.WriteLine($"✅ Release '{tag}' publicada com sucesso!");
+                        Console.WriteLine($"✅ Release '{tag}' publicada com sucesso no GitHub!");
                         Console.WriteLine($"🔗 {htmlUrl}");
+
+                        // Sincronizar Versao_Desejada no SharePoint automaticamente
+                        if (!string.IsNullOrWhiteSpace(siteUrl))
+                        {
+                            await SharePointPublisherSync.UpdateDesiredVersionInSharePointAsync(
+                                serviceName: serviceFolderName,
+                                newVersionTag: tag,
+                                siteUrl: siteUrl,
+                                listName: listName,
+                                clientId: clientId,
+                                clientSecret: clientSecret
+                            );
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -131,38 +172,6 @@ namespace PublisherApp
                     finally
                     {
                         try { if (File.Exists(tempZipPath)) File.Delete(tempZipPath); } catch { }
-                    }
-                }
-
-                // Processar arquivos .zip soltos na pasta servicos (se houver)
-                foreach (var zipPath in zipFiles)
-                {
-                    string filename = Path.GetFileNameWithoutExtension(zipPath);
-                    Console.WriteLine($"------------------------------------------------------------------");
-                    Console.WriteLine($"📦 Processando Arquivo ZIP: {Path.GetFileName(zipPath)}");
-
-                    string repoName = filename;
-                    string tag = "v1.0.0.0";
-                    Console.WriteLine($"🏷️  Tag atribuída: '{tag}' para repositório '{repoName}'");
-
-                    try
-                    {
-                        string htmlUrl = await GitHubReleaseClient.CreateReleaseAndUploadAssetAsync(
-                            owner: orgName,
-                            repo: repoName,
-                            tagName: tag,
-                            title: $"Release {tag} - {repoName}",
-                            changelog: $"Release automatizada a partir do arquivo {Path.GetFileName(zipPath)}",
-                            zipFilePath: zipPath,
-                            githubToken: token
-                        );
-
-                        Console.WriteLine($"✅ Release '{tag}' publicada com sucesso!");
-                        Console.WriteLine($"🔗 {htmlUrl}");
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"❌ Erro ao publicar '{repoName}': {ex.Message}");
                     }
                 }
 
