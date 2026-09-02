@@ -28,7 +28,6 @@ namespace WinServiceFleetAgent.Core
         private readonly string _listName;
         private readonly string _username;
         private readonly string _password;
-        private readonly string _clientSecret;
 
         private string _accessToken = string.Empty;
         private string _siteId = string.Empty;
@@ -43,8 +42,17 @@ namespace WinServiceFleetAgent.Core
             string password = "Acount@!2026")
         {
             _listName = string.IsNullOrWhiteSpace(listName) ? "Painel de gestão de serviços dos CS" : listName;
-            _clientId = string.IsNullOrWhiteSpace(clientId) || clientId.Contains("COLE_AQUI") ? "1950a258-227b-4e31-a9cf-717495945fc2" : clientId;
-            _clientSecret = clientSecret ?? string.Empty;
+            
+            // Garantir que usa o Client ID que comprovadamente funciona no tenant adgbl
+            if (string.IsNullOrWhiteSpace(clientId) || clientId.Contains("COLE_AQUI") || clientId.Equals("4ffd280d-ed8f-402c-8b41-dfad6ab68f62", StringComparison.OrdinalIgnoreCase))
+            {
+                _clientId = "1950a258-227b-4e31-a9cf-717495945fc2";
+            }
+            else
+            {
+                _clientId = clientId;
+            }
+
             _username = string.IsNullOrWhiteSpace(username) ? "svc.captacao@adgbl.com" : username;
             _password = string.IsNullOrWhiteSpace(password) ? "Acount@!2026" : password;
 
@@ -141,6 +149,7 @@ namespace WinServiceFleetAgent.Core
                 await EnsureGraphContextAsync(client);
                 if (string.IsNullOrEmpty(_accessToken) || string.IsNullOrEmpty(_listId))
                 {
+                    Console.WriteLine($"[SharePointClient] Falha ao estabelecer contexto no SharePoint para [{title}]");
                     return;
                 }
 
@@ -191,6 +200,11 @@ namespace WinServiceFleetAgent.Core
                         {
                             Console.WriteLine($"[SharePointClient] ✅ Novo item cadastrado no SharePoint: {title}");
                         }
+                        else
+                        {
+                            string err = await createResp.Content.ReadAsStringAsync();
+                            Console.WriteLine($"[SharePointClient] ❌ Erro ao criar item no SharePoint [{title}]: {err}");
+                        }
                     }
                     else
                     {
@@ -202,6 +216,11 @@ namespace WinServiceFleetAgent.Core
                         if (patchResp.IsSuccessStatusCode)
                         {
                             Console.WriteLine($"[SharePointClient] ✅ Registro atualizado no SharePoint: {title}");
+                        }
+                        else
+                        {
+                            string err = await patchResp.Content.ReadAsStringAsync();
+                            Console.WriteLine($"[SharePointClient] ❌ Erro ao atualizar item no SharePoint [{title}]: {err}");
                         }
                     }
                 }

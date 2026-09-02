@@ -64,6 +64,36 @@ namespace WinServiceFleetAgent.Core
             foreach (var srv in _services)
             {
                 string exeFullPath = Path.Combine(srv.InstallPath, srv.ExeName);
+
+                if (!File.Exists(exeFullPath))
+                {
+                    if (srv.InstallPath.StartsWith("C:\\", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string altPath = "D:\\" + srv.InstallPath.Substring(3);
+                        if (File.Exists(Path.Combine(altPath, srv.ExeName)))
+                        {
+                            exeFullPath = Path.Combine(altPath, srv.ExeName);
+                        }
+                    }
+                    else if (srv.InstallPath.StartsWith("D:\\", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string altPath = "C:\\" + srv.InstallPath.Substring(3);
+                        if (File.Exists(Path.Combine(altPath, srv.ExeName)))
+                        {
+                            exeFullPath = Path.Combine(altPath, srv.ExeName);
+                        }
+                    }
+                }
+
+                if (!File.Exists(exeFullPath) && srv.ServiceName.Equals("DNA.MonitorServiceSVC", StringComparison.OrdinalIgnoreCase))
+                {
+                    string localExe = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, srv.ExeName);
+                    if (File.Exists(localExe))
+                    {
+                        exeFullPath = localExe;
+                    }
+                }
+
                 string installedVer = VersionInspector.GetExecutableVersion(exeFullPath);
                 string statusServico = WinController.GetServiceStatus(srv.ServiceName);
 
