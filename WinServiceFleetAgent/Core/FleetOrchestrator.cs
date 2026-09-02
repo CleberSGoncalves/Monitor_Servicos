@@ -51,7 +51,7 @@ namespace WinServiceFleetAgent.Core
             var metadata = MetadataReader.GetGlobalMachineMetadata(_configXmlPath, _configMonitorConfigPath);
             FileLogger.Log($"[FleetOrchestrator] Metadados extraídos: idHost='{metadata.IdHost}', Praça='{metadata.Praca}', CS={metadata.CS}, Url_Comunicacao='{metadata.UrlComunicacao}'");
 
-            // Passo 2: Inventário e sincronização dos serviços locais no SharePoint
+            // Passo 2: Inventário e sincronização APENAS dos serviços INSTALADOS no SharePoint
             foreach (var srv in _services)
             {
                 string exeFullPath = Path.Combine(srv.InstallPath, srv.ExeName);
@@ -89,13 +89,14 @@ namespace WinServiceFleetAgent.Core
                 string statusServico = WinController.GetServiceStatus(srv.ServiceName);
 
                 bool exeExists = File.Exists(exeFullPath);
-                bool dirExists = Directory.Exists(srv.InstallPath);
                 bool serviceExists = !statusServico.Equals("Não Encontrado", StringComparison.OrdinalIgnoreCase);
 
-                // Se o serviço não está instalado, não possui executável nem pasta no host, ignora sincronização
-                if (!exeExists && !dirExists && !serviceExists)
+                // UM SERVIÇO SÓ É SINCRONIZADO SE ESTIVER INSTALADO NA MÁQUINA (Executável ou Serviço do Windows existe)
+                bool isInstalledOnHost = exeExists || serviceExists;
+
+                if (!isInstalledOnHost)
                 {
-                    FileLogger.Log($"[FleetOrchestrator] Serviço '{srv.ServiceName}' não existe nesta máquina. Ignorando sincronização com SharePoint.");
+                    FileLogger.Log($"[FleetOrchestrator] Serviço '{srv.ServiceName}' NÃO está instalado nesta máquina. Ignorando sincronização com SharePoint.");
                     continue;
                 }
 

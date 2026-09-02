@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
 namespace WinServiceFleetAgent.Core
@@ -41,47 +42,51 @@ namespace WinServiceFleetAgent.Core
                 if (File.Exists(actualXmlPath))
                 {
                     var encoding1252 = Encoding.GetEncoding("Windows-1252");
-                    using (var reader = new StreamReader(actualXmlPath, encoding1252))
+                    string xmlText = File.ReadAllText(actualXmlPath, encoding1252);
+
+                    try
                     {
-                        var doc = XDocument.Load(reader);
+                        var doc = XDocument.Parse(xmlText);
 
                         // Busca de idHost e CS no bloco <hostInformation>
-                        var hostInfo = doc.Root?.Element("hostInformation");
+                        var hostInfo = doc.Root?.Elements().FirstOrDefault(e => e.Name.LocalName.Equals("hostInformation", StringComparison.OrdinalIgnoreCase));
                         if (hostInfo != null)
                         {
-                            var idHostElem = hostInfo.Element("idHost");
+                            var idHostElem = hostInfo.Elements().FirstOrDefault(e => e.Name.LocalName.Equals("idHost", StringComparison.OrdinalIgnoreCase));
                             if (idHostElem != null && !string.IsNullOrWhiteSpace(idHostElem.Value))
                             {
                                 metadata.IdHost = idHostElem.Value.Trim();
                             }
 
-                            var csElem = hostInfo.Element("CS");
+                            var csElem = hostInfo.Elements().FirstOrDefault(e => e.Name.LocalName.Equals("CS", StringComparison.OrdinalIgnoreCase));
                             if (csElem != null && int.TryParse(csElem.Value.Trim(), out int parsedCs))
                             {
                                 metadata.CS = parsedCs;
                             }
                         }
 
-                        // Busca de Praca: elemento <Praca> ou atributo Praca="..." em qualquer nó (ex: <Channel Praca="Caxias do Sul">)
+                        // Busca de Praca (insensível a maiúsculas/minúsculas em elementos ou atributos)
                         string extractedPraca = string.Empty;
-                        if (hostInfo != null)
+                        
+                        // Busca em atributos (ex: Praca="Caxias do Sul")
+                        var pracaAttr = doc.Descendants()
+                            .SelectMany(e => e.Attributes())
+                            .FirstOrDefault(a => a.Name.LocalName.Equals("Praca", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(a.Value));
+
+                        if (pracaAttr != null)
                         {
-                            var pracaElem = hostInfo.Element("Praca");
+                            extractedPraca = pracaAttr.Value.Trim();
+                        }
+
+                        // Busca em elementos (ex: <Praca>Caxias do Sul</Praca>)
+                        if (string.IsNullOrWhiteSpace(extractedPraca))
+                        {
+                            var pracaElem = doc.Descendants()
+                                .FirstOrDefault(e => e.Name.LocalName.Equals("Praca", StringComparison.OrdinalIgnoreCase) || e.Name.LocalName.Equals("idHost", StringComparison.OrdinalIgnoreCase));
+
                             if (pracaElem != null && !string.IsNullOrWhiteSpace(pracaElem.Value))
                             {
                                 extractedPraca = pracaElem.Value.Trim();
-                            }
-                        }
-
-                        if (string.IsNullOrWhiteSpace(extractedPraca))
-                        {
-                            var pracaAttr = doc.Descendants()
-                                .Select(e => e.Attribute("Praca") ?? e.Attribute("praca"))
-                                .FirstOrDefault(a => a != null && !string.IsNullOrWhiteSpace(a.Value));
-
-                            if (pracaAttr != null)
-                            {
-                                extractedPraca = pracaAttr.Value.Trim();
                             }
                         }
 
@@ -89,18 +94,29 @@ namespace WinServiceFleetAgent.Core
                         {
                             metadata.Praca = extractedPraca;
                         }
+                    }
+                    catch (Exception xmlEx)
+                    {
+                        FileLogger.Log($"[MetadataReader] Aviso no parse XDocument de {actualXmlPath}: {xmlEx.Message}. Tentando Regex...");
+                    }
 
-                        // Fallback de CS via atributo se não encontrado
-                        if (metadata.CS == 0)
+                    // Regex Fallback para Praca se ainda estiver "Não Informado"
+                    if (metadata.Praca == "Não Informado")
+                    {
+                        var matchPraca = Regex.Match(xmlText, @"Praca=""([^""]+)""", RegexOptions.IgnoreCase);
+                        if (matchPraca.Success && !string.IsNullOrWhiteSpace(matchPraca.Groups[1].Value))
                         {
-                            var csAttr = doc.Descendants()
-                                .Select(e => e.Attribute("CS") ?? e.Attribute("cs"))
-                                .FirstOrDefault(a => a != null && int.TryParse(a.Value.Trim(), out _));
+                            metadata.Praca = matchPraca.Groups[1].Value.Trim();
+                        }
+                    }
 
-                            if (csAttr != null && int.TryParse(csAttr.Value.Trim(), out int parsedCsAttr))
-                            {
-                                metadata.CS = parsedCsAttr;
-                            }
+                    // Regex Fallback para idHost
+                    if (string.IsNullOrWhiteSpace(metadata.IdHost))
+                    {
+                        var matchIdHost = Regex.Match(xmlText, @"<idHost>([^<]+)</idHost>", RegexOptions.IgnoreCase);
+                        if (matchIdHost.Success)
+                        {
+                            metadata.IdHost = matchIdHost.Groups[1].Value.Trim();
                         }
                     }
                 }
