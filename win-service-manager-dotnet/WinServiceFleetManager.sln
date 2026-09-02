@@ -1,0 +1,28 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WinServiceFleetAgent", "WinServiceFleetAgent\WinServiceFleetAgent.csproj", "{55C8B2BE-B7E8-4D28-A858-B0E81DD53F0A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PublisherApp", "PublisherApp\PublisherApp.csproj", "{66CB0184-17A0-41C4-B39D-C4339E316FEB}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{55C8B2BE-B7E8-4D28-A858-B0E81DD53F0A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{55C8B2BE-B7E8-4D28-A858-B0E81DD53F0A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{55C8B2BE-B7E8-4D28-A858-B0E81DD53F0A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{55C8B2BE-B7E8-4D28-A858-B0E81DD53F0A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{66CB0184-17A0-41C4-B39D-C4339E316FEB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{66CB0184-17A0-41C4-B39D-C4339E316FEB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{66CB0184-17A0-41C4-B39D-C4339E316FEB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{66CB0184-17A0-41C4-B39D-C4339E316FEB}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

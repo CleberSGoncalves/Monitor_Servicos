@@ -1,0 +1,2 @@
+E:\desenvolvimento\Monitor_Servicos\win-service-manager-dotnet\publish\publisher\PublisherApp.pdb
+E:\desenvolvimento\Monitor_Servicos\win-service-manager-dotnet\publish\publisher\PublisherApp.exe
