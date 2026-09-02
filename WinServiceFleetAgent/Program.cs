@@ -7,7 +7,7 @@ var builder = Host.CreateApplicationBuilder(args);
 // Habilitar suporte nativo para rodar como Serviço do Windows
 builder.Services.AddWindowsService(options =>
 {
-    options.ServiceName = "WinServiceFleetAgent";
+    options.ServiceName = "Dna.Monitor_Service";
 });
 
 builder.Services.AddHostedService<Worker>();
