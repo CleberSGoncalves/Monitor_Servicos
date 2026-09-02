@@ -35,7 +35,10 @@ namespace PublisherApp.Services
                 client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", githubToken);
                 client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github.v3+json"));
 
-                // 1. Criar Release no GitHub
+                // 1. Verificar/Criar Repositório no GitHub se não existir (evita HTTP 404)
+                await EnsureRepositoryExistsAsync(client, owner, repo);
+
+                // 2. Criar Release no GitHub
                 string createReleaseUrl = $"https://api.github.com/repos/{owner}/{repo}/releases";
                 var releasePayload = new
                 {
@@ -88,6 +91,41 @@ namespace PublisherApp.Services
 
                     Console.WriteLine($"[Publisher] Asset enviado com sucesso!");
                     return htmlUrl;
+                }
+            }
+        }
+
+        private static async Task EnsureRepositoryExistsAsync(HttpClient client, string owner, string repo)
+        {
+            string checkRepoUrl = $"https://api.github.com/repos/{owner}/{repo}";
+            var checkResp = await client.GetAsync(checkRepoUrl);
+
+            if (checkResp.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                Console.WriteLine($"[Publisher] Repositório '{owner}/{repo}' não existe no GitHub. Criando repositório automaticamente...");
+
+                string createRepoUrl = "https://api.github.com/user/repos";
+                var repoPayload = new
+                {
+                    name = repo,
+                    description = $"Repositório do serviço {repo}",
+                    @private = false,
+                    auto_init = true
+                };
+
+                var content = new StringContent(JsonSerializer.Serialize(repoPayload), Encoding.UTF8, "application/json");
+                var createResp = await client.PostAsync(createRepoUrl, content);
+
+                if (createResp.IsSuccessStatusCode)
+                {
+                    Console.WriteLine($"[Publisher] ✅ Repositório '{owner}/{repo}' criado com sucesso no GitHub!");
+                    // Aguardar 2 segundos para propagação do repositório no GitHub
+                    await Task.Delay(2000);
+                }
+                else
+                {
+                    string errJson = await createResp.Content.ReadAsStringAsync();
+                    Console.WriteLine($"[Publisher] Aviso ao tentar criar repositório '{owner}/{repo}': {errJson}");
                 }
             }
         }

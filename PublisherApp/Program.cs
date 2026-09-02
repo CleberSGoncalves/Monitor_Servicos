@@ -32,7 +32,6 @@ namespace PublisherApp
                     Console.WriteLine($"📁 Pasta 'servicos' criada em: {servicosDir}");
                     Console.WriteLine("Coloque as pastas dos serviços compilados dentro de 'servicos' e execute este script novamente.");
                     Console.WriteLine("\nPressione qualquer tecla para encerrar...");
-                    Console.ReadKey();
                     return;
                 }
 
@@ -44,13 +43,13 @@ namespace PublisherApp
                     Console.WriteLine($"⚠️  Nenhum serviço ou arquivo .zip encontrado na pasta: {servicosDir}");
                     Console.WriteLine("Copie as pastas dos seus serviços (ex: servicos\\ConfigMonitorSVC) para este local.");
                     Console.WriteLine("\nPressione qualquer tecla para encerrar...");
-                    Console.ReadKey();
                     return;
                 }
 
                 // 1. Obter Token implícito por argumento, arquivo local github_token.txt ou variável de ambiente
                 string token = args.Length > 0 ? args[0] : string.Empty;
                 string orgName = args.Length > 1 && !string.IsNullOrWhiteSpace(args[1]) ? args[1] : "CleberSGoncalves";
+                bool autoMode = args.Length > 2 && args[2].Equals("--auto", StringComparison.OrdinalIgnoreCase) || true; // Padrão automático para execução sem atrito
 
                 if (string.IsNullOrWhiteSpace(token))
                 {
@@ -78,7 +77,7 @@ namespace PublisherApp
                     return;
                 }
 
-                Console.WriteLine($"🔑 Autenticado no GitHub com Token Implícito.");
+                Console.WriteLine($"🔑 Autenticado no GitHub.");
                 Console.WriteLine($"🏢 Organização/Usuário GitHub: {orgName}");
                 Console.WriteLine($"📋 Serviços detectados para publicação ({serviceSubDirs.Length}):");
                 foreach (var dir in serviceSubDirs)
@@ -91,21 +90,20 @@ namespace PublisherApp
                 foreach (var dirPath in serviceSubDirs)
                 {
                     string serviceFolderName = Path.GetFileName(dirPath);
-                    Console.WriteLine($"\n------------------------------------------------------------------");
+                    Console.WriteLine($"------------------------------------------------------------------");
                     Console.WriteLine($"📦 Processando Serviço: {serviceFolderName}");
 
                     // Detectar executável principal na pasta e ler versão compilada
                     string autoVersion = DetectExecutableVersion(dirPath);
-                    string defaultTag = string.IsNullOrWhiteSpace(autoVersion) ? "v1.0.0.0" : $"v{autoVersion}";
+                    string tag = string.IsNullOrWhiteSpace(autoVersion) ? "v1.0.0.0" : $"v{autoVersion}";
 
-                    Console.Write($"🏷️  Digite a Tag/Versão da Release para '{serviceFolderName}' [Padrão: {defaultTag}]: ");
-                    string tagInput = Console.ReadLine()?.Trim() ?? "";
-                    string tag = string.IsNullOrWhiteSpace(tagInput) ? defaultTag : tagInput;
+                    Console.WriteLine($"🏷️  Versão detectada e atribuída automaticamente: '{tag}'");
 
-                    string tempZipPath = Path.Combine(servicosDir, $"{serviceFolderName}_{tag}.zip");
+                    // Gerar arquivo ZIP temporário na pasta TEMP do sistema Windows (evita poluição da pasta servicos)
+                    string tempZipPath = Path.Combine(Path.GetTempPath(), $"{serviceFolderName}_{tag}_{Guid.NewGuid():N}.zip");
                     if (File.Exists(tempZipPath)) File.Delete(tempZipPath);
 
-                    Console.WriteLine($"📂 Compactando pasta '{serviceFolderName}' em '{Path.GetFileName(tempZipPath)}'...");
+                    Console.WriteLine($"📂 Compactando pasta '{serviceFolderName}'...");
                     ZipFile.CreateFromDirectory(dirPath, tempZipPath, CompressionLevel.Optimal, includeBaseDirectory: false);
 
                     string repo = serviceFolderName;
@@ -136,6 +134,38 @@ namespace PublisherApp
                     }
                 }
 
+                // Processar arquivos .zip soltos na pasta servicos (se houver)
+                foreach (var zipPath in zipFiles)
+                {
+                    string filename = Path.GetFileNameWithoutExtension(zipPath);
+                    Console.WriteLine($"------------------------------------------------------------------");
+                    Console.WriteLine($"📦 Processando Arquivo ZIP: {Path.GetFileName(zipPath)}");
+
+                    string repoName = filename;
+                    string tag = "v1.0.0.0";
+                    Console.WriteLine($"🏷️  Tag atribuída: '{tag}' para repositório '{repoName}'");
+
+                    try
+                    {
+                        string htmlUrl = await GitHubReleaseClient.CreateReleaseAndUploadAssetAsync(
+                            owner: orgName,
+                            repo: repoName,
+                            tagName: tag,
+                            title: $"Release {tag} - {repoName}",
+                            changelog: $"Release automatizada a partir do arquivo {Path.GetFileName(zipPath)}",
+                            zipFilePath: zipPath,
+                            githubToken: token
+                        );
+
+                        Console.WriteLine($"✅ Release '{tag}' publicada com sucesso!");
+                        Console.WriteLine($"🔗 {htmlUrl}");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"❌ Erro ao publicar '{repoName}': {ex.Message}");
+                    }
+                }
+
                 Console.WriteLine("\n==================================================================");
                 Console.WriteLine("🎉 Processamento de todos os serviços concluído com sucesso!");
                 Console.WriteLine("==================================================================");
@@ -144,9 +174,6 @@ namespace PublisherApp
             {
                 Console.WriteLine($"\n❌ Ocorreu um erro inesperado: {ex.Message}");
             }
-
-            Console.WriteLine("\nPressione qualquer tecla para sair...");
-            Console.ReadKey();
         }
 
         private static string DetectExecutableVersion(string dirPath)
