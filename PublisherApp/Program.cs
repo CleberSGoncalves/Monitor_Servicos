@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -47,6 +48,13 @@ namespace PublisherApp
                     return;
                 }
 
+                Console.WriteLine($"📋 Serviços detectados ({serviceSubDirs.Length}):");
+                foreach (var dir in serviceSubDirs)
+                {
+                    Console.WriteLine($"   - {Path.GetFileName(dir)}");
+                }
+                Console.WriteLine();
+
                 // Solicitar Token do GitHub se não for informado por argumento
                 string token = args.Length > 0 ? args[0] : string.Empty;
                 if (string.IsNullOrWhiteSpace(token))
@@ -61,41 +69,42 @@ namespace PublisherApp
                     return;
                 }
 
-                Console.Write("🏢 Digite a Organização/Usuário do GitHub (ex: sua-org ou CleberSGoncalves): ");
-                string orgName = Console.ReadLine()?.Trim() ?? "CleberSGoncalves";
+                Console.Write("🏢 Digite o Usuário/Organização do GitHub [Padrão: CleberSGoncalves]: ");
+                string orgInput = Console.ReadLine()?.Trim() ?? "";
+                string orgName = string.IsNullOrWhiteSpace(orgInput) ? "CleberSGoncalves" : orgInput;
 
                 // Processar pastas de serviços
                 foreach (var dirPath in serviceSubDirs)
                 {
-                    string serviceName = Path.GetFileName(dirPath);
+                    string serviceFolderName = Path.GetFileName(dirPath);
                     Console.WriteLine($"\n------------------------------------------------------------------");
-                    Console.WriteLine($"📦 Serviço detectado: {serviceName}");
+                    Console.WriteLine($"📦 Processando Serviço: {serviceFolderName}");
 
-                    Console.Write($"🏷️  Digite a Tag/Versão da Release para '{serviceName}' (ex: v2.4.1): ");
-                    string tag = Console.ReadLine()?.Trim() ?? "";
-                    if (string.IsNullOrWhiteSpace(tag))
-                    {
-                        Console.WriteLine($"⚠️ Tag não fornecida. Pulando serviço '{serviceName}'.");
-                        continue;
-                    }
+                    // Detectar executável principal na pasta e ler versão compilada
+                    string autoVersion = DetectExecutableVersion(dirPath);
+                    string defaultTag = string.IsNullOrWhiteSpace(autoVersion) ? "v1.0.0.0" : $"v{autoVersion}";
 
-                    string tempZipPath = Path.Combine(servicosDir, $"{serviceName}_{tag}.zip");
+                    Console.Write($"🏷️  Digite a Tag/Versão da Release para '{serviceFolderName}' [Padrão: {defaultTag}]: ");
+                    string tagInput = Console.ReadLine()?.Trim() ?? "";
+                    string tag = string.IsNullOrWhiteSpace(tagInput) ? defaultTag : tagInput;
+
+                    string tempZipPath = Path.Combine(servicosDir, $"{serviceFolderName}_{tag}.zip");
                     if (File.Exists(tempZipPath)) File.Delete(tempZipPath);
 
-                    Console.WriteLine($"📂 Compactando pasta '{serviceName}' em '{Path.GetFileName(tempZipPath)}'...");
+                    Console.WriteLine($"📂 Compactando pasta '{serviceFolderName}' em '{Path.GetFileName(tempZipPath)}'...");
                     ZipFile.CreateFromDirectory(dirPath, tempZipPath, CompressionLevel.Optimal, includeBaseDirectory: false);
 
-                    string repo = $"{orgName}/{serviceName}";
-                    Console.WriteLine($"🚀 Enviando release para {repo}...");
+                    string repo = serviceFolderName;
+                    Console.WriteLine($"🚀 Enviando release para {orgName}/{repo}...");
 
                     try
                     {
                         string htmlUrl = await GitHubReleaseClient.CreateReleaseAndUploadAssetAsync(
                             owner: orgName,
-                            repo: serviceName,
+                            repo: repo,
                             tagName: tag,
-                            title: $"Release {tag} - {serviceName}",
-                            changelog: $"Release automatizada da pasta de deploy servicos/{serviceName}",
+                            title: $"Release {tag} - {serviceFolderName}",
+                            changelog: $"Release automatizada da pasta de deploy servicos/{serviceFolderName}",
                             zipFilePath: tempZipPath,
                             githubToken: token
                         );
@@ -105,50 +114,11 @@ namespace PublisherApp
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"❌ Erro ao publicar '{serviceName}': {ex.Message}");
+                        Console.WriteLine($"❌ Erro ao publicar '{serviceFolderName}': {ex.Message}");
                     }
                     finally
                     {
                         try { if (File.Exists(tempZipPath)) File.Delete(tempZipPath); } catch { }
-                    }
-                }
-
-                // Processar arquivos .zip soltos na pasta servicos
-                foreach (var zipPath in zipFiles)
-                {
-                    string filename = Path.GetFileNameWithoutExtension(zipPath);
-                    Console.WriteLine($"\n------------------------------------------------------------------");
-                    Console.WriteLine($"📦 Arquivo ZIP detectado: {Path.GetFileName(zipPath)}");
-
-                    Console.Write($"🏢 Nome do Repositório GitHub para '{filename}' (ex: ConfigMonitorSVC): ");
-                    string repoName = Console.ReadLine()?.Trim() ?? filename;
-
-                    Console.Write($"🏷️  Digite a Tag/Versão da Release para '{repoName}' (ex: v2.4.1): ");
-                    string tag = Console.ReadLine()?.Trim() ?? "";
-                    if (string.IsNullOrWhiteSpace(tag))
-                    {
-                        Console.WriteLine($"⚠️ Tag não fornecida. Pulando arquivo '{filename}'.");
-                        continue;
-                    }
-
-                    try
-                    {
-                        string htmlUrl = await GitHubReleaseClient.CreateReleaseAndUploadAssetAsync(
-                            owner: orgName,
-                            repo: repoName,
-                            tagName: tag,
-                            title: $"Release {tag} - {repoName}",
-                            changelog: $"Release automatizada a partir do arquivo {Path.GetFileName(zipPath)}",
-                            zipFilePath: zipPath,
-                            githubToken: token
-                        );
-
-                        Console.WriteLine($"✅ Release '{tag}' publicada com sucesso!");
-                        Console.WriteLine($"🔗 {htmlUrl}");
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"❌ Erro ao publicar '{repoName}': {ex.Message}");
                     }
                 }
 
@@ -163,6 +133,34 @@ namespace PublisherApp
 
             Console.WriteLine("\nPressione qualquer tecla para sair...");
             Console.ReadKey();
+        }
+
+        private static string DetectExecutableVersion(string dirPath)
+        {
+            try
+            {
+                var exeFiles = Directory.GetFiles(dirPath, "*.exe", SearchOption.TopDirectoryOnly)
+                    .Where(f => !Path.GetFileName(f).Equals("InstallUtil.exe", StringComparison.OrdinalIgnoreCase) &&
+                                !Path.GetFileName(f).Equals("RegAsm.exe", StringComparison.OrdinalIgnoreCase) &&
+                                !Path.GetFileName(f).Equals("ccextractorwin.exe", StringComparison.OrdinalIgnoreCase) &&
+                                !Path.GetFileName(f).EndsWith(".vshost.exe", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
+                var mainExe = exeFiles.FirstOrDefault(f => Path.GetFileName(f).StartsWith("DNA.", StringComparison.OrdinalIgnoreCase))
+                              ?? exeFiles.FirstOrDefault();
+
+                if (mainExe != null)
+                {
+                    var info = FileVersionInfo.GetVersionInfo(mainExe);
+                    if (!string.IsNullOrWhiteSpace(info.FileVersion))
+                    {
+                        return info.FileVersion.Trim();
+                    }
+                }
+            }
+            catch { }
+
+            return string.Empty;
         }
     }
 }

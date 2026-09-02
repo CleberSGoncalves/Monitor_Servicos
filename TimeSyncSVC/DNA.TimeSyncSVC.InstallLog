@@ -1,0 +1,26 @@
+﻿Instalando o assembly 'D:\MediaDNA_V2\Applications\TimeSyncSVC\DNA.TimeSyncSVC.exe'.
+Parâmetros afetados são:
+   logtoconsole = 
+   logfile = D:\MediaDNA_V2\Applications\TimeSyncSVC\DNA.TimeSyncSVC.InstallLog
+   assemblypath = D:\MediaDNA_V2\Applications\TimeSyncSVC\DNA.TimeSyncSVC.exe
+Instalando o serviço DNA.TimeSyncSVC...
+Serviço DNA.TimeSyncSVC foi instalado com êxito.
+Criando a origem de EventLog DNA.TimeSyncSVC no log Application...
+Confirmando o assembly 'D:\MediaDNA_V2\Applications\TimeSyncSVC\DNA.TimeSyncSVC.exe'.
+Parâmetros afetados são:
+   logtoconsole = 
+   logfile = D:\MediaDNA_V2\Applications\TimeSyncSVC\DNA.TimeSyncSVC.InstallLog
+   assemblypath = D:\MediaDNA_V2\Applications\TimeSyncSVC\DNA.TimeSyncSVC.exe
+Instalando o assembly 'D:\MediaDNA_V2\Applications\TimeSyncSVC\DNA.TimeSyncSVC.exe'.
+Parâmetros afetados são:
+   logtoconsole = 
+   logfile = D:\MediaDNA_V2\Applications\TimeSyncSVC\DNA.TimeSyncSVC.InstallLog
+   assemblypath = D:\MediaDNA_V2\Applications\TimeSyncSVC\DNA.TimeSyncSVC.exe
+Instalando o serviço DNA.TimeSyncSVC...
+Serviço DNA.TimeSyncSVC foi instalado com êxito.
+Criando a origem de EventLog DNA.TimeSyncSVC no log Application...
+Confirmando o assembly 'D:\MediaDNA_V2\Applications\TimeSyncSVC\DNA.TimeSyncSVC.exe'.
+Parâmetros afetados são:
+   logtoconsole = 
+   logfile = D:\MediaDNA_V2\Applications\TimeSyncSVC\DNA.TimeSyncSVC.InstallLog
+   assemblypath = D:\MediaDNA_V2\Applications\TimeSyncSVC\DNA.TimeSyncSVC.exe
