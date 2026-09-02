@@ -1,4 +1,0 @@
-E:\desenvolvimento\Monitor_Servicos\win-service-manager-dotnet\publish\agent\appsettings.Development.json
-E:\desenvolvimento\Monitor_Servicos\win-service-manager-dotnet\publish\agent\appsettings.json
-E:\desenvolvimento\Monitor_Servicos\win-service-manager-dotnet\publish\agent\WinServiceFleetAgent.pdb
-E:\desenvolvimento\Monitor_Servicos\win-service-manager-dotnet\publish\agent\WinServiceFleetAgent.exe
