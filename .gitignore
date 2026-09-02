@@ -6,6 +6,10 @@ obj/
 *.userosscache
 *.sln.docstates
 
+## Local Credentials (Ignored by Git)
+github_token.txt
+publish/github_token.txt
+
 ## Deploy Staging & Backups
 RollbackBackups/
 TempStaging/

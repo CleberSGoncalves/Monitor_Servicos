@@ -48,15 +48,24 @@ namespace PublisherApp
                     return;
                 }
 
-                Console.WriteLine($"📋 Serviços detectados ({serviceSubDirs.Length}):");
-                foreach (var dir in serviceSubDirs)
-                {
-                    Console.WriteLine($"   - {Path.GetFileName(dir)}");
-                }
-                Console.WriteLine();
-
-                // Solicitar Token do GitHub se não for informado por argumento
+                // 1. Obter Token implícito por argumento, arquivo local github_token.txt ou variável de ambiente
                 string token = args.Length > 0 ? args[0] : string.Empty;
+                string orgName = args.Length > 1 && !string.IsNullOrWhiteSpace(args[1]) ? args[1] : "CleberSGoncalves";
+
+                if (string.IsNullOrWhiteSpace(token))
+                {
+                    string localTokenFile = Path.Combine(baseDir, "github_token.txt");
+                    if (File.Exists(localTokenFile))
+                    {
+                        token = File.ReadAllText(localTokenFile).Trim();
+                    }
+                }
+
+                if (string.IsNullOrWhiteSpace(token))
+                {
+                    token = Environment.GetEnvironmentVariable("GITHUB_TOKEN")?.Trim() ?? string.Empty;
+                }
+
                 if (string.IsNullOrWhiteSpace(token))
                 {
                     Console.Write("🔑 Digite seu Personal Access Token do GitHub: ");
@@ -69,9 +78,14 @@ namespace PublisherApp
                     return;
                 }
 
-                Console.Write("🏢 Digite o Usuário/Organização do GitHub [Padrão: CleberSGoncalves]: ");
-                string orgInput = Console.ReadLine()?.Trim() ?? "";
-                string orgName = string.IsNullOrWhiteSpace(orgInput) ? "CleberSGoncalves" : orgInput;
+                Console.WriteLine($"🔑 Autenticado no GitHub com Token Implícito.");
+                Console.WriteLine($"🏢 Organização/Usuário GitHub: {orgName}");
+                Console.WriteLine($"📋 Serviços detectados para publicação ({serviceSubDirs.Length}):");
+                foreach (var dir in serviceSubDirs)
+                {
+                    Console.WriteLine($"   - {Path.GetFileName(dir)}");
+                }
+                Console.WriteLine();
 
                 // Processar pastas de serviços
                 foreach (var dirPath in serviceSubDirs)
