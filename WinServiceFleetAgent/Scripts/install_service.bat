@@ -3,11 +3,11 @@ REM Script de Instalação do Serviço Windows Agent em C# .NET
 REM IMPORTANTE: Executar este script como Administrador!
 
 cd /d "%~dp0"
-set SERVICE_NAME=Dna.Monitor_Service
+set SERVICE_NAME=DNA.MonitorServiceSVC
 set EXE_PATH=%~dp0WinServiceFleetAgent.exe
 
 echo Instalando o servico %SERVICE_NAME%...
-sc create %SERVICE_NAME% binPath= "%EXE_PATH%" start= auto displayname= "Dna.Monitor_Service"
+sc create %SERVICE_NAME% binPath= "%EXE_PATH%" start= auto displayname= "DNA.MonitorServiceSVC"
 
 if %ERRORLEVEL% NEQ 0 (
     echo [ERRO] Falha ao registrar o servico Windows via sc.exe.
