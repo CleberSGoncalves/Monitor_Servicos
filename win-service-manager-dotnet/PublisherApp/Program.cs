@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.IO.Compression;
+using System.Linq;
 using System.Threading.Tasks;
 using PublisherApp.Services;
 
@@ -10,83 +12,153 @@ namespace PublisherApp
         static async Task Main(string[] args)
         {
             Console.WriteLine("==================================================================");
-            Console.WriteLine("   🚀 Windows Service Fleet Manager - Publisher (C# .NET 8)");
+            Console.WriteLine(" 🚀 Publisher Automático de Serviços para GitHub (.NET 8)");
             Console.WriteLine("==================================================================\n");
 
             try
             {
-                string token = string.Empty;
-                string repoInput = string.Empty;
-                string tag = string.Empty;
-                string title = string.Empty;
-                string changelog = string.Empty;
-                string zipPath = string.Empty;
+                string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+                string servicosDir = Path.Combine(baseDir, "servicos");
 
-                if (args.Length >= 4)
+                if (!Directory.Exists(servicosDir))
                 {
-                    token = args[0];
-                    repoInput = args[1];
-                    tag = args[2];
-                    zipPath = args[3];
-                    if (args.Length >= 5) title = args[4];
-                    if (args.Length >= 6) changelog = args[5];
+                    servicosDir = Path.Combine(Directory.GetCurrentDirectory(), "servicos");
                 }
-                else
+
+                if (!Directory.Exists(servicosDir))
                 {
-                    Console.Write("🔑 Digite o GitHub Personal Access Token: ");
+                    Directory.CreateDirectory(servicosDir);
+                    Console.WriteLine($"📁 Pasta 'servicos' criada em: {servicosDir}");
+                    Console.WriteLine("Coloque as pastas dos serviços compilados dentro de 'servicos' e execute este script novamente.");
+                    Console.WriteLine("\nPressione qualquer tecla para encerrar...");
+                    Console.ReadKey();
+                    return;
+                }
+
+                var serviceSubDirs = Directory.GetDirectories(servicosDir);
+                var zipFiles = Directory.GetFiles(servicosDir, "*.zip");
+
+                if (serviceSubDirs.Length == 0 && zipFiles.Length == 0)
+                {
+                    Console.WriteLine($"⚠️  Nenhum serviço ou arquivo .zip encontrado na pasta: {servicosDir}");
+                    Console.WriteLine("Copie as pastas dos seus serviços (ex: servicos\\ConfigMonitorSVC) para este local.");
+                    Console.WriteLine("\nPressione qualquer tecla para encerrar...");
+                    Console.ReadKey();
+                    return;
+                }
+
+                // Solicitar Token do GitHub se não for informado por argumento
+                string token = args.Length > 0 ? args[0] : string.Empty;
+                if (string.IsNullOrWhiteSpace(token))
+                {
+                    Console.Write("🔑 Digite seu Personal Access Token do GitHub: ");
                     token = Console.ReadLine()?.Trim() ?? "";
-
-                    Console.Write("📦 Digite o Repositório GitHub (ex: sua-org/ConfigMonitorSVC): ");
-                    repoInput = Console.ReadLine()?.Trim() ?? "";
-
-                    Console.Write("🏷️  Digite a Tag/Versão da Release (ex: v2.4.1 ou 1.0.0.16): ");
-                    tag = Console.ReadLine()?.Trim() ?? "";
-
-                    Console.Write("📝 Digite o Título da Release (Opcional): ");
-                    title = Console.ReadLine()?.Trim() ?? "";
-
-                    Console.Write("📄 Digite as Notas da Versão / Changelog (Opcional): ");
-                    changelog = Console.ReadLine()?.Trim() ?? "";
-
-                    Console.Write("📁 Digite o Caminho Completo do Arquivo .zip: ");
-                    zipPath = Console.ReadLine()?.Trim()?.Trim('"') ?? "";
                 }
 
-                if (string.IsNullOrWhiteSpace(token) || string.IsNullOrWhiteSpace(repoInput) || string.IsNullOrWhiteSpace(tag) || string.IsNullOrWhiteSpace(zipPath))
+                if (string.IsNullOrWhiteSpace(token))
                 {
-                    Console.WriteLine("\n❌ Erro: Todos os campos obrigatórios (Token, Repositório, Tag e Arquivo .zip) devem ser fornecidos.");
+                    Console.WriteLine("\n❌ Erro: Token do GitHub não fornecido.");
                     return;
                 }
 
-                string[] parts = repoInput.Split('/');
-                if (parts.Length != 2)
+                Console.Write("🏢 Digite a Organização/Usuário do GitHub (ex: sua-org ou CleberSGoncalves): ");
+                string orgName = Console.ReadLine()?.Trim() ?? "CleberSGoncalves";
+
+                // Processar pastas de serviços
+                foreach (var dirPath in serviceSubDirs)
                 {
-                    Console.WriteLine("\n❌ Erro: Formato de repositório inválido. Utilize o formato 'proprietario/repositorio'.");
-                    return;
+                    string serviceName = Path.GetFileName(dirPath);
+                    Console.WriteLine($"\n------------------------------------------------------------------");
+                    Console.WriteLine($"📦 Serviço detectado: {serviceName}");
+
+                    Console.Write($"🏷️  Digite a Tag/Versão da Release para '{serviceName}' (ex: v2.4.1): ");
+                    string tag = Console.ReadLine()?.Trim() ?? "";
+                    if (string.IsNullOrWhiteSpace(tag))
+                    {
+                        Console.WriteLine($"⚠️ Tag não fornecida. Pulando serviço '{serviceName}'.");
+                        continue;
+                    }
+
+                    string tempZipPath = Path.Combine(servicosDir, $"{serviceName}_{tag}.zip");
+                    if (File.Exists(tempZipPath)) File.Delete(tempZipPath);
+
+                    Console.WriteLine($"📂 Compactando pasta '{serviceName}' em '{Path.GetFileName(tempZipPath)}'...");
+                    ZipFile.CreateFromDirectory(dirPath, tempZipPath, CompressionLevel.Optimal, includeBaseDirectory: false);
+
+                    string repo = $"{orgName}/{serviceName}";
+                    Console.WriteLine($"🚀 Enviando release para {repo}...");
+
+                    try
+                    {
+                        string htmlUrl = await GitHubReleaseClient.CreateReleaseAndUploadAssetAsync(
+                            owner: orgName,
+                            repo: serviceName,
+                            tagName: tag,
+                            title: $"Release {tag} - {serviceName}",
+                            changelog: $"Release automatizada da pasta de deploy servicos/{serviceName}",
+                            zipFilePath: tempZipPath,
+                            githubToken: token
+                        );
+
+                        Console.WriteLine($"✅ Release '{tag}' publicada com sucesso!");
+                        Console.WriteLine($"🔗 {htmlUrl}");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"❌ Erro ao publicar '{serviceName}': {ex.Message}");
+                    }
+                    finally
+                    {
+                        try { if (File.Exists(tempZipPath)) File.Delete(tempZipPath); } catch { }
+                    }
                 }
 
-                string owner = parts[0];
-                string repo = parts[1];
+                // Processar arquivos .zip soltos na pasta servicos
+                foreach (var zipPath in zipFiles)
+                {
+                    string filename = Path.GetFileNameWithoutExtension(zipPath);
+                    Console.WriteLine($"\n------------------------------------------------------------------");
+                    Console.WriteLine($"📦 Arquivo ZIP detectado: {Path.GetFileName(zipPath)}");
 
-                Console.WriteLine("\n🚀 Iniciando publicação...");
-                string htmlUrl = await GitHubReleaseClient.CreateReleaseAndUploadAssetAsync(
-                    owner: owner,
-                    repo: repo,
-                    tagName: tag,
-                    title: title,
-                    changelog: changelog,
-                    zipFilePath: zipPath,
-                    githubToken: token
-                );
+                    Console.Write($"🏢 Nome do Repositório GitHub para '{filename}' (ex: ConfigMonitorSVC): ");
+                    string repoName = Console.ReadLine()?.Trim() ?? filename;
+
+                    Console.Write($"🏷️  Digite a Tag/Versão da Release para '{repoName}' (ex: v2.4.1): ");
+                    string tag = Console.ReadLine()?.Trim() ?? "";
+                    if (string.IsNullOrWhiteSpace(tag))
+                    {
+                        Console.WriteLine($"⚠️ Tag não fornecida. Pulando arquivo '{filename}'.");
+                        continue;
+                    }
+
+                    try
+                    {
+                        string htmlUrl = await GitHubReleaseClient.CreateReleaseAndUploadAssetAsync(
+                            owner: orgName,
+                            repo: repoName,
+                            tagName: tag,
+                            title: $"Release {tag} - {repoName}",
+                            changelog: $"Release automatizada a partir do arquivo {Path.GetFileName(zipPath)}",
+                            zipFilePath: zipPath,
+                            githubToken: token
+                        );
+
+                        Console.WriteLine($"✅ Release '{tag}' publicada com sucesso!");
+                        Console.WriteLine($"🔗 {htmlUrl}");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"❌ Erro ao publicar '{repoName}': {ex.Message}");
+                    }
+                }
 
                 Console.WriteLine("\n==================================================================");
-                Console.WriteLine($"✅ Release '{tag}' criada com sucesso!");
-                Console.WriteLine($"🔗 Link da Release: {htmlUrl}");
+                Console.WriteLine("🎉 Processamento de todos os serviços concluído com sucesso!");
                 Console.WriteLine("==================================================================");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"\n❌ Erro na publicação: {ex.Message}");
+                Console.WriteLine($"\n❌ Ocorreu um erro inesperado: {ex.Message}");
             }
 
             Console.WriteLine("\nPressione qualquer tecla para sair...");
