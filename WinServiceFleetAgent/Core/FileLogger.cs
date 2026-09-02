@@ -20,6 +20,7 @@ namespace WinServiceFleetAgent.Core
                     Directory.CreateDirectory(LogDir);
                 }
                 LogFile = Path.Combine(LogDir, "agent.log");
+                CleanupOldLogFile();
             }
             catch
             {
@@ -28,8 +29,29 @@ namespace WinServiceFleetAgent.Core
             }
         }
 
+        private static void CleanupOldLogFile()
+        {
+            try
+            {
+                if (File.Exists(LogFile))
+                {
+                    var creationTime = File.GetCreationTime(LogFile);
+                    var lastWriteTime = File.GetLastWriteTime(LogFile);
+                    var oldestTime = creationTime < lastWriteTime ? creationTime : lastWriteTime;
+
+                    // Apaga o arquivo de log se tiver 5 dias ou mais de existência/modificação
+                    if ((DateTime.Now - oldestTime).TotalDays >= 5)
+                    {
+                        File.Delete(LogFile);
+                    }
+                }
+            }
+            catch { }
+        }
+
         public static void Log(string message)
         {
+            CleanupOldLogFile();
             string formattedMessage = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}";
             Console.WriteLine(formattedMessage);
 
@@ -45,6 +67,7 @@ namespace WinServiceFleetAgent.Core
 
         public static void LogError(string message, Exception? ex = null)
         {
+            CleanupOldLogFile();
             string formattedMessage = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [ERRO] {message}" + (ex != null ? $" | Detalhes: {ex.Message}" : "");
             Console.WriteLine(formattedMessage);
 

@@ -191,7 +191,6 @@ namespace WinServiceFleetAgent.Core
                     {
                         { "Title", displayTitle },
                         { "Hostname", hostname },
-                        { "Praca", safePraca },
                         { "Pra_x00e7_a", safePraca },
                         { "CS", safeCS },
                         { "Nome_Servico", nomeServico },
