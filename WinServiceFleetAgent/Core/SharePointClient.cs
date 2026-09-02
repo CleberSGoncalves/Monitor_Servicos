@@ -171,12 +171,15 @@ namespace WinServiceFleetAgent.Core
                         }
                     }
 
+                    string safePraca = string.IsNullOrWhiteSpace(praca) ? "Não Informado" : praca;
+                    int safeCS = cs <= 0 ? 1 : cs;
+
                     var fieldsPayload = new Dictionary<string, object>
                     {
                         { "Title", title },
                         { "Hostname", hostname },
-                        { "Pra_x00e7_a", praca },
-                        { "CS", cs },
+                        { "Pra_x00e7_a", safePraca },
+                        { "CS", safeCS },
                         { "Nome_Servico", nomeServico },
                         { "Versao_Instalada", versaoInstalada },
                         { "Status_Servico", statusServico },

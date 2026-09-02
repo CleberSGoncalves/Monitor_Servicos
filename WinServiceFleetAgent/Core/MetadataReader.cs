@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Xml.Linq;
 
@@ -7,8 +8,8 @@ namespace WinServiceFleetAgent.Core
 {
     public class GlobalMetadata
     {
-        public string Praca { get; set; } = string.Empty;
-        public int CS { get; set; } = 0;
+        public string Praca { get; set; } = "Não Informado";
+        public int CS { get; set; } = 1;
         public string UrlComunicacao { get; set; } = string.Empty;
     }
 
@@ -22,46 +23,115 @@ namespace WinServiceFleetAgent.Core
             try
             {
                 Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-                if (File.Exists(configXmlPath))
+
+                // Tentar no caminho informado, ou busca flexível nos drives D:\ e C:\
+                string actualXmlPath = configXmlPath;
+                if (!File.Exists(actualXmlPath))
+                {
+                    if (actualXmlPath.StartsWith("D:\\", StringComparison.OrdinalIgnoreCase))
+                    {
+                        actualXmlPath = "C:\\" + actualXmlPath.Substring(3);
+                    }
+                    else if (actualXmlPath.StartsWith("C:\\", StringComparison.OrdinalIgnoreCase))
+                    {
+                        actualXmlPath = "D:\\" + actualXmlPath.Substring(3);
+                    }
+                }
+
+                if (File.Exists(actualXmlPath))
                 {
                     var encoding1252 = Encoding.GetEncoding("Windows-1252");
-                    using (var reader = new StreamReader(configXmlPath, encoding1252))
+                    using (var reader = new StreamReader(actualXmlPath, encoding1252))
                     {
                         var doc = XDocument.Load(reader);
+
+                        // Busca de Praca: elemento <Praca>, <idHost> ou atributo Praca="..." em qualquer nó (ex: <Channel Praca="Caxias do Sul">)
+                        string extractedPraca = string.Empty;
                         var hostInfo = doc.Root?.Element("hostInformation");
                         if (hostInfo != null)
                         {
-                            var idHostElem = hostInfo.Element("idHost");
+                            var pracaElem = hostInfo.Element("Praca") ?? hostInfo.Element("idHost");
+                            if (pracaElem != null && !string.IsNullOrWhiteSpace(pracaElem.Value))
+                            {
+                                extractedPraca = pracaElem.Value.Trim();
+                            }
+                        }
+
+                        if (string.IsNullOrWhiteSpace(extractedPraca))
+                        {
+                            var pracaAttr = doc.Descendants()
+                                .Select(e => e.Attribute("Praca") ?? e.Attribute("praca"))
+                                .FirstOrDefault(a => a != null && !string.IsNullOrWhiteSpace(a.Value));
+
+                            if (pracaAttr != null)
+                            {
+                                extractedPraca = pracaAttr.Value.Trim();
+                            }
+                        }
+
+                        if (!string.IsNullOrWhiteSpace(extractedPraca))
+                        {
+                            metadata.Praca = extractedPraca;
+                        }
+
+                        // Busca de CS: elemento <CS>, atributo CS="..." ou CS1/CS2 do Hostname
+                        int extractedCS = 0;
+                        if (hostInfo != null)
+                        {
                             var csElem = hostInfo.Element("CS");
-
-                            if (idHostElem != null && !string.IsNullOrWhiteSpace(idHostElem.Value))
+                            if (csElem != null && int.TryParse(csElem.Value.Trim(), out int parsedCs))
                             {
-                                metadata.Praca = idHostElem.Value.Trim();
+                                extractedCS = parsedCs;
                             }
+                        }
 
-                            if (csElem != null && int.TryParse(csElem.Value.Trim(), out int csVal))
+                        if (extractedCS == 0)
+                        {
+                            var csAttr = doc.Descendants()
+                                .Select(e => e.Attribute("CS") ?? e.Attribute("cs"))
+                                .FirstOrDefault(a => a != null && int.TryParse(a.Value.Trim(), out _));
+
+                            if (csAttr != null && int.TryParse(csAttr.Value.Trim(), out int parsedCsAttr))
                             {
-                                metadata.CS = csVal;
+                                extractedCS = parsedCsAttr;
                             }
+                        }
+
+                        if (extractedCS > 0)
+                        {
+                            metadata.CS = extractedCS;
                         }
                     }
                 }
                 else
                 {
-                    Console.WriteLine($"[MetadataReader] Arquivo não encontrado: {configXmlPath}");
+                    FileLogger.Log($"[MetadataReader] Arquivo configxml.xml não encontrado em '{configXmlPath}' nem nos caminhos alternativos.");
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[MetadataReader] Erro ao ler {configXmlPath}: {ex.Message}");
+                FileLogger.LogError($"Erro ao ler {configXmlPath}", ex);
             }
 
             // 2. Leitura do WCFMainURL no DNA.ConfigMonitorSVC.exe.config
             try
             {
-                if (File.Exists(configMonitorConfigPath))
+                string actualConfigPath = configMonitorConfigPath;
+                if (!File.Exists(actualConfigPath))
                 {
-                    var doc = XDocument.Load(configMonitorConfigPath);
+                    if (actualConfigPath.StartsWith("D:\\", StringComparison.OrdinalIgnoreCase))
+                    {
+                        actualConfigPath = "C:\\" + actualConfigPath.Substring(3);
+                    }
+                    else if (actualConfigPath.StartsWith("C:\\", StringComparison.OrdinalIgnoreCase))
+                    {
+                        actualConfigPath = "D:\\" + actualConfigPath.Substring(3);
+                    }
+                }
+
+                if (File.Exists(actualConfigPath))
+                {
+                    var doc = XDocument.Load(actualConfigPath);
                     foreach (var setting in doc.Descendants("setting"))
                     {
                         if (setting.Attribute("name")?.Value == "WCFMainURL")
@@ -75,14 +145,10 @@ namespace WinServiceFleetAgent.Core
                         }
                     }
                 }
-                else
-                {
-                    Console.WriteLine($"[MetadataReader] Arquivo não encontrado: {configMonitorConfigPath}");
-                }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[MetadataReader] Erro ao ler {configMonitorConfigPath}: {ex.Message}");
+                FileLogger.LogError($"Erro ao ler {configMonitorConfigPath}", ex);
             }
 
             return metadata;
