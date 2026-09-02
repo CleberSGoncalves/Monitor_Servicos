@@ -21,55 +21,106 @@ namespace WinServiceFleetAgent.Core
 
     public class SharePointClient
     {
-        private readonly string _siteUrl;
+        private readonly string _tenantId = "b2767241-fab5-454b-8b62-f6324650e316";
+        private readonly string _clientId = "1950a258-227b-4e31-a9cf-717495945fc2";
+        private readonly string _siteHost = "adgbl.sharepoint.com";
+        private readonly string _sitePath = "/sites/suportecaptacao";
         private readonly string _listName;
-        private readonly string _clientId;
+        private readonly string _username;
+        private readonly string _password;
         private readonly string _clientSecret;
-        private string _accessToken = string.Empty;
 
-        public SharePointClient(string siteUrl, string listName, string clientId, string clientSecret)
+        private string _accessToken = string.Empty;
+        private string _siteId = string.Empty;
+        private string _listId = string.Empty;
+
+        public SharePointClient(
+            string siteUrl,
+            string listName,
+            string clientId,
+            string clientSecret,
+            string username = "svc.captacao@adgbl.com",
+            string password = "Acount@!2026")
         {
-            _siteUrl = siteUrl?.TrimEnd('/') ?? string.Empty;
-            _listName = listName ?? "Controle_Servicos";
-            _clientId = clientId ?? string.Empty;
+            _listName = string.IsNullOrWhiteSpace(listName) ? "Painel de gestão de serviços dos CS" : listName;
+            _clientId = string.IsNullOrWhiteSpace(clientId) || clientId.Contains("COLE_AQUI") ? "1950a258-227b-4e31-a9cf-717495945fc2" : clientId;
             _clientSecret = clientSecret ?? string.Empty;
+            _username = string.IsNullOrWhiteSpace(username) ? "svc.captacao@adgbl.com" : username;
+            _password = string.IsNullOrWhiteSpace(password) ? "Acount@!2026" : password;
+
+            if (!string.IsNullOrWhiteSpace(siteUrl) && Uri.TryCreate(siteUrl, UriKind.Absolute, out var uri))
+            {
+                _siteHost = uri.Host;
+                _sitePath = uri.AbsolutePath;
+            }
         }
 
-        private async Task EnsureAccessTokenAsync(HttpClient client)
+        private async Task EnsureGraphContextAsync(HttpClient client)
         {
-            if (!string.IsNullOrEmpty(_accessToken) || string.IsNullOrEmpty(_clientId))
+            if (!string.IsNullOrEmpty(_accessToken) && !string.IsNullOrEmpty(_listId))
             {
                 return;
             }
 
-            try
+            // 1. Autenticar no Microsoft Graph API v2.0
+            string tokenUrl = $"https://login.microsoftonline.com/{_tenantId}/oauth2/v2.0/token";
+            var tokenReq = new Dictionary<string, string>
             {
-                // Obter Access Token do Azure AD OAuth 2.0 Client Credentials
-                string tenantDomain = new Uri(_siteUrl).Host;
-                string tokenUrl = $"https://login.microsoftonline.com/common/oauth2/v2.0/token";
+                { "grant_type", "password" },
+                { "client_id", _clientId },
+                { "username", _username },
+                { "password", _password },
+                { "scope", "https://graph.microsoft.com/.default" }
+            };
 
-                var requestBody = new Dictionary<string, string>
-                {
-                    { "grant_type", "client_credentials" },
-                    { "client_id", _clientId },
-                    { "client_secret", _clientSecret },
-                    { "scope", "https://graph.microsoft.com/.default" }
-                };
+            var tokenResp = await client.PostAsync(tokenUrl, new FormUrlEncodedContent(tokenReq));
+            if (!tokenResp.IsSuccessStatusCode)
+            {
+                string errStr = await tokenResp.Content.ReadAsStringAsync();
+                Console.WriteLine($"[SharePointClient] Erro ao autenticar no Graph API: {errStr}");
+                return;
+            }
 
-                var resp = await client.PostAsync(tokenUrl, new FormUrlEncodedContent(requestBody));
-                if (resp.IsSuccessStatusCode)
+            string tokenJson = await tokenResp.Content.ReadAsStringAsync();
+            using (var doc = JsonDocument.Parse(tokenJson))
+            {
+                _accessToken = doc.RootElement.GetProperty("access_token").GetString() ?? "";
+            }
+
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
+
+            // 2. Obter Site ID
+            string siteGraphUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteHost}:{_sitePath}";
+            var siteResp = await client.GetAsync(siteGraphUrl);
+            if (siteResp.IsSuccessStatusCode)
+            {
+                string siteJson = await siteResp.Content.ReadAsStringAsync();
+                using var siteDoc = JsonDocument.Parse(siteJson);
+                _siteId = siteDoc.RootElement.GetProperty("id").GetString() ?? "";
+            }
+
+            // 3. Obter List ID
+            if (!string.IsNullOrEmpty(_siteId))
+            {
+                string listsUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists";
+                var listsResp = await client.GetAsync(listsUrl);
+                if (listsResp.IsSuccessStatusCode)
                 {
-                    string json = await resp.Content.ReadAsStringAsync();
-                    using var doc = JsonDocument.Parse(json);
-                    if (doc.RootElement.TryGetProperty("access_token", out var tokenProp))
+                    string listsJson = await listsResp.Content.ReadAsStringAsync();
+                    using var listsDoc = JsonDocument.Parse(listsJson);
+                    if (listsDoc.RootElement.TryGetProperty("value", out var listsArray))
                     {
-                        _accessToken = tokenProp.GetString() ?? string.Empty;
+                        foreach (var l in listsArray.EnumerateArray())
+                        {
+                            string displayName = l.GetProperty("displayName").GetString() ?? "";
+                            if (displayName.Equals(_listName, StringComparison.OrdinalIgnoreCase))
+                            {
+                                _listId = l.GetProperty("id").GetString() ?? "";
+                                break;
+                            }
+                        }
                     }
                 }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[SharePointClient] Aviso no token OAuth: {ex.Message}");
             }
         }
 
@@ -87,32 +138,32 @@ namespace WinServiceFleetAgent.Core
 
             using (var client = new HttpClient())
             {
-                await EnsureAccessTokenAsync(client);
-                if (!string.IsNullOrEmpty(_accessToken))
+                await EnsureGraphContextAsync(client);
+                if (string.IsNullOrEmpty(_accessToken) || string.IsNullOrEmpty(_listId))
                 {
-                    client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
+                    return;
                 }
 
-                client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
 
                 try
                 {
-                    // 1. Verificar se item já existe
-                    string getUrl = $"{_siteUrl}/_api/web/lists/getbytitle('{_listName}')/items?$filter=Title eq '{title}'";
-                    var getResp = await client.GetAsync(getUrl);
+                    // Buscar se o item já existe por Title
+                    string getItemsUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items?expand=fields&$filter=fields/Title eq '{title}'";
+                    var getResp = await client.GetAsync(getItemsUrl);
 
-                    int existingItemId = -1;
+                    string itemId = string.Empty;
                     if (getResp.IsSuccessStatusCode)
                     {
                         string getJson = await getResp.Content.ReadAsStringAsync();
                         using var doc = JsonDocument.Parse(getJson);
                         if (doc.RootElement.TryGetProperty("value", out var valueArray) && valueArray.GetArrayLength() > 0)
                         {
-                            existingItemId = valueArray[0].GetProperty("Id").GetInt32();
+                            itemId = valueArray[0].GetProperty("id").GetString() ?? "";
                         }
                     }
 
-                    var payload = new Dictionary<string, object>
+                    var fieldsPayload = new Dictionary<string, object>
                     {
                         { "Title", title },
                         { "Hostname", hostname },
@@ -125,39 +176,33 @@ namespace WinServiceFleetAgent.Core
                         { "Url_Comunicacao", urlComunicacao }
                     };
 
-                    if (existingItemId == -1)
+                    if (string.IsNullOrEmpty(itemId))
                     {
-                        // Criar novo item
-                        payload["Versao_Desejada"] = versaoInstalada;
-                        payload["Acao_Solicitada"] = "Nenhuma";
-                        payload["Status_Atualizacao"] = "Aguardando";
+                        fieldsPayload["Versao_Desejada"] = versaoInstalada;
+                        fieldsPayload["Acao_Solicitada"] = "Nenhuma";
+                        fieldsPayload["Status_Atualizacao"] = "Aguardando";
 
-                        string postUrl = $"{_siteUrl}/_api/web/lists/getbytitle('{_listName}')/items";
-                        var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
-                        await client.PostAsync(postUrl, content);
-                        Console.WriteLine($"[SharePointClient] Novo item criado no SharePoint: {title}");
+                        var itemPayload = new { fields = fieldsPayload };
+                        string createUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items";
+                        var content = new StringContent(JsonSerializer.Serialize(itemPayload), Encoding.UTF8, "application/json");
+
+                        var createResp = await client.PostAsync(createUrl, content);
+                        if (createResp.IsSuccessStatusCode)
+                        {
+                            Console.WriteLine($"[SharePointClient] ✅ Novo item cadastrado no SharePoint: {title}");
+                        }
                     }
                     else
                     {
-                        // Atualizar item existente
-                        string patchUrl = $"{_siteUrl}/_api/web/lists/getbytitle('{_listName}')/items({existingItemId})";
-                        var updatePayload = new Dictionary<string, object>
-                        {
-                            { "Hostname", hostname },
-                            { "CS", cs },
-                            { "Versao_Instalada", versaoInstalada },
-                            { "Status_Servico", statusServico },
-                            { "Ultima_atualizacao", nowIso },
-                            { "Url_Comunicacao", urlComunicacao }
-                        };
+                        string patchUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items/{itemId}/fields";
+                        var content = new StringContent(JsonSerializer.Serialize(fieldsPayload), Encoding.UTF8, "application/json");
+                        var request = new HttpRequestMessage(new HttpMethod("PATCH"), patchUrl) { Content = content };
 
-                        var request = new HttpRequestMessage(new HttpMethod("MERGE"), patchUrl)
+                        var patchResp = await client.SendAsync(request);
+                        if (patchResp.IsSuccessStatusCode)
                         {
-                            Content = new StringContent(JsonSerializer.Serialize(updatePayload), Encoding.UTF8, "application/json")
-                        };
-                        request.Headers.Add("IF-MATCH", "*");
-                        await client.SendAsync(request);
-                        Console.WriteLine($"[SharePointClient] Item atualizado no SharePoint: {title}");
+                            Console.WriteLine($"[SharePointClient] ✅ Registro atualizado no SharePoint: {title}");
+                        }
                     }
                 }
                 catch (Exception ex)
@@ -172,35 +217,45 @@ namespace WinServiceFleetAgent.Core
             var list = new List<PendingActionItem>();
             using (var client = new HttpClient())
             {
-                await EnsureAccessTokenAsync(client);
-                if (!string.IsNullOrEmpty(_accessToken))
+                await EnsureGraphContextAsync(client);
+                if (string.IsNullOrEmpty(_accessToken) || string.IsNullOrEmpty(_listId))
                 {
-                    client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
+                    return list;
                 }
-                client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
 
                 try
                 {
-                    string queryUrl = $"{_siteUrl}/_api/web/lists/getbytitle('{_listName}')/items?$filter=Hostname eq '{hostname}' and Acao_Solicitada ne 'Nenhuma'";
-                    var resp = await client.GetAsync(queryUrl);
+                    string getItemsUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items?expand=fields&$filter=fields/Hostname eq '{hostname}' and fields/Acao_Solicitada ne 'Nenhuma'";
+                    var resp = await client.GetAsync(getItemsUrl);
                     if (resp.IsSuccessStatusCode)
                     {
                         string json = await resp.Content.ReadAsStringAsync();
                         using var doc = JsonDocument.Parse(json);
-                        if (doc.RootElement.TryGetProperty("value", out var items))
+                        if (doc.RootElement.TryGetProperty("value", out var itemsArray))
                         {
-                            foreach (var item in items.EnumerateArray())
+                            foreach (var item in itemsArray.EnumerateArray())
                             {
-                                list.Add(new PendingActionItem
+                                if (item.TryGetProperty("fields", out var fields))
                                 {
-                                    Id = item.GetProperty("Id").GetInt32(),
-                                    Title = item.GetProperty("Title").GetString() ?? "",
-                                    NomeServico = item.TryGetProperty("Nome_Servico", out var ns) ? ns.GetString() ?? "" : "",
-                                    VersaoInstalada = item.TryGetProperty("Versao_Instalada", out var vi) ? vi.GetString() ?? "" : "",
-                                    VersaoDesejada = item.TryGetProperty("Versao_Desejada", out var vd) ? vd.GetString() ?? "" : "",
-                                    AcaoSolicitada = item.TryGetProperty("Acao_Solicitada", out var ac) ? ac.GetString() ?? "" : "",
-                                    StatusAtualizacao = item.TryGetProperty("Status_Atualizacao", out var sa) ? sa.GetString() ?? "" : ""
-                                });
+                                    int idInt = 0;
+                                    if (item.TryGetProperty("id", out var idProp) && int.TryParse(idProp.GetString(), out int parsedId))
+                                    {
+                                        idInt = parsedId;
+                                    }
+
+                                    list.Add(new PendingActionItem
+                                    {
+                                        Id = idInt,
+                                        Title = fields.TryGetProperty("Title", out var t) ? t.GetString() ?? "" : "",
+                                        NomeServico = fields.TryGetProperty("Nome_Servico", out var ns) ? ns.GetString() ?? "" : "",
+                                        VersaoInstalada = fields.TryGetProperty("Versao_Instalada", out var vi) ? vi.GetString() ?? "" : "",
+                                        VersaoDesejada = fields.TryGetProperty("Versao_Desejada", out var vd) ? vd.GetString() ?? "" : "",
+                                        AcaoSolicitada = fields.TryGetProperty("Acao_Solicitada", out var ac) ? ac.GetString() ?? "" : "",
+                                        StatusAtualizacao = fields.TryGetProperty("Status_Atualizacao", out var sa) ? sa.GetString() ?? "" : ""
+                                    });
+                                }
                             }
                         }
                     }
@@ -221,25 +276,25 @@ namespace WinServiceFleetAgent.Core
         {
             using (var client = new HttpClient())
             {
-                await EnsureAccessTokenAsync(client);
-                if (!string.IsNullOrEmpty(_accessToken))
+                await EnsureGraphContextAsync(client);
+                if (string.IsNullOrEmpty(_accessToken) || string.IsNullOrEmpty(_listId))
                 {
-                    client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
+                    return;
                 }
-                client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
 
                 try
                 {
-                    string getUrl = $"{_siteUrl}/_api/web/lists/getbytitle('{_listName}')/items?$filter=Title eq '{title}'";
-                    var getResp = await client.GetAsync(getUrl);
+                    string getItemsUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items?expand=fields&$filter=fields/Title eq '{title}'";
+                    var getResp = await client.GetAsync(getItemsUrl);
                     if (getResp.IsSuccessStatusCode)
                     {
                         string json = await getResp.Content.ReadAsStringAsync();
                         using var doc = JsonDocument.Parse(json);
                         if (doc.RootElement.TryGetProperty("value", out var valueArray) && valueArray.GetArrayLength() > 0)
                         {
-                            int id = valueArray[0].GetProperty("Id").GetInt32();
-                            string patchUrl = $"{_siteUrl}/_api/web/lists/getbytitle('{_listName}')/items({id})";
+                            string itemId = valueArray[0].GetProperty("id").GetString() ?? "";
 
                             var patchData = new Dictionary<string, object>
                             {
@@ -247,22 +302,15 @@ namespace WinServiceFleetAgent.Core
                                 { "Ultima_atualizacao", DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ") }
                             };
 
-                            if (acaoSolicitada != null)
-                            {
-                                patchData["Acao_Solicitada"] = acaoSolicitada;
-                            }
-                            if (versaoInstalada != null)
-                            {
-                                patchData["Versao_Instalada"] = versaoInstalada;
-                            }
+                            if (acaoSolicitada != null) patchData["Acao_Solicitada"] = acaoSolicitada;
+                            if (versaoInstalada != null) patchData["Versao_Instalada"] = versaoInstalada;
 
-                            var request = new HttpRequestMessage(new HttpMethod("MERGE"), patchUrl)
-                            {
-                                Content = new StringContent(JsonSerializer.Serialize(patchData), Encoding.UTF8, "application/json")
-                            };
-                            request.Headers.Add("IF-MATCH", "*");
+                            string patchUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items/{itemId}/fields";
+                            var content = new StringContent(JsonSerializer.Serialize(patchData), Encoding.UTF8, "application/json");
+                            var request = new HttpRequestMessage(new HttpMethod("PATCH"), patchUrl) { Content = content };
+
                             await client.SendAsync(request);
-                            Console.WriteLine($"[SharePointClient] Status da ação atualizado no SharePoint [{title}]: {statusAtualizacao}");
+                            Console.WriteLine($"[SharePointClient] Status atualizado no SharePoint [{title}]: {statusAtualizacao}");
                         }
                     }
                 }
