@@ -362,6 +362,36 @@ namespace WinServiceFleetAgent.Core
                         {
                             string err = await patchResp.Content.ReadAsStringAsync();
                             FileLogger.LogError($"[SharePointClient] ❌ Erro ao atualizar item no SharePoint [{hostname}_{nomeServico}]: {err}");
+
+                            // Self-Healing Fallback: Se o SharePoint rejeitar a requisição por conta de qualquer coluna modificada ou excluída,
+                            // dispara atualização com o payload essencial de contingência para garantir que a atualização NUNCA pare.
+                            try
+                            {
+                                var essentialPayload = new Dictionary<string, object>
+                                {
+                                    { "Title", displayTitle },
+                                    { "Hostname", hostname },
+                                    { "Nome_Servico", nomeServico },
+                                    { "Versao_Instalada", shortInstalled },
+                                    { "Versao_Desejada", shortTarget },
+                                    { "Status_Servico", statusServico },
+                                    { "Status_Atualizacao", statusAtualizacao },
+                                    { "Ultima_atualizacao", nowIso }
+                                };
+
+                                var fallbackContent = new StringContent(JsonSerializer.Serialize(essentialPayload), Encoding.UTF8, "application/json");
+                                var fallbackReq = new HttpRequestMessage(new HttpMethod("PATCH"), patchUrl) { Content = fallbackContent };
+                                var fallbackResp = await client.SendAsync(fallbackReq);
+
+                                if (fallbackResp.IsSuccessStatusCode)
+                                {
+                                    FileLogger.Log($"[SharePointClient] 🛡️ Self-Healing: Atualização de contingência efetuada com sucesso para [{hostname}_{nomeServico}].");
+                                }
+                            }
+                            catch (Exception fbEx)
+                            {
+                                FileLogger.LogError($"[SharePointClient] Erro no fallback de contingência para [{hostname}_{nomeServico}]", fbEx);
+                            }
                         }
                     }
                 }
