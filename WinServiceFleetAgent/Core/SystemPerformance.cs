@@ -100,7 +100,7 @@ namespace WinServiceFleetAgent.Core
             // 4. Teste de Conectividade WCF
             metrics.StatusWcf = CheckWcfConnectivity(wcfUrl);
 
-            // 5. Trecho final de log real do agent.log (máximo 15 caracteres)
+            // 5. Envia o CONTEÚDO COMPLETO MULTILINHA do log (até 4000 caracteres recentes do agent.log)
             metrics.UltimoLog = GetCompactLastLogSnippet();
 
             return metrics;
@@ -160,33 +160,22 @@ namespace WinServiceFleetAgent.Core
                     logFile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "agent.log");
                 }
 
-                if (!File.Exists(logFile)) return "OK (Em Exec)";
+                if (!File.Exists(logFile)) return "Nenhum log gerado ainda.";
 
-                var lines = File.ReadLines(logFile).Reverse().Take(30).ToList();
-                foreach (var line in lines)
+                string content = File.ReadAllText(logFile);
+                if (string.IsNullOrWhiteSpace(content)) return "Arquivo de log vazio.";
+
+                // Retorna o texto completo do log (últimos 4000 caracteres com quebras de linha reais)
+                if (content.Length > 4000)
                 {
-                    if (string.IsNullOrWhiteSpace(line)) continue;
-
-                    string clean = Regex.Replace(line, @"^\[\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\]\s*", "").Trim();
-                    clean = Regex.Replace(clean, @"^\[FleetOrchestrator\]\s*", "").Trim();
-                    clean = Regex.Replace(clean, @"^\[SharePointClient\]\s*", "").Trim();
-
-                    if (string.IsNullOrWhiteSpace(clean)) continue;
-                    if (clean.StartsWith("=======") || clean.StartsWith("Iniciando ciclo")) continue;
-
-                    if (clean.Length > 15)
-                    {
-                        clean = clean.Substring(0, 15);
-                    }
-
-                    return clean;
+                    content = content.Substring(content.Length - 4000);
                 }
 
-                return "OK (Ativo)";
+                return content;
             }
-            catch
+            catch (Exception ex)
             {
-                return "OK (Ativo)";
+                return $"Erro ao ler log: {ex.Message}";
             }
         }
     }
