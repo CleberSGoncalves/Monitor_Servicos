@@ -301,6 +301,7 @@ namespace WinServiceFleetAgent.Core
                 if (ok)
                 {
                     FileLogger.Log($"[FleetOrchestrator] ✅ Atria Capture instalado/atualizado com sucesso! Versão detectada: {newInstalledVer}");
+                    AtriaInstaller.StartAtriaApplication(srvConfig.InstallPath, srvConfig.ExeName);
                     await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Atualizado", acaoSolicitada: "Nenhuma", versaoInstalada: newInstalledVer, versaoDesejada: atriaTargetVer);
                 }
                 else
