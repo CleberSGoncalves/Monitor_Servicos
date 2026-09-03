@@ -207,6 +207,8 @@ namespace WinServiceFleetAgent.Core
                     string existingVersaoDesejada = string.Empty;
                     string existingStatusAtualizacao = string.Empty;
                     string existingAcaoSolicitada = string.Empty;
+                    string existingUrlComunicacaoDesejavel = string.Empty;
+                    string existingAcaoSolicitadaUrl = string.Empty;
 
                     if (getResp.IsSuccessStatusCode)
                     {
@@ -227,6 +229,8 @@ namespace WinServiceFleetAgent.Core
                                         existingVersaoDesejada = fields.TryGetProperty("Versao_Desejada", out var vd) ? vd.GetString() ?? "" : "";
                                         existingStatusAtualizacao = fields.TryGetProperty("Status_Atualizacao", out var sa) ? sa.GetString() ?? "" : "";
                                         existingAcaoSolicitada = fields.TryGetProperty("Acao_Solicitada", out var ac) ? ac.GetString() ?? "" : "";
+                                        existingUrlComunicacaoDesejavel = fields.TryGetProperty("Url_Comunicacao_Desejavel", out var ud) ? ud.GetString() ?? "" : "";
+                                        existingAcaoSolicitadaUrl = fields.TryGetProperty("Acao_Solicitada_Url", out var au) ? au.GetString() ?? "" : "";
                                         break;
                                     }
                                 }
@@ -241,7 +245,9 @@ namespace WinServiceFleetAgent.Core
                     // Regra: Somente o serviço DNA.ConfigMonitorSVC possui URL de comunicação preenchida. Para os demais, é "Nenhuma".
                     bool isConfigMonitor = nomeServico.Equals("DNA.ConfigMonitorSVC", StringComparison.OrdinalIgnoreCase);
                     string safeUrlComunicacao = isConfigMonitor ? (string.IsNullOrWhiteSpace(urlComunicacao) ? "Nenhuma" : urlComunicacao) : "Nenhuma";
-                    string safeUrlDesejavel = isConfigMonitor ? "https://mediadna.ibope.com/mediadnawcfcs/RemoteHostsService.svc" : "Nenhuma";
+                    string safeUrlDesejavel = isConfigMonitor
+                        ? (!string.IsNullOrWhiteSpace(existingUrlComunicacaoDesejavel) ? existingUrlComunicacaoDesejavel : (string.IsNullOrWhiteSpace(urlComunicacao) ? "https://mediadna.ibope.com/mediadnawcfcs/RemoteHostsService.svc" : urlComunicacao))
+                        : "Nenhuma";
 
                     // Formatação curta das versões (4 dígitos)
                     string shortInstalled = FormatShortVersion(versaoInstalada);
@@ -299,6 +305,12 @@ namespace WinServiceFleetAgent.Core
                     if (isUpToDate && !existingAcaoSolicitada.StartsWith("Forca", StringComparison.OrdinalIgnoreCase) && !existingAcaoSolicitada.StartsWith("Força", StringComparison.OrdinalIgnoreCase))
                     {
                         fieldsPayload["Acao_Solicitada"] = "Nenhuma";
+                    }
+
+                    // Se a URL de comunicação atual já for igual à URL desejável, zera Acao_Solicitada_Url para "Nenhuma"
+                    if (isConfigMonitor && string.Equals(safeUrlComunicacao, safeUrlDesejavel, StringComparison.OrdinalIgnoreCase))
+                    {
+                        fieldsPayload["Acao_Solicitada_Url"] = "Nenhuma";
                     }
 
                     if (string.IsNullOrEmpty(itemId))
