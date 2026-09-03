@@ -247,8 +247,9 @@ namespace WinServiceFleetAgent.Core
                     int safeCS = cs <= 0 ? 1 : cs;
                     string displayTitle = string.IsNullOrWhiteSpace(title) ? "Brasil" : title;
 
-                    // Regra: Somente o serviço DNA.ConfigMonitorSVC possui URL e métricas de hardware exibidas
                     bool isConfigMonitor = nomeServico.Equals("DNA.ConfigMonitorSVC", StringComparison.OrdinalIgnoreCase);
+                    bool isMonitorService = nomeServico.Equals("DNA.MonitorServiceSVC", StringComparison.OrdinalIgnoreCase);
+
                     string safeUrlComunicacao = isConfigMonitor ? (string.IsNullOrWhiteSpace(urlComunicacao) ? "Nenhuma" : urlComunicacao) : "Nenhuma";
 
                     // Formatação curta das versões (4 dígitos)
@@ -298,13 +299,18 @@ namespace WinServiceFleetAgent.Core
                         { "Ultimo_Log", metrics.UltimoLog }
                     };
 
-                    // Injeta métricas pesadas APENAS na linha do DNA.ConfigMonitorSVC para não poluir a tabela
+                    // Status_WCF fica na linha do DNA.ConfigMonitorSVC
                     if (isConfigMonitor)
+                    {
+                        fieldsPayload["Status_WCF"] = metrics.StatusWcf;
+                    }
+
+                    // Métricas pesadas de hardware (CPU, RAM, Disco D, Uptime) APENAS na linha do nosso agente DNA.MonitorServiceSVC
+                    if (isMonitorService)
                     {
                         fieldsPayload["Cpu_Uso"] = metrics.CpuUso;
                         fieldsPayload["Ram_Uso"] = metrics.RamUso;
                         fieldsPayload["Disco_D_Livre_GB"] = metrics.DiscoDLivreGB;
-                        fieldsPayload["Status_WCF"] = metrics.StatusWcf;
                         fieldsPayload["Uptime_Dias"] = metrics.UptimeDias;
                     }
 
