@@ -299,17 +299,17 @@ namespace WinServiceFleetAgent.Core
                 await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Em Progresso", versaoDesejada: targetVersion);
                 FileLogger.Log($"[FleetOrchestrator] 🚀 Iniciando download seguro C# da versão '{targetVersion}' do próprio agente...");
 
-                string stagingFolder = Path.Combine(_tempStagingDir, "DNA.MonitorServiceSVC_staging");
+                string selfStagingFolder = Path.Combine(_tempStagingDir, "DNA.MonitorServiceSVC_staging");
 
                 try
                 {
-                    if (Directory.Exists(stagingFolder)) Directory.Delete(stagingFolder, true);
-                    Directory.CreateDirectory(stagingFolder);
+                    if (Directory.Exists(selfStagingFolder)) Directory.Delete(selfStagingFolder, true);
+                    Directory.CreateDirectory(selfStagingFolder);
 
                     // 1. Download e extração do release via C# (.NET 8 nativo TLS 1.2/1.3) com o serviço em execução
-                    await GitHubDownloader.DownloadAndExtractReleaseAsync(srvConfig.GithubRepo, targetVersion, _githubToken, stagingFolder);
+                    await GitHubDownloader.DownloadAndExtractReleaseAsync(srvConfig.GithubRepo, targetVersion, _githubToken, selfStagingFolder);
 
-                    string newExePath = Path.Combine(stagingFolder, srvConfig.ExeName);
+                    string newExePath = Path.Combine(selfStagingFolder, srvConfig.ExeName);
                     if (!File.Exists(newExePath))
                     {
                         FileLogger.LogError($"[FleetOrchestrator] ❌ Executável principal não encontrado na pasta staging após extração: {newExePath}");
@@ -319,7 +319,7 @@ namespace WinServiceFleetAgent.Core
                     }
 
                     // 2. Criação do script de substituição local ultrarrápido (sem chamadas de rede)
-                    string scriptPath = Path.Combine(stagingFolder, "apply_self_update.bat");
+                    string scriptPath = Path.Combine(selfStagingFolder, "apply_self_update.bat");
                     string batScriptContent = $@"@echo off
 set SERVICE_NAME={srvConfig.ServiceName}
 set STAGING_DIR=%~1
@@ -340,10 +340,10 @@ powershell -ExecutionPolicy Bypass -Command ""Start-Service -Name '%SERVICE_NAME
                     var psi = new ProcessStartInfo
                     {
                         FileName = "cmd.exe",
-                        Arguments = $"/c \"\"{scriptPath}\" \"{stagingFolder}\" \"{srvConfig.InstallPath}\"\"",
+                        Arguments = $"/c \"\"{scriptPath}\" \"{selfStagingFolder}\" \"{srvConfig.InstallPath}\"\"",
                         UseShellExecute = true,
                         CreateNoWindow = true,
-                        WorkingDirectory = stagingFolder
+                        WorkingDirectory = selfStagingFolder
                     };
 
                     FileLogger.Log($"[FleetOrchestrator] Arquivos validados no staging. Disparando substituição local para '{srvConfig.InstallPath}'...");
