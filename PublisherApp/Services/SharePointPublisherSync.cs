@@ -110,10 +110,21 @@ namespace PublisherApp.Services
                                 string itemId = item.GetProperty("id").GetString() ?? "";
                                 string patchUrl = $"https://graph.microsoft.com/v1.0/sites/{siteId}/lists/{listId}/items/{itemId}/fields";
 
+                                string currentInstalled = "";
+                                if (item.TryGetProperty("fields", out var f) && f.TryGetProperty("Versao_Instalada", out var vi))
+                                {
+                                    currentInstalled = vi.GetString() ?? "";
+                                }
+
                                 var patchData = new Dictionary<string, object>
                                 {
                                     { "Versao_Desejada", newVersionTag }
                                 };
+
+                                if (!currentInstalled.Equals(newVersionTag, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    patchData["Status_Atualizacao"] = "Desatualizado";
+                                }
 
                                 var content = new StringContent(JsonSerializer.Serialize(patchData), Encoding.UTF8, "application/json");
                                 var request = new HttpRequestMessage(new HttpMethod("PATCH"), patchUrl) { Content = content };
