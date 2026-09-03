@@ -91,29 +91,39 @@ Write-Host '[AtriaInstaller] Executando script de instalacao (/lav /ffdshow)...'
                 {
                     if (psProc != null)
                     {
-                        var outTask = psProc.StandardOutput.ReadToEndAsync();
-                        var errTask = psProc.StandardError.ReadToEndAsync();
-
-                        await Task.WhenAll(outTask, errTask);
-                        await psProc.WaitForExitAsync();
-
-                        string stdOut = outTask.Result;
-                        string stdErr = errTask.Result;
-
-                        string combinedLog = $"=== ATRIA INSTALL LOG ({DateTime.Now}) ===\r\nExitCode: {psProc.ExitCode}\r\n\r\n--- STDOUT ---\r\n{stdOut}\r\n\r\n--- STDERR ---\r\n{stdErr}";
-                        
+                        using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3));
                         try
                         {
-                            string logSavePath = Path.Combine(tempDir, "atria_install_last.log");
-                            await File.WriteAllTextAsync(logSavePath, combinedLog);
+                            var outTask = psProc.StandardOutput.ReadToEndAsync(cts.Token);
+                            var errTask = psProc.StandardError.ReadToEndAsync(cts.Token);
+                            var exitTask = psProc.WaitForExitAsync(cts.Token);
+
+                            await Task.WhenAll(outTask, errTask, exitTask);
+
+                            string stdOut = outTask.Result;
+                            string stdErr = errTask.Result;
+
+                            string combinedLog = $"=== ATRIA INSTALL LOG ({DateTime.Now}) ===\r\nExitCode: {psProc.ExitCode}\r\n\r\n--- STDOUT ---\r\n{stdOut}\r\n\r\n--- STDERR ---\r\n{stdErr}";
+                            
+                            try
+                            {
+                                string logSavePath = Path.Combine(tempDir, "atria_install_last.log");
+                                await File.WriteAllTextAsync(logSavePath, combinedLog);
+                            }
+                            catch {}
+
+                            if (!string.IsNullOrWhiteSpace(stdOut)) FileLogger.Log($"[AtriaInstaller Out] {stdOut.Trim()}");
+                            if (!string.IsNullOrWhiteSpace(stdErr)) FileLogger.LogError($"[AtriaInstaller Err] {stdErr.Trim()}");
+
+                            FileLogger.Log($"[AtriaInstaller] Instalação do Atria finalizada com código de saída: {psProc.ExitCode}");
+                            return psProc.ExitCode == 0 || psProc.ExitCode == 3010;
                         }
-                        catch {}
-
-                        if (!string.IsNullOrWhiteSpace(stdOut)) FileLogger.Log($"[AtriaInstaller Out] {stdOut.Trim()}");
-                        if (!string.IsNullOrWhiteSpace(stdErr)) FileLogger.LogError($"[AtriaInstaller Err] {stdErr.Trim()}");
-
-                        FileLogger.Log($"[AtriaInstaller] Instalação do Atria finalizada com código de saída: {psProc.ExitCode}");
-                        return psProc.ExitCode == 0 || psProc.ExitCode == 3010;
+                        catch (OperationCanceledException)
+                        {
+                            FileLogger.LogError("[AtriaInstaller] ⏱️ Timeout de 3 minutos atingido ao executar script do Atria. Forçando encerramento...");
+                            try { psProc.Kill(true); } catch { }
+                            return false;
+                        }
                     }
                 }
             }
