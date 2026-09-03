@@ -91,9 +91,10 @@ Write-Host '[AtriaInstaller] Executando script de instalacao (/lav /ffdshow)...'
                 {
                     if (psProc != null)
                     {
-                        using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3));
+                        using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(10));
                         try
                         {
+                            FileLogger.Log("[AtriaInstaller] ⏳ Aguardando a execução do script de instalação (timeout de segurança: 10 minutos)...");
                             var outTask = psProc.StandardOutput.ReadToEndAsync(cts.Token);
                             var errTask = psProc.StandardError.ReadToEndAsync(cts.Token);
                             var exitTask = psProc.WaitForExitAsync(cts.Token);
@@ -120,7 +121,7 @@ Write-Host '[AtriaInstaller] Executando script de instalacao (/lav /ffdshow)...'
                         }
                         catch (OperationCanceledException)
                         {
-                            FileLogger.LogError("[AtriaInstaller] ⏱️ Timeout de 3 minutos atingido ao executar script do Atria. Forçando encerramento...");
+                            FileLogger.LogError("[AtriaInstaller] ⏱️ Timeout de 10 minutos atingido ao executar script do Atria. Forçando encerramento...");
                             try { psProc.Kill(true); } catch { }
                             return false;
                         }
