@@ -291,69 +291,101 @@ namespace WinServiceFleetAgent.Core
             {
                 if (_isSelfUpdateTriggered)
                 {
-                    FileLogger.Log($"[FleetOrchestrator] Auto-atualização do agente já foi disparada. Aguardando execução do script...");
+                    FileLogger.Log($"[FleetOrchestrator] Auto-atualização do agente já foi disparada. Aguardando...");
                     return;
                 }
 
                 _isSelfUpdateTriggered = true;
                 await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Em Progresso", versaoDesejada: targetVersion);
-                FileLogger.Log($"[FleetOrchestrator] 🚀 Iniciando download seguro C# da versão '{targetVersion}' do próprio agente...");
+                FileLogger.Log($"[FleetOrchestrator] 🚀 Iniciando download C# seguro da versão '{targetVersion}' do agente...");
 
-                string selfStagingFolder = Path.Combine(_tempStagingDir, "DNA.MonitorServiceSVC_staging");
+                string selfStagingFolder = Path.Combine(_tempStagingDir, "DNA.MonitorServiceSVC_selfupdate");
 
                 try
                 {
                     if (Directory.Exists(selfStagingFolder)) Directory.Delete(selfStagingFolder, true);
                     Directory.CreateDirectory(selfStagingFolder);
 
-                    // 1. Download e extração do release via C# (.NET 8 nativo TLS 1.2/1.3) com o serviço em execução
+                    // 1. Download + extração com serviço em execução (C# .NET 8, TLS 1.2/1.3)
                     await GitHubDownloader.DownloadAndExtractReleaseAsync(srvConfig.GithubRepo, targetVersion, _githubToken, selfStagingFolder);
 
                     string newExePath = Path.Combine(selfStagingFolder, srvConfig.ExeName);
                     if (!File.Exists(newExePath))
                     {
-                        FileLogger.LogError($"[FleetOrchestrator] ❌ Executável principal não encontrado na pasta staging após extração: {newExePath}");
+                        FileLogger.LogError($"[FleetOrchestrator] ❌ Exe não encontrado no staging: {newExePath}. Abortando sem parar serviço.");
                         await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Erro na Atualização");
                         _isSelfUpdateTriggered = false;
                         return;
                     }
 
-                    // 2. Criação do script de substituição local ultrarrápido (sem chamadas de rede)
-                    string scriptPath = Path.Combine(selfStagingFolder, "apply_self_update.bat");
-                    string batScriptContent = $@"@echo off
-set SERVICE_NAME={srvConfig.ServiceName}
-set STAGING_DIR=%~1
-set INSTALL_DIR=%~2
+                    FileLogger.Log($"[FleetOrchestrator] ✅ Arquivos validados no staging. Gerando script de substituição...");
 
-powershell -ExecutionPolicy Bypass -Command ""Stop-Service -Name '%SERVICE_NAME%' -Force -ErrorAction SilentlyContinue; $limit = 10; while (((Get-Service '%SERVICE_NAME%' -ErrorAction SilentlyContinue).Status -ne 'Stopped') -and ($limit-- -gt 0)) {{ Start-Sleep -Seconds 1 }}; Get-Process -Name 'WinServiceFleetAgent' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue""
-timeout /t 1 /nobreak >nul
+                    // 2. Gera script de substituição - usa caminhos sem espaços (temp) e copia apenas o exe+configs
+                    string installDir = srvConfig.InstallPath;
+                    if (!Directory.Exists(installDir))
+                        installDir = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\');
 
-powershell -ExecutionPolicy Bypass -Command ""for ($i=1; $i -le 10; $i++) {{ try {{ Copy-Item -Path '%STAGING_DIR%\*' -Destination '%INSTALL_DIR%' -Recurse -Force -ErrorAction Stop; break }} catch {{ Start-Sleep -Seconds 2 }} }}""
+                    string scriptPath = Path.Combine(Path.GetTempPath(), "apply_svc_update.bat");
 
-sc start %SERVICE_NAME% >nul 2>&1
-powershell -ExecutionPolicy Bypass -Command ""Start-Service -Name '%SERVICE_NAME%' -ErrorAction SilentlyContinue""
+                    // Monta linhas de cópia individuais por arquivo (evita wildcard com espaços)
+                    var fileLines = new System.Text.StringBuilder();
+                    foreach (var f in Directory.GetFiles(selfStagingFolder, "*", SearchOption.TopDirectoryOnly))
+                    {
+                        // Não copia o próprio script
+                        if (Path.GetFileName(f).Equals("apply_self_update.bat", StringComparison.OrdinalIgnoreCase)) continue;
+                        fileLines.AppendLine($"copy /y \"{f}\" \"{installDir}\\{Path.GetFileName(f)}\" >nul 2>&1");
+                    }
+
+                    string batContent = $@"@echo off
+setlocal
+set SVC={srvConfig.ServiceName}
+set INSTALLDIR={installDir}
+
+echo [apply_svc_update] Aguardando liberacao do processo...
+timeout /t 3 /nobreak >nul
+
+echo [apply_svc_update] Parando servico %SVC%...
+sc stop %SVC% >nul 2>&1
+:WAIT_STOP
+sc query %SVC% | findstr /i ""STOPPED"" >nul 2>&1
+if errorlevel 1 (
+    timeout /t 2 /nobreak >nul
+    goto WAIT_STOP
+)
+
+echo [apply_svc_update] Copiando arquivos...
+{fileLines}
+
+echo [apply_svc_update] Iniciando servico %SVC%...
+sc start %SVC% >nul 2>&1
+timeout /t 3 /nobreak >nul
+sc start %SVC% >nul 2>&1
+
+echo [apply_svc_update] Concluido.
+del ""%~f0"" >nul 2>&1
+endlocal
 ";
 
-                    await File.WriteAllTextAsync(scriptPath, batScriptContent);
+                    await File.WriteAllTextAsync(scriptPath, batContent, System.Text.Encoding.ASCII);
 
-                    // 3. Disparo do script de troca local com serviço pronto no staging
+                    // 3. Dispara o script como processo independente elevated
                     var psi = new ProcessStartInfo
                     {
                         FileName = "cmd.exe",
-                        Arguments = $"/c \"\"{scriptPath}\" \"{selfStagingFolder}\" \"{srvConfig.InstallPath}\"\"",
+                        Arguments = $"/c \"{scriptPath}\"",
                         UseShellExecute = true,
-                        CreateNoWindow = true,
-                        WorkingDirectory = selfStagingFolder
+                        CreateNoWindow = false,
+                        WorkingDirectory = Path.GetTempPath()
                     };
 
-                    FileLogger.Log($"[FleetOrchestrator] Arquivos validados no staging. Disparando substituição local para '{srvConfig.InstallPath}'...");
+                    FileLogger.Log($"[FleetOrchestrator] Disparando script de substituição em '{scriptPath}'...");
                     Process.Start(psi);
                     return;
                 }
                 catch (Exception exSelf)
                 {
                     _isSelfUpdateTriggered = false;
-                    FileLogger.LogError($"[FleetOrchestrator] ❌ Erro ao preparar auto-atualização do agente em C#", exSelf);
+                    FileLogger.LogError($"[FleetOrchestrator] ❌ Erro no self-update C#", exSelf);
                     await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Erro na Atualização");
                     return;
                 }
