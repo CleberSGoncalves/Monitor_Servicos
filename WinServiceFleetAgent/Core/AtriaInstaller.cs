@@ -64,12 +64,26 @@ namespace WinServiceFleetAgent.Core
                 {
                     if (psProc != null)
                     {
-                        string stdOut = await psProc.StandardOutput.ReadToEndAsync();
-                        string stdErr = await psProc.StandardError.ReadToEndAsync();
+                        var outTask = psProc.StandardOutput.ReadToEndAsync();
+                        var errTask = psProc.StandardError.ReadToEndAsync();
+
+                        await Task.WhenAll(outTask, errTask);
                         await psProc.WaitForExitAsync();
 
-                        if (!string.IsNullOrWhiteSpace(stdOut)) FileLogger.Log($"[AtriaInstaller Out] {stdOut}");
-                        if (!string.IsNullOrWhiteSpace(stdErr)) FileLogger.LogError($"[AtriaInstaller Err] {stdErr}");
+                        string stdOut = outTask.Result;
+                        string stdErr = errTask.Result;
+
+                        string combinedLog = $"=== ATRIA INSTALL LOG ({DateTime.Now}) ===\r\nExitCode: {psProc.ExitCode}\r\n\r\n--- STDOUT ---\r\n{stdOut}\r\n\r\n--- STDERR ---\r\n{stdErr}";
+                        
+                        try
+                        {
+                            string logSavePath = Path.Combine(tempDir, "atria_install_last.log");
+                            await File.WriteAllTextAsync(logSavePath, combinedLog);
+                        }
+                        catch {}
+
+                        if (!string.IsNullOrWhiteSpace(stdOut)) FileLogger.Log($"[AtriaInstaller Out] {stdOut.Trim()}");
+                        if (!string.IsNullOrWhiteSpace(stdErr)) FileLogger.LogError($"[AtriaInstaller Err] {stdErr.Trim()}");
 
                         FileLogger.Log($"[AtriaInstaller] Instalação do Atria finalizada com código de saída: {psProc.ExitCode}");
                         return psProc.ExitCode == 0 || psProc.ExitCode == 3010;
