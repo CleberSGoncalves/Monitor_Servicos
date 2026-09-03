@@ -37,15 +37,22 @@ namespace WinServiceFleetAgent.Core
                             if (doc.RootElement.TryGetProperty("tag_name", out var tagProp))
                             {
                                 string tag = tagProp.GetString() ?? "";
-                                return tag.TrimStart('v', 'V');
+                                string cleanTag = tag.TrimStart('v', 'V');
+                                FileLogger.Log($"[GitHubDownloader] ✅ Release mais recente no GitHub para '{githubRepo}': '{cleanTag}'");
+                                return cleanTag;
                             }
                         }
+                    }
+                    else
+                    {
+                        string errStr = await response.Content.ReadAsStringAsync();
+                        FileLogger.LogError($"[GitHubDownloader] ❌ Falha HTTP {(int)response.StatusCode} ao consultar release de '{githubRepo}': {errStr}");
                     }
                 }
             }
             catch (Exception ex)
             {
-                FileLogger.LogError($"[GitHubDownloader] Erro ao consultar última versão do GitHub para '{githubRepo}'", ex);
+                FileLogger.LogError($"[GitHubDownloader] ❌ Erro ao consultar última versão do GitHub para '{githubRepo}'", ex);
             }
 
             return null;
@@ -78,7 +85,7 @@ namespace WinServiceFleetAgent.Core
                     ? $"https://api.github.com/repos/{githubRepo}/releases/latest"
                     : $"https://api.github.com/repos/{githubRepo}/releases/tags/{cleanTag}";
 
-                Console.WriteLine($"[GitHubDownloader] Consultando release no GitHub: {url}");
+                FileLogger.Log($"[GitHubDownloader] Consultando release no GitHub: {url}");
                 var response = await client.GetAsync(url);
                 if (!response.IsSuccessStatusCode)
                 {
@@ -114,7 +121,7 @@ namespace WinServiceFleetAgent.Core
                         throw new Exception($"Nenhum asset .zip encontrado na release '{cleanTag}'.");
                     }
 
-                    Console.WriteLine($"[GitHubDownloader] Baixando asset '{assetName}'...");
+                    FileLogger.Log($"[GitHubDownloader] Baixando asset '{assetName}'...");
 
                     using (var downloadReq = new HttpRequestMessage(HttpMethod.Get, assetUrl))
                     {
@@ -134,7 +141,7 @@ namespace WinServiceFleetAgent.Core
                             await streamToReadFrom.CopyToAsync(streamToWriteTo);
                         }
 
-                        Console.WriteLine($"[GitHubDownloader] Extraindo '{zipFilePath}' para '{targetDir}'...");
+                        FileLogger.Log($"[GitHubDownloader] Extraindo '{zipFilePath}' para '{targetDir}'...");
                         ZipFile.ExtractToDirectory(zipFilePath, targetDir, overwriteFiles: true);
 
                         try
