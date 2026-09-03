@@ -160,12 +160,24 @@ namespace WinServiceFleetAgent.Core
                     logFile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "agent.log");
                 }
 
-                if (!File.Exists(logFile)) return $"[OK] {DateTime.Now:HH:mm}";
+                if (!File.Exists(logFile)) return $"[OK] Tudo operacional às {DateTime.Now:HH:mm}";
 
                 var lines = File.ReadLines(logFile).Reverse().Take(50).ToList();
                 foreach (var line in lines)
                 {
                     if (string.IsNullOrWhiteSpace(line)) continue;
+
+                    // Ignorar cabeçalhos e rotinas de leitura técnica interna
+                    if (line.Contains("=========") ||
+                        line.Contains("[MetadataReader]") ||
+                        line.Contains("Iniciando ciclo em") ||
+                        line.Contains("Metadados extraídos:") ||
+                        line.Contains("Processando '") ||
+                        line.Contains("Registro atualizado no SharePoint") ||
+                        line.Contains("Nenhuma ação de serviço pendente"))
+                    {
+                        continue;
+                    }
 
                     string clean = Regex.Replace(line, @"^\[\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\]\s*", "").Trim();
                     clean = Regex.Replace(clean, @"^\[FleetOrchestrator\]\s*", "").Trim();
@@ -173,29 +185,19 @@ namespace WinServiceFleetAgent.Core
 
                     if (string.IsNullOrWhiteSpace(clean)) continue;
 
-                    // Ignorar logs repetitivos de rotina técnica interna
-                    if (clean.StartsWith("=======") ||
-                        clean.StartsWith("Iniciando ciclo") ||
-                        clean.StartsWith("Metadados extra") ||
-                        clean.StartsWith("Processando") ||
-                        clean.StartsWith("Registro atualizado"))
+                    if (clean.Length > 180)
                     {
-                        continue;
-                    }
-
-                    if (clean.Length > 45)
-                    {
-                        clean = clean.Substring(0, 45);
+                        clean = clean.Substring(0, 180) + "...";
                     }
 
                     return clean;
                 }
 
-                return $"[OK] {DateTime.Now:HH:mm}";
+                return $"[OK] Tudo operacional às {DateTime.Now:HH:mm}";
             }
             catch
             {
-                return $"[OK] {DateTime.Now:HH:mm}";
+                return $"[OK] Tudo operacional às {DateTime.Now:HH:mm}";
             }
         }
     }
