@@ -21,26 +21,16 @@ namespace WinServiceFleetAgent.Core
         {
             var metadata = new GlobalMetadata();
 
-            // 1. Leitura do configxml.xml (codificação Windows-1252)
+            // 1. Leitura de configxml.xml com busca recursiva dinâmica
             try
             {
                 Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
-                string actualXmlPath = configXmlPath;
-                if (!File.Exists(actualXmlPath))
-                {
-                    if (actualXmlPath.StartsWith("D:\\", StringComparison.OrdinalIgnoreCase))
-                    {
-                        actualXmlPath = "C:\\" + actualXmlPath.Substring(3);
-                    }
-                    else if (actualXmlPath.StartsWith("C:\\", StringComparison.OrdinalIgnoreCase))
-                    {
-                        actualXmlPath = "D:\\" + actualXmlPath.Substring(3);
-                    }
-                }
+                string actualXmlPath = ResolveXmlPath(configXmlPath);
 
-                if (File.Exists(actualXmlPath))
+                if (!string.IsNullOrWhiteSpace(actualXmlPath) && File.Exists(actualXmlPath))
                 {
+                    FileLogger.Log($"[MetadataReader] Lendo configxml.xml em: '{actualXmlPath}'");
                     var encoding1252 = Encoding.GetEncoding("Windows-1252");
                     string xmlText = File.ReadAllText(actualXmlPath, encoding1252);
 
@@ -65,10 +55,9 @@ namespace WinServiceFleetAgent.Core
                             }
                         }
 
-                        // Busca de Praca (insensível a maiúsculas/minúsculas em elementos ou atributos)
+                        // Busca de Praca em atributos (ex: Praca="Caxias do Sul") ou elementos
                         string extractedPraca = string.Empty;
                         
-                        // Busca em atributos (ex: Praca="Caxias do Sul")
                         var pracaAttr = doc.Descendants()
                             .SelectMany(e => e.Attributes())
                             .FirstOrDefault(a => a.Name.LocalName.Equals("Praca", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(a.Value));
@@ -78,11 +67,10 @@ namespace WinServiceFleetAgent.Core
                             extractedPraca = pracaAttr.Value.Trim();
                         }
 
-                        // Busca em elementos (ex: <Praca>Caxias do Sul</Praca>)
                         if (string.IsNullOrWhiteSpace(extractedPraca))
                         {
                             var pracaElem = doc.Descendants()
-                                .FirstOrDefault(e => e.Name.LocalName.Equals("Praca", StringComparison.OrdinalIgnoreCase) || e.Name.LocalName.Equals("idHost", StringComparison.OrdinalIgnoreCase));
+                                .FirstOrDefault(e => e.Name.LocalName.Equals("Praca", StringComparison.OrdinalIgnoreCase));
 
                             if (pracaElem != null && !string.IsNullOrWhiteSpace(pracaElem.Value))
                             {
@@ -100,7 +88,7 @@ namespace WinServiceFleetAgent.Core
                         FileLogger.Log($"[MetadataReader] Aviso no parse XDocument de {actualXmlPath}: {xmlEx.Message}. Tentando Regex...");
                     }
 
-                    // Regex Fallback para Praca se ainda estiver "Não Informado"
+                    // Regex Fallback para Praca
                     if (metadata.Praca == "Não Informado")
                     {
                         var matchPraca = Regex.Match(xmlText, @"Praca=""([^""]+)""", RegexOptions.IgnoreCase);
@@ -122,12 +110,12 @@ namespace WinServiceFleetAgent.Core
                 }
                 else
                 {
-                    FileLogger.Log($"[MetadataReader] Arquivo configxml.xml não encontrado em '{configXmlPath}' nem nos caminhos alternativos.");
+                    FileLogger.Log($"[MetadataReader] Arquivo configxml.xml não encontrado nos diretórios locais.");
                 }
             }
             catch (Exception ex)
             {
-                FileLogger.LogError($"Erro ao ler {configXmlPath}", ex);
+                FileLogger.LogError($"Erro ao ler configxml.xml", ex);
             }
 
             // 2. Leitura do WCFMainURL no DNA.ConfigMonitorSVC.exe.config
@@ -169,6 +157,53 @@ namespace WinServiceFleetAgent.Core
             }
 
             return metadata;
+        }
+
+        private static string ResolveXmlPath(string configXmlPath)
+        {
+            if (File.Exists(configXmlPath)) return configXmlPath;
+
+            string altPath = configXmlPath.StartsWith("D:\\", StringComparison.OrdinalIgnoreCase)
+                ? "C:\\" + configXmlPath.Substring(3)
+                : (configXmlPath.StartsWith("C:\\", StringComparison.OrdinalIgnoreCase) ? "D:\\" + configXmlPath.Substring(3) : configXmlPath);
+
+            if (File.Exists(altPath)) return altPath;
+
+            // Busca nas pastas padrão comuns
+            string[] candidatePaths = new[]
+            {
+                @"D:\MediaDNA_V2\data\configxml.xml",
+                @"C:\MediaDNA_V2\data\configxml.xml",
+                @"D:\MediaDNA_V2\configxml.xml",
+                @"C:\MediaDNA_V2\configxml.xml",
+                @"D:\MediaDNA_V2\data\config\configxml.xml",
+                @"C:\MediaDNA_V2\data\config\configxml.xml",
+                @"D:\MediaDNA_V2\applications\ConfigMonitorSVC\configxml.xml",
+                @"C:\MediaDNA_V2\applications\ConfigMonitorSVC\configxml.xml"
+            };
+
+            foreach (var cand in candidatePaths)
+            {
+                if (File.Exists(cand)) return cand;
+            }
+
+            // Busca recursiva profunda nos drives D:\ e C:\MediaDNA_V2 se existirem
+            try
+            {
+                if (Directory.Exists(@"D:\MediaDNA_V2"))
+                {
+                    var found = Directory.GetFiles(@"D:\MediaDNA_V2", "configxml.xml", SearchOption.AllDirectories).FirstOrDefault();
+                    if (!string.IsNullOrEmpty(found)) return found;
+                }
+                if (Directory.Exists(@"C:\MediaDNA_V2"))
+                {
+                    var found = Directory.GetFiles(@"C:\MediaDNA_V2", "configxml.xml", SearchOption.AllDirectories).FirstOrDefault();
+                    if (!string.IsNullOrEmpty(found)) return found;
+                }
+            }
+            catch { }
+
+            return configXmlPath;
         }
     }
 }

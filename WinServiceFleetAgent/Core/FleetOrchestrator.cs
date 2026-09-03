@@ -95,18 +95,26 @@ namespace WinServiceFleetAgent.Core
 
                 bool exeExists = File.Exists(exeFullPath);
                 bool serviceExists = !statusServico.Equals("Não Encontrado", StringComparison.OrdinalIgnoreCase);
+                bool isStandaloneApp = srv.ServiceName.Equals("Atria Capture", StringComparison.OrdinalIgnoreCase);
 
-                // SE O SERVIÇO DO WINDOWS NÃO EXISTE E O EXECUTÁVEL TAMBÉM NÃO EXISTE NA MÁQUINA DA CIDADE, IGNORA COMPLETAMENTE
-                if (!serviceExists && !exeExists)
+                if (isStandaloneApp)
                 {
-                    FileLogger.Log($"[FleetOrchestrator] Aplicação/Serviço '{srv.ServiceName}' NÃO está instalado nesta máquina da cidade. Ignorando.");
-                    continue;
-                }
-
-                // Se não é um serviço do Windows rodando mas o executável existe no disco (ex: Atria Capture)
-                if (!serviceExists && exeExists)
-                {
+                    // Aplicação Desktop (Atria Capture): SÓ exibe se o executável realmente existir no disco
+                    if (!exeExists)
+                    {
+                        FileLogger.Log($"[FleetOrchestrator] Aplicação '{srv.ServiceName}' NÃO está instalada nesta máquina (Executável não encontrado). Ignorando.");
+                        continue;
+                    }
                     statusServico = "Instalado";
+                }
+                else
+                {
+                    // Serviços do Windows (DNA.*): DEVEM estar registrados no gerenciador de serviços do Windows (services.msc)
+                    if (!serviceExists)
+                    {
+                        FileLogger.Log($"[FleetOrchestrator] Serviço do Windows '{srv.ServiceName}' NÃO está instalado no Windows Services (Não Encontrado). Ignorando.");
+                        continue;
+                    }
                 }
 
                 string installedVer = VersionInspector.GetExecutableVersion(exeFullPath);
@@ -226,7 +234,6 @@ namespace WinServiceFleetAgent.Core
                     CopyDirectory(srvConfig.InstallPath, backupFolder);
                 }
 
-                // Parar o serviço do Windows apenas se for um serviço do Windows registrado
                 if (WinController.GetServiceStatus(srvConfig.ServiceName) != "Não Encontrado")
                 {
                     FileLogger.Log($"[FleetOrchestrator] Parando serviço '{srvConfig.ServiceName}' para substituição de arquivos...");
@@ -248,7 +255,6 @@ namespace WinServiceFleetAgent.Core
                     }
                 }
 
-                // Iniciar o serviço do Windows apenas se for um serviço do Windows registrado
                 if (WinController.GetServiceStatus(srvConfig.ServiceName) != "Não Encontrado")
                 {
                     FileLogger.Log($"[FleetOrchestrator] Reiniciando serviço '{srvConfig.ServiceName}'...");

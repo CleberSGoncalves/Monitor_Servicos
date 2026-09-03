@@ -64,6 +64,33 @@ namespace WinServiceFleetAgent.Core
             }
         }
 
+        public static string FormatShortVersion(string? rawVersion)
+        {
+            if (string.IsNullOrWhiteSpace(rawVersion)) return "0.0.0.0";
+
+            int digitCount = 0;
+            int cutoffIndex = 0;
+            for (int i = 0; i < rawVersion.Length; i++)
+            {
+                if (char.IsDigit(rawVersion[i]))
+                {
+                    digitCount++;
+                    if (digitCount == 4)
+                    {
+                        cutoffIndex = i + 1;
+                        break;
+                    }
+                }
+            }
+
+            if (cutoffIndex > 0 && cutoffIndex <= rawVersion.Length)
+            {
+                return rawVersion.Substring(0, cutoffIndex).TrimEnd('.');
+            }
+
+            return rawVersion;
+        }
+
         private async Task EnsureGraphContextAsync(HttpClient client)
         {
             if (!string.IsNullOrEmpty(_accessToken) && !string.IsNullOrEmpty(_listId))
@@ -192,6 +219,9 @@ namespace WinServiceFleetAgent.Core
                     string safeUrlComunicacao = isConfigMonitor ? (string.IsNullOrWhiteSpace(urlComunicacao) ? "Nenhuma" : urlComunicacao) : "Nenhuma";
                     string safeUrlDesejavel = isConfigMonitor ? "https://mediadna.ibope.com/mediadnawcfcs/RemoteHostsService.svc" : "Nenhuma";
 
+                    // Formatação curta da versão (somente os 4 primeiros dígitos numéricos, ex: 3.1.60)
+                    string shortInstalled = FormatShortVersion(versaoInstalada);
+
                     var fieldsPayload = new Dictionary<string, object>
                     {
                         { "Title", displayTitle },
@@ -199,7 +229,7 @@ namespace WinServiceFleetAgent.Core
                         { "Pra_x00e7_a", safePraca },
                         { "CS", safeCS },
                         { "Nome_Servico", nomeServico },
-                        { "Versao_Instalada", versaoInstalada },
+                        { "Versao_Instalada", shortInstalled },
                         { "Status_Servico", statusServico },
                         { "Ultima_atualizacao", nowIso },
                         { "Url_Comunicacao", safeUrlComunicacao },
@@ -208,7 +238,7 @@ namespace WinServiceFleetAgent.Core
 
                     if (string.IsNullOrEmpty(itemId))
                     {
-                        fieldsPayload["Versao_Desejada"] = versaoInstalada;
+                        fieldsPayload["Versao_Desejada"] = shortInstalled;
                         fieldsPayload["Acao_Solicitada"] = "Nenhuma";
                         fieldsPayload["Status_Atualizacao"] = "Aguardando";
                         fieldsPayload["Acao_Solicitada_Url"] = "Nenhuma";
@@ -485,7 +515,7 @@ namespace WinServiceFleetAgent.Core
                                         };
 
                                         if (acaoSolicitada != null) patchData["Acao_Solicitada"] = acaoSolicitada;
-                                        if (versaoInstalada != null) patchData["Versao_Instalada"] = versaoInstalada;
+                                        if (versaoInstalada != null) patchData["Versao_Instalada"] = FormatShortVersion(versaoInstalada);
 
                                         string patchUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items/{itemId}/fields";
                                         var content = new StringContent(JsonSerializer.Serialize(patchData), Encoding.UTF8, "application/json");
