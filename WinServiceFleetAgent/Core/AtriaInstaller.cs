@@ -48,12 +48,23 @@ namespace WinServiceFleetAgent.Core
 
                 // 2. Download e execução do script de instalação do Atria
                 FileLogger.Log($"[AtriaInstaller] 2/2. Executando script de instalação do Atria ({AtriaPsScriptUrl})...");
-                string psCommand = $"Set-ExecutionPolicy Bypass -Scope Process -Force; $f=\"$env:TEMP\\install.ps1\"; iwr -UseBasicParsing '{AtriaPsScriptUrl}' -OutFile $f; & $f /lav /ffdshow";
+                string runnerScriptPath = Path.Combine(tempDir, "run_atria_installer.ps1");
+                string scriptContent = $@"
+$ErrorActionPreference = 'Continue'
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+$downloadFile = Join-Path $env:TEMP 'atria_setup.ps1'
+Write-Host '[AtriaInstaller] Baixando script de instalacao do Atria...'
+Invoke-WebRequest -Uri '{AtriaPsScriptUrl}' -OutFile $downloadFile -UseBasicParsing
+Write-Host '[AtriaInstaller] Executando script de instalacao (/lav /ffdshow)...'
+& $downloadFile /lav /ffdshow
+";
+
+                await File.WriteAllTextAsync(runnerScriptPath, scriptContent, System.Text.Encoding.UTF8);
 
                 var psPsi = new ProcessStartInfo
                 {
                     FileName = "powershell.exe",
-                    Arguments = $"-ExecutionPolicy Bypass -NoProfile -Command \"{psCommand}\"",
+                    Arguments = $"-ExecutionPolicy Bypass -NoProfile -File \"{runnerScriptPath}\"",
                     UseShellExecute = false,
                     CreateNoWindow = true,
                     RedirectStandardOutput = true,
