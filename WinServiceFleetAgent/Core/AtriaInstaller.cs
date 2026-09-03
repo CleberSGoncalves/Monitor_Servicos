@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
@@ -69,7 +69,7 @@ namespace WinServiceFleetAgent.Core
                         await psProc.WaitForExitAsync();
 
                         if (!string.IsNullOrWhiteSpace(stdOut)) FileLogger.Log($"[AtriaInstaller Out] {stdOut}");
-                        if (!string.IsNullOrWhiteSpace(stdErr)) FileLogger.LogWarning($"[AtriaInstaller Err] {stdErr}");
+                        if (!string.IsNullOrWhiteSpace(stdErr)) FileLogger.LogError($"[AtriaInstaller Err] {stdErr}");
 
                         FileLogger.Log($"[AtriaInstaller] Instalação do Atria finalizada com código de saída: {psProc.ExitCode}");
                         return psProc.ExitCode == 0 || psProc.ExitCode == 3010;
