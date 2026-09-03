@@ -287,17 +287,10 @@ namespace WinServiceFleetAgent.Core
                     // Se AutoRestart não estiver preenchido no SharePoint, usa "Não" como padrão solicitado
                     string safeAutoRestart = string.IsNullOrWhiteSpace(existingAutoRestart) ? "Não" : existingAutoRestart;
 
-                    // Auto-disparo de atualização: Se desatualizado e não há ação em andamento, seta Atualizar automaticamente
+                    // Preserva a Acao_Solicitada que o usuário escolheu no SharePoint.
+                    // O agente NUNCA altera para 'Atualizar' sozinho; o usuário decide quando atualizar.
                     string newAcaoSolicitada = existingAcaoSolicitada;
-                    if (!isUpToDate && !isStuckInProgress &&
-                        (string.IsNullOrWhiteSpace(existingAcaoSolicitada) ||
-                         existingAcaoSolicitada.Equals("Nenhuma", StringComparison.OrdinalIgnoreCase) ||
-                         existingAcaoSolicitada.Equals("Desatualizado", StringComparison.OrdinalIgnoreCase)))
-                    {
-                        newAcaoSolicitada = "Atualizar";
-                        FileLogger.Log($"[SharePointClient] 🔄 Auto-disparo: versão instalada '{shortInstalled}' difere da desejada '{shortTarget}'. Definindo Acao_Solicitada=Atualizar automaticamente para [{hostname}_{nomeServico}].");
-                    }
-                    else if (isUpToDate)
+                    if (isUpToDate && !existingAcaoSolicitada.StartsWith("Forca", StringComparison.OrdinalIgnoreCase) && !existingAcaoSolicitada.StartsWith("Força", StringComparison.OrdinalIgnoreCase))
                     {
                         newAcaoSolicitada = "Nenhuma";
                     }
