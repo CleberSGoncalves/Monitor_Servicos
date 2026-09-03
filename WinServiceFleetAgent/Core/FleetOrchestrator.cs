@@ -297,25 +297,64 @@ namespace WinServiceFleetAgent.Core
 
                 _isSelfUpdateTriggered = true;
                 await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Em Progresso", versaoDesejada: targetVersion);
-                FileLogger.Log($"[FleetOrchestrator] Auto-atualização detectada para o próprio agente '{srvConfig.ServiceName}'. Disparando update_agent.bat...");
-                string batPath = Path.Combine(srvConfig.InstallPath, "update_agent.bat");
-                if (!File.Exists(batPath))
-                {
-                    batPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "update_agent.bat");
-                }
+                FileLogger.Log($"[FleetOrchestrator] 🚀 Iniciando download seguro C# da versão '{targetVersion}' do próprio agente...");
 
-                if (File.Exists(batPath))
+                string stagingFolder = Path.Combine(_tempStagingDir, "DNA.MonitorServiceSVC_staging");
+
+                try
                 {
+                    if (Directory.Exists(stagingFolder)) Directory.Delete(stagingFolder, true);
+                    Directory.CreateDirectory(stagingFolder);
+
+                    // 1. Download e extração do release via C# (.NET 8 nativo TLS 1.2/1.3) com o serviço em execução
+                    await GitHubDownloader.DownloadAndExtractReleaseAsync(srvConfig.GithubRepo, targetVersion, _githubToken, stagingFolder);
+
+                    string newExePath = Path.Combine(stagingFolder, srvConfig.ExeName);
+                    if (!File.Exists(newExePath))
+                    {
+                        FileLogger.LogError($"[FleetOrchestrator] ❌ Executável principal não encontrado na pasta staging após extração: {newExePath}");
+                        await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Erro na Atualização");
+                        _isSelfUpdateTriggered = false;
+                        return;
+                    }
+
+                    // 2. Criação do script de substituição local ultrarrápido (sem chamadas de rede)
+                    string scriptPath = Path.Combine(stagingFolder, "apply_self_update.bat");
+                    string batScriptContent = $@"@echo off
+set SERVICE_NAME={srvConfig.ServiceName}
+set STAGING_DIR=%~1
+set INSTALL_DIR=%~2
+
+powershell -ExecutionPolicy Bypass -Command ""Stop-Service -Name '%SERVICE_NAME%' -Force -ErrorAction SilentlyContinue; $limit = 10; while (((Get-Service '%SERVICE_NAME%' -ErrorAction SilentlyContinue).Status -ne 'Stopped') -and ($limit-- -gt 0)) {{ Start-Sleep -Seconds 1 }}; Get-Process -Name 'WinServiceFleetAgent' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue""
+timeout /t 1 /nobreak >nul
+
+powershell -ExecutionPolicy Bypass -Command ""for ($i=1; $i -le 10; $i++) {{ try {{ Copy-Item -Path '%STAGING_DIR%\*' -Destination '%INSTALL_DIR%' -Recurse -Force -ErrorAction Stop; break }} catch {{ Start-Sleep -Seconds 2 }} }}""
+
+sc start %SERVICE_NAME% >nul 2>&1
+powershell -ExecutionPolicy Bypass -Command ""Start-Service -Name '%SERVICE_NAME%' -ErrorAction SilentlyContinue""
+";
+
+                    await File.WriteAllTextAsync(scriptPath, batScriptContent);
+
+                    // 3. Disparo do script de troca local com serviço pronto no staging
                     var psi = new ProcessStartInfo
                     {
                         FileName = "cmd.exe",
-                        Arguments = $"/c \"{batPath}\"",
+                        Arguments = $"/c \"\"{scriptPath}\" \"{stagingFolder}\" \"{srvConfig.InstallPath}\"\"",
                         UseShellExecute = true,
                         CreateNoWindow = true,
-                        WorkingDirectory = Path.GetDirectoryName(batPath) ?? srvConfig.InstallPath
+                        WorkingDirectory = stagingFolder
                     };
+
+                    FileLogger.Log($"[FleetOrchestrator] Arquivos validados no staging. Disparando substituição local para '{srvConfig.InstallPath}'...");
                     Process.Start(psi);
-                    FileLogger.Log($"[FleetOrchestrator] Processo de auto-atualização do agente iniciado via script externo.");
+                    return;
+                }
+                catch (Exception exSelf)
+                {
+                    _isSelfUpdateTriggered = false;
+                    FileLogger.LogError($"[FleetOrchestrator] ❌ Erro ao preparar auto-atualização do agente em C#", exSelf);
+                    await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Erro na Atualização");
                     return;
                 }
             }
