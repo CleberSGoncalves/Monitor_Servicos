@@ -187,6 +187,9 @@ namespace WinServiceFleetAgent.Core
                     var getResp = await client.GetAsync(getItemsUrl);
 
                     string itemId = string.Empty;
+                    string existingVersaoDesejada = string.Empty;
+                    string existingStatusAtualizacao = string.Empty;
+
                     if (getResp.IsSuccessStatusCode)
                     {
                         string getJson = await getResp.Content.ReadAsStringAsync();
@@ -203,6 +206,8 @@ namespace WinServiceFleetAgent.Core
                                     if (itemHost.Equals(hostname, StringComparison.OrdinalIgnoreCase) && itemSrv.Equals(nomeServico, StringComparison.OrdinalIgnoreCase))
                                     {
                                         itemId = item.GetProperty("id").GetString() ?? "";
+                                        existingVersaoDesejada = fields.TryGetProperty("Versao_Desejada", out var vd) ? vd.GetString() ?? "" : "";
+                                        existingStatusAtualizacao = fields.TryGetProperty("Status_Atualizacao", out var sa) ? sa.GetString() ?? "" : "";
                                         break;
                                     }
                                 }
@@ -221,6 +226,20 @@ namespace WinServiceFleetAgent.Core
 
                     // Formatação curta da versão (somente os 4 primeiros dígitos numéricos, ex: 3.1.60)
                     string shortInstalled = FormatShortVersion(versaoInstalada);
+                    string shortTarget = string.IsNullOrWhiteSpace(existingVersaoDesejada) ? shortInstalled : FormatShortVersion(existingVersaoDesejada);
+
+                    // Regra do Status_Atualizacao:
+                    // Se estiver executando uma atualização ("Em Progresso"), mantém.
+                    // Senão: Se Versao_Instalada == Versao_Desejada -> "Atualizado". Caso contrário -> "Desatualizado".
+                    string statusAtualizacao = "Atualizado";
+                    if (existingStatusAtualizacao.Equals("Em Progresso", StringComparison.OrdinalIgnoreCase))
+                    {
+                        statusAtualizacao = "Em Progresso";
+                    }
+                    else
+                    {
+                        statusAtualizacao = shortInstalled.Equals(shortTarget, StringComparison.OrdinalIgnoreCase) ? "Atualizado" : "Desatualizado";
+                    }
 
                     var fieldsPayload = new Dictionary<string, object>
                     {
@@ -231,6 +250,7 @@ namespace WinServiceFleetAgent.Core
                         { "Nome_Servico", nomeServico },
                         { "Versao_Instalada", shortInstalled },
                         { "Status_Servico", statusServico },
+                        { "Status_Atualizacao", statusAtualizacao },
                         { "Ultima_atualizacao", nowIso },
                         { "Url_Comunicacao", safeUrlComunicacao },
                         { "Url_Comunicacao_Desejavel", safeUrlDesejavel }
@@ -240,7 +260,6 @@ namespace WinServiceFleetAgent.Core
                     {
                         fieldsPayload["Versao_Desejada"] = shortInstalled;
                         fieldsPayload["Acao_Solicitada"] = "Nenhuma";
-                        fieldsPayload["Status_Atualizacao"] = "Aguardando";
                         fieldsPayload["Acao_Solicitada_Url"] = "Nenhuma";
 
                         var itemPayload = new { fields = fieldsPayload };
@@ -267,7 +286,7 @@ namespace WinServiceFleetAgent.Core
                         var patchResp = await client.SendAsync(request);
                         if (patchResp.IsSuccessStatusCode)
                         {
-                            FileLogger.Log($"[SharePointClient] ✅ Registro atualizado no SharePoint (ID {itemId}): [{displayTitle}] {hostname}_{nomeServico}");
+                            FileLogger.Log($"[SharePointClient] ✅ Registro atualizado no SharePoint (ID {itemId}): [{displayTitle}] {hostname}_{nomeServico} -> Status: {statusAtualizacao}");
                         }
                         else
                         {
