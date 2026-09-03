@@ -287,13 +287,9 @@ namespace WinServiceFleetAgent.Core
                     // Se AutoRestart não estiver preenchido no SharePoint, usa "Não" como padrão solicitado
                     string safeAutoRestart = string.IsNullOrWhiteSpace(existingAutoRestart) ? "Não" : existingAutoRestart;
 
-                    // Preserva a Acao_Solicitada que o usuário escolheu no SharePoint.
-                    // O agente NUNCA altera para 'Atualizar' sozinho; o usuário decide quando atualizar.
+                    // Preserva 100% a Acao_Solicitada que o usuário escolheu no SharePoint.
+                    // Ela será alterada para 'Nenhuma' somente pelo FleetOrchestrator após a ação ser executada.
                     string newAcaoSolicitada = existingAcaoSolicitada;
-                    if (isUpToDate && !existingAcaoSolicitada.StartsWith("Forca", StringComparison.OrdinalIgnoreCase) && !existingAcaoSolicitada.StartsWith("Força", StringComparison.OrdinalIgnoreCase))
-                    {
-                        newAcaoSolicitada = "Nenhuma";
-                    }
 
                     var fieldsPayload = new Dictionary<string, object>
                     {
