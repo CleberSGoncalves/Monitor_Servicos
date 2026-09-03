@@ -521,8 +521,9 @@ namespace WinServiceFleetAgent.Core
             return list;
         }
 
-        public async Task UpdateActionStatusAsync(
-            string title,
+        public async Task UpdateActionStatusByServiceAsync(
+            string hostname,
+            string nomeServico,
             string statusAtualizacao,
             string? acaoSolicitada = null,
             string? versaoInstalada = null)
@@ -551,8 +552,10 @@ namespace WinServiceFleetAgent.Core
                             {
                                 if (item.TryGetProperty("fields", out var fields))
                                 {
-                                    string itemTitle = fields.TryGetProperty("Title", out var t) ? t.GetString() ?? "" : "";
-                                    if (itemTitle.Equals(title, StringComparison.OrdinalIgnoreCase))
+                                    string itemHost = fields.TryGetProperty("Hostname", out var h) ? h.GetString() ?? "" : "";
+                                    string itemSrv = fields.TryGetProperty("Nome_Servico", out var ns) ? ns.GetString() ?? "" : "";
+
+                                    if (itemHost.Equals(hostname, StringComparison.OrdinalIgnoreCase) && itemSrv.Equals(nomeServico, StringComparison.OrdinalIgnoreCase))
                                     {
                                         string itemId = item.GetProperty("id").GetString() ?? "";
 
@@ -570,7 +573,7 @@ namespace WinServiceFleetAgent.Core
                                         var request = new HttpRequestMessage(new HttpMethod("PATCH"), patchUrl) { Content = content };
 
                                         await client.SendAsync(request);
-                                        FileLogger.Log($"[SharePointClient] Status atualizado no SharePoint [{title}]: {statusAtualizacao}");
+                                        FileLogger.Log($"[SharePointClient] Status do serviço [{hostname}_{nomeServico}] atualizado no SharePoint: {statusAtualizacao}");
                                         break;
                                     }
                                 }
@@ -580,7 +583,7 @@ namespace WinServiceFleetAgent.Core
                 }
                 catch (Exception ex)
                 {
-                    FileLogger.LogError($"Erro ao atualizar status no SharePoint [{title}]", ex);
+                    FileLogger.LogError($"Erro ao atualizar status do serviço [{hostname}_{nomeServico}] no SharePoint", ex);
                 }
             }
         }

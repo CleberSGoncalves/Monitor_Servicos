@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -187,42 +188,68 @@ namespace WinServiceFleetAgent.Core
                     continue;
                 }
 
-                string actionTitle = action.Title;
                 FileLogger.Log($"[FleetOrchestrator] Executando Ação '{action.AcaoSolicitada}' para [{_hostname}_{action.NomeServico}]...");
 
                 try
                 {
                     if (action.AcaoSolicitada.Equals("Reiniciar", StringComparison.OrdinalIgnoreCase))
                     {
-                        await _spClient.UpdateActionStatusAsync(actionTitle, "Em Progresso");
+                        await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Em Progresso");
                         bool ok = WinController.RestartService(srvConfig.ServiceName);
                         if (ok)
                         {
-                            await _spClient.UpdateActionStatusAsync(actionTitle, "Atualizado", acaoSolicitada: "Nenhuma");
+                            await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Atualizado", acaoSolicitada: "Nenhuma");
                             FileLogger.Log($"[FleetOrchestrator] ✅ Serviço '{srvConfig.ServiceName}' reiniciado com sucesso!");
                         }
                         else
                         {
-                            await _spClient.UpdateActionStatusAsync(actionTitle, "Erro na Atualização");
+                            await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Erro na Atualização");
                         }
                     }
                     else if (action.AcaoSolicitada.Equals("Atualizar", StringComparison.OrdinalIgnoreCase))
                     {
-                        await ProcessUpdateAsync(srvConfig, action, actionTitle);
+                        await ProcessUpdateAsync(srvConfig, action);
                     }
                 }
                 catch (Exception ex)
                 {
-                    FileLogger.LogError($"Erro ao processar ação em [{actionTitle}]", ex);
-                    await _spClient.UpdateActionStatusAsync(actionTitle, "Erro na Atualização");
+                    FileLogger.LogError($"Erro ao processar ação em [{_hostname}_{action.NomeServico}]", ex);
+                    await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Erro na Atualização");
                 }
             }
         }
 
-        private async Task ProcessUpdateAsync(ServiceDefinition srvConfig, PendingActionItem action, string title)
+        private async Task ProcessUpdateAsync(ServiceDefinition srvConfig, PendingActionItem action)
         {
-            await _spClient.UpdateActionStatusAsync(title, "Em Progresso");
+            await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Em Progresso");
             FileLogger.Log($"[FleetOrchestrator] Iniciando atualização de '{srvConfig.ServiceName}' para versão '{action.VersaoDesejada}'...");
+
+            bool isSelfUpdate = srvConfig.ServiceName.Equals("DNA.MonitorServiceSVC", StringComparison.OrdinalIgnoreCase);
+
+            if (isSelfUpdate)
+            {
+                FileLogger.Log($"[FleetOrchestrator] Auto-atualização detectada para o próprio agente '{srvConfig.ServiceName}'. Disparando update_agent.bat...");
+                string batPath = Path.Combine(srvConfig.InstallPath, "update_agent.bat");
+                if (!File.Exists(batPath))
+                {
+                    batPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "update_agent.bat");
+                }
+
+                if (File.Exists(batPath))
+                {
+                    var psi = new ProcessStartInfo
+                    {
+                        FileName = "cmd.exe",
+                        Arguments = $"/c \"{batPath}\"",
+                        UseShellExecute = true,
+                        CreateNoWindow = true,
+                        WorkingDirectory = Path.GetDirectoryName(batPath) ?? srvConfig.InstallPath
+                    };
+                    Process.Start(psi);
+                    FileLogger.Log($"[FleetOrchestrator] Processo de auto-atualização do agente iniciado via script externo.");
+                    return;
+                }
+            }
 
             string backupFolder = Path.Combine(_backupBaseDir, $"{srvConfig.ServiceName}_{DateTime.Now:yyyyMMdd_HHmmss}");
             string stagingFolder = Path.Combine(_tempStagingDir, $"{srvConfig.ServiceName}_staging");
@@ -272,13 +299,13 @@ namespace WinServiceFleetAgent.Core
                 string newExePath = Path.Combine(srvConfig.InstallPath, srvConfig.ExeName);
                 string newVer = VersionInspector.GetExecutableVersion(newExePath);
 
-                await _spClient.UpdateActionStatusAsync(title, "Atualizado", acaoSolicitada: "Nenhuma", versaoInstalada: newVer);
+                await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Atualizado", acaoSolicitada: "Nenhuma", versaoInstalada: newVer);
                 FileLogger.Log($"[FleetOrchestrator] 🎉 Atualização concluída com sucesso! Nova Versão Instalada: {newVer}");
             }
             catch (Exception ex)
             {
                 FileLogger.LogError($"Falha durante a atualização de '{srvConfig.ServiceName}'. Iniciando Rollback automático!", ex);
-                await _spClient.UpdateActionStatusAsync(title, "Erro na Atualização");
+                await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Erro na Atualização");
 
                 try
                 {
@@ -289,13 +316,13 @@ namespace WinServiceFleetAgent.Core
                         CopyDirectory(backupFolder, srvConfig.InstallPath);
                         if (WinController.GetServiceStatus(srvConfig.ServiceName) != "Não Encontrado") WinController.StartService(srvConfig.ServiceName);
                         FileLogger.Log($"[FleetOrchestrator] Rollback concluído com sucesso.");
-                        await _spClient.UpdateActionStatusAsync(title, "Erro na Atualização");
+                        await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Erro na Atualização");
                     }
                 }
                 catch (Exception rollbackEx)
                 {
                     FileLogger.LogError("Erro crítico durante o Rollback!", rollbackEx);
-                    await _spClient.UpdateActionStatusAsync(title, "Erro na Atualização");
+                    await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Erro na Atualização");
                 }
             }
             finally
