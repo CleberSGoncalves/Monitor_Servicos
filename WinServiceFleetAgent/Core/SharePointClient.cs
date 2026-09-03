@@ -297,7 +297,6 @@ namespace WinServiceFleetAgent.Core
                         { "Status_Atualizacao", statusAtualizacao },
                         { "Ultima_atualizacao", nowIso },
                         { "Url_Comunicacao", safeUrlComunicacao },
-                        { "Ultimo_Log", metrics.UltimoLog },
                         { "AutoRestart", safeAutoRestart }
                     };
 
