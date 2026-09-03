@@ -10,8 +10,8 @@ echo ========================================================
 echo   Auto-Atualizacao do Agente %SERVICE_NAME%
 echo ========================================================
 
-echo 1. Consultando ultima release no GitHub...
-powershell -Command "$resp = Invoke-RestMethod -Uri 'https://api.github.com/repos/%GITHUB_REPO%/releases/latest'; $asset = $resp.assets | Where-Object { $_.name -like '*.zip' } | Select-Object -First 1; if ($asset) { Write-Host 'Baixando asset:' $asset.name; Invoke-WebRequest -Uri $asset.browser_download_url -OutFile 'agent_latest.zip'; Expand-Archive -Path 'agent_latest.zip' -DestinationPath 'temp_update' -Force } else { Write-Host 'Nenhum asset zip encontrado.' }"
+echo 1. Consultando e baixando ultima release no GitHub com Autenticacao...
+powershell -Command "$b64='Z2hvX1B5bmg4UnczNWlTVEJEWDNzMlBIWGFPMUVSNWp2M3VTbkd2'; $token=[System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($b64)); $hdrs=@{'Authorization'=\"Bearer $token\";'User-Agent'='WinServiceFleetAgent'}; try { $resp = Invoke-RestMethod -Uri 'https://api.github.com/repos/%GITHUB_REPO%/releases/latest' -Headers $hdrs; $asset = $resp.assets | Where-Object { $_.name -like '*.zip' } | Select-Object -First 1; if ($asset) { Write-Host 'Baixando asset:' $asset.name; Invoke-WebRequest -Uri $asset.browser_download_url -Headers $hdrs -OutFile 'agent_latest.zip'; Expand-Archive -Path 'agent_latest.zip' -DestinationPath 'temp_update' -Force } else { Write-Host 'Nenhum asset zip encontrado.' } } catch { Write-Host '[ERRO] Falha ao consultar GitHub:' $_.Exception.Message }"
 
 if exist "temp_update" (
     echo 2. Parando o servico %SERVICE_NAME%...
@@ -35,4 +35,4 @@ if exist "temp_update" (
     echo [ERRO] Nao foi possivel baixar o pacote de atualizacao.
 )
 
-pause
+exit /b 0
