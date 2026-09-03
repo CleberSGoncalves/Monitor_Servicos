@@ -217,7 +217,6 @@ namespace WinServiceFleetAgent.Core
                         var nowTime = DateTime.Now.TimeOfDay;
                         double diffMinutes = (nowTime - scheduledTime).TotalMinutes;
 
-                        // Se ainda não chegou no horário agendado (ex: agendado 03:00 e agora é 14:00)
                         if (diffMinutes < -10 || diffMinutes > 15)
                         {
                             FileLogger.Log($"[FleetOrchestrator] Ação '{action.AcaoSolicitada}' em '{action.NomeServico}' está agendada para as {action.HoraAgendada}. Horário atual: {nowTime:hh\\:mm}. Aguardando janela.");
@@ -268,10 +267,20 @@ namespace WinServiceFleetAgent.Core
             if (!File.Exists(exeFullPath)) exeFullPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, srvConfig.ExeName);
             string installedVer = VersionInspector.GetExecutableVersion(exeFullPath);
 
-            if (!forceUpdate && SharePointClient.IsInstalledUpToDate(installedVer, action.VersaoDesejada))
+            // Quando a Ação_Solicitada é "Atualizar", limpa o cache e consulta o GitHub para obter a versão mais recente real
+            string? githubLatest = null;
+            if (!string.IsNullOrWhiteSpace(srvConfig.GithubRepo))
             {
-                FileLogger.Log($"[FleetOrchestrator] Serviço '{srvConfig.ServiceName}' já está na versão desejada ({installedVer}). Mudando Acao_Solicitada para 'Nenhuma' e Status para 'Atualizado'.");
-                await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Atualizado", acaoSolicitada: "Nenhuma", versaoInstalada: installedVer);
+                GitHubDownloader.ClearCache(srvConfig.GithubRepo);
+                githubLatest = await GitHubDownloader.GetLatestReleaseVersionAsync(srvConfig.GithubRepo, _githubToken);
+            }
+
+            string targetVersion = !string.IsNullOrWhiteSpace(githubLatest) ? githubLatest : (!string.IsNullOrWhiteSpace(action.VersaoDesejada) ? action.VersaoDesejada : "latest");
+
+            if (!forceUpdate && SharePointClient.IsInstalledUpToDate(installedVer, targetVersion))
+            {
+                FileLogger.Log($"[FleetOrchestrator] Serviço '{srvConfig.ServiceName}' já está na versão mais recente disponível no GitHub ({installedVer}). Mudando Acao_Solicitada para 'Nenhuma' e Status para 'Atualizado'.");
+                await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Atualizado", acaoSolicitada: "Nenhuma", versaoInstalada: installedVer, versaoDesejada: targetVersion);
                 return;
             }
 
@@ -279,7 +288,7 @@ namespace WinServiceFleetAgent.Core
 
             if (isSelfUpdate)
             {
-                await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Em Progresso");
+                await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Em Progresso", versaoDesejada: targetVersion);
                 FileLogger.Log($"[FleetOrchestrator] Auto-atualização detectada para o próprio agente '{srvConfig.ServiceName}'. Disparando update_agent.bat...");
                 string batPath = Path.Combine(srvConfig.InstallPath, "update_agent.bat");
                 if (!File.Exists(batPath))
@@ -303,8 +312,8 @@ namespace WinServiceFleetAgent.Core
                 }
             }
 
-            await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Em Progresso");
-            FileLogger.Log($"[FleetOrchestrator] Iniciando atualização de '{srvConfig.ServiceName}' para versão '{action.VersaoDesejada}' (Forçar={forceUpdate})...");
+            await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Em Progresso", versaoDesejada: targetVersion);
+            FileLogger.Log($"[FleetOrchestrator] Iniciando atualização de '{srvConfig.ServiceName}' para versão '{targetVersion}' (Forçar={forceUpdate})...");
 
             string backupFolder = Path.Combine(_backupBaseDir, $"{srvConfig.ServiceName}_{DateTime.Now:yyyyMMdd_HHmmss}");
             string stagingFolder = Path.Combine(_tempStagingDir, $"{srvConfig.ServiceName}_staging");
@@ -314,8 +323,8 @@ namespace WinServiceFleetAgent.Core
                 if (Directory.Exists(stagingFolder)) Directory.Delete(stagingFolder, true);
                 Directory.CreateDirectory(stagingFolder);
 
-                FileLogger.Log($"[FleetOrchestrator] Baixando e extraindo release '{action.VersaoDesejada}' do repositório '{srvConfig.GithubRepo}'...");
-                await GitHubDownloader.DownloadAndExtractReleaseAsync(srvConfig.GithubRepo, action.VersaoDesejada, _githubToken, stagingFolder);
+                FileLogger.Log($"[FleetOrchestrator] Baixando e extraindo release '{targetVersion}' do repositório '{srvConfig.GithubRepo}'...");
+                await GitHubDownloader.DownloadAndExtractReleaseAsync(srvConfig.GithubRepo, targetVersion, _githubToken, stagingFolder);
 
                 if (Directory.Exists(srvConfig.InstallPath))
                 {
@@ -354,7 +363,7 @@ namespace WinServiceFleetAgent.Core
                 string newExePath = Path.Combine(srvConfig.InstallPath, srvConfig.ExeName);
                 string newVer = VersionInspector.GetExecutableVersion(newExePath);
 
-                await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Atualizado", acaoSolicitada: "Nenhuma", versaoInstalada: newVer);
+                await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Atualizado", acaoSolicitada: "Nenhuma", versaoInstalada: newVer, versaoDesejada: newVer);
                 FileLogger.Log($"[FleetOrchestrator] 🎉 Atualização concluída com sucesso! Nova Versão Instalada: {newVer}");
             }
             catch (Exception ex)

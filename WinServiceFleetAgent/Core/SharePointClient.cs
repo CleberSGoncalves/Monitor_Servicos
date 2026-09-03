@@ -573,7 +573,8 @@ namespace WinServiceFleetAgent.Core
             string nomeServico,
             string statusAtualizacao,
             string? acaoSolicitada = null,
-            string? versaoInstalada = null)
+            string? versaoInstalada = null,
+            string? versaoDesejada = null)
         {
             using (var client = new HttpClient())
             {
@@ -614,6 +615,7 @@ namespace WinServiceFleetAgent.Core
 
                                         if (acaoSolicitada != null) patchData["Acao_Solicitada"] = acaoSolicitada;
                                         if (versaoInstalada != null) patchData["Versao_Instalada"] = FormatShortVersion(versaoInstalada);
+                                        if (versaoDesejada != null) patchData["Versao_Desejada"] = FormatShortVersion(versaoDesejada);
 
                                         string patchUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items/{itemId}/fields";
                                         var content = new StringContent(JsonSerializer.Serialize(patchData), Encoding.UTF8, "application/json");
