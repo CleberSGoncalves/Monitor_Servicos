@@ -312,7 +312,11 @@ namespace WinServiceFleetAgent.Core
                         fieldsPayload["Disco_D_Livre_GB"] = metrics.DiscoDLivreGB;
                         fieldsPayload["Uptime_Dias"] = metrics.UptimeDias;
 
-                        await UploadLogAttachmentAsync(hostname, nomeServico, FileLogger.GetLastLogLines(1000));
+                        string logWebUrl = await UploadLogAttachmentAsync(hostname, nomeServico, FileLogger.GetLastLogLines(1000));
+                        if (!string.IsNullOrWhiteSpace(logWebUrl))
+                        {
+                            fieldsPayload["Url_Comunicacao"] = logWebUrl;
+                        }
                     }
 
                     if (isUpToDate && !existingAcaoSolicitada.StartsWith("Forca", StringComparison.OrdinalIgnoreCase) && !existingAcaoSolicitada.StartsWith("Força", StringComparison.OrdinalIgnoreCase))
@@ -641,23 +645,23 @@ namespace WinServiceFleetAgent.Core
 
         private static readonly Dictionary<string, DateTime> _lastLogAttachmentTimes = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
 
-        public async Task UploadLogAttachmentAsync(string hostname, string nomeServico, string logContent, bool force = false)
+        public async Task<string> UploadLogAttachmentAsync(string hostname, string nomeServico, string logContent, bool force = false)
         {
-            if (string.IsNullOrWhiteSpace(logContent)) return;
+            if (string.IsNullOrWhiteSpace(logContent)) return string.Empty;
 
             string key = $"{hostname}_{nomeServico}";
             lock (_lastLogAttachmentTimes)
             {
                 if (!force && _lastLogAttachmentTimes.TryGetValue(key, out var lastTime))
                 {
-                    if ((DateTime.UtcNow - lastTime).TotalMinutes < 2) return;
+                    if ((DateTime.UtcNow - lastTime).TotalMinutes < 2) return string.Empty;
                 }
             }
 
             using (var client = new HttpClient())
             {
                 await EnsureGraphContextAsync(client);
-                if (string.IsNullOrEmpty(_siteId) || string.IsNullOrEmpty(_listId)) return;
+                if (string.IsNullOrEmpty(_siteId) || string.IsNullOrEmpty(_listId)) return string.Empty;
 
                 client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
 
@@ -676,62 +680,18 @@ namespace WinServiceFleetAgent.Core
                     {
                         string errText = await uploadResp.Content.ReadAsStringAsync();
                         FileLogger.LogError($"[SharePointClient] Erro ao enviar log .txt para o SharePoint Drive ({uploadResp.StatusCode}): {errText}");
-                        return;
+                        return string.Empty;
                     }
 
                     string uploadJson = await uploadResp.Content.ReadAsStringAsync();
                     using var uDoc = JsonDocument.Parse(uploadJson);
                     string webUrl = uDoc.RootElement.GetProperty("webUrl").GetString() ?? "";
 
-                    if (string.IsNullOrEmpty(webUrl)) return;
-
-                    // 2. Localizar o item correspondente na Lista do SharePoint
-                    string getItemsUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items?expand=fields&$top=500";
-                    var getResp = await client.GetAsync(getItemsUrl);
-                    if (!getResp.IsSuccessStatusCode) return;
-
-                    string json = await getResp.Content.ReadAsStringAsync();
-                    using var doc = JsonDocument.Parse(json);
-                    if (!doc.RootElement.TryGetProperty("value", out var valueArray)) return;
-
-                    string itemId = "";
-                    foreach (var item in valueArray.EnumerateArray())
+                    if (!string.IsNullOrEmpty(webUrl))
                     {
-                        if (item.TryGetProperty("fields", out var fields))
-                        {
-                            string itemHost = fields.TryGetProperty("Hostname", out var h) ? h.GetString() ?? "" : "";
-                            string itemSrv = fields.TryGetProperty("Nome_Servico", out var ns) ? ns.GetString() ?? "" : "";
-
-                            if (itemHost.Equals(hostname, StringComparison.OrdinalIgnoreCase) && itemSrv.Equals(nomeServico, StringComparison.OrdinalIgnoreCase))
-                            {
-                                itemId = item.GetProperty("id").GetString() ?? "";
-                                break;
-                            }
-                        }
-                    }
-
-                    if (!string.IsNullOrEmpty(itemId))
-                    {
-                        // 3. Atualizar a coluna Url_Comunicacao com o link direto para o arquivo de log no SharePoint
-                        string patchUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items/{itemId}/fields";
-                        var patchPayload = new Dictionary<string, string>
-                        {
-                            { "Url_Comunicacao", webUrl }
-                        };
-
-                        var patchContent = new StringContent(JsonSerializer.Serialize(patchPayload), Encoding.UTF8, "application/json");
-                        var patchResp = await client.PatchAsync(patchUrl, patchContent);
-
-                        if (patchResp.IsSuccessStatusCode)
-                        {
-                            lock (_lastLogAttachmentTimes) { _lastLogAttachmentTimes[key] = DateTime.UtcNow; }
-                            FileLogger.Log($"[SharePointClient] ✅ Arquivo de Log .txt (1000 linhas) gerado com sucesso no SharePoint e vinculado em Url_Comunicacao: {webUrl}");
-                        }
-                        else
-                        {
-                            string patchErr = await patchResp.Content.ReadAsStringAsync();
-                            FileLogger.LogError($"[SharePointClient] Erro ao atualizar Url_Comunicacao ({patchResp.StatusCode}): {patchErr}");
-                        }
+                        lock (_lastLogAttachmentTimes) { _lastLogAttachmentTimes[key] = DateTime.UtcNow; }
+                        FileLogger.Log($"[SharePointClient] ✅ Arquivo de Log .txt (1000 linhas) gerado no SharePoint Drive: {webUrl}");
+                        return webUrl;
                     }
                 }
                 catch (Exception ex)
@@ -739,6 +699,8 @@ namespace WinServiceFleetAgent.Core
                     FileLogger.LogError($"Erro ao processar log .txt no SharePoint para [{hostname}_{nomeServico}]", ex);
                 }
             }
+
+            return string.Empty;
         }
     }
 }
