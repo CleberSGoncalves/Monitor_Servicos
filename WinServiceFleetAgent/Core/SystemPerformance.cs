@@ -100,7 +100,7 @@ namespace WinServiceFleetAgent.Core
             // 4. Teste de Conectividade WCF
             metrics.StatusWcf = CheckWcfConnectivity(wcfUrl);
 
-            // 5. Envia o CONTEÚDO COMPLETO MULTILINHA do log (até 4000 caracteres recentes do agent.log)
+            // 5. Envia EXATAMENTE as ÚLTIMAS 100 LINHAS do log
             metrics.UltimoLog = GetCompactLastLogSnippet();
 
             return metrics;
@@ -162,14 +162,11 @@ namespace WinServiceFleetAgent.Core
 
                 if (!File.Exists(logFile)) return "Nenhum log gerado ainda.";
 
-                string content = File.ReadAllText(logFile);
-                if (string.IsNullOrWhiteSpace(content)) return "Arquivo de log vazio.";
+                // Retorna exatamente as últimas 100 linhas do log
+                var lines = File.ReadLines(logFile).Reverse().Take(100).Reverse();
+                string content = string.Join("\n", lines);
 
-                // Retorna o texto completo do log (últimos 4000 caracteres com quebras de linha reais)
-                if (content.Length > 4000)
-                {
-                    content = content.Substring(content.Length - 4000);
-                }
+                if (string.IsNullOrWhiteSpace(content)) return "Arquivo de log vazio.";
 
                 return content;
             }
