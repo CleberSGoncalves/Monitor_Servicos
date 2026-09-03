@@ -162,35 +162,43 @@ namespace WinServiceFleetAgent.Core
 
                 if (!File.Exists(logFile)) return $"[OK] Tudo operacional às {DateTime.Now:HH:mm}";
 
-                var lines = File.ReadLines(logFile).Reverse().Take(50).ToList();
-                foreach (var line in lines)
+                var rawLines = File.ReadLines(logFile).Reverse().Take(40).ToList();
+                
+                // 1. Localizar o início do ciclo mais recente no log
+                int cycleStartIndex = -1;
+                for (int i = 0; i < rawLines.Count; i++)
+                {
+                    if (rawLines[i].Contains("Iniciando ciclo em") || rawLines[i].Contains("========="))
+                    {
+                        cycleStartIndex = i;
+                        break;
+                    }
+                }
+
+                // Considerar logs do ciclo atual (se um ciclo tiver sido iniciado recentemente)
+                var currentCycleLines = (cycleStartIndex >= 0) 
+                    ? rawLines.Take(cycleStartIndex + 1).ToList() 
+                    : rawLines;
+
+                // 2. Procurar se há algum ERRO ou ALERTA no ciclo atual
+                foreach (var line in currentCycleLines)
                 {
                     if (string.IsNullOrWhiteSpace(line)) continue;
-
-                    // Ignorar cabeçalhos e rotinas de leitura técnica interna
-                    if (line.Contains("=========") ||
-                        line.Contains("[MetadataReader]") ||
-                        line.Contains("Iniciando ciclo em") ||
-                        line.Contains("Metadados extraídos:") ||
-                        line.Contains("Processando '") ||
-                        line.Contains("Registro atualizado no SharePoint") ||
-                        line.Contains("Nenhuma ação de serviço pendente"))
+                    if (line.Contains("[ERRO]") || line.Contains("❌") || line.Contains("[WARN]"))
                     {
-                        continue;
+                        string cleanErr = FormatLogLine(line);
+                        if (!string.IsNullOrWhiteSpace(cleanErr)) return cleanErr;
                     }
+                }
 
-                    string clean = Regex.Replace(line, @"^\[\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\]\s*", "").Trim();
-                    clean = Regex.Replace(clean, @"^\[FleetOrchestrator\]\s*", "").Trim();
-                    clean = Regex.Replace(clean, @"^\[SharePointClient\]\s*", "").Trim();
+                // 3. Se o ciclo atual operou normalmente sem erros, pegar o log mais recente do ciclo ativo
+                foreach (var line in currentCycleLines)
+                {
+                    if (string.IsNullOrWhiteSpace(line)) continue;
+                    if (line.Contains("=========") || line.Contains("[MetadataReader]")) continue;
 
-                    if (string.IsNullOrWhiteSpace(clean)) continue;
-
-                    if (clean.Length > 180)
-                    {
-                        clean = clean.Substring(0, 180) + "...";
-                    }
-
-                    return clean;
+                    string clean = FormatLogLine(line);
+                    if (!string.IsNullOrWhiteSpace(clean)) return clean;
                 }
 
                 return $"[OK] Tudo operacional às {DateTime.Now:HH:mm}";
@@ -199,6 +207,15 @@ namespace WinServiceFleetAgent.Core
             {
                 return $"[OK] Tudo operacional às {DateTime.Now:HH:mm}";
             }
+        }
+
+        private static string FormatLogLine(string line)
+        {
+            string clean = Regex.Replace(line, @"^\[\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\]\s*", "").Trim();
+            clean = Regex.Replace(clean, @"^\[FleetOrchestrator\]\s*", "").Trim();
+            clean = Regex.Replace(clean, @"^\[SharePointClient\]\s*", "").Trim();
+            if (clean.Length > 180) clean = clean.Substring(0, 180) + "...";
+            return clean;
         }
     }
 }

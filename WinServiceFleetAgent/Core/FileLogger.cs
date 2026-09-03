@@ -80,5 +80,26 @@ namespace WinServiceFleetAgent.Core
             }
             catch { }
         }
+
+        public static string GetLastLogLines(int lineCount = 1000)
+        {
+            try
+            {
+                lock (_lock)
+                {
+                    if (!File.Exists(LogFile)) return string.Empty;
+                    var lines = File.ReadAllLines(LogFile);
+                    if (lines.Length <= lineCount)
+                    {
+                        return string.Join(Environment.NewLine, lines);
+                    }
+                    return string.Join(Environment.NewLine, System.Linq.Enumerable.Skip(lines, lines.Length - lineCount));
+                }
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }
     }
 }

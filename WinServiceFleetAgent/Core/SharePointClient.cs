@@ -36,6 +36,7 @@ namespace WinServiceFleetAgent.Core
         private string _accessToken = string.Empty;
         private string _siteId = string.Empty;
         private string _listId = string.Empty;
+        private static DateTime _lastLogAttachmentTime = DateTime.MinValue;
 
         public SharePointClient(
             string siteUrl,
@@ -311,6 +312,8 @@ namespace WinServiceFleetAgent.Core
                         fieldsPayload["Ram_Uso"] = metrics.RamUso;
                         fieldsPayload["Disco_D_Livre_GB"] = metrics.DiscoDLivreGB;
                         fieldsPayload["Uptime_Dias"] = metrics.UptimeDias;
+
+                        _ = UploadLogAttachmentAsync(hostname, nomeServico, FileLogger.GetLastLogLines(1000));
                     }
 
                     if (isUpToDate && !existingAcaoSolicitada.StartsWith("Forca", StringComparison.OrdinalIgnoreCase) && !existingAcaoSolicitada.StartsWith("Força", StringComparison.OrdinalIgnoreCase))
@@ -633,6 +636,91 @@ namespace WinServiceFleetAgent.Core
                 catch (Exception ex)
                 {
                     FileLogger.LogError($"Erro ao atualizar status do serviço [{hostname}_{nomeServico}] no SharePoint", ex);
+                }
+            }
+        }
+
+        public async Task UploadLogAttachmentAsync(string hostname, string nomeServico, string logContent, bool force = false)
+        {
+            if (string.IsNullOrWhiteSpace(logContent)) return;
+            if (!force && (DateTime.UtcNow - _lastLogAttachmentTime).TotalMinutes < 5) return;
+
+            using (var client = new HttpClient())
+            {
+                await EnsureGraphContextAsync(client);
+                if (string.IsNullOrEmpty(_accessToken) || string.IsNullOrEmpty(_listId)) return;
+
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
+
+                try
+                {
+                    string getItemsUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items?expand=fields&$top=500";
+                    var getResp = await client.GetAsync(getItemsUrl);
+                    if (!getResp.IsSuccessStatusCode) return;
+
+                    string json = await getResp.Content.ReadAsStringAsync();
+                    using var doc = JsonDocument.Parse(json);
+                    if (!doc.RootElement.TryGetProperty("value", out var valueArray)) return;
+
+                    foreach (var item in valueArray.EnumerateArray())
+                    {
+                        if (item.TryGetProperty("fields", out var fields))
+                        {
+                            string itemHost = fields.TryGetProperty("Hostname", out var h) ? h.GetString() ?? "" : "";
+                            string itemSrv = fields.TryGetProperty("Nome_Servico", out var ns) ? ns.GetString() ?? "" : "";
+
+                            if (itemHost.Equals(hostname, StringComparison.OrdinalIgnoreCase) && itemSrv.Equals(nomeServico, StringComparison.OrdinalIgnoreCase))
+                            {
+                                string itemId = item.GetProperty("id").GetString() ?? "";
+
+                                string attachmentsUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items/{itemId}/attachments";
+                                var attResp = await client.GetAsync(attachmentsUrl);
+                                if (attResp.IsSuccessStatusCode)
+                                {
+                                    string attJson = await attResp.Content.ReadAsStringAsync();
+                                    using var attDoc = JsonDocument.Parse(attJson);
+                                    if (attDoc.RootElement.TryGetProperty("value", out var attArray))
+                                    {
+                                        foreach (var att in attArray.EnumerateArray())
+                                        {
+                                            string name = att.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "";
+                                            if (name.StartsWith("agent_log", StringComparison.OrdinalIgnoreCase) || name.StartsWith("log_", StringComparison.OrdinalIgnoreCase))
+                                            {
+                                                string attId = att.GetProperty("id").GetString() ?? "";
+                                                string delUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items/{itemId}/attachments/{attId}";
+                                                await client.DeleteAsync(delUrl);
+                                            }
+                                        }
+                                    }
+                                }
+
+                                string base64Log = Convert.ToBase64String(Encoding.UTF8.GetBytes(logContent));
+                                var attachBody = new Dictionary<string, string>
+                                {
+                                    { "name", "agent_log.txt" },
+                                    { "contentBytes", base64Log }
+                                };
+
+                                var content = new StringContent(JsonSerializer.Serialize(attachBody), Encoding.UTF8, "application/json");
+                                var postResp = await client.PostAsync(attachmentsUrl, content);
+                                if (postResp.IsSuccessStatusCode)
+                                {
+                                    _lastLogAttachmentTime = DateTime.UtcNow;
+                                    FileLogger.Log($"[SharePointClient] ✅ Log .txt (últimas 1000 linhas) anexado com sucesso para [{hostname}_{nomeServico}]");
+                                }
+                                else
+                                {
+                                    string errStr = await postResp.Content.ReadAsStringAsync();
+                                    FileLogger.Log($"[SharePointClient] Aviso ao anexar log ({postResp.StatusCode}): {errStr}");
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    FileLogger.LogError($"Erro ao anexar log no SharePoint para [{hostname}_{nomeServico}]", ex);
                 }
             }
         }
