@@ -19,6 +19,8 @@ namespace WinServiceFleetAgent.Core
         public string StatusAtualizacao { get; set; } = string.Empty;
         public string UrlComunicacaoDesejavel { get; set; } = string.Empty;
         public string AcaoSolicitadaUrl { get; set; } = string.Empty;
+        public string AutoRestart { get; set; } = "Sim";
+        public string HoraAgendada { get; set; } = string.Empty;
     }
 
     public class SharePointClient
@@ -182,7 +184,8 @@ namespace WinServiceFleetAgent.Core
             string versaoInstalada,
             string? versaoDesejada,
             string statusServico,
-            string urlComunicacao)
+            string urlComunicacao,
+            PerformanceMetrics metrics)
         {
             string nowIso = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ");
 
@@ -209,6 +212,7 @@ namespace WinServiceFleetAgent.Core
                     string existingAcaoSolicitada = string.Empty;
                     string existingUrlComunicacaoDesejavel = string.Empty;
                     string existingAcaoSolicitadaUrl = string.Empty;
+                    string existingAutoRestart = string.Empty;
 
                     if (getResp.IsSuccessStatusCode)
                     {
@@ -231,6 +235,7 @@ namespace WinServiceFleetAgent.Core
                                         existingAcaoSolicitada = fields.TryGetProperty("Acao_Solicitada", out var ac) ? ac.GetString() ?? "" : "";
                                         existingUrlComunicacaoDesejavel = fields.TryGetProperty("Url_Comunicacao_Desejavel", out var ud) ? ud.GetString() ?? "" : "";
                                         existingAcaoSolicitadaUrl = fields.TryGetProperty("Acao_Solicitada_Url", out var au) ? au.GetString() ?? "" : "";
+                                        existingAutoRestart = fields.TryGetProperty("AutoRestart", out var ar) ? ar.GetString() ?? "" : "";
                                         break;
                                     }
                                 }
@@ -242,7 +247,7 @@ namespace WinServiceFleetAgent.Core
                     int safeCS = cs <= 0 ? 1 : cs;
                     string displayTitle = string.IsNullOrWhiteSpace(title) ? "Brasil" : title;
 
-                    // Regra: Somente o serviço DNA.ConfigMonitorSVC possui URL de comunicação preenchida. Para os demais, é "Nenhuma".
+                    // Regra: Somente o serviço DNA.ConfigMonitorSVC possui URL e métricas de hardware exibidas
                     bool isConfigMonitor = nomeServico.Equals("DNA.ConfigMonitorSVC", StringComparison.OrdinalIgnoreCase);
                     string safeUrlComunicacao = isConfigMonitor ? (string.IsNullOrWhiteSpace(urlComunicacao) ? "Nenhuma" : urlComunicacao) : "Nenhuma";
 
@@ -258,16 +263,11 @@ namespace WinServiceFleetAgent.Core
 
                     bool isUpToDate = IsInstalledUpToDate(shortInstalled, shortTarget);
 
-                    // Se a versão instalada for MAIOR OU IGUAL à versão desejada -> atualiza a desejada para a instalada!
                     if (isUpToDate)
                     {
                         shortTarget = shortInstalled;
                     }
 
-                    // Regra do Status_Atualizacao:
-                    // Se a versão instalada for MAIOR OU IGUAL à versão desejada -> "Atualizado"
-                    // Senão se estiver em progresso -> "Em Progresso"
-                    // Senão -> "Desatualizado"
                     string statusAtualizacao = "Atualizado";
                     if (isUpToDate)
                     {
@@ -294,16 +294,25 @@ namespace WinServiceFleetAgent.Core
                         { "Status_Servico", statusServico },
                         { "Status_Atualizacao", statusAtualizacao },
                         { "Ultima_atualizacao", nowIso },
-                        { "Url_Comunicacao", safeUrlComunicacao }
+                        { "Url_Comunicacao", safeUrlComunicacao },
+                        { "Ultimo_Log", metrics.UltimoLog }
                     };
 
-                    // Se a versão estiver atualizada E a ação não for "Forcar Atualizacao", zera Acao_Solicitada para "Nenhuma"
+                    // Injeta métricas pesadas APENAS na linha do DNA.ConfigMonitorSVC para não poluir a tabela
+                    if (isConfigMonitor)
+                    {
+                        fieldsPayload["Cpu_Uso"] = metrics.CpuUso;
+                        fieldsPayload["Ram_Uso"] = metrics.RamUso;
+                        fieldsPayload["Disco_D_Livre_GB"] = metrics.DiscoDLivreGB;
+                        fieldsPayload["Status_WCF"] = metrics.StatusWcf;
+                        fieldsPayload["Uptime_Dias"] = metrics.UptimeDias;
+                    }
+
                     if (isUpToDate && !existingAcaoSolicitada.StartsWith("Forca", StringComparison.OrdinalIgnoreCase) && !existingAcaoSolicitada.StartsWith("Força", StringComparison.OrdinalIgnoreCase))
                     {
                         fieldsPayload["Acao_Solicitada"] = "Nenhuma";
                     }
 
-                    // Se a URL de comunicação atual já for igual à URL desejável no SharePoint, zera Acao_Solicitada_Url para "Nenhuma"
                     if (isConfigMonitor && !string.IsNullOrWhiteSpace(existingUrlComunicacaoDesejavel) && string.Equals(safeUrlComunicacao, existingUrlComunicacaoDesejavel, StringComparison.OrdinalIgnoreCase))
                     {
                         fieldsPayload["Acao_Solicitada_Url"] = "Nenhuma";
@@ -311,10 +320,10 @@ namespace WinServiceFleetAgent.Core
 
                     if (string.IsNullOrEmpty(itemId))
                     {
-                        // Para novos itens, preenche Url_Comunicacao_Desejavel com o valor atual ou "Nenhuma"
                         fieldsPayload["Url_Comunicacao_Desejavel"] = isConfigMonitor ? (string.IsNullOrWhiteSpace(urlComunicacao) ? "https://mediadna.ibope.com/mediadnawcfcs/RemoteHostsService.svc" : urlComunicacao) : "Nenhuma";
                         fieldsPayload["Acao_Solicitada"] = "Nenhuma";
                         fieldsPayload["Acao_Solicitada_Url"] = "Nenhuma";
+                        fieldsPayload["AutoRestart"] = "Sim";
 
                         var itemPayload = new { fields = fieldsPayload };
                         string createUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items";
@@ -333,7 +342,6 @@ namespace WinServiceFleetAgent.Core
                     }
                     else
                     {
-                        // NOTA: Para itens existentes, NÃO enviamos Url_Comunicacao_Desejavel para NÃO SOBRESCREVER o valor digitado pelo usuário!
                         string patchUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items/{itemId}/fields";
                         var content = new StringContent(JsonSerializer.Serialize(fieldsPayload), Encoding.UTF8, "application/json");
                         var request = new HttpRequestMessage(new HttpMethod("PATCH"), patchUrl) { Content = content };
@@ -341,7 +349,7 @@ namespace WinServiceFleetAgent.Core
                         var patchResp = await client.SendAsync(request);
                         if (patchResp.IsSuccessStatusCode)
                         {
-                            FileLogger.Log($"[SharePointClient] ✅ Registro atualizado no SharePoint (ID {itemId}): [{displayTitle}] {hostname}_{nomeServico} -> Versao_Desejada: {shortTarget}, Status: {statusAtualizacao}");
+                            FileLogger.Log($"[SharePointClient] ✅ Registro atualizado no SharePoint (ID {itemId}): [{displayTitle}] {hostname}_{nomeServico} -> Status: {statusAtualizacao}");
                         }
                         else
                         {
@@ -537,7 +545,9 @@ namespace WinServiceFleetAgent.Core
                                             VersaoInstalada = fields.TryGetProperty("Versao_Instalada", out var vi) ? vi.GetString() ?? "" : "",
                                             VersaoDesejada = fields.TryGetProperty("Versao_Desejada", out var vd) ? vd.GetString() ?? "" : "",
                                             AcaoSolicitada = acao,
-                                            StatusAtualizacao = fields.TryGetProperty("Status_Atualizacao", out var sa) ? sa.GetString() ?? "" : ""
+                                            StatusAtualizacao = fields.TryGetProperty("Status_Atualizacao", out var sa) ? sa.GetString() ?? "" : "",
+                                            AutoRestart = fields.TryGetProperty("AutoRestart", out var ar) ? ar.GetString() ?? "Sim" : "Sim",
+                                            HoraAgendada = fields.TryGetProperty("Hora_Agendada", out var ha) ? ha.GetString() ?? "" : ""
                                         });
                                     }
                                 }

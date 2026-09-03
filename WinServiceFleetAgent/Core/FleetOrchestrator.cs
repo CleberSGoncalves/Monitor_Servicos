@@ -48,9 +48,11 @@ namespace WinServiceFleetAgent.Core
             FileLogger.Log($"[FleetOrchestrator] Iniciando ciclo em {DateTime.Now} | Host: {_hostname}");
             FileLogger.Log($"==================================================");
 
-            // Passo 1: Leitura de Metadados Globais
+            // Passo 1: Leitura de Metadados Globais e Coleta de Métricas
             var metadata = MetadataReader.GetGlobalMachineMetadata(_configXmlPath, _configMonitorConfigPath);
             FileLogger.Log($"[FleetOrchestrator] Metadados extraídos: idHost='{metadata.IdHost}', Praça='{metadata.Praca}', CS={metadata.CS}, Url_Comunicacao='{metadata.UrlComunicacao}'");
+
+            var metrics = SystemPerformance.GetMetrics(metadata.UrlComunicacao);
 
             // Mapeamento do País (Título do SharePoint)
             string paisTitle = "Brasil";
@@ -59,7 +61,7 @@ namespace WinServiceFleetAgent.Core
                 paisTitle = "Brasil";
             }
 
-            // Passo 2: Inventário e sincronização dos serviços/aplicativos INSTALADOS
+            // Passo 2: Inventário, auto-recuperação (AutoRestart) e sincronização
             foreach (var srv in _services)
             {
                 string statusServico = WinController.GetServiceStatus(srv.ServiceName);
@@ -100,27 +102,43 @@ namespace WinServiceFleetAgent.Core
 
                 if (isStandaloneApp)
                 {
-                    // Aplicação Desktop (Atria Capture): SÓ exibe se o executável realmente existir no disco
                     if (!exeExists)
                     {
-                        FileLogger.Log($"[FleetOrchestrator] Aplicação '{srv.ServiceName}' NÃO está instalada nesta máquina (Executável não encontrado). Ignorando.");
+                        FileLogger.Log($"[FleetOrchestrator] Aplicação '{srv.ServiceName}' NÃO está instalada nesta máquina. Ignorando.");
                         continue;
                     }
                     statusServico = "Instalado";
                 }
                 else
                 {
-                    // Serviços do Windows (DNA.*): DEVEM estar registrados no gerenciador de serviços do Windows (services.msc)
                     if (!serviceExists)
                     {
-                        FileLogger.Log($"[FleetOrchestrator] Serviço do Windows '{srv.ServiceName}' NÃO está instalado no Windows Services (Não Encontrado). Ignorando.");
+                        FileLogger.Log($"[FleetOrchestrator] Serviço do Windows '{srv.ServiceName}' NÃO está instalado. Ignorando.");
                         continue;
+                    }
+
+                    // Lógica do AutoRestart: Se o serviço estiver Parado, tenta reiniciar automaticamente!
+                    if (statusServico.Equals("Parado", StringComparison.OrdinalIgnoreCase))
+                    {
+                        FileLogger.Log($"[FleetOrchestrator] ⚠️ Serviço '{srv.ServiceName}' detectado como PARADO. Verificando auto-recuperação (AutoRestart)...");
+                        try
+                        {
+                            bool restarted = WinController.StartService(srv.ServiceName);
+                            if (restarted)
+                            {
+                                statusServico = "Em Execução";
+                                FileLogger.Log($"[FleetOrchestrator] 🩹 AutoRestart ativado: Serviço '{srv.ServiceName}' reiniciado com sucesso!");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            FileLogger.LogError($"[FleetOrchestrator] Falha no AutoRestart para '{srv.ServiceName}'", ex);
+                        }
                     }
                 }
 
                 string installedVer = VersionInspector.GetExecutableVersion(exeFullPath);
 
-                // Consulta a última release publicada no GitHub para este repositório
                 string? githubLatestVer = null;
                 if (!string.IsNullOrWhiteSpace(srv.GithubRepo))
                 {
@@ -138,11 +156,12 @@ namespace WinServiceFleetAgent.Core
                     versaoInstalada: installedVer,
                     versaoDesejada: githubLatestVer,
                     statusServico: statusServico,
-                    urlComunicacao: metadata.UrlComunicacao
+                    urlComunicacao: metadata.UrlComunicacao,
+                    metrics: metrics
                 );
             }
 
-            // Passo 3: Verificação e Execução de Ações Pendentes de URL (Acao_Solicitada_Url = "Atualizar")
+            // Passo 3: Execução de Ações Pendentes de URL (Acao_Solicitada_Url = "Atualizar")
             var pendingUrlActions = await _spClient.GetPendingUrlActionsAsync(_hostname);
             if (pendingUrlActions != null && pendingUrlActions.Count > 0)
             {
@@ -151,7 +170,6 @@ namespace WinServiceFleetAgent.Core
                     FileLogger.Log($"[FleetOrchestrator] Executando Ação de URL em '{urlAction.NomeServico}' -> Nova URL Desejável: '{urlAction.UrlComunicacaoDesejavel}'...");
                     try
                     {
-                        // Atualiza o Status_Atualizacao para "Em Progresso" durante a alteração da URL!
                         await _spClient.UpdateUrlActionStatusAsync(_hostname, urlAction.NomeServico, "Em Progresso", urlAction.UrlComunicacaoDesejavel, isPending: true);
 
                         bool updated = ConfigUrlUpdater.UpdateWcfMainUrl(_configMonitorConfigPath, urlAction.UrlComunicacaoDesejavel);
@@ -174,7 +192,7 @@ namespace WinServiceFleetAgent.Core
                 }
             }
 
-            // Passo 4: Verificação e Execução de Ações Pendentes de Serviços (Acao_Solicitada = "Reiniciar" / "Atualizar" / "Forcar Atualizacao")
+            // Passo 4: Execução de Ações Pendentes de Serviços (Acao_Solicitada = "Reiniciar" / "Atualizar" / "Forcar Atualizacao")
             var pendingActions = await _spClient.GetPendingActionsAsync(_hostname);
             if (pendingActions == null || pendingActions.Count == 0)
             {
@@ -189,6 +207,23 @@ namespace WinServiceFleetAgent.Core
                 {
                     FileLogger.Log($"[FleetOrchestrator] Serviço '{action.NomeServico}' não encontrado nas configurações locais.");
                     continue;
+                }
+
+                // Lógica de Hora_Agendada
+                if (!string.IsNullOrWhiteSpace(action.HoraAgendada) && !action.HoraAgendada.Equals("Nenhuma", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (TimeSpan.TryParse(action.HoraAgendada, out var scheduledTime))
+                    {
+                        var nowTime = DateTime.Now.TimeOfDay;
+                        double diffMinutes = (nowTime - scheduledTime).TotalMinutes;
+
+                        // Se ainda não chegou no horário agendado (ex: agendado 03:00 e agora é 14:00)
+                        if (diffMinutes < -10 || diffMinutes > 15)
+                        {
+                            FileLogger.Log($"[FleetOrchestrator] Ação '{action.AcaoSolicitada}' em '{action.NomeServico}' está agendada para as {action.HoraAgendada}. Horário atual: {nowTime:hh\\:mm}. Aguardando janela.");
+                            continue;
+                        }
+                    }
                 }
 
                 FileLogger.Log($"[FleetOrchestrator] Executando Ação '{action.AcaoSolicitada}' para [{_hostname}_{action.NomeServico}]...");
@@ -233,7 +268,6 @@ namespace WinServiceFleetAgent.Core
             if (!File.Exists(exeFullPath)) exeFullPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, srvConfig.ExeName);
             string installedVer = VersionInspector.GetExecutableVersion(exeFullPath);
 
-            // Se NÃO for forçar atualização E a versão instalada já for maior ou igual à versão desejada:
             if (!forceUpdate && SharePointClient.IsInstalledUpToDate(installedVer, action.VersaoDesejada))
             {
                 FileLogger.Log($"[FleetOrchestrator] Serviço '{srvConfig.ServiceName}' já está na versão desejada ({installedVer}). Mudando Acao_Solicitada para 'Nenhuma' e Status para 'Atualizado'.");
