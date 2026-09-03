@@ -21,7 +21,6 @@ namespace WinServiceFleetAgent.Core
     public static class SystemPerformance
     {
         private static DateTime _lastCpuCheck = DateTime.MinValue;
-        private static TimeSpan _lastProcessorTime = TimeSpan.Zero;
         private static string _cachedCpuUsage = "5%";
 
         public static PerformanceMetrics GetMetrics(string wcfUrl)
@@ -64,7 +63,7 @@ namespace WinServiceFleetAgent.Core
                 metrics.DiscoDLivreGB = "N/A";
             }
 
-            // 2. CPU % aproximado
+            // 2. CPU %
             try
             {
                 var now = DateTime.UtcNow;
@@ -101,7 +100,7 @@ namespace WinServiceFleetAgent.Core
             // 4. Teste de Conectividade WCF
             metrics.StatusWcf = CheckWcfConnectivity(wcfUrl);
 
-            // 5. Trecho final de log (máximo 15 caracteres)
+            // 5. Trecho final de log real do agent.log (máximo 15 caracteres)
             metrics.UltimoLog = GetCompactLastLogSnippet();
 
             return metrics;
@@ -130,7 +129,6 @@ namespace WinServiceFleetAgent.Core
             }
             catch
             {
-                // Tentar conexão TCP rápida se HTTP puro falhar
                 try
                 {
                     if (Uri.TryCreate(wcfUrl, UriKind.Absolute, out var uri))
@@ -156,26 +154,39 @@ namespace WinServiceFleetAgent.Core
         {
             try
             {
-                string logFile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "agent.log");
-                if (!File.Exists(logFile)) return "[OK] Em exec";
-
-                var lastLine = File.ReadLines(logFile).LastOrDefault(l => !string.IsNullOrWhiteSpace(l));
-                if (string.IsNullOrWhiteSpace(lastLine)) return "[OK] Ciclo";
-
-                // Remover timestamp se houver (ex: [2026-09-02 23:45:00] [FleetOrchestrator] mensagem -> mensagem)
-                string cleanLine = Regex.Replace(lastLine, @"^\[[^\]]+\]\s*", "").Trim();
-                cleanLine = Regex.Replace(cleanLine, @"^\[[^\]]+\]\s*", "").Trim();
-
-                if (cleanLine.Length > 15)
+                string logFile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs", "agent.log");
+                if (!File.Exists(logFile))
                 {
-                    cleanLine = cleanLine.Substring(0, 15);
+                    logFile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "agent.log");
                 }
 
-                return cleanLine;
+                if (!File.Exists(logFile)) return "OK (Em Exec)";
+
+                var lines = File.ReadLines(logFile).Reverse().Take(30).ToList();
+                foreach (var line in lines)
+                {
+                    if (string.IsNullOrWhiteSpace(line)) continue;
+
+                    string clean = Regex.Replace(line, @"^\[\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\]\s*", "").Trim();
+                    clean = Regex.Replace(clean, @"^\[FleetOrchestrator\]\s*", "").Trim();
+                    clean = Regex.Replace(clean, @"^\[SharePointClient\]\s*", "").Trim();
+
+                    if (string.IsNullOrWhiteSpace(clean)) continue;
+                    if (clean.StartsWith("=======") || clean.StartsWith("Iniciando ciclo")) continue;
+
+                    if (clean.Length > 15)
+                    {
+                        clean = clean.Substring(0, 15);
+                    }
+
+                    return clean;
+                }
+
+                return "OK (Ativo)";
             }
             catch
             {
-                return "[OK] Ativo";
+                return "OK (Ativo)";
             }
         }
     }

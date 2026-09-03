@@ -283,6 +283,9 @@ namespace WinServiceFleetAgent.Core
                         statusAtualizacao = "Desatualizado";
                     }
 
+                    // Se AutoRestart não estiver preenchido, define "Sim" como padrão para remover aviso "Informações necessárias"
+                    string safeAutoRestart = string.IsNullOrWhiteSpace(existingAutoRestart) ? "Sim" : existingAutoRestart;
+
                     var fieldsPayload = new Dictionary<string, object>
                     {
                         { "Title", displayTitle },
@@ -296,7 +299,8 @@ namespace WinServiceFleetAgent.Core
                         { "Status_Atualizacao", statusAtualizacao },
                         { "Ultima_atualizacao", nowIso },
                         { "Url_Comunicacao", safeUrlComunicacao },
-                        { "Ultimo_Log", metrics.UltimoLog }
+                        { "Ultimo_Log", metrics.UltimoLog },
+                        { "AutoRestart", safeAutoRestart }
                     };
 
                     // Status_WCF fica na linha do DNA.ConfigMonitorSVC
@@ -329,7 +333,6 @@ namespace WinServiceFleetAgent.Core
                         fieldsPayload["Url_Comunicacao_Desejavel"] = isConfigMonitor ? (string.IsNullOrWhiteSpace(urlComunicacao) ? "https://mediadna.ibope.com/mediadnawcfcs/RemoteHostsService.svc" : urlComunicacao) : "Nenhuma";
                         fieldsPayload["Acao_Solicitada"] = "Nenhuma";
                         fieldsPayload["Acao_Solicitada_Url"] = "Nenhuma";
-                        fieldsPayload["AutoRestart"] = "Sim";
 
                         var itemPayload = new { fields = fieldsPayload };
                         string createUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items";
