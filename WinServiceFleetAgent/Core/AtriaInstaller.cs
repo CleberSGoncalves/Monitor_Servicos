@@ -152,7 +152,7 @@ if ($finalExe -and (Test-Path $finalExe)) {
                 using (var psProc = new Process { StartInfo = psPsi })
                 {
                     DateTime lastActivityTime = DateTime.Now;
-                    TimeSpan maxInactivity = TimeSpan.FromMinutes(5);
+                    TimeSpan maxInactivity = TimeSpan.FromMinutes(20);
                     var combinedOutput = new System.Text.StringBuilder();
 
                     psProc.OutputDataReceived += (s, e) =>
@@ -175,7 +175,7 @@ if ($finalExe -and (Test-Path $finalExe)) {
                         }
                     };
 
-                    FileLogger.Log("[AtriaInstaller] 🔄 Acompanhando progresso do instalador em tempo real (sem limite fixo de tempo; cancela apenas se ficar 5min em silêncio)...");
+                    FileLogger.Log("[AtriaInstaller] 🔄 Acompanhando progresso do instalador em tempo real (sem limite fixo de tempo; cancela apenas se ficar 20min em silêncio)...");
                     psProc.Start();
                     psProc.BeginOutputReadLine();
                     psProc.BeginErrorReadLine();
@@ -186,7 +186,7 @@ if ($finalExe -and (Test-Path $finalExe)) {
 
                         if (DateTime.Now - lastActivityTime > maxInactivity)
                         {
-                            FileLogger.LogError($"[AtriaInstaller] ⏱️ O instalador do Atria ficou 5 minutos em silêncio absoluto (sem progresso de log). Forçando encerramento do processo PID {psProc.Id}...");
+                            FileLogger.LogError($"[AtriaInstaller] ⏱️ O instalador do Atria ficou 20 minutos em silêncio absoluto (sem progresso de log). Forçando encerramento do processo PID {psProc.Id}...");
                             try { psProc.Kill(true); } catch { }
                             return false;
                         }
