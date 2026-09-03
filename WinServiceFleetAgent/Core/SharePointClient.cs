@@ -639,15 +639,25 @@ namespace WinServiceFleetAgent.Core
             }
         }
 
+        private static readonly Dictionary<string, DateTime> _lastLogAttachmentTimes = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
+
         public async Task UploadLogAttachmentAsync(string hostname, string nomeServico, string logContent, bool force = false)
         {
             if (string.IsNullOrWhiteSpace(logContent)) return;
-            if (!force && (DateTime.UtcNow - _lastLogAttachmentTime).TotalMinutes < 5) return;
+
+            string key = $"{hostname}_{nomeServico}";
+            lock (_lastLogAttachmentTimes)
+            {
+                if (!force && _lastLogAttachmentTimes.TryGetValue(key, out var lastTime))
+                {
+                    if ((DateTime.UtcNow - lastTime).TotalMinutes < 3) return;
+                }
+            }
 
             using (var client = new HttpClient())
             {
                 await EnsureGraphContextAsync(client);
-                if (string.IsNullOrEmpty(_accessToken) || string.IsNullOrEmpty(_listId)) return;
+                if (string.IsNullOrEmpty(_siteId) || string.IsNullOrEmpty(_listId)) return;
 
                 client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
 
@@ -661,6 +671,7 @@ namespace WinServiceFleetAgent.Core
                     using var doc = JsonDocument.Parse(json);
                     if (!doc.RootElement.TryGetProperty("value", out var valueArray)) return;
 
+                    string itemId = "";
                     foreach (var item in valueArray.EnumerateArray())
                     {
                         if (item.TryGetProperty("fields", out var fields))
@@ -670,50 +681,60 @@ namespace WinServiceFleetAgent.Core
 
                             if (itemHost.Equals(hostname, StringComparison.OrdinalIgnoreCase) && itemSrv.Equals(nomeServico, StringComparison.OrdinalIgnoreCase))
                             {
-                                string itemId = item.GetProperty("id").GetString() ?? "";
-
-                                string attachmentsUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items/{itemId}/attachments";
-                                var attResp = await client.GetAsync(attachmentsUrl);
-                                if (attResp.IsSuccessStatusCode)
-                                {
-                                    string attJson = await attResp.Content.ReadAsStringAsync();
-                                    using var attDoc = JsonDocument.Parse(attJson);
-                                    if (attDoc.RootElement.TryGetProperty("value", out var attArray))
-                                    {
-                                        foreach (var att in attArray.EnumerateArray())
-                                        {
-                                            string name = att.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "";
-                                            if (name.StartsWith("agent_log", StringComparison.OrdinalIgnoreCase) || name.StartsWith("log_", StringComparison.OrdinalIgnoreCase))
-                                            {
-                                                string attId = att.GetProperty("id").GetString() ?? "";
-                                                string delUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items/{itemId}/attachments/{attId}";
-                                                await client.DeleteAsync(delUrl);
-                                            }
-                                        }
-                                    }
-                                }
-
-                                string base64Log = Convert.ToBase64String(Encoding.UTF8.GetBytes(logContent));
-                                var attachBody = new Dictionary<string, string>
-                                {
-                                    { "name", "agent_log.txt" },
-                                    { "contentBytes", base64Log }
-                                };
-
-                                var content = new StringContent(JsonSerializer.Serialize(attachBody), Encoding.UTF8, "application/json");
-                                var postResp = await client.PostAsync(attachmentsUrl, content);
-                                if (postResp.IsSuccessStatusCode)
-                                {
-                                    _lastLogAttachmentTime = DateTime.UtcNow;
-                                    FileLogger.Log($"[SharePointClient] ✅ Log .txt (últimas 1000 linhas) anexado com sucesso para [{hostname}_{nomeServico}]");
-                                }
-                                else
-                                {
-                                    string errStr = await postResp.Content.ReadAsStringAsync();
-                                    FileLogger.Log($"[SharePointClient] Aviso ao anexar log ({postResp.StatusCode}): {errStr}");
-                                }
+                                itemId = item.GetProperty("id").GetString() ?? "";
                                 break;
                             }
+                        }
+                    }
+
+                    if (string.IsNullOrEmpty(itemId)) return;
+
+                    string tokenUrl = $"https://login.microsoftonline.com/{_tenantId}/oauth2/v2.0/token";
+                    var tokenReq = new Dictionary<string, string>
+                    {
+                        { "grant_type", "password" },
+                        { "client_id", _clientId },
+                        { "username", _username },
+                        { "password", _password },
+                        { "scope", $"https://{_siteHost}/.default" }
+                    };
+
+                    var tokenResp = await client.PostAsync(tokenUrl, new FormUrlEncodedContent(tokenReq));
+                    if (!tokenResp.IsSuccessStatusCode)
+                    {
+                        string errToken = await tokenResp.Content.ReadAsStringAsync();
+                        FileLogger.LogError($"Erro ao autenticar no SharePoint REST API para anexos: {errToken}");
+                        return;
+                    }
+
+                    string spTokenJson = await tokenResp.Content.ReadAsStringAsync();
+                    string spAccessToken = JsonDocument.Parse(spTokenJson).RootElement.GetProperty("access_token").GetString() ?? "";
+
+                    using (var spClient = new HttpClient())
+                    {
+                        spClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", spAccessToken);
+                        spClient.DefaultRequestHeaders.Add("Accept", "application/json;odata=verbose");
+
+                        string encodedListName = Uri.EscapeDataString(_listName);
+                        string uploadUrl = $"https://{_siteHost}{_sitePath}/_api/web/lists/getByTitle('{encodedListName}')/items({itemId})/AttachmentFiles/add(FileName='agent_log.txt')";
+
+                        byte[] fileBytes = Encoding.UTF8.GetBytes(logContent);
+                        var content = new ByteArrayContent(fileBytes);
+                        content.Headers.ContentType = new MediaTypeHeaderValue("text/plain");
+
+                        var uploadResp = await spClient.PostAsync(uploadUrl, content);
+                        if (uploadResp.IsSuccessStatusCode)
+                        {
+                            lock (_lastLogAttachmentTimes)
+                            {
+                                _lastLogAttachmentTimes[key] = DateTime.UtcNow;
+                            }
+                            FileLogger.Log($"[SharePointClient] ✅ Log .txt (1000 linhas) anexado com sucesso via SharePoint REST API para [{hostname}_{nomeServico}]!");
+                        }
+                        else
+                        {
+                            string errText = await uploadResp.Content.ReadAsStringAsync();
+                            FileLogger.Log($"[SharePointClient] Aviso ao anexar log via SharePoint REST API ({uploadResp.StatusCode}): {errText}");
                         }
                     }
                 }
