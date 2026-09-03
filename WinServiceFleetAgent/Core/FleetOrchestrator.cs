@@ -171,7 +171,7 @@ namespace WinServiceFleetAgent.Core
                 }
             }
 
-            // Passo 4: Verificação e Execução de Ações Pendentes de Serviços (Acao_Solicitada = "Reiniciar" / "Atualizar")
+            // Passo 4: Verificação e Execução de Ações Pendentes de Serviços (Acao_Solicitada = "Reiniciar" / "Atualizar" / "Forcar Atualizacao")
             var pendingActions = await _spClient.GetPendingActionsAsync(_hostname);
             if (pendingActions == null || pendingActions.Count == 0)
             {
@@ -206,9 +206,14 @@ namespace WinServiceFleetAgent.Core
                             await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Erro na Atualização");
                         }
                     }
-                    else if (action.AcaoSolicitada.Equals("Atualizar", StringComparison.OrdinalIgnoreCase))
+                    else if (action.AcaoSolicitada.Equals("Atualizar", StringComparison.OrdinalIgnoreCase) ||
+                             action.AcaoSolicitada.StartsWith("Forca", StringComparison.OrdinalIgnoreCase) ||
+                             action.AcaoSolicitada.StartsWith("Força", StringComparison.OrdinalIgnoreCase))
                     {
-                        await ProcessUpdateAsync(srvConfig, action);
+                        bool force = action.AcaoSolicitada.StartsWith("Forca", StringComparison.OrdinalIgnoreCase) ||
+                                     action.AcaoSolicitada.StartsWith("Força", StringComparison.OrdinalIgnoreCase);
+
+                        await ProcessUpdateAsync(srvConfig, action, forceUpdate: force);
                     }
                 }
                 catch (Exception ex)
@@ -219,15 +224,25 @@ namespace WinServiceFleetAgent.Core
             }
         }
 
-        private async Task ProcessUpdateAsync(ServiceDefinition srvConfig, PendingActionItem action)
+        private async Task ProcessUpdateAsync(ServiceDefinition srvConfig, PendingActionItem action, bool forceUpdate = false)
         {
-            await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Em Progresso");
-            FileLogger.Log($"[FleetOrchestrator] Iniciando atualização de '{srvConfig.ServiceName}' para versão '{action.VersaoDesejada}'...");
+            string exeFullPath = Path.Combine(srvConfig.InstallPath, srvConfig.ExeName);
+            if (!File.Exists(exeFullPath)) exeFullPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, srvConfig.ExeName);
+            string installedVer = VersionInspector.GetExecutableVersion(exeFullPath);
+
+            // Se NÃO for forçar atualização E a versão instalada já for maior ou igual à versão desejada:
+            if (!forceUpdate && SharePointClient.IsInstalledUpToDate(installedVer, action.VersaoDesejada))
+            {
+                FileLogger.Log($"[FleetOrchestrator] Serviço '{srvConfig.ServiceName}' já está na versão desejada ({installedVer}). Mudando Acao_Solicitada para 'Nenhuma' e Status para 'Atualizado'.");
+                await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Atualizado", acaoSolicitada: "Nenhuma", versaoInstalada: installedVer);
+                return;
+            }
 
             bool isSelfUpdate = srvConfig.ServiceName.Equals("DNA.MonitorServiceSVC", StringComparison.OrdinalIgnoreCase);
 
             if (isSelfUpdate)
             {
+                await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Em Progresso");
                 FileLogger.Log($"[FleetOrchestrator] Auto-atualização detectada para o próprio agente '{srvConfig.ServiceName}'. Disparando update_agent.bat...");
                 string batPath = Path.Combine(srvConfig.InstallPath, "update_agent.bat");
                 if (!File.Exists(batPath))
@@ -250,6 +265,9 @@ namespace WinServiceFleetAgent.Core
                     return;
                 }
             }
+
+            await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Em Progresso");
+            FileLogger.Log($"[FleetOrchestrator] Iniciando atualização de '{srvConfig.ServiceName}' para versão '{action.VersaoDesejada}' (Forçar={forceUpdate})...");
 
             string backupFolder = Path.Combine(_backupBaseDir, $"{srvConfig.ServiceName}_{DateTime.Now:yyyyMMdd_HHmmss}");
             string stagingFolder = Path.Combine(_tempStagingDir, $"{srvConfig.ServiceName}_staging");

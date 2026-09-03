@@ -251,23 +251,28 @@ namespace WinServiceFleetAgent.Core
 
                     string shortTarget = FormatShortVersion(targetVerRaw);
 
-                    // Se a versão instalada for MAIOR OU IGUAL à versão desejada (ex: instalada 1.0.1.6 >= desejada 1.0.1.4), atualiza a desejada para a instalada!
+                    // Se a versão instalada for MAIOR OU IGUAL à versão desejada (ex: instalada 1.0.2.1 >= desejada 1.0.2.1), atualiza a desejada para a instalada!
                     if (IsInstalledUpToDate(shortInstalled, shortTarget))
                     {
                         shortTarget = shortInstalled;
                     }
 
                     // Regra do Status_Atualizacao:
-                    // Se estiver executando uma atualização ("Em Progresso"), mantém.
-                    // Senão: Se Versao_Instalada >= Versao_Desejada -> "Atualizado". Caso contrário -> "Desatualizado".
+                    // Se a versão instalada for MAIOR OU IGUAL à versão desejada -> "Atualizado"
+                    // Senão se estiver em progresso -> "Em Progresso"
+                    // Senão -> "Desatualizado"
                     string statusAtualizacao = "Atualizado";
-                    if (existingStatusAtualizacao.Equals("Em Progresso", StringComparison.OrdinalIgnoreCase))
+                    if (IsInstalledUpToDate(shortInstalled, shortTarget))
+                    {
+                        statusAtualizacao = "Atualizado";
+                    }
+                    else if (existingStatusAtualizacao.Equals("Em Progresso", StringComparison.OrdinalIgnoreCase))
                     {
                         statusAtualizacao = "Em Progresso";
                     }
                     else
                     {
-                        statusAtualizacao = IsInstalledUpToDate(shortInstalled, shortTarget) ? "Atualizado" : "Desatualizado";
+                        statusAtualizacao = "Desatualizado";
                     }
 
                     var fieldsPayload = new Dictionary<string, object>
