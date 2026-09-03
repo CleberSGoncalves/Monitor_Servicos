@@ -422,7 +422,8 @@ namespace WinServiceFleetAgent.Core
             string hostname,
             string nomeServico,
             string statusAtualizacao,
-            string newUrl)
+            string newUrl,
+            bool isPending = false)
         {
             using (var client = new HttpClient())
             {
@@ -457,19 +458,23 @@ namespace WinServiceFleetAgent.Core
 
                                         var patchData = new Dictionary<string, object>
                                         {
-                                            { "Acao_Solicitada_Url", "Nenhuma" },
-                                            { "Url_Comunicacao", newUrl },
-                                            { "Url_Comunicacao_Desejavel", newUrl },
                                             { "Status_Atualizacao", statusAtualizacao },
                                             { "Ultima_atualizacao", DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ") }
                                         };
+
+                                        if (!isPending)
+                                        {
+                                            patchData["Acao_Solicitada_Url"] = "Nenhuma";
+                                            patchData["Url_Comunicacao"] = newUrl;
+                                            patchData["Url_Comunicacao_Desejavel"] = newUrl;
+                                        }
 
                                         string patchUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items/{itemId}/fields";
                                         var content = new StringContent(JsonSerializer.Serialize(patchData), Encoding.UTF8, "application/json");
                                         var request = new HttpRequestMessage(new HttpMethod("PATCH"), patchUrl) { Content = content };
 
                                         await client.SendAsync(request);
-                                        FileLogger.Log($"[SharePointClient] Status de URL atualizado no SharePoint [{hostname}_{nomeServico}]: {statusAtualizacao}");
+                                        FileLogger.Log($"[SharePointClient] Status de URL atualizado no SharePoint [{hostname}_{nomeServico}]: Status={statusAtualizacao}, Pending={isPending}");
                                         break;
                                     }
                                 }
