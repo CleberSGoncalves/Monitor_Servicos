@@ -291,13 +291,13 @@ namespace WinServiceFleetAgent.Core
             {
                 if (_isSelfUpdateTriggered)
                 {
-                    FileLogger.Log($"[FleetOrchestrator] Auto-atualização do agente já foi disparada. Aguardando...");
+                    FileLogger.Log($"[FleetOrchestrator] Auto-atualização já foi disparada. Aguardando...");
                     return;
                 }
 
                 _isSelfUpdateTriggered = true;
                 await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Em Progresso", versaoDesejada: targetVersion);
-                FileLogger.Log($"[FleetOrchestrator] 🚀 Iniciando download C# seguro da versão '{targetVersion}' do agente...");
+                FileLogger.Log($"[FleetOrchestrator] 🚀 Baixando versão '{targetVersion}' em C# com serviço em execução...");
 
                 string selfStagingFolder = Path.Combine(_tempStagingDir, "DNA.MonitorServiceSVC_selfupdate");
 
@@ -312,86 +312,85 @@ namespace WinServiceFleetAgent.Core
                     string newExePath = Path.Combine(selfStagingFolder, srvConfig.ExeName);
                     if (!File.Exists(newExePath))
                     {
-                        FileLogger.LogError($"[FleetOrchestrator] ❌ Exe não encontrado no staging: {newExePath}. Abortando sem parar serviço.");
+                        FileLogger.LogError($"[FleetOrchestrator] ❌ Exe não encontrado no staging após extração. Abortando sem parar serviço.");
                         await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Erro na Atualização");
                         _isSelfUpdateTriggered = false;
                         return;
                     }
 
-                    FileLogger.Log($"[FleetOrchestrator] ✅ Arquivos validados no staging. Gerando script de substituição...");
+                    FileLogger.Log($"[FleetOrchestrator] ✅ Download validado. Agendando substituição via Task Scheduler...");
 
-                    // 2. Gera script de substituição - usa caminhos sem espaços (temp) e copia apenas o exe+configs
+                    // 2. Detecta o diretório real de instalação
                     string installDir = srvConfig.InstallPath;
                     if (!Directory.Exists(installDir))
                         installDir = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\');
 
-                    string scriptPath = Path.Combine(Path.GetTempPath(), "apply_svc_update.bat");
+                    // 3. Gera script PowerShell (mais robusto que BAT) em %TEMP%
+                    string psScriptPath = Path.Combine(Path.GetTempPath(), "dna_apply_update.ps1");
 
-                    // Monta linhas de cópia individuais por arquivo (evita wildcard com espaços)
-                    var fileLines = new System.Text.StringBuilder();
-                    foreach (var f in Directory.GetFiles(selfStagingFolder, "*", SearchOption.TopDirectoryOnly))
-                    {
-                        // Não copia o próprio script
-                        if (Path.GetFileName(f).Equals("apply_self_update.bat", StringComparison.OrdinalIgnoreCase)) continue;
-                        fileLines.AppendLine($"copy /y \"{f}\" \"{installDir}\\{Path.GetFileName(f)}\" >nul 2>&1");
-                    }
+                    var ps = new System.Text.StringBuilder();
+                    ps.AppendLine("# DNA.MonitorServiceSVC - Apply Self Update");
+                    ps.AppendLine($"$svc = '{srvConfig.ServiceName}'");
+                    ps.AppendLine($"$staging = '{selfStagingFolder}'");
+                    ps.AppendLine($"$install = '{installDir}'");
+                    ps.AppendLine("Start-Sleep -Seconds 5");
+                    ps.AppendLine("try { Stop-Service $svc -Force -ErrorAction SilentlyContinue } catch {}");
+                    // Aguarda STOPPED com timeout de 30s
+                    ps.AppendLine("$t = [DateTime]::Now.AddSeconds(30)");
+                    ps.AppendLine("while ([DateTime]::Now -lt $t) {");
+                    ps.AppendLine("  $st = (Get-Service $svc -ErrorAction SilentlyContinue).Status");
+                    ps.AppendLine("  if ($st -eq 'Stopped') { break }");
+                    ps.AppendLine("  Start-Sleep -Seconds 1");
+                    ps.AppendLine("}");
+                    // Mata processo se ainda existir
+                    ps.AppendLine("Get-Process -Name 'WinServiceFleetAgent' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue");
+                    ps.AppendLine("Start-Sleep -Seconds 1");
+                    // Copia cada arquivo individualmente
+                    ps.AppendLine("Get-ChildItem -Path $staging -File | ForEach-Object {");
+                    ps.AppendLine("  $dest = Join-Path $install $_.Name");
+                    ps.AppendLine("  try { Copy-Item $_.FullName $dest -Force } catch {}");
+                    ps.AppendLine("}");
+                    // Inicia serviço com 3 tentativas
+                    ps.AppendLine("for ($i=1; $i -le 3; $i++) {");
+                    ps.AppendLine("  try { Start-Service $svc -ErrorAction Stop; break } catch { Start-Sleep -Seconds 3 }");
+                    ps.AppendLine("}");
+                    // Remove agendamento e script
+                    ps.AppendLine("schtasks /delete /tn 'DNA_SelfUpdate' /f >$null 2>&1");
+                    ps.AppendLine("Remove-Item $PSCommandPath -Force -ErrorAction SilentlyContinue");
 
-                    string batContent = $@"@echo off
-setlocal
-set SVC={srvConfig.ServiceName}
-set INSTALLDIR={installDir}
+                    await File.WriteAllTextAsync(psScriptPath, ps.ToString(), System.Text.Encoding.UTF8);
 
-echo [apply_svc_update] Aguardando liberacao do processo...
-timeout /t 3 /nobreak >nul
+                    // 4. Registra como tarefa agendada que roda IMEDIATAMENTE como SYSTEM
+                    //    O Task Scheduler roda FORA do Job Object do serviço — 100% isolado
+                    string taskName = "DNA_SelfUpdate";
+                    string schtasksDelete = $"/delete /tn \"{taskName}\" /f";
+                    string schtasksCreate = $"/create /tn \"{taskName}\" /tr \"powershell.exe -ExecutionPolicy Bypass -NonInteractive -WindowStyle Hidden -File \\\"{psScriptPath}\\\"\" /sc once /st 00:00 /ru SYSTEM /it /f /rl HIGHEST";
 
-echo [apply_svc_update] Parando servico %SVC%...
-sc stop %SVC% >nul 2>&1
-:WAIT_STOP
-sc query %SVC% | findstr /i ""STOPPED"" >nul 2>&1
-if errorlevel 1 (
-    timeout /t 2 /nobreak >nul
-    goto WAIT_STOP
-)
+                    // Remove tarefa anterior se existir
+                    Process.Start(new ProcessStartInfo("schtasks.exe", schtasksDelete) { UseShellExecute = false, CreateNoWindow = true })?.WaitForExit(3000);
 
-echo [apply_svc_update] Copiando arquivos...
-{fileLines}
+                    // Cria nova tarefa
+                    var createTask = Process.Start(new ProcessStartInfo("schtasks.exe", schtasksCreate) { UseShellExecute = false, CreateNoWindow = true });
+                    createTask?.WaitForExit(5000);
 
-echo [apply_svc_update] Iniciando servico %SVC%...
-sc start %SVC% >nul 2>&1
-timeout /t 3 /nobreak >nul
-sc start %SVC% >nul 2>&1
+                    // Dispara a tarefa imediatamente
+                    var runTask = Process.Start(new ProcessStartInfo("schtasks.exe", $"/run /tn \"{taskName}\"") { UseShellExecute = false, CreateNoWindow = true });
+                    runTask?.WaitForExit(3000);
 
-echo [apply_svc_update] Concluido.
-del ""%~f0"" >nul 2>&1
-endlocal
-";
-
-                    await File.WriteAllTextAsync(scriptPath, batContent, System.Text.Encoding.ASCII);
-
-                    // 3. Dispara o script como processo independente elevated
-                    var psi = new ProcessStartInfo
-                    {
-                        FileName = "cmd.exe",
-                        Arguments = $"/c \"{scriptPath}\"",
-                        UseShellExecute = true,
-                        CreateNoWindow = false,
-                        WorkingDirectory = Path.GetTempPath()
-                    };
-
-                    FileLogger.Log($"[FleetOrchestrator] Disparando script de substituição em '{scriptPath}'...");
-                    Process.Start(psi);
+                    FileLogger.Log($"[FleetOrchestrator] ✅ Tarefa '{taskName}' agendada e disparada via Task Scheduler (SYSTEM, isolado do serviço). Substituição ocorrerá em ~10s.");
                     return;
                 }
                 catch (Exception exSelf)
                 {
                     _isSelfUpdateTriggered = false;
-                    FileLogger.LogError($"[FleetOrchestrator] ❌ Erro no self-update C#", exSelf);
+                    FileLogger.LogError($"[FleetOrchestrator] ❌ Erro no self-update", exSelf);
                     await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Erro na Atualização");
                     return;
                 }
             }
 
             bool isAtriaUpdate = srvConfig.ServiceName.Equals("Atria Capture", StringComparison.OrdinalIgnoreCase) ||
+
                                  srvConfig.ServiceName.Equals("AtriaCapture", StringComparison.OrdinalIgnoreCase) ||
                                  action.NomeServico.Contains("Atria", StringComparison.OrdinalIgnoreCase);
 
