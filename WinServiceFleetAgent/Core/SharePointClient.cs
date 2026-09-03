@@ -267,12 +267,15 @@ namespace WinServiceFleetAgent.Core
                         shortTarget = shortInstalled;
                     }
 
-                    string statusAtualizacao = "Atualizado";
+                    // Detecta se a atualização está travada em Em Progresso
+                    bool isStuckInProgress = existingStatusAtualizacao.Equals("Em Progresso", StringComparison.OrdinalIgnoreCase);
+
+                    string statusAtualizacao;
                     if (isUpToDate)
                     {
                         statusAtualizacao = "Atualizado";
                     }
-                    else if (existingStatusAtualizacao.Equals("Em Progresso", StringComparison.OrdinalIgnoreCase))
+                    else if (isStuckInProgress)
                     {
                         statusAtualizacao = "Em Progresso";
                     }
@@ -283,6 +286,21 @@ namespace WinServiceFleetAgent.Core
 
                     // Se AutoRestart não estiver preenchido no SharePoint, usa "Não" como padrão solicitado
                     string safeAutoRestart = string.IsNullOrWhiteSpace(existingAutoRestart) ? "Não" : existingAutoRestart;
+
+                    // Auto-disparo de atualização: Se desatualizado e não há ação em andamento, seta Atualizar automaticamente
+                    string newAcaoSolicitada = existingAcaoSolicitada;
+                    if (!isUpToDate && !isStuckInProgress &&
+                        (string.IsNullOrWhiteSpace(existingAcaoSolicitada) ||
+                         existingAcaoSolicitada.Equals("Nenhuma", StringComparison.OrdinalIgnoreCase) ||
+                         existingAcaoSolicitada.Equals("Desatualizado", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        newAcaoSolicitada = "Atualizar";
+                        FileLogger.Log($"[SharePointClient] 🔄 Auto-disparo: versão instalada '{shortInstalled}' difere da desejada '{shortTarget}'. Definindo Acao_Solicitada=Atualizar automaticamente para [{hostname}_{nomeServico}].");
+                    }
+                    else if (isUpToDate)
+                    {
+                        newAcaoSolicitada = "Nenhuma";
+                    }
 
                     var fieldsPayload = new Dictionary<string, object>
                     {
@@ -297,7 +315,8 @@ namespace WinServiceFleetAgent.Core
                         { "Status_Atualizacao", statusAtualizacao },
                         { "Ultima_atualizacao", nowIso },
                         { "Url_Comunicacao", safeUrlComunicacao },
-                        { "AutoRestart", safeAutoRestart }
+                        { "AutoRestart", safeAutoRestart },
+                        { "Acao_Solicitada", newAcaoSolicitada }
                     };
 
                     if (isConfigMonitor)
@@ -313,11 +332,6 @@ namespace WinServiceFleetAgent.Core
                         fieldsPayload["Uptime_Dias"] = metrics.UptimeDias;
 
                         await UploadLogAttachmentAsync(hostname, nomeServico, FileLogger.GetLastLogLines(1000));
-                    }
-
-                    if (isUpToDate && !existingAcaoSolicitada.StartsWith("Forca", StringComparison.OrdinalIgnoreCase) && !existingAcaoSolicitada.StartsWith("Força", StringComparison.OrdinalIgnoreCase))
-                    {
-                        fieldsPayload["Acao_Solicitada"] = "Nenhuma";
                     }
 
                     if (isConfigMonitor && !string.IsNullOrWhiteSpace(existingUrlComunicacaoDesejavel) && string.Equals(safeUrlComunicacao, existingUrlComunicacaoDesejavel, StringComparison.OrdinalIgnoreCase))
