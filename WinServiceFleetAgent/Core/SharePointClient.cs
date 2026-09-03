@@ -245,9 +245,6 @@ namespace WinServiceFleetAgent.Core
                     // Regra: Somente o serviço DNA.ConfigMonitorSVC possui URL de comunicação preenchida. Para os demais, é "Nenhuma".
                     bool isConfigMonitor = nomeServico.Equals("DNA.ConfigMonitorSVC", StringComparison.OrdinalIgnoreCase);
                     string safeUrlComunicacao = isConfigMonitor ? (string.IsNullOrWhiteSpace(urlComunicacao) ? "Nenhuma" : urlComunicacao) : "Nenhuma";
-                    string safeUrlDesejavel = isConfigMonitor
-                        ? (!string.IsNullOrWhiteSpace(existingUrlComunicacaoDesejavel) ? existingUrlComunicacaoDesejavel : (string.IsNullOrWhiteSpace(urlComunicacao) ? "https://mediadna.ibope.com/mediadnawcfcs/RemoteHostsService.svc" : urlComunicacao))
-                        : "Nenhuma";
 
                     // Formatação curta das versões (4 dígitos)
                     string shortInstalled = FormatShortVersion(versaoInstalada);
@@ -297,8 +294,7 @@ namespace WinServiceFleetAgent.Core
                         { "Status_Servico", statusServico },
                         { "Status_Atualizacao", statusAtualizacao },
                         { "Ultima_atualizacao", nowIso },
-                        { "Url_Comunicacao", safeUrlComunicacao },
-                        { "Url_Comunicacao_Desejavel", safeUrlDesejavel }
+                        { "Url_Comunicacao", safeUrlComunicacao }
                     };
 
                     // Se a versão estiver atualizada E a ação não for "Forcar Atualizacao", zera Acao_Solicitada para "Nenhuma"
@@ -307,14 +303,16 @@ namespace WinServiceFleetAgent.Core
                         fieldsPayload["Acao_Solicitada"] = "Nenhuma";
                     }
 
-                    // Se a URL de comunicação atual já for igual à URL desejável, zera Acao_Solicitada_Url para "Nenhuma"
-                    if (isConfigMonitor && string.Equals(safeUrlComunicacao, safeUrlDesejavel, StringComparison.OrdinalIgnoreCase))
+                    // Se a URL de comunicação atual já for igual à URL desejável no SharePoint, zera Acao_Solicitada_Url para "Nenhuma"
+                    if (isConfigMonitor && !string.IsNullOrWhiteSpace(existingUrlComunicacaoDesejavel) && string.Equals(safeUrlComunicacao, existingUrlComunicacaoDesejavel, StringComparison.OrdinalIgnoreCase))
                     {
                         fieldsPayload["Acao_Solicitada_Url"] = "Nenhuma";
                     }
 
                     if (string.IsNullOrEmpty(itemId))
                     {
+                        // Para novos itens, preenche Url_Comunicacao_Desejavel com o valor atual ou "Nenhuma"
+                        fieldsPayload["Url_Comunicacao_Desejavel"] = isConfigMonitor ? (string.IsNullOrWhiteSpace(urlComunicacao) ? "https://mediadna.ibope.com/mediadnawcfcs/RemoteHostsService.svc" : urlComunicacao) : "Nenhuma";
                         fieldsPayload["Acao_Solicitada"] = "Nenhuma";
                         fieldsPayload["Acao_Solicitada_Url"] = "Nenhuma";
 
@@ -335,6 +333,7 @@ namespace WinServiceFleetAgent.Core
                     }
                     else
                     {
+                        // NOTA: Para itens existentes, NÃO enviamos Url_Comunicacao_Desejavel para NÃO SOBRESCREVER o valor digitado pelo usuário!
                         string patchUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items/{itemId}/fields";
                         var content = new StringContent(JsonSerializer.Serialize(fieldsPayload), Encoding.UTF8, "application/json");
                         var request = new HttpRequestMessage(new HttpMethod("PATCH"), patchUrl) { Content = content };
@@ -460,6 +459,7 @@ namespace WinServiceFleetAgent.Core
                                         {
                                             { "Acao_Solicitada_Url", "Nenhuma" },
                                             { "Url_Comunicacao", newUrl },
+                                            { "Url_Comunicacao_Desejavel", newUrl },
                                             { "Status_Atualizacao", statusAtualizacao },
                                             { "Ultima_atualizacao", DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ") }
                                         };
