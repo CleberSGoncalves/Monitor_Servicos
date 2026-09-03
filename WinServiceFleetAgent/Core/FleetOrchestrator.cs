@@ -58,17 +58,10 @@ namespace WinServiceFleetAgent.Core
                 paisTitle = "Brasil";
             }
 
-            // Passo 2: Inventário e sincronização APENAS dos serviços INSTALADOS no Windows Services
+            // Passo 2: Inventário e sincronização dos serviços/aplicativos INSTALADOS
             foreach (var srv in _services)
             {
                 string statusServico = WinController.GetServiceStatus(srv.ServiceName);
-
-                // SE O SERVIÇO DO WINDOWS NÃO ESTÁ INSTALADO NA MÁQUINA DA CIDADE, IGNORA COMPLETAMENTE
-                if (statusServico.Equals("Não Encontrado", StringComparison.OrdinalIgnoreCase))
-                {
-                    FileLogger.Log($"[FleetOrchestrator] Serviço '{srv.ServiceName}' NÃO está instalado nesta máquina da cidade. Ignorando sincronização com SharePoint.");
-                    continue;
-                }
 
                 string exeFullPath = Path.Combine(srv.InstallPath, srv.ExeName);
                 if (!File.Exists(exeFullPath))
@@ -98,6 +91,22 @@ namespace WinServiceFleetAgent.Core
                     {
                         exeFullPath = localExe;
                     }
+                }
+
+                bool exeExists = File.Exists(exeFullPath);
+                bool serviceExists = !statusServico.Equals("Não Encontrado", StringComparison.OrdinalIgnoreCase);
+
+                // SE O SERVIÇO DO WINDOWS NÃO EXISTE E O EXECUTÁVEL TAMBÉM NÃO EXISTE NA MÁQUINA DA CIDADE, IGNORA COMPLETAMENTE
+                if (!serviceExists && !exeExists)
+                {
+                    FileLogger.Log($"[FleetOrchestrator] Aplicação/Serviço '{srv.ServiceName}' NÃO está instalado nesta máquina da cidade. Ignorando.");
+                    continue;
+                }
+
+                // Se não é um serviço do Windows rodando mas o executável existe no disco (ex: Atria Capture)
+                if (!serviceExists && exeExists)
+                {
+                    statusServico = "Instalado";
                 }
 
                 string installedVer = VersionInspector.GetExecutableVersion(exeFullPath);
@@ -217,23 +226,34 @@ namespace WinServiceFleetAgent.Core
                     CopyDirectory(srvConfig.InstallPath, backupFolder);
                 }
 
-                FileLogger.Log($"[FleetOrchestrator] Parando serviço '{srvConfig.ServiceName}' para substituição de arquivos...");
-                WinController.StopService(srvConfig.ServiceName);
+                // Parar o serviço do Windows apenas se for um serviço do Windows registrado
+                if (WinController.GetServiceStatus(srvConfig.ServiceName) != "Não Encontrado")
+                {
+                    FileLogger.Log($"[FleetOrchestrator] Parando serviço '{srvConfig.ServiceName}' para substituição de arquivos...");
+                    WinController.StopService(srvConfig.ServiceName);
+                }
 
                 FileLogger.Log($"[FleetOrchestrator] Copiando novos binários para '{srvConfig.InstallPath}'...");
                 Directory.CreateDirectory(srvConfig.InstallPath);
                 CopyDirectory(stagingFolder, srvConfig.InstallPath);
 
-                string configPath = Path.Combine(srvConfig.InstallPath, srvConfig.ConfigFile);
-                string backupConfigPath = Path.Combine(backupFolder, srvConfig.ConfigFile);
-                if (File.Exists(backupConfigPath) && File.Exists(configPath))
+                if (!string.IsNullOrWhiteSpace(srvConfig.ConfigFile))
                 {
-                    FileLogger.Log($"[FleetOrchestrator] Mesclando arquivo de configuração '{srvConfig.ConfigFile}'...");
-                    ConfigMerger.MergeDotNetConfig(backupConfigPath, configPath, configPath);
+                    string configPath = Path.Combine(srvConfig.InstallPath, srvConfig.ConfigFile);
+                    string backupConfigPath = Path.Combine(backupFolder, srvConfig.ConfigFile);
+                    if (File.Exists(backupConfigPath) && File.Exists(configPath))
+                    {
+                        FileLogger.Log($"[FleetOrchestrator] Mesclando arquivo de configuração '{srvConfig.ConfigFile}'...");
+                        ConfigMerger.MergeDotNetConfig(backupConfigPath, configPath, configPath);
+                    }
                 }
 
-                FileLogger.Log($"[FleetOrchestrator] Reiniciando serviço '{srvConfig.ServiceName}'...");
-                WinController.StartService(srvConfig.ServiceName);
+                // Iniciar o serviço do Windows apenas se for um serviço do Windows registrado
+                if (WinController.GetServiceStatus(srvConfig.ServiceName) != "Não Encontrado")
+                {
+                    FileLogger.Log($"[FleetOrchestrator] Reiniciando serviço '{srvConfig.ServiceName}'...");
+                    WinController.StartService(srvConfig.ServiceName);
+                }
 
                 string newExePath = Path.Combine(srvConfig.InstallPath, srvConfig.ExeName);
                 string newVer = VersionInspector.GetExecutableVersion(newExePath);
@@ -251,9 +271,9 @@ namespace WinServiceFleetAgent.Core
                     if (Directory.Exists(backupFolder))
                     {
                         FileLogger.Log($"[FleetOrchestrator] Restaurando backup de '{backupFolder}' para '{srvConfig.InstallPath}'...");
-                        WinController.StopService(srvConfig.ServiceName);
+                        if (WinController.GetServiceStatus(srvConfig.ServiceName) != "Não Encontrado") WinController.StopService(srvConfig.ServiceName);
                         CopyDirectory(backupFolder, srvConfig.InstallPath);
-                        WinController.StartService(srvConfig.ServiceName);
+                        if (WinController.GetServiceStatus(srvConfig.ServiceName) != "Não Encontrado") WinController.StartService(srvConfig.ServiceName);
                         FileLogger.Log($"[FleetOrchestrator] Rollback concluído com sucesso.");
                         await _spClient.UpdateActionStatusAsync(title, "Rollback Efetuado com Sucesso");
                     }
