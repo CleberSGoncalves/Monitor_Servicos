@@ -113,9 +113,11 @@ namespace WinServiceFleetAgent.Core
             }
 
             string cleanTag = tagName.Trim();
+            string tagWithV = cleanTag.StartsWith("v", StringComparison.OrdinalIgnoreCase) ? cleanTag : $"v{cleanTag}";
+
             string url = cleanTag.Equals("latest", StringComparison.OrdinalIgnoreCase)
                 ? $"https://api.github.com/repos/{githubRepo}/releases/latest"
-                : $"https://api.github.com/repos/{githubRepo}/releases/tags/{cleanTag}";
+                : $"https://api.github.com/repos/{githubRepo}/releases/tags/{tagWithV}";
 
             FileLogger.Log($"[GitHubDownloader] Consultando release no GitHub: {url}");
             var (success, jsonString, is401) = await MakeGitHubApiRequestAsync(url, effectiveToken);
@@ -127,6 +129,32 @@ namespace WinServiceFleetAgent.Core
                 var anonRes = await MakeGitHubApiRequestAsync(url, "");
                 success = anonRes.Success;
                 jsonString = anonRes.JsonString;
+            }
+
+            // Fallback 1: se v{cleanTag} falhou, tenta {cleanTag} sem o v
+            if (!success && !cleanTag.Equals("latest", StringComparison.OrdinalIgnoreCase))
+            {
+                string fallbackUrl = $"https://api.github.com/repos/{githubRepo}/releases/tags/{cleanTag}";
+                FileLogger.Log($"[GitHubDownloader] ⚠️ Tentando URL de fallback de tag sem 'v': {fallbackUrl}");
+                var fbRes = await MakeGitHubApiRequestAsync(fallbackUrl, effectiveToken);
+                if (fbRes.Success)
+                {
+                    success = true;
+                    jsonString = fbRes.JsonString;
+                }
+            }
+
+            // Fallback 2: se a tag específica falhou, tenta a release mais recente (/releases/latest)
+            if (!success)
+            {
+                string latestUrl = $"https://api.github.com/repos/{githubRepo}/releases/latest";
+                FileLogger.Log($"[GitHubDownloader] ⚠️ Tentando URL de fallback para release mais recente: {latestUrl}");
+                var fbLatest = await MakeGitHubApiRequestAsync(latestUrl, effectiveToken);
+                if (fbLatest.Success)
+                {
+                    success = true;
+                    jsonString = fbLatest.JsonString;
+                }
             }
 
             if (!success || string.IsNullOrWhiteSpace(jsonString))
