@@ -24,8 +24,8 @@ set WORK_DIR=%TEMP%\agent_update_%RANDOM%
 mkdir "%WORK_DIR%" >nul 2>&1
 
 echo 1. Parando o servico %SERVICE_NAME%...
-sc stop %SERVICE_NAME% >nul 2>&1
-timeout /t 3 /nobreak >nul
+powershell -ExecutionPolicy Bypass -Command "Stop-Service -Name '%SERVICE_NAME%' -Force -ErrorAction SilentlyContinue; $limit = 15; while (((Get-Service '%SERVICE_NAME%' -ErrorAction SilentlyContinue).Status -ne 'Stopped') -and ($limit-- -gt 0)) { Start-Sleep -Seconds 1 }; Get-Process -Name 'WinServiceFleetAgent' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue"
+timeout /t 2 /nobreak >nul
 
 echo 2. Consultando e baixando ultima release no GitHub...
 powershell -ExecutionPolicy Bypass -Command "$resp = Invoke-RestMethod -Uri 'https://api.github.com/repos/%GITHUB_REPO%/releases/latest' -UserAgent 'WinServiceFleetAgent'; $asset = $resp.assets | Where-Object { $_.name -like '*.zip' } | Select-Object -First 1; if ($asset) { $targetZip = '%WORK_DIR%\agent_download.zip'; Write-Host 'Baixando asset:' $asset.name; Invoke-WebRequest -Uri $asset.browser_download_url -UserAgent 'WinServiceFleetAgent' -OutFile $targetZip } else { Write-Host 'Nenhum asset zip encontrado.' }"
@@ -35,11 +35,10 @@ if exist "%WORK_DIR%\agent_download.zip" (
     powershell -ExecutionPolicy Bypass -Command "Expand-Archive -Path '%WORK_DIR%\agent_download.zip' -DestinationPath '%WORK_DIR%\extracted' -Force"
 
     echo 4. Substituindo binarios do Agente...
-    copy /y "%WORK_DIR%\extracted\*.*" "%~dp0" >nul 2>&1
-    copy /y "%WORK_DIR%\extracted\*.*" "%~dp0\.." >nul 2>&1
+    powershell -ExecutionPolicy Bypass -Command "$src='%WORK_DIR%\extracted'; $dst='%~dp0'; for ($i=1; $i -le 10; $i++) { try { Copy-Item -Path \"$src\*\" -Destination \"$dst\" -Recurse -Force -ErrorAction Stop; Write-Host ' Binarios atualizados com sucesso!'; break } catch { Write-Host \" Aguardando liberacao dos arquivos ($i/10)... \"; Start-Sleep -Seconds 2 } }"
 
     echo 5. Reiniciando o servico %SERVICE_NAME%...
-    sc start %SERVICE_NAME%
+    powershell -ExecutionPolicy Bypass -Command "Start-Service -Name '%SERVICE_NAME%'"
 
     echo 6. Limpando temporarios...
     rmdir /s /q "%WORK_DIR%" >nul 2>&1
