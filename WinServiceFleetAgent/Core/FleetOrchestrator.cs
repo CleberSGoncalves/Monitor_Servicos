@@ -277,9 +277,9 @@ namespace WinServiceFleetAgent.Core
 
             string targetVersion = !string.IsNullOrWhiteSpace(githubLatest) ? githubLatest : (!string.IsNullOrWhiteSpace(action.VersaoDesejada) ? action.VersaoDesejada : "latest");
 
-            if (!forceUpdate && SharePointClient.IsInstalledUpToDate(installedVer, targetVersion))
+            if (SharePointClient.IsInstalledUpToDate(installedVer, targetVersion))
             {
-                FileLogger.Log($"[FleetOrchestrator] Serviço '{srvConfig.ServiceName}' já está na versão mais recente disponível no GitHub ({installedVer}). Mudando Acao_Solicitada para 'Nenhuma' e Status para 'Atualizado'.");
+                FileLogger.Log($"[FleetOrchestrator] Serviço '{srvConfig.ServiceName}' já está na versão mais recente/desejada ({installedVer}). Mudando Acao_Solicitada para 'Nenhuma' e Status para 'Atualizado'.");
                 await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Atualizado", acaoSolicitada: "Nenhuma", versaoInstalada: installedVer, versaoDesejada: targetVersion);
                 return;
             }
