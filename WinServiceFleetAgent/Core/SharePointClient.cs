@@ -312,11 +312,7 @@ namespace WinServiceFleetAgent.Core
                         fieldsPayload["Disco_D_Livre_GB"] = metrics.DiscoDLivreGB;
                         fieldsPayload["Uptime_Dias"] = metrics.UptimeDias;
 
-                        string logWebUrl = await UploadLogAttachmentAsync(hostname, nomeServico, FileLogger.GetLastLogLines(1000));
-                        if (!string.IsNullOrWhiteSpace(logWebUrl))
-                        {
-                            fieldsPayload["Url_Comunicacao"] = logWebUrl;
-                        }
+                        await UploadLogAttachmentAsync(hostname, nomeServico, FileLogger.GetLastLogLines(1000));
                     }
 
                     if (isUpToDate && !existingAcaoSolicitada.StartsWith("Forca", StringComparison.OrdinalIgnoreCase) && !existingAcaoSolicitada.StartsWith("Força", StringComparison.OrdinalIgnoreCase))
