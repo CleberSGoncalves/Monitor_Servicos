@@ -663,14 +663,32 @@ namespace WinServiceFleetAgent.Core
 
                 try
                 {
-                    // 1. Obter ID do item via Graph API
-                    string getItemsUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items?expand=fields&$top=500";
-                    var getResp = await client.GetAsync(getItemsUrl);
-                    if (!getResp.IsSuccessStatusCode)
+                    // 1. Upload do arquivo .txt com as últimas 1000 linhas para o SharePoint Drive (Documentos Compartilhados) via Graph API
+                    string fileName = $"{hostname}_{nomeServico}_agent_log.txt";
+                    string uploadUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/drive/root:/Logs_Agentes/{fileName}:/content";
+
+                    byte[] fileBytes = Encoding.UTF8.GetBytes(logContent);
+                    var content = new ByteArrayContent(fileBytes);
+                    content.Headers.ContentType = new MediaTypeHeaderValue("text/plain");
+
+                    var uploadResp = await client.PutAsync(uploadUrl, content);
+                    if (!uploadResp.IsSuccessStatusCode)
                     {
-                        FileLogger.LogError($"[SharePointClient] Falha ao buscar itens para anexo ({getResp.StatusCode})");
+                        string errText = await uploadResp.Content.ReadAsStringAsync();
+                        FileLogger.LogError($"[SharePointClient] Erro ao enviar log .txt para o SharePoint Drive ({uploadResp.StatusCode}): {errText}");
                         return;
                     }
+
+                    string uploadJson = await uploadResp.Content.ReadAsStringAsync();
+                    using var uDoc = JsonDocument.Parse(uploadJson);
+                    string webUrl = uDoc.RootElement.GetProperty("webUrl").GetString() ?? "";
+
+                    if (string.IsNullOrEmpty(webUrl)) return;
+
+                    // 2. Localizar o item correspondente na Lista do SharePoint
+                    string getItemsUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items?expand=fields&$top=500";
+                    var getResp = await client.GetAsync(getItemsUrl);
+                    if (!getResp.IsSuccessStatusCode) return;
 
                     string json = await getResp.Content.ReadAsStringAsync();
                     using var doc = JsonDocument.Parse(json);
@@ -692,87 +710,33 @@ namespace WinServiceFleetAgent.Core
                         }
                     }
 
-                    if (string.IsNullOrEmpty(itemId))
+                    if (!string.IsNullOrEmpty(itemId))
                     {
-                        FileLogger.Log($"[SharePointClient] Item ID não encontrado para anexo [{hostname}_{nomeServico}]");
-                        return;
-                    }
-
-                    // 2. Adquirir Token do SharePoint REST API usando o endpoint OAuth v1.0 com parâmetro 'resource'
-                    string tokenUrlV1 = $"https://login.microsoftonline.com/{_tenantId}/oauth2/token";
-                    var tokenReqV1 = new Dictionary<string, string>
-                    {
-                        { "grant_type", "password" },
-                        { "client_id", _clientId },
-                        { "username", _username },
-                        { "password", _password },
-                        { "resource", $"https://{_siteHost}" }
-                    };
-
-                    var tokenResp = await client.PostAsync(tokenUrlV1, new FormUrlEncodedContent(tokenReqV1));
-                    string spAccessToken = "";
-
-                    if (tokenResp.IsSuccessStatusCode)
-                    {
-                        string spTokenJson = await tokenResp.Content.ReadAsStringAsync();
-                        using var tDoc = JsonDocument.Parse(spTokenJson);
-                        spAccessToken = tDoc.RootElement.GetProperty("access_token").GetString() ?? "";
-                    }
-                    else
-                    {
-                        string tokenUrlV2 = $"https://login.microsoftonline.com/{_tenantId}/oauth2/v2.0/token";
-                        var tokenReqV2 = new Dictionary<string, string>
+                        // 3. Atualizar a coluna Url_Comunicacao com o link direto para o arquivo de log no SharePoint
+                        string patchUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items/{itemId}/fields";
+                        var patchPayload = new Dictionary<string, string>
                         {
-                            { "grant_type", "password" },
-                            { "client_id", _clientId },
-                            { "username", _username },
-                            { "password", _password },
-                            { "scope", $"https://{_siteHost}/.default" }
+                            { "Url_Comunicacao", webUrl }
                         };
-                        var tokenRespV2 = await client.PostAsync(tokenUrlV2, new FormUrlEncodedContent(tokenReqV2));
-                        if (tokenRespV2.IsSuccessStatusCode)
-                        {
-                            string spTokenJson = await tokenRespV2.Content.ReadAsStringAsync();
-                            using var tDoc = JsonDocument.Parse(spTokenJson);
-                            spAccessToken = tDoc.RootElement.GetProperty("access_token").GetString() ?? "";
-                        }
-                    }
 
-                    if (string.IsNullOrEmpty(spAccessToken))
-                    {
-                        FileLogger.LogError("[SharePointClient] Não foi possível adquirir token para a REST API do SharePoint.");
-                        return;
-                    }
+                        var patchContent = new StringContent(JsonSerializer.Serialize(patchPayload), Encoding.UTF8, "application/json");
+                        var patchResp = await client.PatchAsync(patchUrl, patchContent);
 
-                    // 3. Enviar anexo via SharePoint REST API oficial AttachmentFiles/add
-                    using (var spClient = new HttpClient())
-                    {
-                        spClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", spAccessToken);
-                        spClient.DefaultRequestHeaders.Add("Accept", "application/json;odata=verbose");
-
-                        string encodedListName = Uri.EscapeDataString(_listName);
-                        string uploadUrl = $"https://{_siteHost}{_sitePath}/_api/web/lists/getByTitle('{encodedListName}')/items({itemId})/AttachmentFiles/add(FileName='agent_log.txt')";
-
-                        byte[] fileBytes = Encoding.UTF8.GetBytes(logContent);
-                        var spContent = new ByteArrayContent(fileBytes);
-                        spContent.Headers.ContentType = new MediaTypeHeaderValue("text/plain");
-
-                        var uploadResp = await spClient.PostAsync(uploadUrl, spContent);
-                        if (uploadResp.IsSuccessStatusCode)
+                        if (patchResp.IsSuccessStatusCode)
                         {
                             lock (_lastLogAttachmentTimes) { _lastLogAttachmentTimes[key] = DateTime.UtcNow; }
-                            FileLogger.Log($"[SharePointClient] ✅ Log .txt (1000 linhas) anexado com sucesso via SharePoint REST API para [{hostname}_{nomeServico}]!");
+                            FileLogger.Log($"[SharePointClient] ✅ Arquivo de Log .txt (1000 linhas) gerado com sucesso no SharePoint e vinculado em Url_Comunicacao: {webUrl}");
                         }
                         else
                         {
-                            string errText = await uploadResp.Content.ReadAsStringAsync();
-                            FileLogger.LogError($"[SharePointClient] Erro ao anexar log via SharePoint REST API ({uploadResp.StatusCode}): {errText}");
+                            string patchErr = await patchResp.Content.ReadAsStringAsync();
+                            FileLogger.LogError($"[SharePointClient] Erro ao atualizar Url_Comunicacao ({patchResp.StatusCode}): {patchErr}");
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    FileLogger.LogError($"Erro ao anexar log no SharePoint para [{hostname}_{nomeServico}]", ex);
+                    FileLogger.LogError($"Erro ao processar log .txt no SharePoint para [{hostname}_{nomeServico}]", ex);
                 }
             }
         }
