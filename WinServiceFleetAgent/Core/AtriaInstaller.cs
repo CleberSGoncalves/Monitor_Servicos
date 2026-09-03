@@ -64,14 +64,25 @@ namespace WinServiceFleetAgent.Core
                 // 2. Download e execução do script de instalação do Atria
                 FileLogger.Log($"[AtriaInstaller] 2/2. Executando script de instalação do Atria ({AtriaPsScriptUrl})...");
                 string runnerScriptPath = Path.Combine(tempDir, "run_atria_installer.ps1");
-                string scriptContent = $@"
+                string scriptContent = @"
 $ErrorActionPreference = 'Continue'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 Get-Process -Name 'DigitalTVCapture', 'AtriaCapture', 'Atria' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+
+Write-Host '[AtriaInstaller] Removendo versoes anteriores do Atria Capture silenciosamente (/qn /norestart)...'
+$unKeys = 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
+Get-ItemProperty $unKeys -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like '*Atria*' -or $_.DisplayName -like '*DigitalTV*' } | ForEach-Object {
+    if ($_.UninstallString -match '\{[A-Fa-f0-9-]+\}') {
+        $g = $Matches[0]
+        Write-Host ""[AtriaInstaller] Desinstalando MSI GUID $g silenciosamente...""
+        Start-Process -FilePath 'msiexec.exe' -ArgumentList ""/x $g /qn /norestart"" -Wait
+    }
+}
+
 $downloadFile = Join-Path $env:TEMP 'atria_setup.ps1'
-Write-Host '[AtriaInstaller] 🌐 Baixando script de instalacao do Atria...'
-Invoke-WebRequest -Uri '{AtriaPsScriptUrl}' -OutFile $downloadFile -UseBasicParsing
-Write-Host '[AtriaInstaller] 🚀 Executando script de instalacao silencioso (/nobackup /lav /ffdshow /nostreamlink /noytdlp)...'
+Write-Host '[AtriaInstaller] Baixando script de instalacao do Atria...'
+Invoke-WebRequest -Uri '" + AtriaPsScriptUrl + @"' -OutFile $downloadFile -UseBasicParsing
+Write-Host '[AtriaInstaller] Executando script de instalacao silencioso (/nobackup /lav /ffdshow /nostreamlink /noytdlp)...'
 & $downloadFile /nobackup /lav /ffdshow /nostreamlink /noytdlp
 ";
 
