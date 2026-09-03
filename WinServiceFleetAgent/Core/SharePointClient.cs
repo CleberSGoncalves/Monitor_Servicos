@@ -206,6 +206,7 @@ namespace WinServiceFleetAgent.Core
                     string itemId = string.Empty;
                     string existingVersaoDesejada = string.Empty;
                     string existingStatusAtualizacao = string.Empty;
+                    string existingAcaoSolicitada = string.Empty;
 
                     if (getResp.IsSuccessStatusCode)
                     {
@@ -225,6 +226,7 @@ namespace WinServiceFleetAgent.Core
                                         itemId = item.GetProperty("id").GetString() ?? "";
                                         existingVersaoDesejada = fields.TryGetProperty("Versao_Desejada", out var vd) ? vd.GetString() ?? "" : "";
                                         existingStatusAtualizacao = fields.TryGetProperty("Status_Atualizacao", out var sa) ? sa.GetString() ?? "" : "";
+                                        existingAcaoSolicitada = fields.TryGetProperty("Acao_Solicitada", out var ac) ? ac.GetString() ?? "" : "";
                                         break;
                                     }
                                 }
@@ -251,8 +253,10 @@ namespace WinServiceFleetAgent.Core
 
                     string shortTarget = FormatShortVersion(targetVerRaw);
 
-                    // Se a versão instalada for MAIOR OU IGUAL à versão desejada (ex: instalada 1.0.2.1 >= desejada 1.0.2.1), atualiza a desejada para a instalada!
-                    if (IsInstalledUpToDate(shortInstalled, shortTarget))
+                    bool isUpToDate = IsInstalledUpToDate(shortInstalled, shortTarget);
+
+                    // Se a versão instalada for MAIOR OU IGUAL à versão desejada -> atualiza a desejada para a instalada!
+                    if (isUpToDate)
                     {
                         shortTarget = shortInstalled;
                     }
@@ -262,7 +266,7 @@ namespace WinServiceFleetAgent.Core
                     // Senão se estiver em progresso -> "Em Progresso"
                     // Senão -> "Desatualizado"
                     string statusAtualizacao = "Atualizado";
-                    if (IsInstalledUpToDate(shortInstalled, shortTarget))
+                    if (isUpToDate)
                     {
                         statusAtualizacao = "Atualizado";
                     }
@@ -290,6 +294,12 @@ namespace WinServiceFleetAgent.Core
                         { "Url_Comunicacao", safeUrlComunicacao },
                         { "Url_Comunicacao_Desejavel", safeUrlDesejavel }
                     };
+
+                    // Se a versão estiver atualizada E a ação não for "Forcar Atualizacao", zera Acao_Solicitada para "Nenhuma"
+                    if (isUpToDate && !existingAcaoSolicitada.StartsWith("Forca", StringComparison.OrdinalIgnoreCase) && !existingAcaoSolicitada.StartsWith("Força", StringComparison.OrdinalIgnoreCase))
+                    {
+                        fieldsPayload["Acao_Solicitada"] = "Nenhuma";
+                    }
 
                     if (string.IsNullOrEmpty(itemId))
                     {
