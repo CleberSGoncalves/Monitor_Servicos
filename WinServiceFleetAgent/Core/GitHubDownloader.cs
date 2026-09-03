@@ -10,6 +10,45 @@ namespace WinServiceFleetAgent.Core
 {
     public static class GitHubDownloader
     {
+        public static async Task<string?> GetLatestReleaseVersionAsync(string githubRepo, string token)
+        {
+            if (string.IsNullOrWhiteSpace(githubRepo)) return null;
+
+            try
+            {
+                using (var client = new HttpClient())
+                {
+                    client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("WinServiceFleetAgent", "1.0"));
+                    if (!string.IsNullOrWhiteSpace(token))
+                    {
+                        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                    }
+                    client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github.v3+json"));
+
+                    string url = $"https://api.github.com/repos/{githubRepo}/releases/latest";
+                    var response = await client.GetAsync(url);
+                    if (response.IsSuccessStatusCode)
+                    {
+                        string jsonString = await response.Content.ReadAsStringAsync();
+                        using (var doc = JsonDocument.Parse(jsonString))
+                        {
+                            if (doc.RootElement.TryGetProperty("tag_name", out var tagProp))
+                            {
+                                string tag = tagProp.GetString() ?? "";
+                                return tag.TrimStart('v', 'V');
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                FileLogger.LogError($"[GitHubDownloader] Erro ao consultar última versão do GitHub para '{githubRepo}'", ex);
+            }
+
+            return null;
+        }
+
         public static async Task<string> DownloadAndExtractReleaseAsync(
             string githubRepo,
             string tagName,
@@ -73,7 +112,6 @@ namespace WinServiceFleetAgent.Core
 
                     Console.WriteLine($"[GitHubDownloader] Baixando asset '{assetName}'...");
 
-                    // Requisição do binário
                     using (var downloadReq = new HttpRequestMessage(HttpMethod.Get, assetUrl))
                     {
                         downloadReq.Headers.Accept.Clear();

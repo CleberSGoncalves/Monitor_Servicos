@@ -164,6 +164,7 @@ namespace WinServiceFleetAgent.Core
             int cs,
             string nomeServico,
             string versaoInstalada,
+            string? versaoDesejada,
             string statusServico,
             string urlComunicacao)
         {
@@ -224,9 +225,15 @@ namespace WinServiceFleetAgent.Core
                     string safeUrlComunicacao = isConfigMonitor ? (string.IsNullOrWhiteSpace(urlComunicacao) ? "Nenhuma" : urlComunicacao) : "Nenhuma";
                     string safeUrlDesejavel = isConfigMonitor ? "https://mediadna.ibope.com/mediadnawcfcs/RemoteHostsService.svc" : "Nenhuma";
 
-                    // Formatação curta da versão (somente os 4 primeiros dígitos numéricos, ex: 3.1.60)
+                    // Formatação curta das versões (4 dígitos)
                     string shortInstalled = FormatShortVersion(versaoInstalada);
-                    string shortTarget = string.IsNullOrWhiteSpace(existingVersaoDesejada) ? shortInstalled : FormatShortVersion(existingVersaoDesejada);
+
+                    // Determinação da Versão Desejada (preferência pela versão mais recente do GitHub)
+                    string targetVerRaw = !string.IsNullOrWhiteSpace(versaoDesejada)
+                        ? versaoDesejada
+                        : (!string.IsNullOrWhiteSpace(existingVersaoDesejada) ? existingVersaoDesejada : versaoInstalada);
+
+                    string shortTarget = FormatShortVersion(targetVerRaw);
 
                     // Regra do Status_Atualizacao:
                     // Se estiver executando uma atualização ("Em Progresso"), mantém.
@@ -249,6 +256,7 @@ namespace WinServiceFleetAgent.Core
                         { "CS", safeCS },
                         { "Nome_Servico", nomeServico },
                         { "Versao_Instalada", shortInstalled },
+                        { "Versao_Desejada", shortTarget },
                         { "Status_Servico", statusServico },
                         { "Status_Atualizacao", statusAtualizacao },
                         { "Ultima_atualizacao", nowIso },
@@ -258,7 +266,6 @@ namespace WinServiceFleetAgent.Core
 
                     if (string.IsNullOrEmpty(itemId))
                     {
-                        fieldsPayload["Versao_Desejada"] = shortInstalled;
                         fieldsPayload["Acao_Solicitada"] = "Nenhuma";
                         fieldsPayload["Acao_Solicitada_Url"] = "Nenhuma";
 
@@ -286,7 +293,7 @@ namespace WinServiceFleetAgent.Core
                         var patchResp = await client.SendAsync(request);
                         if (patchResp.IsSuccessStatusCode)
                         {
-                            FileLogger.Log($"[SharePointClient] ✅ Registro atualizado no SharePoint (ID {itemId}): [{displayTitle}] {hostname}_{nomeServico} -> Status: {statusAtualizacao}");
+                            FileLogger.Log($"[SharePointClient] ✅ Registro atualizado no SharePoint (ID {itemId}): [{displayTitle}] {hostname}_{nomeServico} -> Versao_Desejada: {shortTarget}, Status: {statusAtualizacao}");
                         }
                         else
                         {

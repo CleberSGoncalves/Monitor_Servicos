@@ -119,7 +119,14 @@ namespace WinServiceFleetAgent.Core
 
                 string installedVer = VersionInspector.GetExecutableVersion(exeFullPath);
 
-                FileLogger.Log($"[FleetOrchestrator] Processando '{_hostname}_{srv.ServiceName}' -> País: '{paisTitle}', Status: '{statusServico}', Versão: '{installedVer}'");
+                // Consulta a última release publicada no GitHub para este repositório
+                string? githubLatestVer = null;
+                if (!string.IsNullOrWhiteSpace(srv.GithubRepo))
+                {
+                    githubLatestVer = await GitHubDownloader.GetLatestReleaseVersionAsync(srv.GithubRepo, _githubToken);
+                }
+
+                FileLogger.Log($"[FleetOrchestrator] Processando '{_hostname}_{srv.ServiceName}' -> País: '{paisTitle}', Status: '{statusServico}', Instalada: '{installedVer}', GitHub Desejada: '{githubLatestVer}'");
 
                 await _spClient.SyncServiceInventoryAsync(
                     title: paisTitle,
@@ -128,6 +135,7 @@ namespace WinServiceFleetAgent.Core
                     cs: metadata.CS,
                     nomeServico: srv.ServiceName,
                     versaoInstalada: installedVer,
+                    versaoDesejada: githubLatestVer,
                     statusServico: statusServico,
                     urlComunicacao: metadata.UrlComunicacao
                 );
@@ -145,7 +153,6 @@ namespace WinServiceFleetAgent.Core
                         bool updated = ConfigUrlUpdater.UpdateWcfMainUrl(_configMonitorConfigPath, urlAction.UrlComunicacaoDesejavel);
                         if (updated)
                         {
-                            // Reiniciar DNA.ConfigMonitorSVC se estiver em execução para aplicar a nova URL
                             WinController.RestartService("DNA.ConfigMonitorSVC");
                             await _spClient.UpdateUrlActionStatusAsync(_hostname, urlAction.NomeServico, "Atualizado", urlAction.UrlComunicacaoDesejavel);
                             FileLogger.Log($"[FleetOrchestrator] ✅ Ação de URL concluída com sucesso para '{urlAction.NomeServico}'!");
