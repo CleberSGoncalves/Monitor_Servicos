@@ -19,7 +19,9 @@ namespace WinServiceFleetAgent.Core
                 using (var client = new HttpClient())
                 {
                     client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("WinServiceFleetAgent", "1.0"));
-                    if (!string.IsNullOrWhiteSpace(token))
+                    if (!string.IsNullOrWhiteSpace(token) &&
+                        !token.Equals("GITHUB_PAT_TOKEN", StringComparison.OrdinalIgnoreCase) &&
+                        !token.Contains("COLE_AQUI"))
                     {
                         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
                     }
@@ -63,7 +65,9 @@ namespace WinServiceFleetAgent.Core
             using (var client = new HttpClient())
             {
                 client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("WinServiceFleetAgent", "1.0"));
-                if (!string.IsNullOrWhiteSpace(token))
+                if (!string.IsNullOrWhiteSpace(token) &&
+                    !token.Equals("GITHUB_PAT_TOKEN", StringComparison.OrdinalIgnoreCase) &&
+                    !token.Contains("COLE_AQUI"))
                 {
                     client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
                 }
