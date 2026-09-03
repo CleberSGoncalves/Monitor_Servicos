@@ -17,6 +17,7 @@ namespace WinServiceFleetAgent.Core
         private readonly List<ServiceDefinition> _services;
         private readonly SharePointClient _spClient;
         private readonly string _hostname;
+        private static bool _isSelfUpdateTriggered = false;
 
         public FleetOrchestrator(
             string? hostnameOverride,
@@ -288,6 +289,13 @@ namespace WinServiceFleetAgent.Core
 
             if (isSelfUpdate)
             {
+                if (_isSelfUpdateTriggered)
+                {
+                    FileLogger.Log($"[FleetOrchestrator] Auto-atualização do agente já foi disparada. Aguardando execução do script...");
+                    return;
+                }
+
+                _isSelfUpdateTriggered = true;
                 await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Em Progresso", versaoDesejada: targetVersion);
                 FileLogger.Log($"[FleetOrchestrator] Auto-atualização detectada para o próprio agente '{srvConfig.ServiceName}'. Disparando update_agent.bat...");
                 string batPath = Path.Combine(srvConfig.InstallPath, "update_agent.bat");
