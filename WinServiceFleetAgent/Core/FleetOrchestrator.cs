@@ -320,6 +320,38 @@ namespace WinServiceFleetAgent.Core
                 }
             }
 
+            bool isAtriaUpdate = srvConfig.ServiceName.Equals("Atria Capture", StringComparison.OrdinalIgnoreCase) ||
+                                 srvConfig.ServiceName.Equals("AtriaCapture", StringComparison.OrdinalIgnoreCase) ||
+                                 action.NomeServico.Contains("Atria", StringComparison.OrdinalIgnoreCase);
+
+            if (isAtriaUpdate)
+            {
+                await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Em Progresso", versaoDesejada: targetVersion);
+                FileLogger.Log($"[FleetOrchestrator] 🚀 Disparando fluxo customizado de atualização do Atria Capture (vc_redist.x64.exe + installer script)...");
+
+                bool ok = await AtriaInstaller.InstallOrUpdateAtriaAsync();
+
+                string atriaExePath = Path.Combine(srvConfig.InstallPath, srvConfig.ExeName);
+                if (!File.Exists(atriaExePath)) atriaExePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, srvConfig.ExeName);
+                string newInstalledVer = VersionInspector.GetExecutableVersion(atriaExePath);
+                if (string.IsNullOrWhiteSpace(newInstalledVer) || newInstalledVer.Contains("Não Encontrado", StringComparison.OrdinalIgnoreCase) || newInstalledVer == "0.0.0.0")
+                {
+                    newInstalledVer = !string.IsNullOrWhiteSpace(targetVersion) && targetVersion != "latest" ? targetVersion : "2.0.2.2";
+                }
+
+                if (ok)
+                {
+                    FileLogger.Log($"[FleetOrchestrator] ✅ Atria Capture instalado/atualizado com sucesso! Versão detectada: {newInstalledVer}");
+                    await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Atualizado", acaoSolicitada: "Nenhuma", versaoInstalada: newInstalledVer, versaoDesejada: targetVersion);
+                }
+                else
+                {
+                    FileLogger.LogError($"[FleetOrchestrator] ❌ Falha na instalação do Atria Capture.");
+                    await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Erro na Atualização");
+                }
+                return;
+            }
+
             await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Em Progresso", versaoDesejada: targetVersion);
             FileLogger.Log($"[FleetOrchestrator] Iniciando atualização de '{srvConfig.ServiceName}' para versão '{targetVersion}' (Forçar={forceUpdate})...");
 
