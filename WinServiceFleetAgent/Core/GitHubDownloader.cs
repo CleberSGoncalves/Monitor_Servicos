@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.IO;
 using System.IO.Compression;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -40,7 +41,7 @@ namespace WinServiceFleetAgent.Core
         {
             if (string.IsNullOrWhiteSpace(githubRepo)) return null;
 
-            // Cache de 10 minutos por repositório para evitar estouro da Cota de API do GitHub
+            // Cache de 1 minuto por repositório para evitar estouro da Cota de API do GitHub
             if (_releaseCache.TryGetValue(githubRepo, out var cached) && DateTime.UtcNow < cached.Expiry)
             {
                 return cached.Version;
@@ -56,36 +57,28 @@ namespace WinServiceFleetAgent.Core
 
             try
             {
-                using (var client = new HttpClient())
-                {
-                    client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("WinServiceFleetAgent", "1.0"));
-                    if (!string.IsNullOrWhiteSpace(effectiveToken))
-                    {
-                        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", effectiveToken);
-                    }
-                    client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github.v3+json"));
+                var (success, jsonString, is401) = await MakeGitHubApiRequestAsync($"https://api.github.com/repos/{githubRepo}/releases/latest", effectiveToken);
 
-                    string url = $"https://api.github.com/repos/{githubRepo}/releases/latest";
-                    var response = await client.GetAsync(url);
-                    if (response.IsSuccessStatusCode)
+                if (!success && is401 && !string.IsNullOrWhiteSpace(effectiveToken))
+                {
+                    FileLogger.Log($"[GitHubDownloader] ⚠️ Token do GitHub retornou 401 Unauthorized (bad credentials). Tentando requisição anônima de fallback...");
+                    var anonRes = await MakeGitHubApiRequestAsync($"https://api.github.com/repos/{githubRepo}/releases/latest", "");
+                    success = anonRes.Success;
+                    jsonString = anonRes.JsonString;
+                }
+
+                if (success && !string.IsNullOrWhiteSpace(jsonString))
+                {
+                    using (var doc = JsonDocument.Parse(jsonString))
                     {
-                        string jsonString = await response.Content.ReadAsStringAsync();
-                        using (var doc = JsonDocument.Parse(jsonString))
+                        if (doc.RootElement.TryGetProperty("tag_name", out var tagProp))
                         {
-                            if (doc.RootElement.TryGetProperty("tag_name", out var tagProp))
-                            {
-                                string tag = tagProp.GetString() ?? "";
-                                string cleanTag = tag.TrimStart('v', 'V');
-                                FileLogger.Log($"[GitHubDownloader] ✅ Release mais recente no GitHub para '{githubRepo}': '{cleanTag}'");
-                                _releaseCache[githubRepo] = (cleanTag, DateTime.UtcNow.AddMinutes(1));
-                                return cleanTag;
-                            }
+                            string tag = tagProp.GetString() ?? "";
+                            string cleanTag = tag.TrimStart('v', 'V');
+                            FileLogger.Log($"[GitHubDownloader] ✅ Release mais recente no GitHub para '{githubRepo}': '{cleanTag}'");
+                            _releaseCache[githubRepo] = (cleanTag, DateTime.UtcNow.AddMinutes(1));
+                            return cleanTag;
                         }
-                    }
-                    else
-                    {
-                        string errStr = await response.Content.ReadAsStringAsync();
-                        FileLogger.LogError($"[GitHubDownloader] ❌ Falha HTTP {(int)response.StatusCode} ao consultar release de '{githubRepo}': {errStr}");
                     }
                 }
             }
@@ -103,7 +96,6 @@ namespace WinServiceFleetAgent.Core
             string token,
             string targetDir)
         {
-            // Limpa o cache ao forçar download para garantir busca fresca
             ClearCache(githubRepo);
 
             if (!Directory.Exists(targetDir))
@@ -119,88 +111,141 @@ namespace WinServiceFleetAgent.Core
                 effectiveToken = GetEmbeddedFallbackToken();
             }
 
-            using (var client = new HttpClient())
+            string cleanTag = tagName.Trim();
+            string url = cleanTag.Equals("latest", StringComparison.OrdinalIgnoreCase)
+                ? $"https://api.github.com/repos/{githubRepo}/releases/latest"
+                : $"https://api.github.com/repos/{githubRepo}/releases/tags/{cleanTag}";
+
+            FileLogger.Log($"[GitHubDownloader] Consultando release no GitHub: {url}");
+            var (success, jsonString, is401) = await MakeGitHubApiRequestAsync(url, effectiveToken);
+
+            if (!success && is401 && !string.IsNullOrWhiteSpace(effectiveToken))
             {
-                client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("WinServiceFleetAgent", "1.0"));
-                if (!string.IsNullOrWhiteSpace(effectiveToken))
+                FileLogger.Log($"[GitHubDownloader] ⚠️ Token do GitHub retornou 401. Tentando fallback anônimo...");
+                effectiveToken = "";
+                var anonRes = await MakeGitHubApiRequestAsync(url, "");
+                success = anonRes.Success;
+                jsonString = anonRes.JsonString;
+            }
+
+            if (!success || string.IsNullOrWhiteSpace(jsonString))
+            {
+                throw new Exception($"Falha ao consultar release '{cleanTag}' em '{githubRepo}'.");
+            }
+
+            using (var doc = JsonDocument.Parse(jsonString))
+            {
+                var root = doc.RootElement;
+                if (!root.TryGetProperty("assets", out var assets) || assets.GetArrayLength() == 0)
                 {
-                    client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", effectiveToken);
+                    throw new Exception($"Nenhum asset encontrado na release '{cleanTag}'.");
                 }
-                client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github.v3+json"));
 
-                string cleanTag = tagName.Trim();
-                string url = cleanTag.Equals("latest", StringComparison.OrdinalIgnoreCase)
-                    ? $"https://api.github.com/repos/{githubRepo}/releases/latest"
-                    : $"https://api.github.com/repos/{githubRepo}/releases/tags/{cleanTag}";
+                string assetUrl = string.Empty;
+                string assetName = string.Empty;
 
-                FileLogger.Log($"[GitHubDownloader] Consultando release no GitHub: {url}");
-                var response = await client.GetAsync(url);
-                if (!response.IsSuccessStatusCode)
+                foreach (var asset in assets.EnumerateArray())
                 {
-                    string errContent = await response.Content.ReadAsStringAsync();
-                    throw new Exception($"Falha ao consultar release '{cleanTag}' em '{githubRepo}' (HTTP {(int)response.StatusCode}): {errContent}");
-                }
-
-                string jsonString = await response.Content.ReadAsStringAsync();
-                using (var doc = JsonDocument.Parse(jsonString))
-                {
-                    var root = doc.RootElement;
-                    if (!root.TryGetProperty("assets", out var assets) || assets.GetArrayLength() == 0)
+                    string name = asset.GetProperty("name").GetString() ?? "";
+                    if (name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
                     {
-                        throw new Exception($"Nenhum asset encontrado na release '{cleanTag}'.");
-                    }
-
-                    string assetUrl = string.Empty;
-                    string assetName = string.Empty;
-
-                    foreach (var asset in assets.EnumerateArray())
-                    {
-                        string name = asset.GetProperty("name").GetString() ?? "";
-                        if (name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
-                        {
-                            assetUrl = asset.GetProperty("url").GetString() ?? "";
-                            assetName = name;
-                            break;
-                        }
-                    }
-
-                    if (string.IsNullOrEmpty(assetUrl))
-                    {
-                        throw new Exception($"Nenhum asset .zip encontrado na release '{cleanTag}'.");
-                    }
-
-                    FileLogger.Log($"[GitHubDownloader] Baixando asset '{assetName}'...");
-
-                    using (var downloadReq = new HttpRequestMessage(HttpMethod.Get, assetUrl))
-                    {
-                        downloadReq.Headers.Accept.Clear();
-                        downloadReq.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/octet-stream"));
-
-                        var downloadResp = await client.SendAsync(downloadReq, HttpCompletionOption.ResponseHeadersRead);
-                        if (!downloadResp.IsSuccessStatusCode)
-                        {
-                            throw new Exception($"Erro ao baixar asset binário (HTTP {(int)downloadResp.StatusCode}).");
-                        }
-
-                        string zipFilePath = Path.Combine(targetDir, assetName);
-                        using (var streamToReadFrom = await downloadResp.Content.ReadAsStreamAsync())
-                        using (var streamToWriteTo = File.Open(zipFilePath, FileMode.Create))
-                        {
-                            await streamToReadFrom.CopyToAsync(streamToWriteTo);
-                        }
-
-                        FileLogger.Log($"[GitHubDownloader] Extraindo '{zipFilePath}' para '{targetDir}'...");
-                        ZipFile.ExtractToDirectory(zipFilePath, targetDir, overwriteFiles: true);
-
-                        try
-                        {
-                            File.Delete(zipFilePath);
-                        }
-                        catch { }
-
-                        return targetDir;
+                        assetUrl = asset.GetProperty("url").GetString() ?? "";
+                        assetName = name;
+                        break;
                     }
                 }
+
+                if (string.IsNullOrEmpty(assetUrl))
+                {
+                    throw new Exception($"Nenhum asset .zip encontrado na release '{cleanTag}'.");
+                }
+
+                FileLogger.Log($"[GitHubDownloader] Baixando asset '{assetName}'...");
+
+                using (var client = CreateHttpClient(effectiveToken))
+                using (var downloadReq = new HttpRequestMessage(HttpMethod.Get, assetUrl))
+                {
+                    downloadReq.Headers.Accept.Clear();
+                    downloadReq.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/octet-stream"));
+
+                    var downloadResp = await client.SendAsync(downloadReq, HttpCompletionOption.ResponseHeadersRead);
+                    
+                    // Fallback se download falhar por 401 com token
+                    if (downloadResp.StatusCode == HttpStatusCode.Unauthorized && !string.IsNullOrWhiteSpace(effectiveToken))
+                    {
+                        FileLogger.Log($"[GitHubDownloader] ⚠️ Download do asset retornou 401. Tentando download anônimo...");
+                        using (var anonClient = CreateHttpClient(""))
+                        using (var anonReq = new HttpRequestMessage(HttpMethod.Get, assetUrl))
+                        {
+                            anonReq.Headers.Accept.Clear();
+                            anonReq.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/octet-stream"));
+                            downloadResp = await anonClient.SendAsync(anonReq, HttpCompletionOption.ResponseHeadersRead);
+                        }
+                    }
+
+                    if (!downloadResp.IsSuccessStatusCode)
+                    {
+                        throw new Exception($"Erro ao baixar asset binário (HTTP {(int)downloadResp.StatusCode}).");
+                    }
+
+                    string zipFilePath = Path.Combine(targetDir, assetName);
+                    using (var streamToReadFrom = await downloadResp.Content.ReadAsStreamAsync())
+                    using (var streamToWriteTo = File.Open(zipFilePath, FileMode.Create))
+                    {
+                        await streamToReadFrom.CopyToAsync(streamToWriteTo);
+                    }
+
+                    FileLogger.Log($"[GitHubDownloader] Extraindo '{zipFilePath}' para '{targetDir}'...");
+                    ZipFile.ExtractToDirectory(zipFilePath, targetDir, overwriteFiles: true);
+
+                    try
+                    {
+                        File.Delete(zipFilePath);
+                    }
+                    catch { }
+
+                    return targetDir;
+                }
+            }
+        }
+
+        private static HttpClient CreateHttpClient(string token)
+        {
+            var client = new HttpClient();
+            client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("WinServiceFleetAgent", "1.0"));
+            if (!string.IsNullOrWhiteSpace(token))
+            {
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            }
+            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github.v3+json"));
+            return client;
+        }
+
+        private static async Task<(bool Success, string JsonString, bool Is401)> MakeGitHubApiRequestAsync(string url, string token)
+        {
+            try
+            {
+                using (var client = CreateHttpClient(token))
+                {
+                    var response = await client.GetAsync(url);
+                    if (response.IsSuccessStatusCode)
+                    {
+                        string content = await response.Content.ReadAsStringAsync();
+                        return (true, content, false);
+                    }
+                    else
+                    {
+                        string errStr = await response.Content.ReadAsStringAsync();
+                        bool is401 = response.StatusCode == HttpStatusCode.Unauthorized;
+                        FileLogger.LogError($"[GitHubDownloader] ❌ Falha HTTP {(int)response.StatusCode} em '{url}': {errStr}");
+                        return (false, "", is401);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                FileLogger.LogError($"[GitHubDownloader] ❌ Erro ao conectar com GitHub '{url}'", ex);
+                return (false, "", false);
             }
         }
     }
