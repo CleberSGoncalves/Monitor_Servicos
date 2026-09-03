@@ -35,4 +35,4 @@ if exist "temp_update" (
     echo [ERRO] Nao foi possivel baixar o pacote de atualizacao.
 )
 
-pause
+exit /b 0
