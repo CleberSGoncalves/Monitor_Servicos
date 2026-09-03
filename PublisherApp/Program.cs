@@ -131,6 +131,12 @@ namespace PublisherApp
                     string tempZipPath = Path.Combine(Path.GetTempPath(), $"{serviceFolderName}_{tag}_{Guid.NewGuid():N}.zip");
                     if (File.Exists(tempZipPath)) File.Delete(tempZipPath);
 
+                    // Limpa zips antigos dentro da pasta para não inflar o arquivo final
+                    foreach (var oldZip in Directory.GetFiles(dirPath, "*.zip", SearchOption.AllDirectories))
+                    {
+                        try { File.Delete(oldZip); } catch { }
+                    }
+
                     Console.WriteLine($"📂 Compactando pasta '{serviceFolderName}'...");
                     ZipFile.CreateFromDirectory(dirPath, tempZipPath, CompressionLevel.Optimal, includeBaseDirectory: false);
 
