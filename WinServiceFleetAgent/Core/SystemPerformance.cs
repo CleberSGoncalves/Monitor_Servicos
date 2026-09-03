@@ -100,7 +100,7 @@ namespace WinServiceFleetAgent.Core
             // 4. Teste de Conectividade WCF
             metrics.StatusWcf = CheckWcfConnectivity(wcfUrl);
 
-            // 5. Envia EXATAMENTE as ÚLTIMAS 100 LINHAS do log
+            // 5. Trecho limpo e inteligente do último evento/log relevante
             metrics.UltimoLog = GetCompactLastLogSnippet();
 
             return metrics;
@@ -160,19 +160,42 @@ namespace WinServiceFleetAgent.Core
                     logFile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "agent.log");
                 }
 
-                if (!File.Exists(logFile)) return "Nenhum log gerado ainda.";
+                if (!File.Exists(logFile)) return $"[OK] {DateTime.Now:HH:mm}";
 
-                // Retorna exatamente as últimas 100 linhas do log
-                var lines = File.ReadLines(logFile).Reverse().Take(100).Reverse();
-                string content = string.Join("\n", lines);
+                var lines = File.ReadLines(logFile).Reverse().Take(50).ToList();
+                foreach (var line in lines)
+                {
+                    if (string.IsNullOrWhiteSpace(line)) continue;
 
-                if (string.IsNullOrWhiteSpace(content)) return "Arquivo de log vazio.";
+                    string clean = Regex.Replace(line, @"^\[\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\]\s*", "").Trim();
+                    clean = Regex.Replace(clean, @"^\[FleetOrchestrator\]\s*", "").Trim();
+                    clean = Regex.Replace(clean, @"^\[SharePointClient\]\s*", "").Trim();
 
-                return content;
+                    if (string.IsNullOrWhiteSpace(clean)) continue;
+
+                    // Ignorar logs repetitivos de rotina técnica interna
+                    if (clean.StartsWith("=======") ||
+                        clean.StartsWith("Iniciando ciclo") ||
+                        clean.StartsWith("Metadados extra") ||
+                        clean.StartsWith("Processando") ||
+                        clean.StartsWith("Registro atualizado"))
+                    {
+                        continue;
+                    }
+
+                    if (clean.Length > 45)
+                    {
+                        clean = clean.Substring(0, 45);
+                    }
+
+                    return clean;
+                }
+
+                return $"[OK] {DateTime.Now:HH:mm}";
             }
-            catch (Exception ex)
+            catch
             {
-                return $"Erro ao ler log: {ex.Message}";
+                return $"[OK] {DateTime.Now:HH:mm}";
             }
         }
     }
