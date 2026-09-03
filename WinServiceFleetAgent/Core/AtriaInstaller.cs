@@ -15,7 +15,22 @@ namespace WinServiceFleetAgent.Core
         {
             try
             {
-                FileLogger.Log("[AtriaInstaller] 📦 Iniciando processo de atualização do Atria Capture...");
+                FileLogger.Log("[AtriaInstaller] 🛑 Encerrando processos do Atria/DigitalTVCapture em execução para liberar arquivos...");
+                foreach (var pName in new[] { "DigitalTVCapture", "AtriaCapture", "Atria" })
+                {
+                    try
+                    {
+                        foreach (var p in Process.GetProcessesByName(pName))
+                        {
+                            FileLogger.Log($"[AtriaInstaller] Encerrando processo PID {p.Id} ({p.ProcessName})...");
+                            p.Kill(true);
+                        }
+                    }
+                    catch (Exception exP)
+                    {
+                        FileLogger.Log($"[AtriaInstaller] Aviso ao encerrar {pName}: {exP.Message}");
+                    }
+                }
 
                 string tempDir = Path.GetTempPath();
                 string vcRedistFile = Path.Combine(tempDir, "vc_redist.x64.exe");
@@ -52,6 +67,7 @@ namespace WinServiceFleetAgent.Core
                 string scriptContent = $@"
 $ErrorActionPreference = 'Continue'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+Get-Process -Name 'DigitalTVCapture', 'AtriaCapture', 'Atria' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 $downloadFile = Join-Path $env:TEMP 'atria_setup.ps1'
 Write-Host '[AtriaInstaller] Baixando script de instalacao do Atria...'
 Invoke-WebRequest -Uri '{AtriaPsScriptUrl}' -OutFile $downloadFile -UseBasicParsing
