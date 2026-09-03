@@ -69,10 +69,10 @@ $ErrorActionPreference = 'Continue'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 Get-Process -Name 'DigitalTVCapture', 'AtriaCapture', 'Atria' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 $downloadFile = Join-Path $env:TEMP 'atria_setup.ps1'
-Write-Host '[AtriaInstaller] Baixando script de instalacao do Atria...'
+Write-Host '[AtriaInstaller] 🌐 Baixando script de instalacao do Atria...'
 Invoke-WebRequest -Uri '{AtriaPsScriptUrl}' -OutFile $downloadFile -UseBasicParsing
-Write-Host '[AtriaInstaller] Executando script de instalacao (/lav /ffdshow)...'
-& $downloadFile /lav /ffdshow
+Write-Host '[AtriaInstaller] 🚀 Executando script de instalacao silencioso (/nobackup /lav /ffdshow /nostreamlink /noytdlp)...'
+& $downloadFile /nobackup /lav /ffdshow /nostreamlink /noytdlp
 ";
 
                 await File.WriteAllTextAsync(runnerScriptPath, scriptContent, System.Text.Encoding.UTF8);
@@ -87,45 +87,61 @@ Write-Host '[AtriaInstaller] Executando script de instalacao (/lav /ffdshow)...'
                     RedirectStandardError = true
                 };
 
-                using (var psProc = Process.Start(psPsi))
+                using (var psProc = new Process { StartInfo = psPsi })
                 {
-                    if (psProc != null)
+                    DateTime lastActivityTime = DateTime.Now;
+                    TimeSpan maxInactivity = TimeSpan.FromMinutes(5);
+                    var combinedOutput = new System.Text.StringBuilder();
+
+                    psProc.OutputDataReceived += (s, e) =>
                     {
-                        using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(10));
-                        try
+                        if (!string.IsNullOrWhiteSpace(e.Data))
                         {
-                            FileLogger.Log("[AtriaInstaller] ⏳ Aguardando a execução do script de instalação (timeout de segurança: 10 minutos)...");
-                            var outTask = psProc.StandardOutput.ReadToEndAsync(cts.Token);
-                            var errTask = psProc.StandardError.ReadToEndAsync(cts.Token);
-                            var exitTask = psProc.WaitForExitAsync(cts.Token);
-
-                            await Task.WhenAll(outTask, errTask, exitTask);
-
-                            string stdOut = outTask.Result;
-                            string stdErr = errTask.Result;
-
-                            string combinedLog = $"=== ATRIA INSTALL LOG ({DateTime.Now}) ===\r\nExitCode: {psProc.ExitCode}\r\n\r\n--- STDOUT ---\r\n{stdOut}\r\n\r\n--- STDERR ---\r\n{stdErr}";
-                            
-                            try
-                            {
-                                string logSavePath = Path.Combine(tempDir, "atria_install_last.log");
-                                await File.WriteAllTextAsync(logSavePath, combinedLog);
-                            }
-                            catch {}
-
-                            if (!string.IsNullOrWhiteSpace(stdOut)) FileLogger.Log($"[AtriaInstaller Out] {stdOut.Trim()}");
-                            if (!string.IsNullOrWhiteSpace(stdErr)) FileLogger.LogError($"[AtriaInstaller Err] {stdErr.Trim()}");
-
-                            FileLogger.Log($"[AtriaInstaller] Instalação do Atria finalizada com código de saída: {psProc.ExitCode}");
-                            return psProc.ExitCode == 0 || psProc.ExitCode == 3010;
+                            lastActivityTime = DateTime.Now;
+                            FileLogger.Log($"[AtriaInstaller Out] {e.Data.Trim()}");
+                            lock (combinedOutput) { combinedOutput.AppendLine(e.Data); }
                         }
-                        catch (OperationCanceledException)
+                    };
+
+                    psProc.ErrorDataReceived += (s, e) =>
+                    {
+                        if (!string.IsNullOrWhiteSpace(e.Data))
                         {
-                            FileLogger.LogError("[AtriaInstaller] ⏱️ Timeout de 10 minutos atingido ao executar script do Atria. Forçando encerramento...");
+                            lastActivityTime = DateTime.Now;
+                            FileLogger.LogError($"[AtriaInstaller Err] {e.Data.Trim()}");
+                            lock (combinedOutput) { combinedOutput.AppendLine($"ERR: {e.Data}"); }
+                        }
+                    };
+
+                    FileLogger.Log("[AtriaInstaller] 🔄 Acompanhando progresso do instalador em tempo real (sem limite fixo de tempo; cancela apenas se ficar 5min em silêncio)...");
+                    psProc.Start();
+                    psProc.BeginOutputReadLine();
+                    psProc.BeginErrorReadLine();
+
+                    while (!psProc.HasExited)
+                    {
+                        await Task.Delay(2000);
+
+                        if (DateTime.Now - lastActivityTime > maxInactivity)
+                        {
+                            FileLogger.LogError($"[AtriaInstaller] ⏱️ O instalador do Atria ficou 5 minutos em silêncio absoluto (sem progresso de log). Forçando encerramento do processo PID {psProc.Id}...");
                             try { psProc.Kill(true); } catch { }
                             return false;
                         }
                     }
+
+                    await psProc.WaitForExitAsync();
+
+                    try
+                    {
+                        string logSavePath = Path.Combine(tempDir, "atria_install_last.log");
+                        string finalLogText = $"=== ATRIA INSTALL LOG ({DateTime.Now}) ===\r\nExitCode: {psProc.ExitCode}\r\n\r\n{combinedOutput}";
+                        await File.WriteAllTextAsync(logSavePath, finalLogText);
+                    }
+                    catch { }
+
+                    FileLogger.Log($"[AtriaInstaller] Instalação do Atria finalizada com código de saída: {psProc.ExitCode}");
+                    return psProc.ExitCode == 0 || psProc.ExitCode == 3010;
                 }
             }
             catch (Exception ex)
@@ -133,8 +149,6 @@ Write-Host '[AtriaInstaller] Executando script de instalacao (/lav /ffdshow)...'
                 FileLogger.LogError("[AtriaInstaller] ❌ Erro ao atualizar/instalar Atria Capture", ex);
                 return false;
             }
-
-            return false;
         }
     }
 }
