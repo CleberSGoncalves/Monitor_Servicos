@@ -1,4 +1,4 @@
-﻿# ===========================================================
+# ===========================================================
 #  BOOTSTRAP DE ATUALIZACAO - DNA.MonitorServiceSVC
 #  Executa como ADMINISTRADOR no servidor destino
 #  Atualiza de qualquer versao para a mais recente do GitHub
@@ -8,6 +8,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$ProgressPreference     = "SilentlyContinue"
 $SERVICE_NAME = "DNA.MonitorServiceSVC"
 $EXE_NAME     = "WinServiceFleetAgent.exe"
 $REPO         = "CleberSGoncalves/DNA.MonitorServiceSVC"
