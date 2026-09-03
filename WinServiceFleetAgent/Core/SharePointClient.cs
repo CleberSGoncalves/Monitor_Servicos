@@ -19,7 +19,7 @@ namespace WinServiceFleetAgent.Core
         public string StatusAtualizacao { get; set; } = string.Empty;
         public string UrlComunicacaoDesejavel { get; set; } = string.Empty;
         public string AcaoSolicitadaUrl { get; set; } = string.Empty;
-        public string AutoRestart { get; set; } = "Sim";
+        public string AutoRestart { get; set; } = "Não";
         public string HoraAgendada { get; set; } = string.Empty;
     }
 
@@ -202,7 +202,6 @@ namespace WinServiceFleetAgent.Core
 
                 try
                 {
-                    // Buscar itens da lista para fazer match por Hostname + Nome_Servico
                     string getItemsUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items?expand=fields&$top=500";
                     var getResp = await client.GetAsync(getItemsUrl);
 
@@ -252,10 +251,8 @@ namespace WinServiceFleetAgent.Core
 
                     string safeUrlComunicacao = isConfigMonitor ? (string.IsNullOrWhiteSpace(urlComunicacao) ? "Nenhuma" : urlComunicacao) : "Nenhuma";
 
-                    // Formatação curta das versões (4 dígitos)
                     string shortInstalled = FormatShortVersion(versaoInstalada);
 
-                    // Determinação da Versão Desejada (preferência pela versão mais recente do GitHub se informada, ou salva no SharePoint)
                     string targetVerRaw = !string.IsNullOrWhiteSpace(versaoDesejada)
                         ? versaoDesejada
                         : (!string.IsNullOrWhiteSpace(existingVersaoDesejada) ? existingVersaoDesejada : versaoInstalada);
@@ -283,8 +280,8 @@ namespace WinServiceFleetAgent.Core
                         statusAtualizacao = "Desatualizado";
                     }
 
-                    // Se AutoRestart não estiver preenchido, define "Sim" como padrão para remover aviso "Informações necessárias"
-                    string safeAutoRestart = string.IsNullOrWhiteSpace(existingAutoRestart) ? "Sim" : existingAutoRestart;
+                    // Se AutoRestart não estiver preenchido no SharePoint, usa "Não" como padrão solicitado
+                    string safeAutoRestart = string.IsNullOrWhiteSpace(existingAutoRestart) ? "Não" : existingAutoRestart;
 
                     var fieldsPayload = new Dictionary<string, object>
                     {
@@ -303,13 +300,11 @@ namespace WinServiceFleetAgent.Core
                         { "AutoRestart", safeAutoRestart }
                     };
 
-                    // Status_WCF fica na linha do DNA.ConfigMonitorSVC
                     if (isConfigMonitor)
                     {
                         fieldsPayload["Status_WCF"] = metrics.StatusWcf;
                     }
 
-                    // Métricas pesadas de hardware (CPU, RAM, Disco D, Uptime) APENAS na linha do nosso agente DNA.MonitorServiceSVC
                     if (isMonitorService)
                     {
                         fieldsPayload["Cpu_Uso"] = metrics.CpuUso;
@@ -333,6 +328,7 @@ namespace WinServiceFleetAgent.Core
                         fieldsPayload["Url_Comunicacao_Desejavel"] = isConfigMonitor ? (string.IsNullOrWhiteSpace(urlComunicacao) ? "https://mediadna.ibope.com/mediadnawcfcs/RemoteHostsService.svc" : urlComunicacao) : "Nenhuma";
                         fieldsPayload["Acao_Solicitada"] = "Nenhuma";
                         fieldsPayload["Acao_Solicitada_Url"] = "Nenhuma";
+                        fieldsPayload["AutoRestart"] = "Não";
 
                         var itemPayload = new { fields = fieldsPayload };
                         string createUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items";
@@ -358,7 +354,7 @@ namespace WinServiceFleetAgent.Core
                         var patchResp = await client.SendAsync(request);
                         if (patchResp.IsSuccessStatusCode)
                         {
-                            FileLogger.Log($"[SharePointClient] ✅ Registro atualizado no SharePoint (ID {itemId}): [{displayTitle}] {hostname}_{nomeServico} -> Status: {statusAtualizacao}");
+                            FileLogger.Log($"[SharePointClient] ✅ Registro atualizado no SharePoint (ID {itemId}): [{displayTitle}] {hostname}_{nomeServico} -> AutoRestart: {safeAutoRestart}");
                         }
                         else
                         {
@@ -555,7 +551,7 @@ namespace WinServiceFleetAgent.Core
                                             VersaoDesejada = fields.TryGetProperty("Versao_Desejada", out var vd) ? vd.GetString() ?? "" : "",
                                             AcaoSolicitada = acao,
                                             StatusAtualizacao = fields.TryGetProperty("Status_Atualizacao", out var sa) ? sa.GetString() ?? "" : "",
-                                            AutoRestart = fields.TryGetProperty("AutoRestart", out var ar) ? ar.GetString() ?? "Sim" : "Sim",
+                                            AutoRestart = fields.TryGetProperty("AutoRestart", out var ar) ? ar.GetString() ?? "Não" : "Não",
                                             HoraAgendada = fields.TryGetProperty("Hora_Agendada", out var ha) ? ha.GetString() ?? "" : ""
                                         });
                                     }
