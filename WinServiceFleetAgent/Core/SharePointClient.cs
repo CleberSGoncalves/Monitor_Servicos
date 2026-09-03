@@ -91,6 +91,22 @@ namespace WinServiceFleetAgent.Core
             return rawVersion;
         }
 
+        public static bool IsInstalledUpToDate(string shortInstalled, string shortTarget)
+        {
+            if (string.Equals(shortInstalled, shortTarget, StringComparison.OrdinalIgnoreCase)) return true;
+
+            try
+            {
+                if (Version.TryParse(shortInstalled, out var vInst) && Version.TryParse(shortTarget, out var vTarg))
+                {
+                    return vInst >= vTarg;
+                }
+            }
+            catch { }
+
+            return false;
+        }
+
         private async Task EnsureGraphContextAsync(HttpClient client)
         {
             if (!string.IsNullOrEmpty(_accessToken) && !string.IsNullOrEmpty(_listId))
@@ -228,16 +244,22 @@ namespace WinServiceFleetAgent.Core
                     // Formatação curta das versões (4 dígitos)
                     string shortInstalled = FormatShortVersion(versaoInstalada);
 
-                    // Determinação da Versão Desejada (preferência pela versão mais recente do GitHub)
+                    // Determinação da Versão Desejada (preferência pela versão mais recente do GitHub se informada, ou salva no SharePoint)
                     string targetVerRaw = !string.IsNullOrWhiteSpace(versaoDesejada)
                         ? versaoDesejada
                         : (!string.IsNullOrWhiteSpace(existingVersaoDesejada) ? existingVersaoDesejada : versaoInstalada);
 
                     string shortTarget = FormatShortVersion(targetVerRaw);
 
+                    // Se a versão instalada for MAIOR OU IGUAL à versão desejada (ex: instalada 1.0.1.6 >= desejada 1.0.1.4), atualiza a desejada para a instalada!
+                    if (IsInstalledUpToDate(shortInstalled, shortTarget))
+                    {
+                        shortTarget = shortInstalled;
+                    }
+
                     // Regra do Status_Atualizacao:
                     // Se estiver executando uma atualização ("Em Progresso"), mantém.
-                    // Senão: Se Versao_Instalada == Versao_Desejada -> "Atualizado". Caso contrário -> "Desatualizado".
+                    // Senão: Se Versao_Instalada >= Versao_Desejada -> "Atualizado". Caso contrário -> "Desatualizado".
                     string statusAtualizacao = "Atualizado";
                     if (existingStatusAtualizacao.Equals("Em Progresso", StringComparison.OrdinalIgnoreCase))
                     {
@@ -245,7 +267,7 @@ namespace WinServiceFleetAgent.Core
                     }
                     else
                     {
-                        statusAtualizacao = shortInstalled.Equals(shortTarget, StringComparison.OrdinalIgnoreCase) ? "Atualizado" : "Desatualizado";
+                        statusAtualizacao = IsInstalledUpToDate(shortInstalled, shortTarget) ? "Atualizado" : "Desatualizado";
                     }
 
                     var fieldsPayload = new Dictionary<string, object>
