@@ -312,7 +312,7 @@ namespace WinServiceFleetAgent.Core
                         fieldsPayload["Disco_D_Livre_GB"] = metrics.DiscoDLivreGB;
                         fieldsPayload["Uptime_Dias"] = metrics.UptimeDias;
 
-                        _ = UploadLogAttachmentAsync(hostname, nomeServico, FileLogger.GetLastLogLines(1000));
+                        await UploadLogAttachmentAsync(hostname, nomeServico, FileLogger.GetLastLogLines(1000));
                     }
 
                     if (isUpToDate && !existingAcaoSolicitada.StartsWith("Forca", StringComparison.OrdinalIgnoreCase) && !existingAcaoSolicitada.StartsWith("Força", StringComparison.OrdinalIgnoreCase))
@@ -650,7 +650,7 @@ namespace WinServiceFleetAgent.Core
             {
                 if (!force && _lastLogAttachmentTimes.TryGetValue(key, out var lastTime))
                 {
-                    if ((DateTime.UtcNow - lastTime).TotalMinutes < 3) return;
+                    if ((DateTime.UtcNow - lastTime).TotalMinutes < 2) return;
                 }
             }
 
@@ -665,7 +665,11 @@ namespace WinServiceFleetAgent.Core
                 {
                     string getItemsUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items?expand=fields&$top=500";
                     var getResp = await client.GetAsync(getItemsUrl);
-                    if (!getResp.IsSuccessStatusCode) return;
+                    if (!getResp.IsSuccessStatusCode)
+                    {
+                        FileLogger.LogError($"[SharePointClient] Falha ao buscar itens para anexo ({getResp.StatusCode})");
+                        return;
+                    }
 
                     string json = await getResp.Content.ReadAsStringAsync();
                     using var doc = JsonDocument.Parse(json);
@@ -687,8 +691,35 @@ namespace WinServiceFleetAgent.Core
                         }
                     }
 
-                    if (string.IsNullOrEmpty(itemId)) return;
+                    if (string.IsNullOrEmpty(itemId))
+                    {
+                        FileLogger.Log($"[SharePointClient] Item ID não encontrado para anexo [{hostname}_{nomeServico}]");
+                        return;
+                    }
 
+                    // Tenta Método A: Graph API attachments endpoint
+                    string base64Log = Convert.ToBase64String(Encoding.UTF8.GetBytes(logContent));
+                    string graphAttachUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items/{itemId}/attachments";
+                    var attachBody = new Dictionary<string, string>
+                    {
+                        { "name", "agent_log.txt" },
+                        { "contentBytes", base64Log }
+                    };
+
+                    var graphContent = new StringContent(JsonSerializer.Serialize(attachBody), Encoding.UTF8, "application/json");
+                    var graphResp = await client.PostAsync(graphAttachUrl, graphContent);
+
+                    if (graphResp.IsSuccessStatusCode)
+                    {
+                        lock (_lastLogAttachmentTimes) { _lastLogAttachmentTimes[key] = DateTime.UtcNow; }
+                        FileLogger.Log($"[SharePointClient] ✅ Log .txt anexado com sucesso via Graph API para [{hostname}_{nomeServico}]!");
+                        return;
+                    }
+
+                    string graphErr = await graphResp.Content.ReadAsStringAsync();
+                    FileLogger.Log($"[SharePointClient] Graph API aviso anexo ({graphResp.StatusCode}): {graphErr}. Tentando SharePoint REST API...");
+
+                    // Tenta Método B: SharePoint REST API
                     string tokenUrl = $"https://login.microsoftonline.com/{_tenantId}/oauth2/v2.0/token";
                     var tokenReq = new Dictionary<string, string>
                     {
@@ -696,46 +727,50 @@ namespace WinServiceFleetAgent.Core
                         { "client_id", _clientId },
                         { "username", _username },
                         { "password", _password },
-                        { "scope", $"https://{_siteHost}/.default" }
+                        { "scope", $"https://{_siteHost}/AllSites.Write" }
                     };
 
                     var tokenResp = await client.PostAsync(tokenUrl, new FormUrlEncodedContent(tokenReq));
                     if (!tokenResp.IsSuccessStatusCode)
                     {
-                        string errToken = await tokenResp.Content.ReadAsStringAsync();
-                        FileLogger.LogError($"Erro ao autenticar no SharePoint REST API para anexos: {errToken}");
-                        return;
+                        tokenReq["scope"] = $"https://{_siteHost}/.default";
+                        tokenResp = await client.PostAsync(tokenUrl, new FormUrlEncodedContent(tokenReq));
                     }
 
-                    string spTokenJson = await tokenResp.Content.ReadAsStringAsync();
-                    string spAccessToken = JsonDocument.Parse(spTokenJson).RootElement.GetProperty("access_token").GetString() ?? "";
-
-                    using (var spClient = new HttpClient())
+                    if (tokenResp.IsSuccessStatusCode)
                     {
-                        spClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", spAccessToken);
-                        spClient.DefaultRequestHeaders.Add("Accept", "application/json;odata=verbose");
+                        string spTokenJson = await tokenResp.Content.ReadAsStringAsync();
+                        string spAccessToken = JsonDocument.Parse(spTokenJson).RootElement.GetProperty("access_token").GetString() ?? "";
 
-                        string encodedListName = Uri.EscapeDataString(_listName);
-                        string uploadUrl = $"https://{_siteHost}{_sitePath}/_api/web/lists/getByTitle('{encodedListName}')/items({itemId})/AttachmentFiles/add(FileName='agent_log.txt')";
-
-                        byte[] fileBytes = Encoding.UTF8.GetBytes(logContent);
-                        var content = new ByteArrayContent(fileBytes);
-                        content.Headers.ContentType = new MediaTypeHeaderValue("text/plain");
-
-                        var uploadResp = await spClient.PostAsync(uploadUrl, content);
-                        if (uploadResp.IsSuccessStatusCode)
+                        using (var spClient = new HttpClient())
                         {
-                            lock (_lastLogAttachmentTimes)
+                            spClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", spAccessToken);
+                            spClient.DefaultRequestHeaders.Add("Accept", "application/json;odata=verbose");
+
+                            string encodedListName = Uri.EscapeDataString(_listName);
+                            string uploadUrl = $"https://{_siteHost}{_sitePath}/_api/web/lists/getByTitle('{encodedListName}')/items({itemId})/AttachmentFiles/add(FileName='agent_log.txt')";
+
+                            byte[] fileBytes = Encoding.UTF8.GetBytes(logContent);
+                            var spContent = new ByteArrayContent(fileBytes);
+                            spContent.Headers.ContentType = new MediaTypeHeaderValue("text/plain");
+
+                            var uploadResp = await spClient.PostAsync(uploadUrl, spContent);
+                            if (uploadResp.IsSuccessStatusCode)
                             {
-                                _lastLogAttachmentTimes[key] = DateTime.UtcNow;
+                                lock (_lastLogAttachmentTimes) { _lastLogAttachmentTimes[key] = DateTime.UtcNow; }
+                                FileLogger.Log($"[SharePointClient] ✅ Log .txt anexado com sucesso via SharePoint REST API para [{hostname}_{nomeServico}]!");
                             }
-                            FileLogger.Log($"[SharePointClient] ✅ Log .txt (1000 linhas) anexado com sucesso via SharePoint REST API para [{hostname}_{nomeServico}]!");
+                            else
+                            {
+                                string errText = await uploadResp.Content.ReadAsStringAsync();
+                                FileLogger.LogError($"[SharePointClient] Erro final ao anexar log via SharePoint REST API ({uploadResp.StatusCode}): {errText}");
+                            }
                         }
-                        else
-                        {
-                            string errText = await uploadResp.Content.ReadAsStringAsync();
-                            FileLogger.Log($"[SharePointClient] Aviso ao anexar log via SharePoint REST API ({uploadResp.StatusCode}): {errText}");
-                        }
+                    }
+                    else
+                    {
+                        string tokenErr = await tokenResp.Content.ReadAsStringAsync();
+                        FileLogger.LogError($"[SharePointClient] Erro ao obter token do SharePoint para anexos: {tokenErr}");
                     }
                 }
                 catch (Exception ex)
