@@ -187,6 +187,11 @@ namespace WinServiceFleetAgent.Core
                     int safeCS = cs <= 0 ? 1 : cs;
                     string displayTitle = string.IsNullOrWhiteSpace(title) ? "Brasil" : title;
 
+                    // Regra: Somente o serviço DNA.ConfigMonitorSVC possui URL de comunicação preenchida. Para os demais, é "Nenhuma".
+                    bool isConfigMonitor = nomeServico.Equals("DNA.ConfigMonitorSVC", StringComparison.OrdinalIgnoreCase);
+                    string safeUrlComunicacao = isConfigMonitor ? (string.IsNullOrWhiteSpace(urlComunicacao) ? "Nenhuma" : urlComunicacao) : "Nenhuma";
+                    string safeUrlDesejavel = isConfigMonitor ? "https://mediadna.ibope.com/mediadnawcfcs/RemoteHostsService.svc" : "Nenhuma";
+
                     var fieldsPayload = new Dictionary<string, object>
                     {
                         { "Title", displayTitle },
@@ -197,7 +202,8 @@ namespace WinServiceFleetAgent.Core
                         { "Versao_Instalada", versaoInstalada },
                         { "Status_Servico", statusServico },
                         { "Ultima_atualizacao", nowIso },
-                        { "Url_Comunicacao", urlComunicacao }
+                        { "Url_Comunicacao", safeUrlComunicacao },
+                        { "Url_Comunicacao_Desejavel", safeUrlDesejavel }
                     };
 
                     if (string.IsNullOrEmpty(itemId))
@@ -205,7 +211,6 @@ namespace WinServiceFleetAgent.Core
                         fieldsPayload["Versao_Desejada"] = versaoInstalada;
                         fieldsPayload["Acao_Solicitada"] = "Nenhuma";
                         fieldsPayload["Status_Atualizacao"] = "Aguardando";
-                        fieldsPayload["Url_Comunicacao_Desejavel"] = "https://mediadna.ibope.com/mediadnawcfcs/RemoteHostsService.svc";
                         fieldsPayload["Acao_Solicitada_Url"] = "Nenhuma";
 
                         var itemPayload = new { fields = fieldsPayload };
