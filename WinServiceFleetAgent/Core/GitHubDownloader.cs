@@ -77,7 +77,7 @@ namespace WinServiceFleetAgent.Core
                                 string tag = tagProp.GetString() ?? "";
                                 string cleanTag = tag.TrimStart('v', 'V');
                                 FileLogger.Log($"[GitHubDownloader] ✅ Release mais recente no GitHub para '{githubRepo}': '{cleanTag}'");
-                                _releaseCache[githubRepo] = (cleanTag, DateTime.UtcNow.AddMinutes(10));
+                                _releaseCache[githubRepo] = (cleanTag, DateTime.UtcNow.AddMinutes(1));
                                 return cleanTag;
                             }
                         }
