@@ -238,15 +238,16 @@ if ($finalExe -and (Test-Path $finalExe)) {
 
                 if (targetExe != null)
                 {
-                    FileLogger.Log($"[AtriaInstaller] 🚀 Abrindo aplicação Atria Capture em '{targetExe}'...");
-                    var psi = new ProcessStartInfo
+                    FileLogger.Log($"[AtriaInstaller] 🚀 Abrindo aplicação Atria Capture na Sessão Interativa do Usuário em '{targetExe}'...");
+                    bool started = InteractiveProcessLauncher.LaunchProcessInActiveSession(targetExe);
+                    if (started)
                     {
-                        FileName = targetExe,
-                        WorkingDirectory = Path.GetDirectoryName(targetExe),
-                        UseShellExecute = true
-                    };
-                    Process.Start(psi);
-                    FileLogger.Log("[AtriaInstaller] ✅ Aplicação Atria Capture iniciada com sucesso!");
+                        FileLogger.Log("[AtriaInstaller] ✅ Aplicação Atria Capture iniciada na sessão ativa com sucesso!");
+                    }
+                    else
+                    {
+                        FileLogger.LogError($"[AtriaInstaller] ❌ Falha ao iniciar a aplicação interativa '{targetExe}'.");
+                    }
                 }
                 else
                 {
