@@ -34,6 +34,7 @@ namespace WinServiceFleetAgent.Core
         private readonly string _password;
 
         private string _accessToken = string.Empty;
+        private DateTime _tokenExpiresAt = DateTime.MinValue;
         private string _siteId = string.Empty;
         private string _listId = string.Empty;
         private static DateTime _lastLogAttachmentTime = DateTime.MinValue;
@@ -43,8 +44,8 @@ namespace WinServiceFleetAgent.Core
             string listName,
             string clientId,
             string clientSecret,
-            string username = "svc.captacao@adgbl.com",
-            string password = "Acount@!2026")
+            string? username = null,
+            string? password = null)
         {
             _listName = string.IsNullOrWhiteSpace(listName) ? "Painel de gestão de serviços dos CS" : listName;
             
@@ -70,28 +71,11 @@ namespace WinServiceFleetAgent.Core
         public static string FormatShortVersion(string? rawVersion)
         {
             if (string.IsNullOrWhiteSpace(rawVersion)) return "0.0.0.0";
+            string clean = rawVersion.Trim().TrimStart('v', 'V');
+            if (clean.Equals("Não Instalado", StringComparison.OrdinalIgnoreCase) ||
+                clean.Equals("Inexistente", StringComparison.OrdinalIgnoreCase)) return clean;
 
-            int digitCount = 0;
-            int cutoffIndex = 0;
-            for (int i = 0; i < rawVersion.Length; i++)
-            {
-                if (char.IsDigit(rawVersion[i]))
-                {
-                    digitCount++;
-                    if (digitCount == 4)
-                    {
-                        cutoffIndex = i + 1;
-                        break;
-                    }
-                }
-            }
-
-            if (cutoffIndex > 0 && cutoffIndex <= rawVersion.Length)
-            {
-                return rawVersion.Substring(0, cutoffIndex).TrimEnd('.');
-            }
-
-            return rawVersion;
+            return clean;
         }
 
         public static bool IsInstalledUpToDate(string shortInstalled, string shortTarget)
@@ -110,12 +94,24 @@ namespace WinServiceFleetAgent.Core
             return false;
         }
 
+        private static string _cachedSiteId = string.Empty;
+        private static string _cachedListId = string.Empty;
+        private static DateTime _lastAuthFailureTime = DateTime.MinValue;
+
         private async Task EnsureGraphContextAsync(HttpClient client)
         {
-            if (!string.IsNullOrEmpty(_accessToken) && !string.IsNullOrEmpty(_listId))
+            if (!string.IsNullOrEmpty(_accessToken) && DateTime.UtcNow < _tokenExpiresAt && !string.IsNullOrEmpty(_listId))
+            {
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
+                return;
+            }
+
+            if (DateTime.UtcNow < _lastAuthFailureTime.AddSeconds(15))
             {
                 return;
             }
+
+            FileLogger.Log("[SharePointClient] Renovando token OAuth 2.0 do Microsoft Graph API (ROPC)...");
 
             string tokenUrl = $"https://login.microsoftonline.com/{_tenantId}/oauth2/v2.0/token";
             var tokenReq = new Dictionary<string, string>
@@ -127,11 +123,28 @@ namespace WinServiceFleetAgent.Core
                 { "scope", "https://graph.microsoft.com/.default" }
             };
 
-            var tokenResp = await client.PostAsync(tokenUrl, new FormUrlEncodedContent(tokenReq));
-            if (!tokenResp.IsSuccessStatusCode)
+            HttpResponseMessage? tokenResp = null;
+            for (int attempt = 1; attempt <= 3; attempt++)
             {
-                string errStr = await tokenResp.Content.ReadAsStringAsync();
-                FileLogger.LogError($"Erro ao autenticar no Graph API: {errStr}");
+                try
+                {
+                    tokenResp = await client.PostAsync(tokenUrl, new FormUrlEncodedContent(tokenReq));
+                    if (tokenResp.IsSuccessStatusCode) break;
+                    await Task.Delay(2000);
+                }
+                catch
+                {
+                    if (attempt < 3) await Task.Delay(2000);
+                }
+            }
+
+            if (tokenResp == null || !tokenResp.IsSuccessStatusCode)
+            {
+                string errStr = tokenResp != null ? await tokenResp.Content.ReadAsStringAsync() : "Sem resposta";
+                FileLogger.LogError($"Erro ao autenticar no Graph API (login.microsoftonline.com): {errStr}");
+                _accessToken = "";
+                _tokenExpiresAt = DateTime.MinValue;
+                _lastAuthFailureTime = DateTime.UtcNow;
                 return;
             }
 
@@ -139,71 +152,163 @@ namespace WinServiceFleetAgent.Core
             using (var doc = JsonDocument.Parse(tokenJson))
             {
                 _accessToken = doc.RootElement.GetProperty("access_token").GetString() ?? "";
+                int expiresIn = doc.RootElement.TryGetProperty("expires_in", out var expProp) ? expProp.GetInt32() : 3600;
+                _tokenExpiresAt = DateTime.UtcNow.AddSeconds(expiresIn - 300);
             }
 
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
 
-            string siteGraphUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteHost}:{_sitePath}";
-            var siteResp = await client.GetAsync(siteGraphUrl);
-            if (siteResp.IsSuccessStatusCode)
+            if (string.IsNullOrEmpty(_cachedSiteId) || string.IsNullOrEmpty(_cachedListId))
             {
-                string siteJson = await siteResp.Content.ReadAsStringAsync();
-                using var siteDoc = JsonDocument.Parse(siteJson);
-                _siteId = siteDoc.RootElement.GetProperty("id").GetString() ?? "";
-            }
-
-            if (!string.IsNullOrEmpty(_siteId))
-            {
-                string listsUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists";
-                var listsResp = await client.GetAsync(listsUrl);
-                if (listsResp.IsSuccessStatusCode)
+                string siteGraphUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteHost}:{_sitePath}";
+                var siteResp = await client.GetAsync(siteGraphUrl);
+                if (siteResp.IsSuccessStatusCode)
                 {
-                    string listsJson = await listsResp.Content.ReadAsStringAsync();
-                    using var listsDoc = JsonDocument.Parse(listsJson);
-                    if (listsDoc.RootElement.TryGetProperty("value", out var listsArray))
+                    string siteJson = await siteResp.Content.ReadAsStringAsync();
+                    using var siteDoc = JsonDocument.Parse(siteJson);
+                    _cachedSiteId = siteDoc.RootElement.GetProperty("id").GetString() ?? "";
+                }
+
+                if (!string.IsNullOrEmpty(_cachedSiteId))
+                {
+                    string listsUrl = $"https://graph.microsoft.com/v1.0/sites/{_cachedSiteId}/lists";
+                    var listsResp = await client.GetAsync(listsUrl);
+                    if (listsResp.IsSuccessStatusCode)
                     {
-                        foreach (var l in listsArray.EnumerateArray())
+                        string listsJson = await listsResp.Content.ReadAsStringAsync();
+                        using var listsDoc = JsonDocument.Parse(listsJson);
+                        if (listsDoc.RootElement.TryGetProperty("value", out var listsArray))
                         {
-                            string displayName = l.GetProperty("displayName").GetString() ?? "";
-                            if (displayName.Equals(_listName, StringComparison.OrdinalIgnoreCase))
+                            foreach (var l in listsArray.EnumerateArray())
                             {
-                                _listId = l.GetProperty("id").GetString() ?? "";
-                                break;
+                                string displayName = l.GetProperty("displayName").GetString() ?? "";
+                                if (displayName.Equals(_listName, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    _cachedListId = l.GetProperty("id").GetString() ?? "";
+                                    break;
+                                }
                             }
                         }
                     }
                 }
             }
+
+            _siteId = _cachedSiteId;
+            _listId = _cachedListId;
+        }
+
+        private static List<JsonElement>? _cachedListItems = null;
+        private static DateTime _cacheListExpiresAt = DateTime.MinValue;
+        private static readonly object _cacheLock = new object();
+
+        public static void InvalidateListCache()
+        {
+            lock (_cacheLock)
+            {
+                _cachedListItems = null;
+                _cacheListExpiresAt = DateTime.MinValue;
+            }
+        }
+
+        private async Task<HttpResponseMessage> ExecuteWithThrottlingRetryAsync(Func<Task<HttpResponseMessage>> action)
+        {
+            HttpResponseMessage response = null!;
+            for (int attempt = 1; attempt <= 4; attempt++)
+            {
+                response = await action();
+                if (response.IsSuccessStatusCode) return response;
+
+                int statusCode = (int)response.StatusCode;
+                string content = await response.Content.ReadAsStringAsync();
+                bool isThrottled = statusCode == 429 ||
+                                   content.Contains("activityLimitReached", StringComparison.OrdinalIgnoreCase) ||
+                                   content.Contains("throttledRequest", StringComparison.OrdinalIgnoreCase);
+
+                if (isThrottled && attempt < 4)
+                {
+                    int delayMs = attempt * 2500 + Random.Shared.Next(500, 1500);
+                    FileLogger.Log($"[SharePointClient] ⚠️ SharePoint Throttling ativado (Tentativa {attempt}/4). Aguardando {delayMs}ms para retry...");
+                    await Task.Delay(delayMs);
+                }
+                else
+                {
+                    break;
+                }
+            }
+            return response;
         }
 
         private async Task<List<JsonElement>> GetAllListItemsAsync(HttpClient client)
         {
-            var list = new List<JsonElement>();
-            try
+            lock (_cacheLock)
             {
-                string nextUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items?expand=fields&$top=500";
-                while (!string.IsNullOrEmpty(nextUrl))
+                if (_cachedListItems != null && DateTime.UtcNow < _cacheListExpiresAt)
                 {
-                    var resp = await client.GetAsync(nextUrl);
-                    if (!resp.IsSuccessStatusCode) break;
-
-                    string json = await resp.Content.ReadAsStringAsync();
-                    using var doc = JsonDocument.Parse(json);
-
-                    if (doc.RootElement.TryGetProperty("value", out var valueArray))
-                    {
-                        foreach (var item in valueArray.EnumerateArray())
-                        {
-                            list.Add(item.Clone());
-                        }
-                    }
-
-                    nextUrl = doc.RootElement.TryGetProperty("@odata.nextLink", out var nextProp) ? nextProp.GetString() ?? "" : "";
+                    return _cachedListItems;
                 }
             }
-            catch (Exception ex)
+
+            var list = new List<JsonElement>();
+            string nextUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items?expand=fields&$top=500";
+
+            while (!string.IsNullOrEmpty(nextUrl))
             {
-                FileLogger.LogError("[SharePointClient] Erro ao listar todos os itens do SharePoint com paginação", ex);
+                HttpResponseMessage? resp = null;
+                for (int attempt = 1; attempt <= 3; attempt++)
+                {
+                    try
+                    {
+                        resp = await client.GetAsync(nextUrl);
+                        if (resp != null && ((int)resp.StatusCode == 429 || resp.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable))
+                        {
+                            int delay = attempt * 2500 + Random.Shared.Next(500, 1500);
+                            FileLogger.Log($"[SharePointClient] ⚠️ SharePoint Throttled ao consultar lista (HTTP {(int)resp.StatusCode}). Aguardando {delay}ms...");
+                            await Task.Delay(delay);
+                            continue;
+                        }
+                        break;
+                    }
+                    catch (Exception ex) when (attempt < 3)
+                    {
+                        FileLogger.Log($"[SharePointClient] ⚠️ Falha de rede/DNS na tentativa {attempt}/3 em Graph API: {ex.Message}. Aguardando 3s...");
+                        await Task.Delay(3000);
+                    }
+                    catch (Exception ex)
+                    {
+                        FileLogger.LogError("[SharePointClient] ❌ Erro de conexão/DNS com Graph API (graph.microsoft.com)", ex);
+                        return list;
+                    }
+                }
+
+                if (resp == null || !resp.IsSuccessStatusCode)
+                {
+                    if (resp != null && resp.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                    {
+                        FileLogger.Log("[SharePointClient] ⚠️ Token de acesso expirado (401 Unauthorized). Resetando token para renovação automática.");
+                        _accessToken = "";
+                        _tokenExpiresAt = DateTime.MinValue;
+                    }
+                    break;
+                }
+
+                string json = await resp.Content.ReadAsStringAsync();
+                using var doc = JsonDocument.Parse(json);
+
+                if (doc.RootElement.TryGetProperty("value", out var valueArray))
+                {
+                    foreach (var item in valueArray.EnumerateArray())
+                    {
+                        list.Add(item.Clone());
+                    }
+                }
+
+                nextUrl = doc.RootElement.TryGetProperty("@odata.nextLink", out var nextProp) ? nextProp.GetString() ?? "" : "";
+            }
+
+            lock (_cacheLock)
+            {
+                _cachedListItems = list;
+                _cacheListExpiresAt = DateTime.UtcNow.AddSeconds(15);
             }
 
             return list;
@@ -343,8 +448,17 @@ namespace WinServiceFleetAgent.Core
 
                     bool isConfigMonitor = cleanSrv.Equals("DNA.ConfigMonitorSVC", StringComparison.OrdinalIgnoreCase);
                     bool isMonitorService = cleanSrv.Equals("DNA.MonitorServiceSVC", StringComparison.OrdinalIgnoreCase);
+                    bool isZabbix = cleanSrv.Contains("Zabbix", StringComparison.OrdinalIgnoreCase);
 
-                    string safeUrlComunicacao = isConfigMonitor ? (string.IsNullOrWhiteSpace(urlComunicacao) ? "Nenhuma" : urlComunicacao) : "Nenhuma";
+                    string safeUrlComunicacao = "Nenhuma";
+                    if (isConfigMonitor)
+                    {
+                        safeUrlComunicacao = string.IsNullOrWhiteSpace(urlComunicacao) ? "Nenhuma" : urlComunicacao;
+                    }
+                    else if (isZabbix)
+                    {
+                        safeUrlComunicacao = ConfigUrlUpdater.GetZabbixServerUrl(@"C:\Zabbix\config\zabbix_agentd.conf");
+                    }
 
                     string shortInstalled = FormatShortVersion(versaoInstalada);
 
@@ -426,16 +540,14 @@ namespace WinServiceFleetAgent.Core
                         fieldsPayload["Url_Comunicacao_Desejavel"] = isConfigMonitor ? (string.IsNullOrWhiteSpace(urlComunicacao) ? "https://mediadna.ibope.com/mediadnawcfcs/RemoteHostsService.svc" : urlComunicacao) : "Nenhuma";
                         fieldsPayload["Acao_Solicitada"] = "Nenhuma";
                         fieldsPayload["Acao_Solicitada_Url"] = "Nenhuma";
-                        fieldsPayload["AutoRestart"] = "Não";
-
                         var itemPayload = new { fields = fieldsPayload };
                         string createUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items";
-                        var content = new StringContent(JsonSerializer.Serialize(itemPayload), Encoding.UTF8, "application/json");
 
-                        var createResp = await client.PostAsync(createUrl, content);
+                        var createResp = await ExecuteWithThrottlingRetryAsync(() => client.PostAsync(createUrl, new StringContent(JsonSerializer.Serialize(itemPayload), Encoding.UTF8, "application/json")));
                         if (createResp.IsSuccessStatusCode)
                         {
                             FileLogger.Log($"[SharePointClient] ✅ Novo item cadastrado no SharePoint: [{displayTitle}] {cleanHost}_{cleanSrv}");
+                            InvalidateListCache();
                         }
                         else
                         {
@@ -446,13 +558,20 @@ namespace WinServiceFleetAgent.Core
                     else
                     {
                         string patchUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items/{itemId}/fields";
-                        var content = new StringContent(JsonSerializer.Serialize(fieldsPayload), Encoding.UTF8, "application/json");
-                        var request = new HttpRequestMessage(new HttpMethod("PATCH"), patchUrl) { Content = content };
+                        
+                        var patchResp = await ExecuteWithThrottlingRetryAsync(() => 
+                        {
+                            var req = new HttpRequestMessage(new HttpMethod("PATCH"), patchUrl) 
+                            { 
+                                Content = new StringContent(JsonSerializer.Serialize(fieldsPayload), Encoding.UTF8, "application/json") 
+                            };
+                            return client.SendAsync(req);
+                        });
 
-                        var patchResp = await client.SendAsync(request);
                         if (patchResp.IsSuccessStatusCode)
                         {
                             FileLogger.Log($"[SharePointClient] ✅ Registro atualizado no SharePoint (ID {itemId}): [{displayTitle}] {cleanHost}_{cleanSrv} -> AutoRestart: {safeAutoRestart}");
+                            InvalidateListCache();
                         }
                         else
                         {
@@ -793,6 +912,45 @@ namespace WinServiceFleetAgent.Core
             }
 
             return string.Empty;
+        }
+
+        public async Task<int> ClearAllListItemsAsync()
+        {
+            int deletedCount = 0;
+            using (var client = new HttpClient())
+            {
+                await EnsureGraphContextAsync(client);
+                if (string.IsNullOrEmpty(_accessToken) || string.IsNullOrEmpty(_listId)) return 0;
+
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
+
+                try
+                {
+                    var items = await GetAllListItemsAsync(client);
+                    FileLogger.Log($"[SharePointClient] 🧹 Iniciando limpeza geral: {items.Count} itens encontrados na lista do SharePoint.");
+
+                    foreach (var item in items)
+                    {
+                        string itemId = item.GetProperty("id").GetString() ?? "";
+                        if (!string.IsNullOrEmpty(itemId))
+                        {
+                            string delUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items/{itemId}";
+                            var delResp = await client.DeleteAsync(delUrl);
+                            if (delResp.IsSuccessStatusCode)
+                            {
+                                deletedCount++;
+                            }
+                        }
+                    }
+
+                    FileLogger.Log($"[SharePointClient] ✨ Limpeza concluída com sucesso! Total de {deletedCount} itens apagados do SharePoint.");
+                }
+                catch (Exception ex)
+                {
+                    FileLogger.LogError("[SharePointClient] Erro ao apagar todos os itens da lista", ex);
+                }
+            }
+            return deletedCount;
         }
     }
 }

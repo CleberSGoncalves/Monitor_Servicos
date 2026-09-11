@@ -70,12 +70,34 @@ namespace WinServiceFleetAgent.Core
                 string exeFullPath = Path.Combine(srv.InstallPath, srv.ExeName);
                 if (!File.Exists(exeFullPath))
                 {
+                    // Tenta na subpasta com o nome do serviço (ex: C:\Program Files (x86)\Tanium\Tanium Client\TaniumClient.exe)
+                    string subPath = Path.Combine(srv.InstallPath, srv.ServiceName, srv.ExeName);
+                    if (File.Exists(subPath))
+                    {
+                        exeFullPath = subPath;
+                    }
+                    else
+                    {
+                        string subNoSpaces = Path.Combine(srv.InstallPath, srv.ServiceName.Replace(" ", ""), srv.ExeName);
+                        if (File.Exists(subNoSpaces))
+                        {
+                            exeFullPath = subNoSpaces;
+                        }
+                    }
+                }
+
+                if (!File.Exists(exeFullPath))
+                {
                     if (srv.InstallPath.StartsWith("C:\\", StringComparison.OrdinalIgnoreCase))
                     {
                         string altPath = "D:\\" + srv.InstallPath.Substring(3);
                         if (File.Exists(Path.Combine(altPath, srv.ExeName)))
                         {
                             exeFullPath = Path.Combine(altPath, srv.ExeName);
+                        }
+                        else if (File.Exists(Path.Combine(altPath, srv.ServiceName, srv.ExeName)))
+                        {
+                            exeFullPath = Path.Combine(altPath, srv.ServiceName, srv.ExeName);
                         }
                     }
                     else if (srv.InstallPath.StartsWith("D:\\", StringComparison.OrdinalIgnoreCase))
@@ -84,6 +106,10 @@ namespace WinServiceFleetAgent.Core
                         if (File.Exists(Path.Combine(altPath, srv.ExeName)))
                         {
                             exeFullPath = Path.Combine(altPath, srv.ExeName);
+                        }
+                        else if (File.Exists(Path.Combine(altPath, srv.ServiceName, srv.ExeName)))
+                        {
+                            exeFullPath = Path.Combine(altPath, srv.ServiceName, srv.ExeName);
                         }
                     }
                 }
@@ -101,44 +127,48 @@ namespace WinServiceFleetAgent.Core
                 bool serviceExists = !statusServico.Equals("Não Encontrado", StringComparison.OrdinalIgnoreCase);
                 bool isStandaloneApp = srv.ServiceName.Equals("Atria Capture", StringComparison.OrdinalIgnoreCase);
 
+                string installedVer = "Não Instalado";
+
                 if (isStandaloneApp)
                 {
-                    if (!exeExists)
+                    if (exeExists)
                     {
-                        FileLogger.Log($"[FleetOrchestrator] Aplicação '{srv.ServiceName}' NÃO está instalada nesta máquina. Ignorando.");
-                        continue;
+                        statusServico = "Instalado";
+                        installedVer = VersionInspector.GetExecutableVersion(exeFullPath);
                     }
-                    statusServico = "Instalado";
+                    else
+                    {
+                        statusServico = "Inexistente";
+                    }
                 }
                 else
                 {
-                    if (!serviceExists)
+                    if (!serviceExists && !exeExists)
                     {
-                        FileLogger.Log($"[FleetOrchestrator] Serviço do Windows '{srv.ServiceName}' NÃO está instalado. Ignorando.");
-                        continue;
+                        statusServico = "Inexistente";
                     }
-
-                    // Lógica do AutoRestart: Se o serviço estiver Parado, tenta reiniciar automaticamente!
-                    if (statusServico.Equals("Parado", StringComparison.OrdinalIgnoreCase))
+                    else
                     {
-                        FileLogger.Log($"[FleetOrchestrator] ⚠️ Serviço '{srv.ServiceName}' detectado como PARADO. Verificando auto-recuperação (AutoRestart)...");
-                        try
+                        installedVer = VersionInspector.GetExecutableVersion(exeFullPath);
+                        if (statusServico.Equals("Parado", StringComparison.OrdinalIgnoreCase))
                         {
-                            bool restarted = WinController.StartService(srv.ServiceName);
-                            if (restarted)
+                            FileLogger.Log($"[FleetOrchestrator] ⚠️ Serviço '{srv.ServiceName}' detectado como PARADO. Verificando auto-recuperação (AutoRestart)...");
+                            try
                             {
-                                statusServico = "Em Execução";
-                                FileLogger.Log($"[FleetOrchestrator] 🩹 AutoRestart ativado: Serviço '{srv.ServiceName}' reiniciado com sucesso!");
+                                bool restarted = WinController.StartService(srv.ServiceName);
+                                if (restarted)
+                                {
+                                    statusServico = "Em Execução";
+                                    FileLogger.Log($"[FleetOrchestrator] 🩹 AutoRestart ativado: Serviço '{srv.ServiceName}' reiniciado com sucesso!");
+                                }
                             }
-                        }
-                        catch (Exception ex)
-                        {
-                            FileLogger.LogError($"[FleetOrchestrator] Falha no AutoRestart para '{srv.ServiceName}'", ex);
+                            catch (Exception ex)
+                            {
+                                FileLogger.LogError($"[FleetOrchestrator] Falha no AutoRestart para '{srv.ServiceName}'", ex);
+                            }
                         }
                     }
                 }
-
-                string installedVer = VersionInspector.GetExecutableVersion(exeFullPath);
 
                 string? githubLatestVer = null;
                 if (!string.IsNullOrWhiteSpace(srv.GithubRepo))
@@ -160,6 +190,8 @@ namespace WinServiceFleetAgent.Core
                     urlComunicacao: metadata.UrlComunicacao,
                     metrics: metrics
                 );
+
+                await Task.Delay(200);
             }
 
             // Passo 3: Execução de Ações Pendentes de URL (Acao_Solicitada_Url = "Atualizar")
@@ -173,10 +205,28 @@ namespace WinServiceFleetAgent.Core
                     {
                         await _spClient.UpdateUrlActionStatusAsync(_hostname, urlAction.NomeServico, "Em Progresso", urlAction.UrlComunicacaoDesejavel, isPending: true);
 
-                        bool updated = ConfigUrlUpdater.UpdateWcfMainUrl(_configMonitorConfigPath, urlAction.UrlComunicacaoDesejavel);
+                        bool isZabbixUrl = urlAction.NomeServico.Contains("Zabbix", StringComparison.OrdinalIgnoreCase);
+                        bool updated = false;
+
+                        if (isZabbixUrl)
+                        {
+                            updated = ConfigUrlUpdater.UpdateZabbixServerUrl(@"C:\Zabbix\config\zabbix_agentd.conf", urlAction.UrlComunicacaoDesejavel);
+                            if (updated)
+                            {
+                                WinController.RestartService("Zabbix Agent");
+                            }
+                        }
+                        else
+                        {
+                            updated = ConfigUrlUpdater.UpdateWcfMainUrl(_configMonitorConfigPath, urlAction.UrlComunicacaoDesejavel);
+                            if (updated)
+                            {
+                                WinController.RestartService("DNA.ConfigMonitorSVC");
+                            }
+                        }
+
                         if (updated)
                         {
-                            WinController.RestartService("DNA.ConfigMonitorSVC");
                             await _spClient.UpdateUrlActionStatusAsync(_hostname, urlAction.NomeServico, "Atualizado", urlAction.UrlComunicacaoDesejavel, isPending: false);
                             FileLogger.Log($"[FleetOrchestrator] ✅ Ação de URL concluída com sucesso para '{urlAction.NomeServico}'!");
                         }
@@ -193,7 +243,7 @@ namespace WinServiceFleetAgent.Core
                 }
             }
 
-            // Passo 4: Execução de Ações Pendentes de Serviços (Acao_Solicitada = "Reiniciar" / "Atualizar" / "Forcar Atualizacao")
+            // Passo 4: Execução de Ações Pendentes de Serviços (Acao_Solicitada = "Reiniciar" / "Parar" / "Instalar" / "Desinstalar" / "Atualizar")
             var pendingActions = await _spClient.GetPendingActionsAsync(_hostname);
             if (pendingActions == null || pendingActions.Count == 0)
             {
@@ -236,13 +286,35 @@ namespace WinServiceFleetAgent.Core
                         bool ok = WinController.RestartService(srvConfig.ServiceName);
                         if (ok)
                         {
-                            await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Atualizado", acaoSolicitada: "Nenhuma");
+                            await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Em Execução", acaoSolicitada: "Nenhuma");
                             FileLogger.Log($"[FleetOrchestrator] ✅ Serviço '{srvConfig.ServiceName}' reiniciado com sucesso!");
                         }
                         else
                         {
                             await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Erro na Atualização");
                         }
+                    }
+                    else if (action.AcaoSolicitada.Equals("Parar", StringComparison.OrdinalIgnoreCase))
+                    {
+                        await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Em Progresso");
+                        bool stopped = WinController.StopService(srvConfig.ServiceName);
+                        if (stopped)
+                        {
+                            await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Parado", acaoSolicitada: "Nenhuma");
+                            FileLogger.Log($"[FleetOrchestrator] ✅ Serviço '{srvConfig.ServiceName}' parado com sucesso!");
+                        }
+                        else
+                        {
+                            await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Erro na Atualização");
+                        }
+                    }
+                    else if (action.AcaoSolicitada.Equals("Instalar", StringComparison.OrdinalIgnoreCase))
+                    {
+                        await ProcessInstallAsync(srvConfig, action);
+                    }
+                    else if (action.AcaoSolicitada.Equals("Desinstalar", StringComparison.OrdinalIgnoreCase))
+                    {
+                        await ProcessUninstallAsync(srvConfig, action);
                     }
                     else if (action.AcaoSolicitada.Equals("Atualizar", StringComparison.OrdinalIgnoreCase) ||
                              action.AcaoSolicitada.StartsWith("Forca", StringComparison.OrdinalIgnoreCase) ||
@@ -379,11 +451,8 @@ namespace WinServiceFleetAgent.Core
                     // Mata processo se ainda existir
                     ps.AppendLine("Get-Process -Name 'WinServiceFleetAgent' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue");
                     ps.AppendLine("Start-Sleep -Seconds 1");
-                    // Copia cada arquivo individualmente
-                    ps.AppendLine("Get-ChildItem -Path $staging -File | ForEach-Object {");
-                    ps.AppendLine("  $dest = Join-Path $install $_.Name");
-                    ps.AppendLine("  try { Copy-Item $_.FullName $dest -Force } catch {}");
-                    ps.AppendLine("}");
+                    // Copia arquivos e subpastas de staging para a pasta de instalação
+                    ps.AppendLine("try { Copy-Item -Path (Join-Path $staging '*') -Destination $install -Recurse -Force -ErrorAction SilentlyContinue } catch {}");
                     // Inicia serviço com 3 tentativas
                     ps.AppendLine("for ($i=1; $i -le 3; $i++) {");
                     ps.AppendLine("  try { Start-Service $svc -ErrorAction Stop; break } catch { Start-Sleep -Seconds 3 }");
@@ -505,6 +574,153 @@ namespace WinServiceFleetAgent.Core
             finally
             {
                 try { if (Directory.Exists(stagingFolder)) Directory.Delete(stagingFolder, true); } catch { }
+            }
+        }
+
+        private async Task ProcessInstallAsync(ServiceDefinition srvConfig, PendingActionItem action)
+        {
+            FileLogger.Log($"[FleetOrchestrator] 🚀 Iniciando instalação do serviço '{srvConfig.ServiceName}'...");
+            await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Em Progresso");
+
+            string targetVersion = !string.IsNullOrWhiteSpace(action.VersaoDesejada) ? action.VersaoDesejada : "latest";
+
+            if (!string.IsNullOrWhiteSpace(srvConfig.GithubRepo))
+            {
+                try
+                {
+                    GitHubDownloader.ClearCache(srvConfig.GithubRepo);
+                    string? latest = await GitHubDownloader.GetLatestReleaseVersionAsync(srvConfig.GithubRepo, _githubToken);
+                    if (!string.IsNullOrWhiteSpace(latest)) targetVersion = latest;
+
+                    await GitHubDownloader.DownloadAndExtractReleaseAsync(srvConfig.GithubRepo, targetVersion, _githubToken, srvConfig.InstallPath);
+                }
+                catch (Exception exDl)
+                {
+                    FileLogger.LogError($"[FleetOrchestrator] Falha ao baixar release para '{srvConfig.ServiceName}'", exDl);
+                }
+            }
+
+            if (srvConfig.ServiceName.Equals("Zabbix Agent", StringComparison.OrdinalIgnoreCase) ||
+                srvConfig.ServiceName.Equals("Zabbix", StringComparison.OrdinalIgnoreCase))
+            {
+                string zabbixExe = Path.Combine(srvConfig.InstallPath, "zabbix_agentd.exe");
+                string zabbixConf = Path.Combine(srvConfig.InstallPath, "config", "zabbix_agentd.conf");
+                if (File.Exists(zabbixExe))
+                {
+                    RunCommand("cmd.exe", $"/c \"\"{zabbixExe}\" --config \"{zabbixConf}\" --install\"");
+                }
+            }
+            else if (srvConfig.ServiceName.Equals("Tanium Client", StringComparison.OrdinalIgnoreCase) ||
+                     srvConfig.ServiceName.Equals("Tanium", StringComparison.OrdinalIgnoreCase))
+            {
+                string installBat = Path.Combine(srvConfig.InstallPath, "Install.bat");
+                if (File.Exists(installBat))
+                {
+                    RunCommand("cmd.exe", $"/c \"\"{installBat}\"\"");
+                }
+                else
+                {
+                    string setupExe = Path.Combine(srvConfig.InstallPath, "SetupClient.exe");
+                    if (File.Exists(setupExe))
+                    {
+                        RunCommand(setupExe, "/S");
+                    }
+                }
+            }
+            else
+            {
+                string installBat = Path.Combine(srvConfig.InstallPath, "_InstallService.bat");
+                if (!File.Exists(installBat)) installBat = Path.Combine(srvConfig.InstallPath, "install.bat");
+
+                if (File.Exists(installBat))
+                {
+                    RunCommand("cmd.exe", $"/c \"\"{installBat}\"\"");
+                }
+                else
+                {
+                    string exePath = Path.Combine(srvConfig.InstallPath, srvConfig.ExeName);
+                    if (File.Exists(exePath))
+                    {
+                        RunCommand("cmd.exe", $"/c sc create \"{srvConfig.ServiceName}\" binPath= \"{exePath}\" start= auto");
+                    }
+                }
+            }
+
+            WinController.StartService(srvConfig.ServiceName);
+
+            string exeFullPath = Path.Combine(srvConfig.InstallPath, srvConfig.ExeName);
+            string installedVer = VersionInspector.GetExecutableVersion(exeFullPath);
+            string currentStatus = WinController.GetServiceStatus(srvConfig.ServiceName);
+
+            if (currentStatus == "Em Execução" || File.Exists(exeFullPath))
+            {
+                FileLogger.Log($"[FleetOrchestrator] ✅ Serviço '{srvConfig.ServiceName}' instalado e iniciado com sucesso!");
+                await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Em Execução", acaoSolicitada: "Nenhuma", versaoInstalada: installedVer, versaoDesejada: targetVersion);
+            }
+            else
+            {
+                FileLogger.LogError($"[FleetOrchestrator] ❌ Erro ao instalar serviço '{srvConfig.ServiceName}'.");
+                await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Erro na Atualização");
+            }
+        }
+
+        private async Task ProcessUninstallAsync(ServiceDefinition srvConfig, PendingActionItem action)
+        {
+            FileLogger.Log($"[FleetOrchestrator] 🗑️ Iniciando desinstalação do serviço '{srvConfig.ServiceName}'...");
+            await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Em Progresso");
+
+            WinController.StopService(srvConfig.ServiceName);
+
+            if (srvConfig.ServiceName.Equals("Zabbix Agent", StringComparison.OrdinalIgnoreCase) ||
+                srvConfig.ServiceName.Equals("Zabbix", StringComparison.OrdinalIgnoreCase))
+            {
+                string zabbixExe = Path.Combine(srvConfig.InstallPath, "zabbix_agentd.exe");
+                string zabbixConf = Path.Combine(srvConfig.InstallPath, "config", "zabbix_agentd.conf");
+                if (File.Exists(zabbixExe))
+                {
+                    RunCommand("cmd.exe", $"/c \"\"{zabbixExe}\" --config \"{zabbixConf}\" --uninstall\"");
+                }
+            }
+            else
+            {
+                string uninstallBat = Path.Combine(srvConfig.InstallPath, "_UninstallService.bat");
+                if (!File.Exists(uninstallBat)) uninstallBat = Path.Combine(srvConfig.InstallPath, "uninstall.bat");
+
+                if (File.Exists(uninstallBat))
+                {
+                    RunCommand("cmd.exe", $"/c \"\"{uninstallBat}\"\"");
+                }
+                else
+                {
+                    RunCommand("cmd.exe", $"/c sc delete \"{srvConfig.ServiceName}\"");
+                }
+            }
+
+            FileLogger.Log($"[FleetOrchestrator] ✅ Serviço '{srvConfig.ServiceName}' desinstalado com sucesso!");
+            await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Inexistente", acaoSolicitada: "Nenhuma", versaoInstalada: "Não Instalado");
+        }
+
+        private static void RunCommand(string fileName, string arguments)
+        {
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = fileName,
+                    Arguments = arguments,
+                    CreateNoWindow = true,
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                };
+                using (var proc = Process.Start(psi))
+                {
+                    proc?.WaitForExit(30000);
+                }
+            }
+            catch (Exception ex)
+            {
+                FileLogger.LogError($"Erro ao executar comando '{fileName} {arguments}'", ex);
             }
         }
 

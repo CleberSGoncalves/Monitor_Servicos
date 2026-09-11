@@ -66,7 +66,13 @@ namespace WinServiceFleetAgent
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            _logger.LogInformation("WinServiceFleetAgent - Serviço iniciado.");
+            // Garante o hand-shake imediato (< 50ms) com o Service Control Manager do Windows (evita Erro 1053)
+            await Task.Yield();
+
+            // Adiciona Jitter aleatório (1 a 120s) para desincronizar chamadas no Microsoft Graph e SharePoint entre as 195 máquinas
+            int initialJitter = Random.Shared.Next(1, 120);
+            _logger.LogInformation($"WinServiceFleetAgent - Serviço iniciado com Jitter de {initialJitter}s.");
+            await Task.Delay(TimeSpan.FromSeconds(initialJitter), stoppingToken);
 
             while (!stoppingToken.IsCancellationRequested)
             {

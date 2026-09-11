@@ -20,8 +20,8 @@ namespace WinServiceFleetAgent.Core
         {
             try
             {
-                string p1 = "ghp_Oz2vW53bQ";
-                string p2 = "cYCWRbX9B7uQ5qFyk4m800HtL5X";
+                string p1 = "ghp_D7dYQqGCcNF3di3V";
+                string p2 = "sZg2xHdH4aR2ce2VDTXK";
                 return p1 + p2;
             }
             catch
@@ -42,7 +42,7 @@ namespace WinServiceFleetAgent.Core
         {
             if (string.IsNullOrWhiteSpace(githubRepo)) return null;
 
-            // Cache de 1 minuto por repositório para evitar estouro da Cota de API do GitHub
+            // Cache de 30 minutos por repositório para evitar estouro da Cota de API do GitHub
             if (_releaseCache.TryGetValue(githubRepo, out var cached) && DateTime.UtcNow < cached.Expiry)
             {
                 return cached.Version;
@@ -77,9 +77,19 @@ namespace WinServiceFleetAgent.Core
                             string tag = tagProp.GetString() ?? "";
                             string cleanTag = tag.TrimStart('v', 'V');
                             FileLogger.Log($"[GitHubDownloader] ✅ Release mais recente no GitHub para '{githubRepo}': '{cleanTag}'");
-                            _releaseCache[githubRepo] = (cleanTag, DateTime.UtcNow.AddMinutes(1));
+                            // Cache por 120 minutos (2 horas) para nao estourar cota da API entre as 195 maquinas
+                            _releaseCache[githubRepo] = (cleanTag, DateTime.UtcNow.AddMinutes(120));
                             return cleanTag;
                         }
+                    }
+                }
+                else
+                {
+                    // Se falhou (ex: 403 Rate Limit), guarda cache temporario de 60 min para nao sobrecarregar a API
+                    if (_releaseCache.TryGetValue(githubRepo, out var oldCached))
+                    {
+                        _releaseCache[githubRepo] = (oldCached.Version, DateTime.UtcNow.AddMinutes(60));
+                        return oldCached.Version;
                     }
                 }
             }
@@ -104,6 +114,51 @@ namespace WinServiceFleetAgent.Core
                 Directory.CreateDirectory(targetDir);
             }
 
+            string cleanTag = tagName.Trim();
+            string tagWithV = cleanTag.StartsWith("v", StringComparison.OrdinalIgnoreCase) ? cleanTag : $"v{cleanTag}";
+            string repoName = githubRepo.Contains("/") ? githubRepo.Split('/')[1] : githubRepo;
+
+            // PASSO 1 (PRIORIDADE MÁXIMA): Tentar download direto via URL pública da CDN do GitHub Releases (0% Limite de API REST!)
+            if (!cleanTag.Equals("latest", StringComparison.OrdinalIgnoreCase))
+            {
+                var candidateUrls = new[]
+                {
+                    $"https://github.com/{githubRepo}/releases/download/{tagWithV}/{repoName}_{tagWithV}.zip",
+                    $"https://github.com/{githubRepo}/releases/download/{cleanTag}/{repoName}_{cleanTag}.zip",
+                    $"https://github.com/{githubRepo}/releases/download/{tagWithV}/{repoName}.zip",
+                    $"https://github.com/{githubRepo}/releases/download/{cleanTag}/{repoName}.zip"
+                };
+
+                foreach (var directUrl in candidateUrls)
+                {
+                    try
+                    {
+                        using (var directClient = new HttpClient())
+                        {
+                            directClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+                            var directResp = await directClient.GetAsync(directUrl, HttpCompletionOption.ResponseHeadersRead);
+                            if (directResp.IsSuccessStatusCode)
+                            {
+                                string zipPath = Path.Combine(targetDir, $"{repoName}_{tagWithV}.zip");
+                                using (var fs = new FileStream(zipPath, FileMode.Create, FileAccess.Write, FileShare.None))
+                                {
+                                    await directResp.Content.CopyToAsync(fs);
+                                }
+                                FileLogger.Log($"[GitHubDownloader] ✅ Download DIRETO efetuado com SUCESSO via CDN Pública (0% de uso de API REST): '{directUrl}'");
+                                ZipFile.ExtractToDirectory(zipPath, targetDir, overwriteFiles: true);
+                                try { File.Delete(zipPath); } catch { }
+                                return targetDir;
+                            }
+                        }
+                    }
+                    catch (Exception exDirect)
+                    {
+                        FileLogger.Log($"[GitHubDownloader] URL direta '{directUrl}' inacessível ({exDirect.Message}). Tentando próxima...");
+                    }
+                }
+            }
+
+            // PASSO 2 (FALLBACK): Se o download direto estático falhar (ex: nome de asset diferente ou tag 'latest'), consulta a REST API
             string effectiveToken = token;
             if (string.IsNullOrWhiteSpace(effectiveToken) ||
                 effectiveToken.Equals("GITHUB_PAT_TOKEN", StringComparison.OrdinalIgnoreCase) ||
@@ -112,14 +167,11 @@ namespace WinServiceFleetAgent.Core
                 effectiveToken = GetEmbeddedFallbackToken();
             }
 
-            string cleanTag = tagName.Trim();
-            string tagWithV = cleanTag.StartsWith("v", StringComparison.OrdinalIgnoreCase) ? cleanTag : $"v{cleanTag}";
-
             string url = cleanTag.Equals("latest", StringComparison.OrdinalIgnoreCase)
                 ? $"https://api.github.com/repos/{githubRepo}/releases/latest"
                 : $"https://api.github.com/repos/{githubRepo}/releases/tags/{tagWithV}";
 
-            FileLogger.Log($"[GitHubDownloader] Consultando release no GitHub: {url}");
+            FileLogger.Log($"[GitHubDownloader] Consultando release na REST API do GitHub: {url}");
             var (success, jsonString, is401) = await MakeGitHubApiRequestAsync(url, effectiveToken);
 
             if (!success && is401 && !string.IsNullOrWhiteSpace(effectiveToken))
@@ -159,6 +211,34 @@ namespace WinServiceFleetAgent.Core
 
             if (!success || string.IsNullOrWhiteSpace(jsonString))
             {
+                FileLogger.Log($"[GitHubDownloader] ⚠️ Consulta de API falhou (403/401). Tentando download direto via URL pública...");
+                string directUrl = $"https://github.com/{githubRepo}/releases/download/{tagWithV}/{repoName}_{tagWithV}.zip";
+
+                try
+                {
+                    using (var directClient = new HttpClient())
+                    {
+                        directClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0");
+                        var directResp = await directClient.GetAsync(directUrl, HttpCompletionOption.ResponseHeadersRead);
+                        if (directResp.IsSuccessStatusCode)
+                        {
+                            string zipPath = Path.Combine(targetDir, $"{repoName}_{tagWithV}.zip");
+                            using (var fs = new FileStream(zipPath, FileMode.Create, FileAccess.Write, FileShare.None))
+                            {
+                                await directResp.Content.CopyToAsync(fs);
+                            }
+                            FileLogger.Log($"[GitHubDownloader] ✅ Download direto efetuado com SUCESSO via URL pública sem limite de API!");
+                            ZipFile.ExtractToDirectory(zipPath, targetDir, overwriteFiles: true);
+                            File.Delete(zipPath);
+                            return targetDir;
+                        }
+                    }
+                }
+                catch (Exception exDirect)
+                {
+                    FileLogger.LogError($"[GitHubDownloader] Erro no download direto via URL pública '{directUrl}'", exDirect);
+                }
+
                 throw new Exception($"Falha ao consultar release '{cleanTag}' em '{githubRepo}'.");
             }
 
@@ -244,7 +324,16 @@ namespace WinServiceFleetAgent.Core
             client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("WinServiceFleetAgent", "1.0"));
             if (!string.IsNullOrWhiteSpace(token))
             {
-                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                string cleanToken = token.Trim();
+                if (cleanToken.StartsWith("token ", StringComparison.OrdinalIgnoreCase))
+                {
+                    cleanToken = cleanToken.Substring(6).Trim();
+                }
+                else if (cleanToken.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+                {
+                    cleanToken = cleanToken.Substring(7).Trim();
+                }
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("token", cleanToken);
             }
             client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github.v3+json"));
             return client;
@@ -266,7 +355,14 @@ namespace WinServiceFleetAgent.Core
                     {
                         string errStr = await response.Content.ReadAsStringAsync();
                         bool is401 = response.StatusCode == HttpStatusCode.Unauthorized;
-                        FileLogger.LogError($"[GitHubDownloader] ❌ Falha HTTP {(int)response.StatusCode} em '{url}': {errStr}");
+                        if (response.StatusCode == HttpStatusCode.Forbidden || errStr.Contains("rate limit", StringComparison.OrdinalIgnoreCase))
+                        {
+                            FileLogger.Log($"[GitHubDownloader] ⚠️ Rate limit da API do GitHub atingido em '{url}'. Utilizando fallback de cache ou CDN.");
+                        }
+                        else
+                        {
+                            FileLogger.LogError($"[GitHubDownloader] ❌ Falha HTTP {(int)response.StatusCode} em '{url}': {errStr}");
+                        }
                         return (false, "", is401);
                     }
                 }
