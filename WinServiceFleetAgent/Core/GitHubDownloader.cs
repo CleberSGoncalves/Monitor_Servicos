@@ -85,12 +85,9 @@ namespace WinServiceFleetAgent.Core
                 }
                 else
                 {
-                    // Se falhou (ex: 403 Rate Limit), guarda cache temporario de 60 min para nao sobrecarregar a API
-                    if (_releaseCache.TryGetValue(githubRepo, out var oldCached))
-                    {
-                        _releaseCache[githubRepo] = (oldCached.Version, DateTime.UtcNow.AddMinutes(60));
-                        return oldCached.Version;
-                    }
+                    // Guarda cache por 24 horas para repositorios inexistentes/sem release (ex: Zabbix, Tanium)
+                    _releaseCache[githubRepo] = ("", DateTime.UtcNow.AddHours(24));
+                    return null;
                 }
             }
             catch (Exception ex)

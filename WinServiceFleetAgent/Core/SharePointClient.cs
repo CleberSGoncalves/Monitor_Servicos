@@ -213,7 +213,7 @@ namespace WinServiceFleetAgent.Core
         private async Task<HttpResponseMessage> ExecuteWithThrottlingRetryAsync(Func<Task<HttpResponseMessage>> action)
         {
             HttpResponseMessage response = null!;
-            for (int attempt = 1; attempt <= 4; attempt++)
+            for (int attempt = 1; attempt <= 6; attempt++)
             {
                 response = await action();
                 if (response.IsSuccessStatusCode) return response;
@@ -224,10 +224,10 @@ namespace WinServiceFleetAgent.Core
                                    content.Contains("activityLimitReached", StringComparison.OrdinalIgnoreCase) ||
                                    content.Contains("throttledRequest", StringComparison.OrdinalIgnoreCase);
 
-                if (isThrottled && attempt < 4)
+                if (isThrottled && attempt < 6)
                 {
-                    int delayMs = attempt * 2500 + Random.Shared.Next(500, 1500);
-                    FileLogger.Log($"[SharePointClient] ⚠️ SharePoint Throttling ativado (Tentativa {attempt}/4). Aguardando {delayMs}ms para retry...");
+                    int delayMs = attempt * 3000 + Random.Shared.Next(1000, 2500);
+                    FileLogger.Log($"[SharePointClient] ⚠️ SharePoint Throttling ativado (Tentativa {attempt}/6). Aguardando {delayMs}ms para retry...");
                     await Task.Delay(delayMs);
                 }
                 else
