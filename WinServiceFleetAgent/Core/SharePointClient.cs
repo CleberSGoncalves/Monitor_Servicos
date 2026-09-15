@@ -32,6 +32,7 @@ namespace WinServiceFleetAgent.Core
         private readonly string _listName;
         private readonly string _username;
         private readonly string _password;
+        private readonly string _clientSecret;
 
         private string _accessToken = string.Empty;
         private DateTime _tokenExpiresAt = DateTime.MinValue;

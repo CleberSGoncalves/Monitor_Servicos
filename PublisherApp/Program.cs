@@ -19,9 +19,11 @@ namespace PublisherApp
 
             try
             {
-                string baseDir = AppDomain.CurrentDomain.BaseDirectory;
-                string servicosDir = Path.Combine(baseDir, "servicos");
-
+                string servicosDir = Path.Combine(Directory.GetCurrentDirectory(), "publish", "servicos");
+                if (!Directory.Exists(servicosDir))
+                {
+                    servicosDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "servicos");
+                }
                 if (!Directory.Exists(servicosDir))
                 {
                     servicosDir = Path.Combine(Directory.GetCurrentDirectory(), "servicos");

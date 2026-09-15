@@ -35,14 +35,44 @@ namespace WinServiceFleetAgent.Core
             {
                 if (File.Exists(LogFile))
                 {
-                    var creationTime = File.GetCreationTime(LogFile);
-                    var lastWriteTime = File.GetLastWriteTime(LogFile);
-                    var oldestTime = creationTime < lastWriteTime ? creationTime : lastWriteTime;
+                    var fileInfo = new FileInfo(LogFile);
 
-                    // Apaga o arquivo de log se tiver 5 dias ou mais de existência/modificação
-                    if ((DateTime.Now - oldestTime).TotalDays >= 5)
+                    // 1. Se o arquivo de log tiver 3 dias ou mais de modifição, apaga
+                    if ((DateTime.Now - fileInfo.LastWriteTime).TotalDays >= 3)
                     {
                         File.Delete(LogFile);
+                        return;
+                    }
+
+                    // 2. Se o log ultrapassar 10 MB, trunca e mantém apenas as últimas 2.000 linhas
+                    if (fileInfo.Length > 10 * 1024 * 1024)
+                    {
+                        lock (_lock)
+                        {
+                            var lines = File.ReadAllLines(LogFile);
+                            if (lines.Length > 2000)
+                            {
+                                var lastLines = System.Linq.Enumerable.Skip(lines, lines.Length - 2000);
+                                File.WriteAllLines(LogFile, lastLines);
+                            }
+                        }
+                    }
+                }
+
+                // 3. Limpa arquivos de log antigos secundários na pasta logs/
+                if (Directory.Exists(LogDir))
+                {
+                    foreach (var file in Directory.GetFiles(LogDir, "*.log"))
+                    {
+                        try
+                        {
+                            var fi = new FileInfo(file);
+                            if ((DateTime.Now - fi.LastWriteTime).TotalDays >= 3)
+                            {
+                                File.Delete(file);
+                            }
+                        }
+                        catch { }
                     }
                 }
             }
