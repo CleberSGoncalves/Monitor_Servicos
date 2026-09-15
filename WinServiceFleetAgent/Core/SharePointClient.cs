@@ -112,17 +112,28 @@ namespace WinServiceFleetAgent.Core
                 return;
             }
 
-            FileLogger.Log("[SharePointClient] Renovando token OAuth 2.0 do Microsoft Graph API (ROPC)...");
+            var tokenReq = new Dictionary<string, string>();
+            if (!string.IsNullOrWhiteSpace(_clientSecret) &&
+                !_clientSecret.Equals("AZURE_AD_CLIENT_SECRET", StringComparison.OrdinalIgnoreCase) &&
+                !_clientSecret.Contains("COLE_AQUI"))
+            {
+                FileLogger.Log("[SharePointClient] Autenticando via SPN / Service Principal (grant_type=client_credentials)...");
+                tokenReq["grant_type"] = "client_credentials";
+                tokenReq["client_id"] = _clientId;
+                tokenReq["client_secret"] = _clientSecret;
+                tokenReq["scope"] = "https://graph.microsoft.com/.default";
+            }
+            else
+            {
+                FileLogger.Log("[SharePointClient] Renovando token OAuth 2.0 do Microsoft Graph API (ROPC)...");
+                tokenReq["grant_type"] = "password";
+                tokenReq["client_id"] = _clientId;
+                tokenReq["username"] = _username;
+                tokenReq["password"] = _password;
+                tokenReq["scope"] = "https://graph.microsoft.com/.default";
+            }
 
             string tokenUrl = $"https://login.microsoftonline.com/{_tenantId}/oauth2/v2.0/token";
-            var tokenReq = new Dictionary<string, string>
-            {
-                { "grant_type", "password" },
-                { "client_id", _clientId },
-                { "username", _username },
-                { "password", _password },
-                { "scope", "https://graph.microsoft.com/.default" }
-            };
 
             HttpResponseMessage? tokenResp = null;
             for (int attempt = 1; attempt <= 3; attempt++)
