@@ -713,9 +713,18 @@ namespace WinServiceFleetAgent.Core
                     RedirectStandardOutput = true,
                     RedirectStandardError = true
                 };
-                using (var proc = Process.Start(psi))
+                using (var proc = new Process { StartInfo = psi })
                 {
-                    proc?.WaitForExit(30000);
+                    proc.Start();
+                    // Drena assincronamente os streams para evitar deadlock de buffer de pipe (>4KB)
+                    string stdout = proc.StandardOutput.ReadToEnd();
+                    string stderr = proc.StandardError.ReadToEnd();
+                    proc.WaitForExit(30000);
+
+                    if (!string.IsNullOrWhiteSpace(stderr))
+                    {
+                        FileLogger.Log($"[RunCommand] Saída de erro ({fileName}): {stderr.Trim()}");
+                    }
                 }
             }
             catch (Exception ex)

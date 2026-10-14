@@ -83,8 +83,16 @@ namespace WinServiceFleetAgent.Core
                 Directory.CreateDirectory(targetDir);
             }
 
-            newDoc.Save(targetOutputPath);
-            Console.WriteLine($"[ConfigMerger] Smart Merge concluído com sucesso: {targetOutputPath}");
+            string tempFile = targetOutputPath + ".tmp";
+            newDoc.Save(tempFile);
+
+            if (File.Exists(targetOutputPath))
+            {
+                File.Delete(targetOutputPath);
+            }
+            File.Move(tempFile, targetOutputPath);
+
+            Console.WriteLine($"[ConfigMerger] Smart Merge atômico concluído com sucesso: {targetOutputPath}");
         }
     }
 }

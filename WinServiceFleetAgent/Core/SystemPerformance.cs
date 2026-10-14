@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
@@ -160,9 +161,19 @@ namespace WinServiceFleetAgent.Core
                     logFile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "agent.log");
                 }
 
-                if (!File.Exists(logFile)) return $"[OK] Tudo operacional às {DateTime.Now:HH:mm}";
-
-                var rawLines = File.ReadLines(logFile).Reverse().Take(40).ToList();
+                // Lê de forma eficiente apenas os últimos bytes do arquivo a partir do fim (evita carregar 10MB na RAM)
+                var rawLines = new List<string>();
+                using (var fs = new FileStream(logFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                {
+                    long readLength = Math.Min(fs.Length, 64 * 1024); // Máximo 64 KB
+                    fs.Seek(-readLength, SeekOrigin.End);
+                    using (var reader = new StreamReader(fs, Encoding.UTF8))
+                    {
+                        string content = reader.ReadToEnd();
+                        var split = content.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+                        rawLines = split.Reverse().Take(40).ToList();
+                    }
+                }
                 
                 // 1. Localizar o início do ciclo mais recente no log
                 int cycleStartIndex = -1;

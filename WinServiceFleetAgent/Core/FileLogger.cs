@@ -29,32 +29,41 @@ namespace WinServiceFleetAgent.Core
             }
         }
 
+        private static DateTime _lastCleanupTime = DateTime.MinValue;
+
         private static void CleanupOldLogFile()
         {
+            // Throttle: não executar checagem de I/O em disco a cada linha de log escrita (no máximo uma vez a cada 30 min)
+            if ((DateTime.Now - _lastCleanupTime).TotalMinutes < 30)
+            {
+                return;
+            }
+            _lastCleanupTime = DateTime.Now;
+
             try
             {
                 if (File.Exists(LogFile))
                 {
                     var fileInfo = new FileInfo(LogFile);
 
-                    // 1. Se o arquivo de log tiver 3 dias ou mais de modifição, apaga
+                    // 1. Se o arquivo de log tiver 3 dias ou mais de modificação, apaga
                     if ((DateTime.Now - fileInfo.LastWriteTime).TotalDays >= 3)
                     {
                         File.Delete(LogFile);
                         return;
                     }
 
-                    // 2. Se o log ultrapassar 10 MB, trunca e mantém apenas as últimas 2.000 linhas
+                    // 2. Se o log ultrapassar 10 MB, rotaciona renomeando para agent_old.log em vez de ler 10MB na RAM
                     if (fileInfo.Length > 10 * 1024 * 1024)
                     {
                         lock (_lock)
                         {
-                            var lines = File.ReadAllLines(LogFile);
-                            if (lines.Length > 2000)
+                            string oldLog = Path.Combine(LogDir, "agent_old.log");
+                            if (File.Exists(oldLog))
                             {
-                                var lastLines = System.Linq.Enumerable.Skip(lines, lines.Length - 2000);
-                                File.WriteAllLines(LogFile, lastLines);
+                                File.Delete(oldLog);
                             }
+                            File.Move(LogFile, oldLog);
                         }
                     }
                 }

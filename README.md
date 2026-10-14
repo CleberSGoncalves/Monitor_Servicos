@@ -65,3 +65,23 @@ dotnet publish WinServiceFleetAgent/WinServiceFleetAgent.csproj -c Release -r wi
 # Publicar Publisher Single-File
 dotnet publish PublisherApp/PublisherApp.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o publish/publisher
 ```
+
+---
+
+## 📌 Regra Mandatória de Versionamento e Deploy no GitHub
+
+> [!IMPORTANT]
+> **SEMPRE QUE UMA NOVA VERSÃO FOR GERADA:**
+> 1. O código-fonte DEVE ser commitado e enviado imediatamente para o repositório remoto:
+>    ```bash
+>    git add .
+>    git commit -m "feat/fix: descrição da versão vX.X.X.X"
+>    git push origin main
+>    ```
+> 2. Uma **Tag Git** correspondente à versão deve ser criada e enviada para o GitHub:
+>    ```bash
+>    git tag vX.X.X.X
+>    git push origin vX.X.X.X
+>    ```
+> 3. Isso garante que nenhum avanço, patch ou blindagem de código seja perdido entre sessões e que o histórico de versões permaneça 100% rastreável e auditável.
+

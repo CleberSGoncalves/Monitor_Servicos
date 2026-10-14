@@ -5,6 +5,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using System.Security.Cryptography;
 
 namespace WinServiceFleetAgent.Core
 {
@@ -59,6 +60,8 @@ namespace WinServiceFleetAgent.Core
                 _clientId = clientId;
             }
 
+            _clientSecret = DecryptSecretIfNeeded(clientSecret);
+
             _username = string.IsNullOrWhiteSpace(username) ? "svc.captacao@adgbl.com" : username;
             _password = string.IsNullOrWhiteSpace(password) ? "Acount@!2026" : password;
 
@@ -66,6 +69,42 @@ namespace WinServiceFleetAgent.Core
             {
                 _siteHost = uri.Host;
                 _sitePath = uri.AbsolutePath;
+            }
+        }
+
+        private static string DecryptSecretIfNeeded(string rawSecret)
+        {
+            if (string.IsNullOrWhiteSpace(rawSecret)) return string.Empty;
+            if (!rawSecret.StartsWith("ENC:", StringComparison.OrdinalIgnoreCase)) return rawSecret;
+
+            try
+            {
+                string base64Payload = rawSecret.Substring(4);
+                byte[] rawBytes = Convert.FromBase64String(base64Payload);
+                if (rawBytes.Length < 17) return rawSecret;
+
+                byte[] key = Encoding.UTF8.GetBytes("DNA_MONITOR_FLEET_SEC_2026_ADGBL");
+                byte[] iv = new byte[16];
+                Array.Copy(rawBytes, 0, iv, 0, 16);
+
+                byte[] cipherBytes = new byte[rawBytes.Length - 16];
+                Array.Copy(rawBytes, 16, cipherBytes, 0, cipherBytes.Length);
+
+                using (var aes = Aes.Create())
+                {
+                    aes.Key = key;
+                    aes.IV = iv;
+                    using (var decryptor = aes.CreateDecryptor())
+                    {
+                        byte[] plainBytes = decryptor.TransformFinalBlock(cipherBytes, 0, cipherBytes.Length);
+                        return Encoding.UTF8.GetString(plainBytes);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                FileLogger.LogError($"[SharePointClient] Falha ao descriptografar segredo do SPN: {ex.Message}");
+                return rawSecret;
             }
         }
 
@@ -233,13 +272,28 @@ namespace WinServiceFleetAgent.Core
                 int statusCode = (int)response.StatusCode;
                 string content = await response.Content.ReadAsStringAsync();
                 bool isThrottled = statusCode == 429 ||
+                                   statusCode == 503 ||
+                                   statusCode == 502 ||
+                                   statusCode == 504 ||
                                    content.Contains("activityLimitReached", StringComparison.OrdinalIgnoreCase) ||
                                    content.Contains("throttledRequest", StringComparison.OrdinalIgnoreCase);
 
                 if (isThrottled && attempt < 6)
                 {
                     int delayMs = attempt * 3000 + Random.Shared.Next(1000, 2500);
-                    FileLogger.Log($"[SharePointClient] ⚠️ SharePoint Throttling ativado (Tentativa {attempt}/6). Aguardando {delayMs}ms para retry...");
+
+                    // Respeita header Retry-After oficial da Microsoft se retornado
+                    if (response.Headers.RetryAfter != null && response.Headers.RetryAfter.Delta.HasValue)
+                    {
+                        int retrySecs = (int)response.Headers.RetryAfter.Delta.Value.TotalSeconds;
+                        if (retrySecs > 0 && retrySecs <= 60)
+                        {
+                            delayMs = retrySecs * 1000 + 500;
+                        }
+                    }
+
+                    FileLogger.Log($"[SharePointClient] ⚠️ SharePoint Throttling/Serviço ocupado (HTTP {statusCode}, Tentativa {attempt}/6). Aguardando {delayMs}ms para retry...");
+                    response.Dispose();
                     await Task.Delay(delayMs);
                 }
                 else
@@ -300,7 +354,16 @@ namespace WinServiceFleetAgent.Core
                         _accessToken = "";
                         _tokenExpiresAt = DateTime.MinValue;
                     }
-                    break;
+                    else
+                    {
+                        FileLogger.Log($"[SharePointClient] ⚠️ Paginação do SharePoint interrompida com erro (HTTP {(resp != null ? (int)resp.StatusCode : 0)}). Mantendo cache anterior para evitar duplicações.");
+                    }
+
+                    // Se a listagem falhou no meio, NÃO salva lista parcial no cache (evita criação de registros duplicados falsos)
+                    lock (_cacheLock)
+                    {
+                        return _cachedListItems ?? list;
+                    }
                 }
 
                 string json = await resp.Content.ReadAsStringAsync();
@@ -734,6 +797,7 @@ namespace WinServiceFleetAgent.Core
 
                                 await client.SendAsync(request);
                                 FileLogger.Log($"[SharePointClient] Status de URL atualizado no SharePoint [{cleanHost}_{cleanSrv}]: Status={statusAtualizacao}, Pending={isPending}");
+                                InvalidateListCache();
                             }
                         }
                     }
@@ -855,6 +919,7 @@ namespace WinServiceFleetAgent.Core
 
                                 await client.SendAsync(request);
                                 FileLogger.Log($"[SharePointClient] Status do serviço [{cleanHost}_{cleanSrv}] atualizado no SharePoint: {statusAtualizacao}");
+                                InvalidateListCache();
                             }
                         }
                     }
