@@ -22,6 +22,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="Scripts\install_service.bat" CopyToOutputDirectory="Always" Link="install_service.bat" />
+    <None Include="Scripts\uninstall_service.bat" CopyToOutputDirectory="Always" Link="uninstall_service.bat" />
     <None Include="Scripts\update_agent.bat" CopyToOutputDirectory="Always" Link="update_agent.bat" />
   </ItemGroup>
 </Project>
