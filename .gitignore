@@ -16,6 +16,10 @@ TempStaging/
 publish/servicos/*
 !publish/servicos/.gitkeep
 
+## Temporary & Scratch
+scratch/
+publish/*.zip
+
 ## OS & IDE
 .DS_Store
 Thumbs.db
