@@ -50,6 +50,7 @@ namespace PublisherApp
                 }
 
                 // Carregar configurações de SharePoint do appsettings.json se disponível
+                string baseDir = AppDomain.CurrentDomain.BaseDirectory;
                 string siteUrl = string.Empty;
                 string listName = "Controle_Servicos";
                 string clientId = string.Empty;

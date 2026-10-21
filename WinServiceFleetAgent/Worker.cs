@@ -54,6 +54,19 @@ namespace WinServiceFleetAgent
             string tunersStatusXmlPath = _configuration["ChannelMonitoring:TunersStatusXmlPath"] ?? @"D:\MediaDNA_V2\Applications\DTVCapture64\DTVTunersStatus.xml";
             string telemetriaApiUrl = _configuration["ChannelMonitoring:TelemetriaApiUrl"] ?? "http://localhost:9000/api/v1/Muxes";
 
+            var autoUpdateConfig = new AutoUpdateConfig
+            {
+                Enabled = bool.TryParse(_configuration["AutoUpdate:Enabled"], out bool auEnabled) ? auEnabled : true,
+                CheckIntervalMinutes = int.TryParse(_configuration["AutoUpdate:CheckIntervalMinutes"], out int auInterval) ? auInterval : 60,
+                Source = _configuration["AutoUpdate:Source"] ?? "GitHub",
+                GitHubRepo = _configuration["AutoUpdate:GitHubRepo"] ?? "CleberSGoncalves/DNA.MonitorServiceSVC",
+                EndpointUrl = _configuration["AutoUpdate:EndpointUrl"] ?? string.Empty,
+                FileSharePath = _configuration["AutoUpdate:FileSharePath"] ?? string.Empty,
+                CompareMethod = _configuration["AutoUpdate:CompareMethod"] ?? "Version",
+                RequireSha256Validation = bool.TryParse(_configuration["AutoUpdate:RequireSha256Validation"], out bool auSha) && auSha,
+                AllowDowngrade = bool.TryParse(_configuration["AutoUpdate:AllowDowngrade"], out bool auDowngrade) && auDowngrade
+            };
+
             _orchestrator = new FleetOrchestrator(
                 hostnameOverride: hostnameOverride,
                 configXmlPath: configXmlPath,
@@ -69,7 +82,8 @@ namespace WinServiceFleetAgent
                 channelMonitoringEnabled: channelMonitoringEnabled,
                 multiplexesXmlPath: multiplexesXmlPath,
                 tunersStatusXmlPath: tunersStatusXmlPath,
-                telemetriaApiUrl: telemetriaApiUrl
+                telemetriaApiUrl: telemetriaApiUrl,
+                autoUpdateConfig: autoUpdateConfig
             );
         }
 

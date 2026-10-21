@@ -18,6 +18,8 @@ namespace WinServiceFleetAgent.Core
         private readonly SharePointClient _spClient;
         private readonly ChannelOrchestrator _channelOrchestrator;
         private readonly string _hostname;
+        private readonly AutoUpdateConfig _autoUpdateConfig;
+        private DateTime _lastAutoUpdateCheck = DateTime.MinValue;
         private static bool _isSelfUpdateTriggered = false;
 
         public FleetOrchestrator(
@@ -35,7 +37,8 @@ namespace WinServiceFleetAgent.Core
             bool channelMonitoringEnabled = true,
             string? multiplexesXmlPath = null,
             string? tunersStatusXmlPath = null,
-            string? telemetriaApiUrl = null)
+            string? telemetriaApiUrl = null,
+            AutoUpdateConfig? autoUpdateConfig = null)
         {
             _hostname = string.IsNullOrWhiteSpace(hostnameOverride) ? Environment.MachineName : hostnameOverride;
             _configXmlPath = configXmlPath;
@@ -44,6 +47,7 @@ namespace WinServiceFleetAgent.Core
             _tempStagingDir = tempStagingDir;
             _githubToken = githubToken;
             _services = services ?? new List<ServiceDefinition>();
+            _autoUpdateConfig = autoUpdateConfig ?? new AutoUpdateConfig();
 
             _spClient = new SharePointClient(siteUrl, listName, clientId, clientSecret);
             _channelOrchestrator = new ChannelOrchestrator(
@@ -61,6 +65,54 @@ namespace WinServiceFleetAgent.Core
             FileLogger.Log($"==================================================");
             FileLogger.Log($"[FleetOrchestrator] Iniciando ciclo em {DateTime.Now} | Host: {_hostname}");
             FileLogger.Log($"==================================================");
+
+            // Passo 0: Processamento de Marcadores de Inicialização (Sucesso de Atualização ou Rollback)
+            string agentBaseDir = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\');
+            var agentSrvDef = _services.FirstOrDefault(s => s.ServiceName.Equals("DNA.MonitorServiceSVC", StringComparison.OrdinalIgnoreCase));
+            string agentInstallDir = (agentSrvDef != null && Directory.Exists(agentSrvDef.InstallPath)) ? agentSrvDef.InstallPath.TrimEnd('\\') : agentBaseDir;
+            await AgentAutoUpdater.ProcessStartupMarkersAsync(agentInstallDir, _spClient, _hostname, "DNA.MonitorServiceSVC");
+
+            // Passo 0.5: Verificação Autônoma Periódica de Auto-Atualização do Agente
+            if (_autoUpdateConfig.Enabled && (DateTime.UtcNow - _lastAutoUpdateCheck).TotalMinutes >= _autoUpdateConfig.CheckIntervalMinutes)
+            {
+                _lastAutoUpdateCheck = DateTime.UtcNow;
+                string currentAgentExe = Path.Combine(agentInstallDir, "WinServiceFleetAgent.exe");
+                if (!File.Exists(currentAgentExe)) currentAgentExe = Path.Combine(agentBaseDir, "WinServiceFleetAgent.exe");
+                string currentAgentVer = VersionInspector.GetExecutableVersion(currentAgentExe);
+
+                var checkResult = await AgentAutoUpdater.CheckForUpdateAsync(_autoUpdateConfig, _githubToken, currentAgentVer, currentAgentExe);
+                if (checkResult.IsUpdateAvailable)
+                {
+                    FileLogger.Log($"[FleetOrchestrator] 🚀 Nova versão detectada para o agente: '{checkResult.LatestVersion}' (Instalada: '{currentAgentVer}'). Iniciando auto-atualização autônoma...", writeToEventLog: true, eventId: 1100);
+
+                    await _spClient.UpdateActionStatusByServiceAsync(_hostname, "DNA.MonitorServiceSVC", "Em Progresso", versaoDesejada: checkResult.LatestVersion);
+
+                    var stageResult = await AgentAutoUpdater.DownloadAndStageUpdateAsync(_autoUpdateConfig, checkResult, _tempStagingDir, _githubToken);
+                    if (stageResult.Success)
+                    {
+                        string stageDir = Path.GetDirectoryName(stageResult.ValidatedExePath) ?? Path.Combine(_tempStagingDir, "DNA.MonitorServiceSVC_selfupdate");
+                        bool scheduled = AgentAutoUpdater.ScheduleAtomicUpdate(
+                            serviceName: "DNA.MonitorServiceSVC",
+                            installDir: agentInstallDir,
+                            stagingDir: stageDir,
+                            backupBaseDir: _backupBaseDir,
+                            currentVer: currentAgentVer,
+                            targetVer: checkResult.LatestVersion
+                        );
+
+                        if (scheduled)
+                        {
+                            FileLogger.Log("[FleetOrchestrator] ✅ Auto-atualização autônoma programada com sucesso via Task Scheduler (SYSTEM). Encerrando ciclo para aplicação imediata.");
+                            return;
+                        }
+                    }
+                    else
+                    {
+                        FileLogger.LogError($"[FleetOrchestrator] ❌ Falha no staging da auto-atualização autônoma: {stageResult.ErrorMessage}", writeToEventLog: true, eventId: 3100);
+                        await _spClient.UpdateActionStatusByServiceAsync(_hostname, "DNA.MonitorServiceSVC", "Erro na Atualização");
+                    }
+                }
+            }
 
             // Passo 1: Leitura de Metadados Globais e Coleta de Métricas
             var metadata = MetadataReader.GetGlobalMachineMetadata(_configXmlPath, _configMonitorConfigPath);
@@ -426,96 +478,47 @@ namespace WinServiceFleetAgent.Core
 
                 _isSelfUpdateTriggered = true;
                 await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Em Progresso", versaoDesejada: targetVersion);
-                FileLogger.Log($"[FleetOrchestrator] 🚀 Baixando versão '{targetVersion}' em C# com serviço em execução...");
+                FileLogger.Log($"[FleetOrchestrator] 🚀 Iniciando auto-atualização atômica do agente para versão '{targetVersion}'...", writeToEventLog: true, eventId: 1100);
 
-                string selfStagingFolder = Path.Combine(_tempStagingDir, "DNA.MonitorServiceSVC_selfupdate");
-
-                try
+                var checkResult = new UpdateCheckResult
                 {
-                    if (Directory.Exists(selfStagingFolder)) Directory.Delete(selfStagingFolder, true);
-                    Directory.CreateDirectory(selfStagingFolder);
+                    IsUpdateAvailable = true,
+                    LatestVersion = targetVersion,
+                    CurrentVersion = installedVer,
+                    Source = _autoUpdateConfig.Source
+                };
 
-                    // 1. Download + extração com serviço em execução (C# .NET 8, TLS 1.2/1.3)
-                    await GitHubDownloader.DownloadAndExtractReleaseAsync(srvConfig.GithubRepo, targetVersion, _githubToken, selfStagingFolder);
-
-                    string newExePath = Path.Combine(selfStagingFolder, srvConfig.ExeName);
-                    if (!File.Exists(newExePath))
-                    {
-                        FileLogger.LogError($"[FleetOrchestrator] ❌ Exe não encontrado no staging após extração. Abortando sem parar serviço.");
-                        await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Erro na Atualização");
-                        _isSelfUpdateTriggered = false;
-                        return;
-                    }
-
-                    FileLogger.Log($"[FleetOrchestrator] ✅ Download validado. Agendando substituição via Task Scheduler...");
-
-                    // 2. Detecta o diretório real de instalação
-                    string installDir = srvConfig.InstallPath;
-                    if (!Directory.Exists(installDir))
-                        installDir = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\');
-
-                    // 3. Gera script PowerShell (mais robusto que BAT) em %TEMP%
-                    string psScriptPath = Path.Combine(Path.GetTempPath(), "dna_apply_update.ps1");
-
-                    var ps = new System.Text.StringBuilder();
-                    ps.AppendLine("# DNA.MonitorServiceSVC - Apply Self Update");
-                    ps.AppendLine($"$svc = '{srvConfig.ServiceName}'");
-                    ps.AppendLine($"$staging = '{selfStagingFolder}'");
-                    ps.AppendLine($"$install = '{installDir}'");
-                    ps.AppendLine("Start-Sleep -Seconds 5");
-                    ps.AppendLine("try { Stop-Service $svc -Force -ErrorAction SilentlyContinue } catch {}");
-                    // Aguarda STOPPED com timeout de 30s
-                    ps.AppendLine("$t = [DateTime]::Now.AddSeconds(30)");
-                    ps.AppendLine("while ([DateTime]::Now -lt $t) {");
-                    ps.AppendLine("  $st = (Get-Service $svc -ErrorAction SilentlyContinue).Status");
-                    ps.AppendLine("  if ($st -eq 'Stopped') { break }");
-                    ps.AppendLine("  Start-Sleep -Seconds 1");
-                    ps.AppendLine("}");
-                    // Mata processo se ainda existir
-                    ps.AppendLine("Get-Process -Name 'WinServiceFleetAgent' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue");
-                    ps.AppendLine("Start-Sleep -Seconds 1");
-                    // Copia arquivos e subpastas de staging para a pasta de instalação
-                    ps.AppendLine("try { Copy-Item -Path (Join-Path $staging '*') -Destination $install -Recurse -Force -ErrorAction SilentlyContinue } catch {}");
-                    // Inicia serviço com 3 tentativas
-                    ps.AppendLine("for ($i=1; $i -le 3; $i++) {");
-                    ps.AppendLine("  try { Start-Service $svc -ErrorAction Stop; break } catch { Start-Sleep -Seconds 3 }");
-                    ps.AppendLine("}");
-                    // Remove agendamento e script
-                    ps.AppendLine("schtasks /delete /tn 'DNA_SelfUpdate' /f >$null 2>&1");
-                    ps.AppendLine("Remove-Item $PSCommandPath -Force -ErrorAction SilentlyContinue");
-
-                    await File.WriteAllTextAsync(psScriptPath, ps.ToString(), System.Text.Encoding.UTF8);
-
-                    // 4. Registra como tarefa agendada que roda IMEDIATAMENTE como SYSTEM
-                    //    O Task Scheduler roda FORA do Job Object do serviço — 100% isolado
-                    string taskName = "DNA_SelfUpdate";
-                    string schtasksDelete = $"/delete /tn \"{taskName}\" /f";
-                    string schtasksCreate = $"/create /tn \"{taskName}\" /tr \"powershell.exe -ExecutionPolicy Bypass -NonInteractive -WindowStyle Hidden -File \\\"{psScriptPath}\\\"\" /sc once /st 00:00 /ru SYSTEM /it /f /rl HIGHEST";
-
-                    // Remove tarefa anterior se existir
-                    Process.Start(new ProcessStartInfo("schtasks.exe", schtasksDelete) { UseShellExecute = false, CreateNoWindow = true })?.WaitForExit(3000);
-
-                    // Cria nova tarefa
-                    var createTask = Process.Start(new ProcessStartInfo("schtasks.exe", schtasksCreate) { UseShellExecute = false, CreateNoWindow = true });
-                    createTask?.WaitForExit(5000);
-
-                    // Dispara a tarefa imediatamente
-                    var runTask = Process.Start(new ProcessStartInfo("schtasks.exe", $"/run /tn \"{taskName}\"") { UseShellExecute = false, CreateNoWindow = true });
-                    runTask?.WaitForExit(3000);
-
-                    FileLogger.Log($"[FleetOrchestrator] ✅ Tarefa '{taskName}' agendada e disparada via Task Scheduler (SYSTEM, isolado do serviço). Substituição ocorrerá em ~10s.");
-                    return;
-                }
-                catch (Exception exSelf)
+                var stageResult = await AgentAutoUpdater.DownloadAndStageUpdateAsync(_autoUpdateConfig, checkResult, _tempStagingDir, _githubToken);
+                if (!stageResult.Success)
                 {
                     _isSelfUpdateTriggered = false;
-                    FileLogger.LogError($"[FleetOrchestrator] ❌ Erro no self-update", exSelf);
+                    FileLogger.LogError($"[FleetOrchestrator] ❌ Falha na validação de integridade/staging para auto-atualização: {stageResult.ErrorMessage}", writeToEventLog: true, eventId: 3100);
                     await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Erro na Atualização");
                     return;
                 }
+
+                string installDir = srvConfig.InstallPath;
+                if (!Directory.Exists(installDir))
+                    installDir = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\');
+
+                string stageDir = Path.GetDirectoryName(stageResult.ValidatedExePath) ?? Path.Combine(_tempStagingDir, "DNA.MonitorServiceSVC_selfupdate");
+
+                bool scheduled = AgentAutoUpdater.ScheduleAtomicUpdate(
+                    serviceName: srvConfig.ServiceName,
+                    installDir: installDir,
+                    stagingDir: stageDir,
+                    backupBaseDir: _backupBaseDir,
+                    currentVer: installedVer,
+                    targetVer: targetVersion
+                );
+
+                if (!scheduled)
+                {
+                    _isSelfUpdateTriggered = false;
+                    await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Erro na Atualização");
+                }
+                return;
             }
-
-
 
             await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Em Progresso", versaoDesejada: targetVersion);
             FileLogger.Log($"[FleetOrchestrator] Iniciando atualização de '{srvConfig.ServiceName}' para versão '{targetVersion}' (Forçar={forceUpdate})...");
@@ -530,6 +533,21 @@ namespace WinServiceFleetAgent.Core
 
                 FileLogger.Log($"[FleetOrchestrator] Baixando e extraindo release '{targetVersion}' do repositório '{srvConfig.GithubRepo}'...");
                 await GitHubDownloader.DownloadAndExtractReleaseAsync(srvConfig.GithubRepo, targetVersion, _githubToken, stagingFolder);
+
+                // Validação de Integridade do Executável do Serviço antes de interromper o serviço em produção
+                string stagedExe = Path.Combine(stagingFolder, srvConfig.ExeName);
+                if (!File.Exists(stagedExe))
+                {
+                    var found = Directory.GetFiles(stagingFolder, srvConfig.ExeName, SearchOption.AllDirectories);
+                    if (found.Length > 0) stagedExe = found[0];
+                }
+
+                var (isValidExe, detVer, valMsg) = IntegrityValidator.ValidateExecutable(stagedExe, targetVersion, minimumSizeBytes: 10_000);
+                if (!isValidExe)
+                {
+                    throw new Exception($"Validação de integridade do pacote extraído falhou: {valMsg}");
+                }
+                FileLogger.Log($"[FleetOrchestrator] ✅ Integridade dos binários validada com sucesso: {valMsg}");
 
                 if (Directory.Exists(srvConfig.InstallPath))
                 {

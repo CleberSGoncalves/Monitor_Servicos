@@ -12,24 +12,30 @@ Monitor_Servicos/
 ├── WinServiceFleetAgent/             # Projeto do Agente (Serviço Windows Nativo)
 │   ├── Program.cs                    # Configuração de hospedagem nativa no Windows
 │   ├── Worker.cs                     # Worker Service principal
-│   ├── appsettings.json              # Configurações do SharePoint, GitHub e Serviços
+│   ├── appsettings.json              # Configurações do SharePoint, GitHub, AutoUpdate e Serviços
 │   ├── Core/
+│   │   ├── AgentAutoUpdater.cs       # Orquestrador de auto-atualização autônoma, staging e agendamento
+│   │   ├── AutoUpdateConfig.cs       # Modelos de configuração e fontes de checagem (GitHub, HTTP, UNC)
+│   │   ├── IntegrityValidator.cs     # Validador de integridade (SHA256, ZIP headers, PE headers)
+│   │   ├── FileLogger.cs             # Log local com rotação (10MB) e integração nativa com Windows Event Log
 │   │   ├── MetadataReader.cs         # Extração de Praça (idHost), CS (Windows-1252) e WCFMainURL
 │   │   ├── VersionInspector.cs       # Leitura de versão PE via FileVersionInfo
 │   │   ├── ConfigMerger.cs           # Motor Smart XML Merge de .config
 │   │   ├── WinController.cs          # ServiceController (Start, Stop, Restart)
 │   │   ├── GitHubDownloader.cs       # Download e extração de pacotes .zip
 │   │   ├── SharePointClient.cs       # Cliente REST API para SharePoint List
-│   │   └── FleetOrchestrator.cs      # Orquestrador com Backup e Rollback Automático
+│   │   └── FleetOrchestrator.cs      # Orquestrador de serviços e canais com Backup e Rollback Automático
 │   └── Scripts/
+│       ├── Apply-AgentUpdate.ps1     # Script de substituição atômica, backup, health check e rollback
 │       ├── install_service.bat       # Script de instalação do serviço Windows (sc.exe)
-│       └── uninstall_service.bat     # Script de remoção do serviço Windows
+│       ├── uninstall_service.bat     # Script de remoção do serviço Windows
+│       └── update_agent.bat          # Script auxiliar de atualização manual/emergencial
 ├── PublisherApp/                     # Aplicativo de Publicação de Releases
 │   ├── Program.cs                    # Publicador batch por pasta/zip
 │   └── Services/
 │       └── GitHubReleaseClient.cs    # Upload de releases no GitHub
 └── publish/                          # Pasta de Publicação Pronta para Implantação
-    ├── agent/                        # WinServiceFleetAgent.exe (Single-File Standalone)
+    ├── agent/                        # WinServiceFleetAgent.exe v1.0.12.0 (Single-File Standalone)
     ├── publisher/                    # PublisherApp.exe (Single-File Standalone)
     ├── servicos/                     # Pasta para colocar pastas/zips dos serviços a publicar
     └── publicar_servicos.bat         # Script para publicar todas as pastas de 'servicos' no GitHub

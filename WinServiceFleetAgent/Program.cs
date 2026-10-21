@@ -12,7 +12,7 @@ try
 {
     if (args.Length > 0 && args[0].Equals("--clear-sharepoint", StringComparison.OrdinalIgnoreCase))
     {
-        var spClient = new WinServiceFleetAgent.Core.SharePointClient(null, null, null, null);
+        var spClient = new WinServiceFleetAgent.Core.SharePointClient(string.Empty, string.Empty, string.Empty, string.Empty);
         int count = spClient.ClearAllListItemsAsync().GetAwaiter().GetResult();
         Console.WriteLine($"✅ Limpeza concluída: {count} itens apagados do SharePoint.");
         return;

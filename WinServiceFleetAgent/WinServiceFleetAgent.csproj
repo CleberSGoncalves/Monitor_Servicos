@@ -9,14 +9,15 @@
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <Version>1.0.11.5</Version>
-    <FileVersion>1.0.11.5</FileVersion>
-    <AssemblyVersion>1.0.11.5</AssemblyVersion>
+    <Version>1.0.12.0</Version>
+    <FileVersion>1.0.12.0</FileVersion>
+    <AssemblyVersion>1.0.12.0</AssemblyVersion>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.0" />
+    <PackageReference Include="System.Diagnostics.EventLog" Version="8.0.0" />
     <PackageReference Include="System.ServiceProcess.ServiceController" Version="8.0.0" />
     <PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0" />
   </ItemGroup>
@@ -25,5 +26,6 @@
     <None Include="Scripts\install_service.bat" CopyToOutputDirectory="Always" Link="install_service.bat" />
     <None Include="Scripts\uninstall_service.bat" CopyToOutputDirectory="Always" Link="uninstall_service.bat" />
     <None Include="Scripts\update_agent.bat" CopyToOutputDirectory="Always" Link="update_agent.bat" />
+    <None Include="Scripts\Apply-AgentUpdate.ps1" CopyToOutputDirectory="Always" Link="Apply-AgentUpdate.ps1" />
   </ItemGroup>
 </Project>

@@ -18,7 +18,9 @@ publish/servicos/*
 
 ## Temporary & Scratch
 scratch/
+servicos/
 publish/*.zip
+publish/*.zip.sha256
 
 ## OS & IDE
 .DS_Store

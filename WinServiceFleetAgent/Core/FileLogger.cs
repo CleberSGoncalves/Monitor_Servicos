@@ -88,7 +88,44 @@ namespace WinServiceFleetAgent.Core
             catch { }
         }
 
-        public static void Log(string message)
+        public const string EventSource = "WinServiceFleetAgent";
+        public const string EventLogName = "Application";
+        private static bool _eventSourceInitialized = false;
+        private static readonly object _eventLock = new object();
+
+        private static void EnsureEventSource()
+        {
+            if (_eventSourceInitialized) return;
+            lock (_eventLock)
+            {
+                if (_eventSourceInitialized) return;
+                try
+                {
+                    if (!System.Diagnostics.EventLog.SourceExists(EventSource))
+                    {
+                        System.Diagnostics.EventLog.CreateEventSource(new System.Diagnostics.EventSourceCreationData(EventSource, EventLogName));
+                    }
+                    _eventSourceInitialized = true;
+                }
+                catch
+                {
+                    // Fallback se não possuir privilégios para registrar nova fonte
+                    _eventSourceInitialized = false;
+                }
+            }
+        }
+
+        public static void WriteEventLog(string message, System.Diagnostics.EventLogEntryType entryType = System.Diagnostics.EventLogEntryType.Information, int eventId = 1000)
+        {
+            try
+            {
+                EnsureEventSource();
+                System.Diagnostics.EventLog.WriteEntry(EventSource, message, entryType, eventId);
+            }
+            catch { }
+        }
+
+        public static void Log(string message, bool writeToEventLog = false, System.Diagnostics.EventLogEntryType entryType = System.Diagnostics.EventLogEntryType.Information, int eventId = 1000)
         {
             CleanupOldLogFile();
             string formattedMessage = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}";
@@ -102,9 +139,35 @@ namespace WinServiceFleetAgent.Core
                 }
             }
             catch { }
+
+            if (writeToEventLog)
+            {
+                WriteEventLog(message, entryType, eventId);
+            }
         }
 
-        public static void LogError(string message, Exception? ex = null)
+        public static void LogWarning(string message, bool writeToEventLog = true, int eventId = 2000)
+        {
+            CleanupOldLogFile();
+            string formattedMessage = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [AVISO] {message}";
+            Console.WriteLine(formattedMessage);
+
+            try
+            {
+                lock (_lock)
+                {
+                    File.AppendAllText(LogFile, formattedMessage + Environment.NewLine);
+                }
+            }
+            catch { }
+
+            if (writeToEventLog)
+            {
+                WriteEventLog(message, System.Diagnostics.EventLogEntryType.Warning, eventId);
+            }
+        }
+
+        public static void LogError(string message, Exception? ex = null, bool writeToEventLog = true, int eventId = 3000)
         {
             CleanupOldLogFile();
             string formattedMessage = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [ERRO] {message}" + (ex != null ? $" | Detalhes: {ex.Message}" : "");
@@ -118,6 +181,12 @@ namespace WinServiceFleetAgent.Core
                 }
             }
             catch { }
+
+            if (writeToEventLog)
+            {
+                string eventMsg = message + (ex != null ? $"\n\nExceção: {ex.GetType().FullName}\nMensagem: {ex.Message}\nStack: {ex.StackTrace}" : "");
+                WriteEventLog(eventMsg, System.Diagnostics.EventLogEntryType.Error, eventId);
+            }
         }
 
         public static string GetLastLogLines(int lineCount = 1000)

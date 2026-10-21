@@ -25,14 +25,14 @@ namespace WinServiceFleetAgent.Core
         [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
         private static extern bool CreateProcessAsUser(
             IntPtr hToken,
-            string lpApplicationName,
-            string lpCommandLine,
+            string? lpApplicationName,
+            string? lpCommandLine,
             IntPtr lpProcessAttributes,
             IntPtr lpThreadAttributes,
             bool bInheritHandles,
             uint dwCreationFlags,
             IntPtr lpEnvironment,
-            string lpCurrentDirectory,
+            string? lpCurrentDirectory,
             ref STARTUPINFO lpStartupInfo,
             out PROCESS_INFORMATION lpProcessInformation);
 
@@ -74,7 +74,7 @@ namespace WinServiceFleetAgent.Core
         private const uint MAXIMUM_ALLOWED = 0x02000000;
         private const uint CREATE_NEW_CONSOLE = 0x00000010;
 
-        public static bool LaunchProcessInActiveSession(string exePath, string workingDir = null)
+        public static bool LaunchProcessInActiveSession(string exePath, string? workingDir = null)
         {
             IntPtr hUserToken = IntPtr.Zero;
             IntPtr hPrimaryToken = IntPtr.Zero;
@@ -92,7 +92,7 @@ namespace WinServiceFleetAgent.Core
                         si.lpDesktop = @"WinSta0\Default";
 
                         var pi = new PROCESS_INFORMATION();
-                        string dir = string.IsNullOrWhiteSpace(workingDir) ? Path.GetDirectoryName(exePath) : workingDir;
+                        string? dir = string.IsNullOrWhiteSpace(workingDir) ? Path.GetDirectoryName(exePath) : workingDir;
 
                         bool success = CreateProcessAsUser(
                             hPrimaryToken,
@@ -141,12 +141,12 @@ namespace WinServiceFleetAgent.Core
             }
         }
 
-        private static bool FallbackLaunch(string exePath, string workingDir)
+        private static bool FallbackLaunch(string exePath, string? workingDir)
         {
             try
             {
                 FileLogger.Log($"[InteractiveLauncher] Executando fallback Process.Start para '{exePath}'...");
-                var dir = string.IsNullOrWhiteSpace(workingDir) ? Path.GetDirectoryName(exePath) : workingDir;
+                var dir = string.IsNullOrWhiteSpace(workingDir) ? (Path.GetDirectoryName(exePath) ?? AppDomain.CurrentDomain.BaseDirectory) : workingDir;
                 var psi = new ProcessStartInfo
                 {
                     FileName = exePath,

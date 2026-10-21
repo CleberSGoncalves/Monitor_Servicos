@@ -217,7 +217,7 @@ if ($finalExe -and (Test-Path $finalExe)) {
         {
             try
             {
-                string targetExe = null;
+                string? targetExe = null;
                 var searchPaths = new[]
                 {
                     @"D:\MediaDNA_V2\Applications\DTVCapture64\DigitalTVCapture.exe",
