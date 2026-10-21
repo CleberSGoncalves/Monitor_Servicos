@@ -90,36 +90,59 @@ namespace WinServiceFleetAgent.Core
 
                 // 1. Coleta telemetria em tempo real da AtriaAPI (porta 9000)
                 var telemetria = new Dictionary<string, (int? Quality, int? Strength)>();
-                try
+                var candidateEndpoints = new List<string>
                 {
-                    using (var http = new HttpClient { Timeout = TimeSpan.FromSeconds(3) })
+                    "http://127.0.0.1:9000/api/v1/Muxes",
+                    _telemetriaApiUrl
+                };
+
+                bool apiContacted = false;
+                string lastError = "";
+
+                using (var http = new HttpClient { Timeout = TimeSpan.FromSeconds(3) })
+                {
+                    foreach (var endpoint in candidateEndpoints.Distinct(StringComparer.OrdinalIgnoreCase))
                     {
-                        var resp = await http.GetAsync(_telemetriaApiUrl);
-                        if (resp.IsSuccessStatusCode)
+                        try
                         {
-                            string apiXml = await resp.Content.ReadAsStringAsync();
-                            var apiDoc = XDocument.Parse(apiXml);
-                            foreach (var statusElem in apiDoc.Descendants().Where(e => e.Name.LocalName == "MuxMonitorStatus"))
+                            var resp = await http.GetAsync(endpoint);
+                            if (resp.IsSuccessStatusCode)
                             {
-                                string muxId = statusElem.Elements().FirstOrDefault(e => e.Name.LocalName == "MuxId")?.Value.Trim() ?? "";
-                                var sigElem = statusElem.Elements().FirstOrDefault(e => e.Name.LocalName == "Signal");
-                                if (sigElem != null && sigElem.Attribute(XName.Get("nil", "http://www.w3.org/2001/XMLSchema-instance"))?.Value != "true")
+                                string apiXml = await resp.Content.ReadAsStringAsync();
+                                var apiDoc = XDocument.Parse(apiXml);
+                                foreach (var statusElem in apiDoc.Descendants().Where(e => e.Name.LocalName == "MuxMonitorStatus"))
                                 {
-                                    int? q = null;
-                                    int? s = null;
-                                    var qElem = sigElem.Elements().FirstOrDefault(e => e.Name.LocalName == "Quality");
-                                    var sElem = sigElem.Elements().FirstOrDefault(e => e.Name.LocalName == "Strength");
-                                    if (qElem != null && int.TryParse(qElem.Value, out int pq)) q = pq;
-                                    if (sElem != null && int.TryParse(sElem.Value, out int ps)) s = ps;
-                                    telemetria[muxId] = (q, s);
+                                    string muxId = statusElem.Elements().FirstOrDefault(e => e.Name.LocalName == "MuxId")?.Value.Trim() ?? "";
+                                    var sigElem = statusElem.Elements().FirstOrDefault(e => e.Name.LocalName == "Signal");
+                                    if (sigElem != null && sigElem.Attribute(XName.Get("nil", "http://www.w3.org/2001/XMLSchema-instance"))?.Value != "true")
+                                    {
+                                        int? q = null;
+                                        int? s = null;
+                                        var qElem = sigElem.Elements().FirstOrDefault(e => e.Name.LocalName == "Quality");
+                                        var sElem = sigElem.Elements().FirstOrDefault(e => e.Name.LocalName == "Strength");
+                                        if (qElem != null && int.TryParse(qElem.Value, out int pq)) q = pq;
+                                        if (sElem != null && int.TryParse(sElem.Value, out int ps)) s = ps;
+                                        telemetria[muxId] = (q, s);
+                                    }
                                 }
+                                apiContacted = true;
+                                break;
                             }
+                            else
+                            {
+                                lastError = $"HTTP {(int)resp.StatusCode}";
+                            }
+                        }
+                        catch (Exception exHttp)
+                        {
+                            lastError = exHttp.Message;
                         }
                     }
                 }
-                catch
+
+                if (!apiContacted)
                 {
-                    FileLogger.Log($"[ChannelOrchestrator] ℹ️ API local porta 9000 indisponível. Métricas de força/qualidade serão nulas.");
+                    FileLogger.Log($"[ChannelOrchestrator] ℹ️ API local porta 9000 indisponível ({lastError}). Métricas de força/qualidade padronizadas em 0.");
                 }
 
                 // 2. Mapeia configurações de gravação e multiplexes de Multiplexes.xml

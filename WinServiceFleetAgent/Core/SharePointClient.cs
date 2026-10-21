@@ -1095,8 +1095,20 @@ namespace WinServiceFleetAgent.Core
                         {
                             if (it.TryGetProperty("fields", out var f))
                             {
-                                int fHost = f.TryGetProperty("IDHost", out var h) && h.TryGetInt32(out int parsedH) ? parsedH : -1;
-                                int fCs = f.TryGetProperty("IDCS", out var c) && c.TryGetInt32(out int parsedC) ? parsedC : -1;
+                                int fHost = -1;
+                                if (f.TryGetProperty("IDHost", out var h))
+                                {
+                                    if (h.TryGetInt32(out int parsedH)) fHost = parsedH;
+                                    else if (h.TryGetDouble(out double dH)) fHost = (int)Math.Round(dH);
+                                }
+
+                                int fCs = -1;
+                                if (f.TryGetProperty("IDCS", out var c))
+                                {
+                                    if (c.TryGetInt32(out int parsedC)) fCs = parsedC;
+                                    else if (c.TryGetDouble(out double dC)) fCs = (int)Math.Round(dC);
+                                }
+
                                 string fTitle = f.TryGetProperty("Title", out var t) ? t.GetString()?.Trim() ?? "" : "";
                                 string fVeiculo = f.TryGetProperty("Veiculo", out var v) ? v.GetString()?.Trim() ?? "" : "";
 
@@ -1118,6 +1130,8 @@ namespace WinServiceFleetAgent.Core
                             { "MeiodeTransmiss_x00e3_o", ch.MeiodeTransmissao },
                             { "Frequencia", ch.Frequencia },
                             { "TunerID", ch.TunerID },
+                            { "QualidadeSinal", ch.QualidadeSinal ?? 0 },
+                            { "ForcaSinal", ch.ForcaSinal ?? 0 },
                             { "StatusTuner", ch.StatusTuner },
                             { "VideoCongelado", ch.VideoCongelado },
                             { "AudioMudo", ch.AudioMudo },
@@ -1129,9 +1143,6 @@ namespace WinServiceFleetAgent.Core
                             { "SourceAnalogico", ch.SourceAnalogico },
                             { "Atualizacao", ch.Atualizacao }
                         };
-
-                        if (ch.QualidadeSinal.HasValue) payloadFields["QualidadeSinal"] = ch.QualidadeSinal.Value;
-                        if (ch.ForcaSinal.HasValue) payloadFields["ForcaSinal"] = ch.ForcaSinal.Value;
 
                         if (matches.Count > 0)
                         {
