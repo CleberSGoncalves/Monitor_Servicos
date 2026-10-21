@@ -15,6 +15,7 @@ namespace WinServiceFleetAgent.Core
         private readonly string _multiplexesXmlPath;
         private readonly string _tunersStatusXmlPath;
         private readonly string _telemetriaApiUrl;
+        private readonly string _configXmlPath;
         private readonly bool _enabled;
 
         public ChannelOrchestrator(
@@ -22,7 +23,8 @@ namespace WinServiceFleetAgent.Core
             string? multiplexesXmlPath = null,
             string? tunersStatusXmlPath = null,
             string? telemetriaApiUrl = null,
-            bool enabled = true)
+            bool enabled = true,
+            string? configXmlPath = null)
         {
             _spClient = spClient;
             _multiplexesXmlPath = string.IsNullOrWhiteSpace(multiplexesXmlPath)
@@ -36,6 +38,10 @@ namespace WinServiceFleetAgent.Core
             _telemetriaApiUrl = string.IsNullOrWhiteSpace(telemetriaApiUrl)
                 ? "http://localhost:9000/api/v1/Muxes"
                 : telemetriaApiUrl;
+
+            _configXmlPath = string.IsNullOrWhiteSpace(configXmlPath)
+                ? @"D:\MediaDNA_V2\data\configxml.xml"
+                : configXmlPath;
 
             _enabled = enabled;
         }
@@ -251,6 +257,85 @@ namespace WinServiceFleetAgent.Core
                     }
                 }
 
+                // 2.5 Mapeia canais de ConfigXml.xml (prioridade máxima para o nome do canal)
+                var configChannels = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                try
+                {
+                    string resolvedConfigXml = MetadataReader.ResolveXmlPath(_configXmlPath);
+
+                    if (File.Exists(resolvedConfigXml))
+                    {
+                        string cfgText = File.ReadAllText(resolvedConfigXml, win1252);
+                        try
+                        {
+                            var cfgDoc = XDocument.Parse(cfgText);
+                            foreach (var chElem in cfgDoc.Descendants().Where(e => e.Name.LocalName.Equals("Channel", StringComparison.OrdinalIgnoreCase)))
+                            {
+                                string veiculoName = chElem.Attribute("Veiculo")?.Value?.Trim()
+                                    ?? chElem.Attribute("Name")?.Value?.Trim()
+                                    ?? chElem.Attribute("DisplayName")?.Value?.Trim()
+                                    ?? chElem.Attribute("ChannelName")?.Value?.Trim()
+                                    ?? chElem.Elements().FirstOrDefault(e => e.Name.LocalName.Equals("Veiculo", StringComparison.OrdinalIgnoreCase))?.Value?.Trim()
+                                    ?? chElem.Elements().FirstOrDefault(e => e.Name.LocalName.Equals("Name", StringComparison.OrdinalIgnoreCase))?.Value?.Trim()
+                                    ?? "";
+
+                                string pracaVeiculo = chElem.Attribute("PracaVeiculo")?.Value?.Trim()
+                                    ?? chElem.Attribute("ChannelCode")?.Value?.Trim()
+                                    ?? chElem.Attribute("Code")?.Value?.Trim()
+                                    ?? chElem.Attribute("IdVeiculo")?.Value?.Trim()
+                                    ?? chElem.Elements().FirstOrDefault(e => e.Name.LocalName.Equals("PracaVeiculo", StringComparison.OrdinalIgnoreCase))?.Value?.Trim()
+                                    ?? chElem.Elements().FirstOrDefault(e => e.Name.LocalName.Equals("ChannelCode", StringComparison.OrdinalIgnoreCase))?.Value?.Trim()
+                                    ?? "";
+
+                                if (!string.IsNullOrEmpty(veiculoName))
+                                {
+                                    if (!string.IsNullOrEmpty(pracaVeiculo))
+                                    {
+                                        configChannels[pracaVeiculo] = veiculoName;
+                                    }
+                                    configChannels[veiculoName.ToLowerInvariant()] = veiculoName;
+                                }
+                            }
+                        }
+                        catch (Exception exDoc)
+                        {
+                            FileLogger.Log($"[ChannelOrchestrator] Aviso no parse XDocument de '{resolvedConfigXml}': {exDoc.Message}. Tentando Regex...");
+                        }
+
+                        if (configChannels.Count == 0 && !string.IsNullOrEmpty(cfgText))
+                        {
+                            var matches1 = System.Text.RegularExpressions.Regex.Matches(cfgText, @"<Channel\s+[^>]*PracaVeiculo=""([^""]+)""[^>]*Veiculo=""([^""]+)""", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                            foreach (System.Text.RegularExpressions.Match m in matches1)
+                            {
+                                string pv = m.Groups[1].Value.Trim();
+                                string vn = m.Groups[2].Value.Trim();
+                                if (!string.IsNullOrEmpty(pv) && !string.IsNullOrEmpty(vn))
+                                {
+                                    configChannels[pv] = vn;
+                                    configChannels[vn.ToLowerInvariant()] = vn;
+                                }
+                            }
+                            var matches2 = System.Text.RegularExpressions.Regex.Matches(cfgText, @"<Channel\s+[^>]*Veiculo=""([^""]+)""[^>]*PracaVeiculo=""([^""]+)""", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                            foreach (System.Text.RegularExpressions.Match m in matches2)
+                            {
+                                string vn = m.Groups[1].Value.Trim();
+                                string pv = m.Groups[2].Value.Trim();
+                                if (!string.IsNullOrEmpty(pv) && !string.IsNullOrEmpty(vn))
+                                {
+                                    configChannels[pv] = vn;
+                                    configChannels[vn.ToLowerInvariant()] = vn;
+                                }
+                            }
+                        }
+
+                        FileLogger.Log($"[ChannelOrchestrator] Mapeados {configChannels.Count} canais do configxml.xml.");
+                    }
+                }
+                catch (Exception exCfg)
+                {
+                    FileLogger.Log($"[ChannelOrchestrator] Erro ao ler canais do configxml.xml: {exCfg.Message}");
+                }
+
                 // 3. Processa runtime de DTVTunersStatus.xml
                 string statusXmlContent = File.ReadAllText(statusPath, win1252);
                 var statusDoc = XDocument.Parse(statusXmlContent);
@@ -333,9 +418,23 @@ namespace WinServiceFleetAgent.Core
                         sVal = tel.Strength;
                     }
 
+                    // Prioriza o nome amigável do canal definido em configxml.xml (ex: "Rede Globo" em vez de "RBSTV (RBS)")
+                    string canalDisplayName = progName;
+                    if (!string.IsNullOrWhiteSpace(chCode) && configChannels.TryGetValue(chCode, out var cfgNameByCode) && !string.IsNullOrWhiteSpace(cfgNameByCode))
+                    {
+                        canalDisplayName = cfgNameByCode;
+                    }
+                    else if (configChannels.TryGetValue(progName.ToLowerInvariant(), out var cfgNameByName) && !string.IsNullOrWhiteSpace(cfgNameByName))
+                    {
+                        canalDisplayName = cfgNameByName;
+                    }
+
+                    FileLogger.Log($"[ChannelOrchestrator] Canal detectado: '{progName}' (Code: '{chCode}') -> Nome no SharePoint: '{canalDisplayName}'");
+
                     var item = new ChannelStatusItem
                     {
-                        Title = progName,
+                        Title = canalDisplayName,
+                        RawProgName = progName,
                         Pais = "Brasil",
                         Cidade = metadata.Praca,
                         IDHost = parsedHostId,

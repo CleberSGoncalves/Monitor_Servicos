@@ -1114,6 +1114,7 @@ namespace WinServiceFleetAgent.Core
 
                                 bool hostMatch = (fHost == idHost && fCs == cs);
                                 bool nameMatch = fTitle.Equals(ch.Title, StringComparison.OrdinalIgnoreCase) ||
+                                                 (!string.IsNullOrWhiteSpace(ch.RawProgName) && fTitle.Equals(ch.RawProgName, StringComparison.OrdinalIgnoreCase)) ||
                                                  (!string.IsNullOrWhiteSpace(ch.Veiculo) && fVeiculo.Equals(ch.Veiculo, StringComparison.OrdinalIgnoreCase));
 
                                 return hostMatch && nameMatch;

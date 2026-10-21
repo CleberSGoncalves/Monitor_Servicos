@@ -51,7 +51,8 @@ namespace WinServiceFleetAgent.Core
                 multiplexesXmlPath,
                 tunersStatusXmlPath,
                 telemetriaApiUrl,
-                channelMonitoringEnabled
+                channelMonitoringEnabled,
+                configXmlPath
             );
         }
 

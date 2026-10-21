@@ -159,7 +159,7 @@ namespace WinServiceFleetAgent.Core
             return metadata;
         }
 
-        private static string ResolveXmlPath(string configXmlPath)
+        public static string ResolveXmlPath(string configXmlPath)
         {
             if (File.Exists(configXmlPath)) return configXmlPath;
 

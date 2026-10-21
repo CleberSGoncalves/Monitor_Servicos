@@ -5,6 +5,7 @@ namespace WinServiceFleetAgent.Core
     public class ChannelStatusItem
     {
         public string Title { get; set; } = string.Empty;
+        public string RawProgName { get; set; } = string.Empty;
         public string Pais { get; set; } = "Brasil";
         public string Cidade { get; set; } = string.Empty;
         public string Veiculo { get; set; } = string.Empty;
