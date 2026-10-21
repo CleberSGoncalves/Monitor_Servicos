@@ -211,7 +211,7 @@ namespace WinServiceFleetAgent.Core
                 }
 
                 // 2. Mapeia configurações de gravação e multiplexes de Multiplexes.xml
-                var mapaMuxCfg = new Dictionary<string, (double BaseFreq, string OrigPath, string NetworkType)>();
+                var mapaMuxCfg = new Dictionary<string, (double BaseFreq, string OrigPath, string NetworkType, string AnalogVideo, string AnalogAudio, string MuxName)>();
                 var mapaGravacao = new Dictionary<string, (bool Mp4Rec, string Mp4Path, bool Mp3Rec, string Mp3Path)>();
 
                 if (File.Exists(muxPath))
@@ -226,6 +226,10 @@ namespace WinServiceFleetAgent.Core
                             string idM = m.Elements().FirstOrDefault(e => e.Name.LocalName == "IDMUX")?.Value.Trim() ?? "";
                             string orig = m.Elements().FirstOrDefault(e => e.Name.LocalName == "OrigPath")?.Value.Trim() ?? "";
                             string netType = m.Elements().FirstOrDefault(e => e.Name.LocalName == "NetworkType")?.Value.Trim() ?? "";
+                            string muxName = m.Elements().FirstOrDefault(e => e.Name.LocalName == "Name")?.Value.Trim() ?? "";
+                            string analogVid = m.Elements().FirstOrDefault(e => e.Name.LocalName == "AnalogVideoDevice")?.Value.Trim() ?? "";
+                            string analogAud = m.Elements().FirstOrDefault(e => e.Name.LocalName == "AnalogAudioDevice")?.Value.Trim() ?? "";
+
                             double baseFreq = 0;
                             var freqElem = m.Elements().FirstOrDefault(e => e.Name.LocalName == "BaseFreq");
                             if (freqElem != null && double.TryParse(freqElem.Value.Replace(',', '.'), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double parsedF))
@@ -234,7 +238,7 @@ namespace WinServiceFleetAgent.Core
                             }
                             if (!string.IsNullOrEmpty(idM))
                             {
-                                mapaMuxCfg[idM] = (baseFreq, orig, netType);
+                                mapaMuxCfg[idM] = (baseFreq, orig, netType, analogVid, analogAud, muxName);
                             }
                         }
 
@@ -340,74 +344,81 @@ namespace WinServiceFleetAgent.Core
                 string statusXmlContent = File.ReadAllText(statusPath, win1252);
                 var statusDoc = XDocument.Parse(statusXmlContent);
 
-                var muxesStatus = new Dictionary<string, (string NetworkType, int TunerID, string Status)>();
+                var muxesStatus = new Dictionary<string, (string NetworkType, int TunerID, string Status, string AnalogVideo)>();
                 foreach (var m in statusDoc.Descendants().Where(e => e.Name.LocalName == "MUXES"))
                 {
                     string idM = m.Elements().FirstOrDefault(e => e.Name.LocalName == "IDMUX")?.Value.Trim() ?? "";
                     string netType = m.Elements().FirstOrDefault(e => e.Name.LocalName == "NetworkType")?.Value.Trim() ?? "";
                     string status = m.Elements().FirstOrDefault(e => e.Name.LocalName == "Status")?.Value.Trim() ?? "N/A";
+                    string analogVid = m.Elements().FirstOrDefault(e => e.Name.LocalName == "AnalogVideoDevice")?.Value.Trim() ?? "";
                     int tunerId = -1;
                     var tElem = m.Elements().FirstOrDefault(e => e.Name.LocalName == "TunerID");
                     if (tElem != null && int.TryParse(tElem.Value.Trim(), out int pt)) tunerId = pt;
 
                     if (!string.IsNullOrEmpty(idM))
                     {
-                        muxesStatus[idM] = (netType, tunerId, status);
+                        muxesStatus[idM] = (netType, tunerId, status, analogVid);
                     }
                 }
 
                 int parsedHostId = int.TryParse(metadata.IdHost, out int ph) ? ph : 1;
                 string nowIso = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ");
                 var channelsList = new List<ChannelStatusItem>();
+                var processedMuxes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
                 foreach (var prog in statusDoc.Descendants().Where(e => e.Name.LocalName == "Programs"))
                 {
                     string idMux = prog.Elements().FirstOrDefault(e => e.Name.LocalName == "IDMUX")?.Value.Trim() ?? "";
                     string progName = prog.Elements().FirstOrDefault(e => e.Name.LocalName == "Name")?.Value.Trim() ?? "";
                     if (string.IsNullOrWhiteSpace(progName)) continue;
+                    if (!string.IsNullOrEmpty(idMux)) processedMuxes.Add(idMux);
 
                     string chCode = prog.Elements().FirstOrDefault(e => e.Name.LocalName == "ChannelCode")?.Value.Trim() ?? "";
                     bool isFrozen = prog.Elements().FirstOrDefault(e => e.Name.LocalName == "IsFrozen")?.Value.Trim().Equals("true", StringComparison.OrdinalIgnoreCase) ?? false;
                     bool isMute = prog.Elements().FirstOrDefault(e => e.Name.LocalName == "IsMute")?.Value.Trim().Equals("true", StringComparison.OrdinalIgnoreCase) ?? false;
 
-                    var mStat = muxesStatus.ContainsKey(idMux) ? muxesStatus[idMux] : (NetworkType: "", TunerID: -1, Status: "N/A");
-                    var mCfg = mapaMuxCfg.ContainsKey(idMux) ? mapaMuxCfg[idMux] : (BaseFreq: 0.0, OrigPath: "", NetworkType: "");
+                    var mStat = muxesStatus.ContainsKey(idMux) ? muxesStatus[idMux] : (NetworkType: "", TunerID: -1, Status: "N/A", AnalogVideo: "");
+                    var mCfg = mapaMuxCfg.ContainsKey(idMux) ? mapaMuxCfg[idMux] : (BaseFreq: 0.0, OrigPath: "", NetworkType: "", AnalogVideo: "", AnalogAudio: "", MuxName: "");
                     string chaveG = $"{idMux}_{progName.ToLowerInvariant()}";
                     var rec = mapaGravacao.ContainsKey(chaveG) ? mapaGravacao[chaveG] : (Mp4Rec: false, Mp4Path: "N/A", Mp3Rec: false, Mp3Path: "N/A");
 
                     string netType = !string.IsNullOrEmpty(mStat.NetworkType) ? mStat.NetworkType : mCfg.NetworkType;
                     string origPath = mCfg.OrigPath ?? "";
+                    string analogDevice = !string.IsNullOrWhiteSpace(mCfg.AnalogVideo) ? mCfg.AnalogVideo : mStat.AnalogVideo;
 
                     string meio = "Digital Terrestre";
                     string freqStr = "N/A";
                     string urlStream = "N/A";
                     string sourceAnalog = "N/A";
 
-                    switch (netType)
+                    bool isAnalog = netType == "1" || netType == "2" || netType == "6" || !string.IsNullOrWhiteSpace(analogDevice);
+                    bool isRTSP = netType == "5" || (!string.IsNullOrWhiteSpace(origPath) && origPath.StartsWith("rtsp:", StringComparison.OrdinalIgnoreCase));
+                    bool isUDP = netType == "3" || (!string.IsNullOrWhiteSpace(origPath) && origPath.StartsWith("udp:", StringComparison.OrdinalIgnoreCase));
+
+                    if (isAnalog)
                     {
-                        case "0":
-                            meio = "Digital Terrestre";
-                            if (mCfg.BaseFreq > 0)
-                            {
-                                freqStr = $"{(mCfg.BaseFreq / 1000.0):N3} MHz";
-                            }
-                            break;
-                        case "5":
-                            meio = "Streaming (RTSP)";
-                            urlStream = !string.IsNullOrWhiteSpace(origPath) ? origPath : "RTSP Stream";
-                            break;
-                        case "3":
-                            meio = "Streaming(UDP)";
-                            urlStream = !string.IsNullOrWhiteSpace(origPath) ? origPath : "UDP Multicast";
-                            break;
-                        case "1":
-                        case "2":
-                            meio = "Analógico";
-                            sourceAnalog = !string.IsNullOrWhiteSpace(origPath) ? origPath : "Driver de Captura";
-                            break;
-                        default:
-                            meio = "Digital Terrestre";
-                            break;
+                        meio = "Analógico";
+                        sourceAnalog = !string.IsNullOrWhiteSpace(analogDevice) 
+                            ? analogDevice 
+                            : (!string.IsNullOrWhiteSpace(origPath) ? origPath : "Driver de Captura");
+                    }
+                    else if (isRTSP)
+                    {
+                        meio = "Streaming (RTSP)";
+                        urlStream = !string.IsNullOrWhiteSpace(origPath) ? origPath : "RTSP Stream";
+                    }
+                    else if (isUDP)
+                    {
+                        meio = "Streaming(UDP)";
+                        urlStream = !string.IsNullOrWhiteSpace(origPath) ? origPath : "UDP Multicast";
+                    }
+                    else
+                    {
+                        meio = "Digital Terrestre";
+                        if (mCfg.BaseFreq > 0)
+                        {
+                            freqStr = $"{(mCfg.BaseFreq / 1000.0):N3} MHz";
+                        }
                     }
 
                     int? qVal = null;
@@ -429,7 +440,7 @@ namespace WinServiceFleetAgent.Core
                         canalDisplayName = cfgNameByName;
                     }
 
-                    FileLogger.Log($"[ChannelOrchestrator] Canal detectado: '{progName}' (Code: '{chCode}') -> Nome no SharePoint: '{canalDisplayName}'");
+                    FileLogger.Log($"[ChannelOrchestrator] Canal detectado: '{progName}' (Code: '{chCode}') -> Nome no SharePoint: '{canalDisplayName}' | Meio: {meio}" + (isAnalog ? $" | Source: {sourceAnalog}" : ""));
 
                     var item = new ChannelStatusItem
                     {
@@ -452,12 +463,68 @@ namespace WinServiceFleetAgent.Core
                         PastaGravacaoMP3 = !string.IsNullOrWhiteSpace(rec.Mp3Path) ? rec.Mp3Path : "N/A",
                         UrlStreaming = urlStream,
                         SourceAnalogico = sourceAnalog,
+                        AnalogAudioDevice = isAnalog && !string.IsNullOrWhiteSpace(mCfg.AnalogAudio) ? mCfg.AnalogAudio : "N/A",
                         QualidadeSinal = qVal,
                         ForcaSinal = sVal,
                         Atualizacao = nowIso
                     };
 
                     channelsList.Add(item);
+                }
+
+                // Processa também multiplexes analógicos ativos que não estejam listados em <Programs>
+                foreach (var kvp in mapaMuxCfg)
+                {
+                    string idM = kvp.Key;
+                    var mCfg = kvp.Value;
+                    if (processedMuxes.Contains(idM)) continue;
+
+                    bool isAnalogMux = mCfg.NetworkType == "1" || mCfg.NetworkType == "2" || mCfg.NetworkType == "6" || !string.IsNullOrWhiteSpace(mCfg.AnalogVideo);
+                    if (!isAnalogMux) continue;
+
+                    string rawName = !string.IsNullOrWhiteSpace(mCfg.MuxName) ? mCfg.MuxName : $"Canal Analógico {idM}";
+                    var mStat = muxesStatus.ContainsKey(idM) ? muxesStatus[idM] : (NetworkType: mCfg.NetworkType, TunerID: -1, Status: "N/A", AnalogVideo: mCfg.AnalogVideo);
+                    string chaveG = $"{idM}_{rawName.ToLowerInvariant()}";
+                    var rec = mapaGravacao.ContainsKey(chaveG) ? mapaGravacao[chaveG] : (Mp4Rec: false, Mp4Path: "N/A", Mp3Rec: false, Mp3Path: "N/A");
+
+                    string canalDisplayName = rawName;
+                    if (configChannels.TryGetValue(rawName.ToLowerInvariant(), out var cfgNameByName) && !string.IsNullOrWhiteSpace(cfgNameByName))
+                    {
+                        canalDisplayName = cfgNameByName;
+                    }
+
+                    string sourceAnalog = !string.IsNullOrWhiteSpace(mCfg.AnalogVideo) ? mCfg.AnalogVideo : "Driver de Captura";
+
+                    var item = new ChannelStatusItem
+                    {
+                        Title = canalDisplayName,
+                        RawProgName = rawName,
+                        Pais = "Brasil",
+                        Cidade = metadata.Praca,
+                        IDHost = parsedHostId,
+                        IDCS = metadata.CS,
+                        Veiculo = rawName,
+                        MeiodeTransmissao = "Analógico",
+                        Frequencia = "N/A",
+                        TunerID = mStat.TunerID >= 0 ? mStat.TunerID : -1,
+                        StatusTuner = mStat.Status,
+                        VideoCongelado = "Não",
+                        AudioMudo = "Não",
+                        GravandoMP4 = rec.Mp4Rec ? "Sim" : "Não",
+                        GravandoMP3 = rec.Mp3Rec ? "Sim" : "Não",
+                        PastaGravacaoMP4 = !string.IsNullOrWhiteSpace(rec.Mp4Path) ? rec.Mp4Path : "N/A",
+                        PastaGravacaoMP3 = !string.IsNullOrWhiteSpace(rec.Mp3Path) ? rec.Mp3Path : "N/A",
+                        UrlStreaming = "N/A",
+                        SourceAnalogico = sourceAnalog,
+                        AnalogAudioDevice = !string.IsNullOrWhiteSpace(mCfg.AnalogAudio) ? mCfg.AnalogAudio : "N/A",
+                        QualidadeSinal = 0,
+                        ForcaSinal = 0,
+                        Atualizacao = nowIso
+                    };
+
+                    channelsList.Add(item);
+                    processedMuxes.Add(idM);
+                    FileLogger.Log($"[ChannelOrchestrator] Canal Analógico detectado (via Multiplex): '{rawName}' -> SharePoint: '{canalDisplayName}' | Dispositivo: '{sourceAnalog}'");
                 }
 
                 FileLogger.Log($"[ChannelOrchestrator] Encontrados {channelsList.Count} canais em execução. Sincronizando com o SharePoint...");

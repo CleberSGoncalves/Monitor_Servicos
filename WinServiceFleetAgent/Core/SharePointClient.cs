@@ -1142,6 +1142,7 @@ namespace WinServiceFleetAgent.Core
                             { "IDCS", ch.IDCS },
                             { "UrlStreaming", ch.UrlStreaming },
                             { "SourceAnalogico", ch.SourceAnalogico },
+                            { "AnalogAudioDevice", ch.AnalogAudioDevice },
                             { "Atualizacao", ch.Atualizacao }
                         };
 

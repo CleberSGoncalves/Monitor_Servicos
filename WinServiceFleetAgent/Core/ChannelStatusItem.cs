@@ -25,6 +25,7 @@ namespace WinServiceFleetAgent.Core
         public string PastaGravacaoMP3 { get; set; } = "N/A";
         public string UrlStreaming { get; set; } = "N/A";
         public string SourceAnalogico { get; set; } = "N/A";
+        public string AnalogAudioDevice { get; set; } = "N/A";
         public string Atualizacao { get; set; } = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ");
     }
 }
