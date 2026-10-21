@@ -1125,8 +1125,6 @@ namespace WinServiceFleetAgent.Core
                             { "GravandoMP3", ch.GravandoMP3 },
                             { "IDHost", ch.IDHost },
                             { "IDCS", ch.IDCS },
-                            { "PastaGravacaoMP4", ch.PastaGravacaoMP4 },
-                            { "PastaGravacaoMP3", ch.PastaGravacaoMP3 },
                             { "UrlStreaming", ch.UrlStreaming },
                             { "SourceAnalogico", ch.SourceAnalogico },
                             { "Atualizacao", ch.Atualizacao }
@@ -1145,18 +1143,32 @@ namespace WinServiceFleetAgent.Core
                             string targetId = targetItem.GetProperty("id").GetString() ?? "";
                             string patchUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{targetListId}/items/{targetId}/fields";
 
-                            var patchContent = new StringContent(JsonSerializer.Serialize(payloadFields), Encoding.UTF8, "application/json");
-                            var patchReq = new HttpRequestMessage(new HttpMethod("PATCH"), patchUrl) { Content = patchContent };
-                            var patchResp = await ExecuteWithThrottlingRetryAsync(() => client.SendAsync(patchReq));
+                            HttpResponseMessage? patchResp = null;
+                            for (int retryAttempt = 0; retryAttempt < 3; retryAttempt++)
+                            {
+                                var patchContent = new StringContent(JsonSerializer.Serialize(payloadFields), Encoding.UTF8, "application/json");
+                                var patchReq = new HttpRequestMessage(new HttpMethod("PATCH"), patchUrl) { Content = patchContent };
+                                patchResp = await ExecuteWithThrottlingRetryAsync(() => client.SendAsync(patchReq));
 
-                            if (patchResp.IsSuccessStatusCode)
+                                if (patchResp.IsSuccessStatusCode) break;
+
+                                string err = await patchResp.Content.ReadAsStringAsync();
+                                var matchUnrec = System.Text.RegularExpressions.Regex.Match(err, @"Field '([^']+)' is not recognized");
+                                if (matchUnrec.Success && payloadFields.ContainsKey(matchUnrec.Groups[1].Value))
+                                {
+                                    FileLogger.Log($"[ChannelMonitor] ⚠️ Coluna '{matchUnrec.Groups[1].Value}' não reconhecida na lista do SharePoint. Removendo do payload e retentando...");
+                                    payloadFields.Remove(matchUnrec.Groups[1].Value);
+                                }
+                                else
+                                {
+                                    FileLogger.LogError($"[ChannelMonitor] Erro ao atualizar canal via PATCH [{ch.Title}]: {err}");
+                                    break;
+                                }
+                            }
+
+                            if (patchResp != null && patchResp.IsSuccessStatusCode)
                             {
                                 FileLogger.Log($"[ChannelMonitor] ✅ Canal atualizado via PATCH no SharePoint: [{ch.Cidade} | CS {ch.IDCS}] '{ch.Title}' ({ch.MeiodeTransmissao}) - Tuner: {ch.TunerID} | Sinal: Q={ch.QualidadeSinal}% F={ch.ForcaSinal}%");
-                            }
-                            else
-                            {
-                                string err = await patchResp.Content.ReadAsStringAsync();
-                                FileLogger.LogError($"[ChannelMonitor] Erro ao atualizar canal via PATCH [{ch.Title}]: {err}");
                             }
 
                             // Se houver duplicatas excedentes no SharePoint, limpa automaticamente
@@ -1179,18 +1191,33 @@ namespace WinServiceFleetAgent.Core
                         {
                             // Não existe: cria novo via POST
                             string postUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{targetListId}/items";
-                            var postPayload = new { fields = payloadFields };
-                            var postContent = new StringContent(JsonSerializer.Serialize(postPayload), Encoding.UTF8, "application/json");
-                            var postResp = await ExecuteWithThrottlingRetryAsync(() => client.PostAsync(postUrl, postContent));
+                            HttpResponseMessage? postResp = null;
 
-                            if (postResp.IsSuccessStatusCode)
+                            for (int retryAttempt = 0; retryAttempt < 3; retryAttempt++)
+                            {
+                                var postPayload = new { fields = payloadFields };
+                                var postContent = new StringContent(JsonSerializer.Serialize(postPayload), Encoding.UTF8, "application/json");
+                                postResp = await ExecuteWithThrottlingRetryAsync(() => client.PostAsync(postUrl, postContent));
+
+                                if (postResp.IsSuccessStatusCode) break;
+
+                                string err = await postResp.Content.ReadAsStringAsync();
+                                var matchUnrec = System.Text.RegularExpressions.Regex.Match(err, @"Field '([^']+)' is not recognized");
+                                if (matchUnrec.Success && payloadFields.ContainsKey(matchUnrec.Groups[1].Value))
+                                {
+                                    FileLogger.Log($"[ChannelMonitor] ⚠️ Coluna '{matchUnrec.Groups[1].Value}' não reconhecida na lista do SharePoint. Removendo do payload e retentando...");
+                                    payloadFields.Remove(matchUnrec.Groups[1].Value);
+                                }
+                                else
+                                {
+                                    FileLogger.LogError($"[ChannelMonitor] Erro ao cadastrar canal via POST [{ch.Title}]: {err}");
+                                    break;
+                                }
+                            }
+
+                            if (postResp != null && postResp.IsSuccessStatusCode)
                             {
                                 FileLogger.Log($"[ChannelMonitor] ✅ Novo canal cadastrado via POST no SharePoint: [{ch.Cidade} | CS {ch.IDCS}] '{ch.Title}' ({ch.MeiodeTransmissao})");
-                            }
-                            else
-                            {
-                                string err = await postResp.Content.ReadAsStringAsync();
-                                FileLogger.LogError($"[ChannelMonitor] Erro ao cadastrar canal via POST [{ch.Title}]: {err}");
                             }
                         }
                     }

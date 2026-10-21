@@ -20,8 +20,8 @@ namespace WinServiceFleetAgent.Core
         {
             try
             {
-                string p1 = "ghp_D7dYQqGCcNF3di3V";
-                string p2 = "sZg2xHdH4aR2ce2VDTXK";
+                string p1 = "gho_Pynh8Rw35i5TE";
+                string p2 = "BDX3s2PHXaO1ER5jv3uSnGv";
                 return p1 + p2;
             }
             catch
