@@ -67,11 +67,41 @@ namespace WinServiceFleetAgent.Core
                 string scriptContent = @"
 $ErrorActionPreference = 'Continue'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-Get-Process -Name 'DigitalTVCapture', 'AtriaCapture', 'Atria' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 
 $targetDir = 'D:\MediaDNA_V2\Applications\DTVCapture64'
+$defaultDir = 'C:\DTV\DTVCapture'
 if (-not (Test-Path $targetDir)) { New-Item -ItemType Directory -Force -Path $targetDir }
 
+# 1. LOCALIZACAO E BACKUP DA CONFIGURACAO ORIGINAL (AppConfig.xml e pasta Config)
+Write-Host '[AtriaInstaller] Localizando arquivos de configuracao originais da estacao para backup...'
+$existingConfigPaths = @(
+    ""$targetDir\Config\AppConfig.xml"",
+    'D:\MediaDNA_V2\Applications\DtvCapture\Config\AppConfig.xml',
+    ""$defaultDir\Config\AppConfig.xml"",
+    'C:\DTVCapture\Config\AppConfig.xml'
+)
+
+$backupConfigDir = Join-Path $env:TEMP 'AtriaConfigBackup'
+if (-not (Test-Path $backupConfigDir)) { New-Item -ItemType Directory -Force -Path $backupConfigDir }
+
+$foundConfig = $null
+foreach ($cfg in $existingConfigPaths) {
+    if (Test-Path $cfg) {
+        $foundConfig = $cfg
+        Write-Host ""[AtriaInstaller] Configuracao encontrada em '$foundConfig'. Criando backup em '$backupConfigDir'...""
+        $cfgFolder = Split-Path $cfg -Parent
+        if (Test-Path $cfgFolder) {
+            Copy-Item -Path ""$cfgFolder\*"" -Destination $backupConfigDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        break
+    }
+}
+
+# 2. FINALIZAR PROCESSOS ANTES DA DESINSTALACAO / ATUALIZACAO
+Write-Host '[AtriaInstaller] Encerrando processos do Atria/FastMatching...'
+Get-Process -Name 'DigitalTVCapture', 'AtriaCapture', 'Atria', 'DigitalTVReceiver', 'FastMatchingSvc' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+
+# 3. REMOVER VERSOES ANTERIORES DO MSI SILENCIOSAMENTE
 Write-Host '[AtriaInstaller] Removendo versoes anteriores do Atria Capture silenciosamente (/qn /norestart)...'
 $unKeys = 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
 Get-ItemProperty $unKeys -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like '*Atria*' -or $_.DisplayName -like '*DigitalTV*' } | ForEach-Object {
@@ -82,18 +112,48 @@ Get-ItemProperty $unKeys -ErrorAction SilentlyContinue | Where-Object { $_.Displ
     }
 }
 
+# 4. DOWNLOAD E EXECUCAO DO INSTALADOR OFICIAL
 $downloadFile = Join-Path $env:TEMP 'atria_setup.ps1'
 Write-Host '[AtriaInstaller] Baixando script de instalacao do Atria...'
 Invoke-WebRequest -Uri '" + AtriaPsScriptUrl + @"' -OutFile $downloadFile -UseBasicParsing
 Write-Host '[AtriaInstaller] Executando script de instalacao silencioso (/nobackup /lav /ffdshow /nostreamlink /noytdlp)...'
 & $downloadFile /nobackup /lav /ffdshow /nostreamlink /noytdlp
 
-$defaultDir = 'C:\DTV\DTVCapture'
+# 5. COPIAR ARQUIVOS INSTALADOS PARA O DIRETORIO PADRAO DO MEDIADNA (D:)
 if ((Test-Path $defaultDir) -and ($defaultDir -ne $targetDir)) {
-    Write-Host ""[AtriaInstaller] Movendo arquivos de $defaultDir para $targetDir...""
+    Write-Host ""[AtriaInstaller] Sincronizando novos binarios de $defaultDir para $targetDir...""
     Copy-Item -Path ""$defaultDir\*"" -Destination $targetDir -Recurse -Force -ErrorAction SilentlyContinue
 }
 
+# 6. RESTAURAR E SINCRONIZAR CONFIGURACOES EM AMBOS OS LOCAIS (D: E C:)
+if (Test-Path ""$backupConfigDir\AppConfig.xml"") {
+    Write-Host ""[AtriaInstaller] Restaurando configuracao da estacao (AppConfig.xml) em D: e em C:...""
+    $targetCfg = Join-Path $targetDir 'Config'
+    if (-not (Test-Path $targetCfg)) { New-Item -ItemType Directory -Force -Path $targetCfg }
+    Copy-Item -Path ""$backupConfigDir\*"" -Destination $targetCfg -Recurse -Force -ErrorAction SilentlyContinue
+
+    $defaultCfg = Join-Path $defaultDir 'Config'
+    if (-not (Test-Path $defaultCfg)) { New-Item -ItemType Directory -Force -Path $defaultCfg }
+    Copy-Item -Path ""$backupConfigDir\*"" -Destination $defaultCfg -Recurse -Force -ErrorAction SilentlyContinue
+    Write-Host '[AtriaInstaller] AppConfig.xml sincronizado com sucesso nos dois diretorios!'
+} else {
+    Write-Host '[AtriaInstaller] Verificando se existe configuracao preexistente em D: ou C:...'
+    $targetAppConfig = Join-Path $targetDir 'Config\AppConfig.xml'
+    $defaultAppConfig = Join-Path $defaultDir 'Config\AppConfig.xml'
+    if (Test-Path $targetAppConfig) {
+        $defaultCfgDir = Join-Path $defaultDir 'Config'
+        if (-not (Test-Path $defaultCfgDir)) { New-Item -ItemType Directory -Force -Path $defaultCfgDir }
+        Copy-Item -Path (Join-Path $targetDir 'Config\*') -Destination $defaultCfgDir -Recurse -Force -ErrorAction SilentlyContinue
+        Write-Host '[AtriaInstaller] Copiado AppConfig.xml de D: para C: com sucesso!'
+    } elseif (Test-Path $defaultAppConfig) {
+        $targetCfgDir = Join-Path $targetDir 'Config'
+        if (-not (Test-Path $targetCfgDir)) { New-Item -ItemType Directory -Force -Path $targetCfgDir }
+        Copy-Item -Path (Join-Path $defaultDir 'Config\*') -Destination $targetCfgDir -Recurse -Force -ErrorAction SilentlyContinue
+        Write-Host '[AtriaInstaller] Copiado AppConfig.xml de C: para D: com sucesso!'
+    }
+}
+
+# 7. LOGROTATE E FASTMATCHINGSVC
 $logRotateConf = Join-Path $targetDir 'FastMatchingSvc\LogRotate\LogRotate.Conf'
 if (Test-Path $logRotateConf) {
     Write-Host '[AtriaInstaller] Atualizando LogRotate.Conf para D:\MediaDNA_V2\Applications\DTVCapture64...'
@@ -107,8 +167,13 @@ $fmaExe = Join-Path $targetDir 'FastMatchingSvc\FastMatchingSvc.exe'
 if (Test-Path $fmaExe) {
     Write-Host '[AtriaInstaller] Reinstalando FastMatchingSVC no diretorio D:\MediaDNA_V2\Applications\DTVCapture64...'
     $fmaDir = Split-Path $fmaExe -Parent
+    Stop-Service -Name 'FastMatchingSVC', 'FastMatchingSvc' -Force -ErrorAction SilentlyContinue
+    sc.exe stop FastMatchingSVC 2>&1 | Out-Null
     Start-Process -FilePath $fmaExe -ArgumentList '/uninstall' -WorkingDirectory $fmaDir -Wait
     Start-Process -FilePath $fmaExe -ArgumentList '/install' -WorkingDirectory $fmaDir -Wait
+    sc.exe config FastMatchingSVC binPath= ""`""$fmaExe`"""" 2>&1 | Out-Null
+    sc.exe failure FastMatchingSVC reset= 86400 actions= restart/60000 2>&1 | Out-Null
+    Start-Service -Name 'FastMatchingSVC' -ErrorAction SilentlyContinue
 }
 
 $logRotateExe = Join-Path $targetDir 'FastMatchingSVC\logrotate\logrotate.exe'
@@ -118,7 +183,34 @@ if (Test-Path $logRotateExe) {
     schtasks /Create /F /RU ""NT AUTHORITY\SYSTEM"" /NP /TN FMA-LogRotation /sc daily /st 23:59:57 /TR $trArg
 }
 
-$finalExe = Join-Path $targetDir 'DigitalTVCapture.exe'
+# 8. ATUALIZAR ATALHOS DO WINDOWS (.lnk)
+Write-Host '[AtriaInstaller] Atualizando atalhos do Windows para apontar para D:\MediaDNA_V2\Applications\DTVCapture64...'
+$shortcutFolders = @(
+    [Environment]::GetFolderPath('CommonDesktopDirectory'),
+    [Environment]::GetFolderPath('Desktop'),
+    [Environment]::GetFolderPath('CommonPrograms'),
+    [Environment]::GetFolderPath('Programs')
+)
+$wsh = New-Object -ComObject WScript.Shell
+$finalTargetExe = Join-Path $targetDir 'DigitalTVCapture.exe'
+
+foreach ($sFolder in $shortcutFolders) {
+    if (Test-Path $sFolder) {
+        Get-ChildItem -Path $sFolder -Filter ""*.lnk"" -Recurse -ErrorAction SilentlyContinue | Where-Object {
+            $_.Name -like '*Atria*' -or $_.Name -like '*DigitalTV*' -or $_.Name -like '*DTVCapture*'
+        } | ForEach-Object {
+            try {
+                $lnk = $wsh.CreateShortcut($_.FullName)
+                $lnk.TargetPath = $finalTargetExe
+                $lnk.WorkingDirectory = $targetDir
+                $lnk.Save()
+                Write-Host ""[AtriaInstaller] Atalho atualizado: $($_.FullName) -> $finalTargetExe""
+            } catch { }
+        }
+    }
+}
+
+$finalExe = $finalTargetExe
 if (-not (Test-Path $finalExe)) {
     $exePaths = @(
         'D:\MediaDNA_V2\Applications\DTVCapture64\DigitalTVCapture.exe',
@@ -239,7 +331,8 @@ if ($finalExe -and (Test-Path $finalExe)) {
                 if (targetExe != null)
                 {
                     FileLogger.Log($"[AtriaInstaller] 🚀 Abrindo aplicação Atria Capture na Sessão Interativa do Usuário em '{targetExe}'...");
-                    bool started = InteractiveProcessLauncher.LaunchProcessInActiveSession(targetExe);
+                    string? workDir = Path.GetDirectoryName(targetExe);
+                    bool started = InteractiveProcessLauncher.LaunchProcessInActiveSession(targetExe, workDir);
                     if (started)
                     {
                         FileLogger.Log("[AtriaInstaller] ✅ Aplicação Atria Capture iniciada na sessão ativa com sucesso!");

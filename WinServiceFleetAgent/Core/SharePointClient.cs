@@ -394,7 +394,7 @@ namespace WinServiceFleetAgent.Core
             return list;
         }
 
-        public async Task SyncServiceInventoryAsync(
+        public async Task<string> SyncServiceInventoryAsync(
             string title,
             string hostname,
             string praca,
@@ -416,7 +416,7 @@ namespace WinServiceFleetAgent.Core
                 if (string.IsNullOrEmpty(_accessToken) || string.IsNullOrEmpty(_listId))
                 {
                     FileLogger.LogError($"Falha ao estabelecer contexto no SharePoint para [{cleanHost}_{cleanSrv}]");
-                    return;
+                    return "Não";
                 }
 
                 client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
@@ -686,11 +686,14 @@ namespace WinServiceFleetAgent.Core
                                 FileLogger.LogError($"[SharePointClient] Erro no fallback de contingência para [{cleanHost}_{cleanSrv}]", fbEx);
                             }
                         }
+                        return safeAutoRestart;
                     }
+                    return safeAutoRestart;
                 }
                 catch (Exception ex)
                 {
                     FileLogger.LogError($"Erro ao sincronizar inventário no SharePoint [{cleanHost}_{cleanSrv}]", ex);
+                    return "Não";
                 }
             }
         }
@@ -871,6 +874,55 @@ namespace WinServiceFleetAgent.Core
                 }
             }
             return list;
+        }
+
+        public async Task UpdateServiceStatusAsync(string hostname, string nomeServico, string statusServico)
+        {
+            string cleanHost = (hostname ?? "").Trim();
+            string cleanSrv = (nomeServico ?? "").Trim();
+
+            using (var client = new HttpClient())
+            {
+                await EnsureGraphContextAsync(client);
+                if (string.IsNullOrEmpty(_accessToken) || string.IsNullOrEmpty(_listId)) return;
+
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
+                try
+                {
+                    var itemsArray = await GetAllListItemsAsync(client);
+                    foreach (var item in itemsArray)
+                    {
+                        if (item.TryGetProperty("fields", out var fields))
+                        {
+                            string itemHost = fields.TryGetProperty("Hostname", out var h) ? h.GetString()?.Trim() ?? "" : "";
+                            string itemSrv = fields.TryGetProperty("Nome_Servico", out var ns) ? ns.GetString()?.Trim() ?? "" : "";
+
+                            if (itemHost.Equals(cleanHost, StringComparison.OrdinalIgnoreCase) && itemSrv.Equals(cleanSrv, StringComparison.OrdinalIgnoreCase))
+                            {
+                                string itemId = item.GetProperty("id").GetString() ?? "";
+                                var patchData = new Dictionary<string, object>
+                                {
+                                    { "Status_Servico", statusServico },
+                                    { "Ultima_atualizacao", DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ") }
+                                };
+
+                                string patchUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items/{itemId}/fields";
+                                var content = new StringContent(JsonSerializer.Serialize(patchData), Encoding.UTF8, "application/json");
+                                var request = new HttpRequestMessage(new HttpMethod("PATCH"), patchUrl) { Content = content };
+
+                                await client.SendAsync(request);
+                                FileLogger.Log($"[SharePointClient] Status do serviço [{cleanHost}_{cleanSrv}] atualizado no SharePoint: {statusServico}");
+                                InvalidateListCache();
+                                break;
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    FileLogger.LogError($"Erro ao atualizar status do serviço [{cleanHost}_{cleanSrv}]", ex);
+                }
+            }
         }
 
         public async Task UpdateActionStatusByServiceAsync(

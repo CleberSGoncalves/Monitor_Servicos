@@ -215,23 +215,6 @@ namespace WinServiceFleetAgent.Core
                     else
                     {
                         installedVer = VersionInspector.GetExecutableVersion(exeFullPath);
-                        if (statusServico.Equals("Parado", StringComparison.OrdinalIgnoreCase))
-                        {
-                            FileLogger.Log($"[FleetOrchestrator] ⚠️ Serviço '{srv.ServiceName}' detectado como PARADO. Verificando auto-recuperação (AutoRestart)...");
-                            try
-                            {
-                                bool restarted = WinController.StartService(srv.ServiceName);
-                                if (restarted)
-                                {
-                                    statusServico = "Em Execução";
-                                    FileLogger.Log($"[FleetOrchestrator] 🩹 AutoRestart ativado: Serviço '{srv.ServiceName}' reiniciado com sucesso!");
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                FileLogger.LogError($"[FleetOrchestrator] Falha no AutoRestart para '{srv.ServiceName}'", ex);
-                            }
-                        }
                     }
                 }
 
@@ -243,7 +226,7 @@ namespace WinServiceFleetAgent.Core
 
                 FileLogger.Log($"[FleetOrchestrator] Processando '{_hostname}_{srv.ServiceName}' -> País: '{paisTitle}', Status: '{statusServico}', Instalada: '{installedVer}', GitHub Desejada: '{githubLatestVer}'");
 
-                await _spClient.SyncServiceInventoryAsync(
+                string autoRestartSetting = await _spClient.SyncServiceInventoryAsync(
                     title: paisTitle,
                     hostname: _hostname,
                     praca: metadata.Praca,
@@ -255,6 +238,35 @@ namespace WinServiceFleetAgent.Core
                     urlComunicacao: metadata.UrlComunicacao,
                     metrics: metrics
                 );
+
+                if (!isStandaloneApp && statusServico.Equals("Parado", StringComparison.OrdinalIgnoreCase))
+                {
+                    bool isAutoRestartEnabled = autoRestartSetting.Equals("Sim", StringComparison.OrdinalIgnoreCase) ||
+                                                autoRestartSetting.Equals("True", StringComparison.OrdinalIgnoreCase);
+
+                    if (isAutoRestartEnabled)
+                    {
+                        FileLogger.Log($"[FleetOrchestrator] ⚠️ Serviço '{srv.ServiceName}' detectado como PARADO. AutoRestart='Sim' no SharePoint. Executando auto-recuperação...");
+                        try
+                        {
+                            bool restarted = WinController.StartService(srv.ServiceName);
+                            if (restarted)
+                            {
+                                statusServico = "Em Execução";
+                                FileLogger.Log($"[FleetOrchestrator] 🩹 AutoRestart ativado: Serviço '{srv.ServiceName}' reiniciado com sucesso!");
+                                await _spClient.UpdateServiceStatusAsync(_hostname, srv.ServiceName, "Em Execução");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            FileLogger.LogError($"[FleetOrchestrator] Falha no AutoRestart para '{srv.ServiceName}'", ex);
+                        }
+                    }
+                    else
+                    {
+                        FileLogger.Log($"[FleetOrchestrator] ℹ️ Serviço '{srv.ServiceName}' está PARADO, mas AutoRestart está configurado como '{autoRestartSetting}' no SharePoint. Nenhuma tentativa de inicialização necessária.");
+                    }
+                }
 
                 await Task.Delay(200);
             }
