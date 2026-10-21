@@ -16,6 +16,7 @@ namespace WinServiceFleetAgent.Core
         private readonly string _githubToken;
         private readonly List<ServiceDefinition> _services;
         private readonly SharePointClient _spClient;
+        private readonly ChannelOrchestrator _channelOrchestrator;
         private readonly string _hostname;
         private static bool _isSelfUpdateTriggered = false;
 
@@ -30,7 +31,11 @@ namespace WinServiceFleetAgent.Core
             string clientId,
             string clientSecret,
             string githubToken,
-            List<ServiceDefinition> services)
+            List<ServiceDefinition> services,
+            bool channelMonitoringEnabled = true,
+            string? multiplexesXmlPath = null,
+            string? tunersStatusXmlPath = null,
+            string? telemetriaApiUrl = null)
         {
             _hostname = string.IsNullOrWhiteSpace(hostnameOverride) ? Environment.MachineName : hostnameOverride;
             _configXmlPath = configXmlPath;
@@ -41,6 +46,13 @@ namespace WinServiceFleetAgent.Core
             _services = services ?? new List<ServiceDefinition>();
 
             _spClient = new SharePointClient(siteUrl, listName, clientId, clientSecret);
+            _channelOrchestrator = new ChannelOrchestrator(
+                _spClient,
+                multiplexesXmlPath,
+                tunersStatusXmlPath,
+                telemetriaApiUrl,
+                channelMonitoringEnabled
+            );
         }
 
         public async Task RunCycleAsync()
@@ -192,6 +204,16 @@ namespace WinServiceFleetAgent.Core
                 );
 
                 await Task.Delay(200);
+            }
+
+            // Passo 2.5: Monitoramento de Canais DTV (Transmissões, Tuners, Sinal e Gravações)
+            try
+            {
+                await _channelOrchestrator.RunChannelCycleAsync(metadata);
+            }
+            catch (Exception exCh)
+            {
+                FileLogger.LogError("[FleetOrchestrator] Erro no ciclo de monitoramento de canais DTV", exCh);
             }
 
             // Passo 3: Execução de Ações Pendentes de URL (Acao_Solicitada_Url = "Atualizar")

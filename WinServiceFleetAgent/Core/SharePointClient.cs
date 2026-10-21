@@ -136,6 +136,7 @@ namespace WinServiceFleetAgent.Core
 
         private static string _cachedSiteId = string.Empty;
         private static string _cachedListId = string.Empty;
+        private static string _cachedChannelsListId = "b0ffcdd7-a0e7-4eb0-a5e8-e2142776b8eb";
         private static DateTime _lastAuthFailureTime = DateTime.MinValue;
 
         private async Task EnsureGraphContextAsync(HttpClient client)
@@ -236,7 +237,11 @@ namespace WinServiceFleetAgent.Core
                                 if (displayName.Equals(_listName, StringComparison.OrdinalIgnoreCase))
                                 {
                                     _cachedListId = l.GetProperty("id").GetString() ?? "";
-                                    break;
+                                }
+                                else if (displayName.Equals("Monitoramento de Canais CS", StringComparison.OrdinalIgnoreCase) ||
+                                         displayName.Contains("Canais CS", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    _cachedChannelsListId = l.GetProperty("id").GetString() ?? "";
                                 }
                             }
                         }
@@ -1028,6 +1033,173 @@ namespace WinServiceFleetAgent.Core
                 }
             }
             return deletedCount;
+        }
+
+        public async Task SyncChannelsInventoryAsync(List<ChannelStatusItem> channels, int idHost, int cs)
+        {
+            if (channels == null || channels.Count == 0) return;
+
+            using (var client = new HttpClient())
+            {
+                await EnsureGraphContextAsync(client);
+                if (string.IsNullOrEmpty(_accessToken))
+                {
+                    FileLogger.LogError("[SharePointClient] Não foi possível obter token de acesso do Graph para sincronização de canais.");
+                    return;
+                }
+
+                string targetListId = !string.IsNullOrEmpty(_cachedChannelsListId)
+                    ? _cachedChannelsListId
+                    : "b0ffcdd7-a0e7-4eb0-a5e8-e2142776b8eb";
+
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
+
+                // 1. Obter itens existentes da lista de canais
+                var existingItems = new List<JsonElement>();
+                string queryUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{targetListId}/items?$expand=fields&$top=200";
+
+                while (!string.IsNullOrEmpty(queryUrl))
+                {
+                    HttpResponseMessage? resp = null;
+                    try
+                    {
+                        resp = await ExecuteWithThrottlingRetryAsync(() => client.GetAsync(queryUrl));
+                    }
+                    catch (Exception exFetch)
+                    {
+                        FileLogger.LogError($"[SharePointClient] Erro ao consultar itens da lista de canais: {exFetch.Message}");
+                        break;
+                    }
+
+                    if (resp == null || !resp.IsSuccessStatusCode) break;
+
+                    string json = await resp.Content.ReadAsStringAsync();
+                    using var doc = JsonDocument.Parse(json);
+                    if (doc.RootElement.TryGetProperty("value", out var arr))
+                    {
+                        foreach (var el in arr.EnumerateArray())
+                        {
+                            existingItems.Add(el.Clone());
+                        }
+                    }
+
+                    queryUrl = doc.RootElement.TryGetProperty("@odata.nextLink", out var next) ? next.GetString() ?? "" : "";
+                }
+
+                // 2. Para cada canal monitorado
+                foreach (var ch in channels)
+                {
+                    try
+                    {
+                        var matches = existingItems.Where(it =>
+                        {
+                            if (it.TryGetProperty("fields", out var f))
+                            {
+                                int fHost = f.TryGetProperty("IDHost", out var h) && h.TryGetInt32(out int parsedH) ? parsedH : -1;
+                                int fCs = f.TryGetProperty("IDCS", out var c) && c.TryGetInt32(out int parsedC) ? parsedC : -1;
+                                string fTitle = f.TryGetProperty("Title", out var t) ? t.GetString()?.Trim() ?? "" : "";
+                                string fVeiculo = f.TryGetProperty("Veiculo", out var v) ? v.GetString()?.Trim() ?? "" : "";
+
+                                bool hostMatch = (fHost == idHost && fCs == cs);
+                                bool nameMatch = fTitle.Equals(ch.Title, StringComparison.OrdinalIgnoreCase) ||
+                                                 (!string.IsNullOrWhiteSpace(ch.Veiculo) && fVeiculo.Equals(ch.Veiculo, StringComparison.OrdinalIgnoreCase));
+
+                                return hostMatch && nameMatch;
+                            }
+                            return false;
+                        }).ToList();
+
+                        var payloadFields = new Dictionary<string, object?>
+                        {
+                            { "Title", ch.Title },
+                            { "Pais", ch.Pais },
+                            { "Cidade", ch.Cidade },
+                            { "Veiculo", ch.Veiculo },
+                            { "MeiodeTransmiss_x00e3_o", ch.MeiodeTransmissao },
+                            { "Frequencia", ch.Frequencia },
+                            { "TunerID", ch.TunerID },
+                            { "StatusTuner", ch.StatusTuner },
+                            { "VideoCongelado", ch.VideoCongelado },
+                            { "AudioMudo", ch.AudioMudo },
+                            { "GravandoMP4", ch.GravandoMP4 },
+                            { "GravandoMP3", ch.GravandoMP3 },
+                            { "IDHost", ch.IDHost },
+                            { "IDCS", ch.IDCS },
+                            { "PastaGravacaoMP4", ch.PastaGravacaoMP4 },
+                            { "PastaGravacaoMP3", ch.PastaGravacaoMP3 },
+                            { "UrlStreaming", ch.UrlStreaming },
+                            { "SourceAnalogico", ch.SourceAnalogico },
+                            { "Atualizacao", ch.Atualizacao }
+                        };
+
+                        if (ch.QualidadeSinal.HasValue) payloadFields["QualidadeSinal"] = ch.QualidadeSinal.Value;
+                        if (ch.ForcaSinal.HasValue) payloadFields["ForcaSinal"] = ch.ForcaSinal.Value;
+
+                        if (matches.Count > 0)
+                        {
+                            // Item já existe: atualiza o mais recente via PATCH
+                            var targetItem = matches.OrderByDescending(m =>
+                                m.TryGetProperty("id", out var idProp) && int.TryParse(idProp.GetString(), out int id) ? id : 0
+                            ).First();
+
+                            string targetId = targetItem.GetProperty("id").GetString() ?? "";
+                            string patchUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{targetListId}/items/{targetId}/fields";
+
+                            var patchContent = new StringContent(JsonSerializer.Serialize(payloadFields), Encoding.UTF8, "application/json");
+                            var patchReq = new HttpRequestMessage(new HttpMethod("PATCH"), patchUrl) { Content = patchContent };
+                            var patchResp = await ExecuteWithThrottlingRetryAsync(() => client.SendAsync(patchReq));
+
+                            if (patchResp.IsSuccessStatusCode)
+                            {
+                                FileLogger.Log($"[ChannelMonitor] ✅ Canal atualizado via PATCH no SharePoint: [{ch.Cidade} | CS {ch.IDCS}] '{ch.Title}' ({ch.MeiodeTransmissao}) - Tuner: {ch.TunerID} | Sinal: Q={ch.QualidadeSinal}% F={ch.ForcaSinal}%");
+                            }
+                            else
+                            {
+                                string err = await patchResp.Content.ReadAsStringAsync();
+                                FileLogger.LogError($"[ChannelMonitor] Erro ao atualizar canal via PATCH [{ch.Title}]: {err}");
+                            }
+
+                            // Se houver duplicatas excedentes no SharePoint, limpa automaticamente
+                            foreach (var dup in matches)
+                            {
+                                string dupId = dup.GetProperty("id").GetString() ?? "";
+                                if (!string.IsNullOrEmpty(dupId) && !dupId.Equals(targetId, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    try
+                                    {
+                                        string delUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{targetListId}/items/{dupId}";
+                                        await client.DeleteAsync(delUrl);
+                                        FileLogger.Log($"[ChannelMonitor] 🧹 Registro duplicado de canal (ID {dupId}) excluído com sucesso.");
+                                    }
+                                    catch { }
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // Não existe: cria novo via POST
+                            string postUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{targetListId}/items";
+                            var postPayload = new { fields = payloadFields };
+                            var postContent = new StringContent(JsonSerializer.Serialize(postPayload), Encoding.UTF8, "application/json");
+                            var postResp = await ExecuteWithThrottlingRetryAsync(() => client.PostAsync(postUrl, postContent));
+
+                            if (postResp.IsSuccessStatusCode)
+                            {
+                                FileLogger.Log($"[ChannelMonitor] ✅ Novo canal cadastrado via POST no SharePoint: [{ch.Cidade} | CS {ch.IDCS}] '{ch.Title}' ({ch.MeiodeTransmissao})");
+                            }
+                            else
+                            {
+                                string err = await postResp.Content.ReadAsStringAsync();
+                                FileLogger.LogError($"[ChannelMonitor] Erro ao cadastrar canal via POST [{ch.Title}]: {err}");
+                            }
+                        }
+                    }
+                    catch (Exception exCh)
+                    {
+                        FileLogger.LogError($"[ChannelMonitor] Erro ao sincronizar canal '{ch.Title}'", exCh);
+                    }
+                }
+            }
         }
     }
 }
