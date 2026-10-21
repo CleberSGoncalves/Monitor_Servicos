@@ -198,7 +198,10 @@ namespace WinServiceFleetAgent.Core
                 {
                     if (exeExists)
                     {
-                        statusServico = "Instalado";
+                        bool procRunning = Process.GetProcessesByName("DigitalTVCapture").Length > 0 ||
+                                           Process.GetProcessesByName("AtriaCapture").Length > 0 ||
+                                           Process.GetProcessesByName("Atria").Length > 0;
+                        statusServico = procRunning ? "Em Execução" : "Parado";
                         installedVer = VersionInspector.GetExecutableVersion(exeFullPath);
                     }
                     else
@@ -239,21 +242,34 @@ namespace WinServiceFleetAgent.Core
                     metrics: metrics
                 );
 
-                if (!isStandaloneApp && statusServico.Equals("Parado", StringComparison.OrdinalIgnoreCase))
+                if (statusServico.Equals("Parado", StringComparison.OrdinalIgnoreCase))
                 {
                     bool isAutoRestartEnabled = autoRestartSetting.Equals("Sim", StringComparison.OrdinalIgnoreCase) ||
                                                 autoRestartSetting.Equals("True", StringComparison.OrdinalIgnoreCase);
 
                     if (isAutoRestartEnabled)
                     {
-                        FileLogger.Log($"[FleetOrchestrator] ⚠️ Serviço '{srv.ServiceName}' detectado como PARADO. AutoRestart='Sim' no SharePoint. Executando auto-recuperação...");
+                        FileLogger.Log($"[FleetOrchestrator] ⚠️ {(isStandaloneApp ? "Aplicação" : "Serviço")} '{srv.ServiceName}' detectado como PARADO. AutoRestart='Sim' no SharePoint. Executando auto-recuperação...");
                         try
                         {
-                            bool restarted = WinController.StartService(srv.ServiceName);
+                            bool restarted = false;
+                            if (isStandaloneApp)
+                            {
+                                AtriaInstaller.StartAtriaApplication(srv.InstallPath, srv.ExeName);
+                                await Task.Delay(2000);
+                                restarted = Process.GetProcessesByName("DigitalTVCapture").Length > 0 ||
+                                            Process.GetProcessesByName("AtriaCapture").Length > 0 ||
+                                            Process.GetProcessesByName("Atria").Length > 0;
+                            }
+                            else
+                            {
+                                restarted = WinController.StartService(srv.ServiceName);
+                            }
+
                             if (restarted)
                             {
                                 statusServico = "Em Execução";
-                                FileLogger.Log($"[FleetOrchestrator] 🩹 AutoRestart ativado: Serviço '{srv.ServiceName}' reiniciado com sucesso!");
+                                FileLogger.Log($"[FleetOrchestrator] 🩹 AutoRestart ativado: '{srv.ServiceName}' reiniciado com sucesso!");
                                 await _spClient.UpdateServiceStatusAsync(_hostname, srv.ServiceName, "Em Execução");
                             }
                         }
@@ -264,7 +280,7 @@ namespace WinServiceFleetAgent.Core
                     }
                     else
                     {
-                        FileLogger.Log($"[FleetOrchestrator] ℹ️ Serviço '{srv.ServiceName}' está PARADO, mas AutoRestart está configurado como '{autoRestartSetting}' no SharePoint. Nenhuma tentativa de inicialização necessária.");
+                        FileLogger.Log($"[FleetOrchestrator] ℹ️ '{srv.ServiceName}' está PARADO, mas AutoRestart está configurado como '{autoRestartSetting}' no SharePoint. Nenhuma tentativa de inicialização necessária.");
                     }
                 }
 
