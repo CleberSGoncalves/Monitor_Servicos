@@ -30,7 +30,7 @@ namespace WinServiceFleetAgent.Core
                 : multiplexesXmlPath;
 
             _tunersStatusXmlPath = string.IsNullOrWhiteSpace(tunersStatusXmlPath)
-                ? @"D:\MediaDNA_V2\Applications\DTVCapture64\Config\DTVTunersStatus.xml"
+                ? @"D:\MediaDNA_V2\Applications\DTVCapture64\DTVTunersStatus.xml"
                 : tunersStatusXmlPath;
 
             _telemetriaApiUrl = string.IsNullOrWhiteSpace(telemetriaApiUrl)
@@ -64,16 +64,20 @@ namespace WinServiceFleetAgent.Core
 
                 string muxPath = ResolveExistingPath(
                     _multiplexesXmlPath,
+                    @"D:\MediaDNA_V2\Applications\DTVCapture64\Config\Multiplexes.xml",
+                    @"D:\MediaDNA_V2\Applications\DTVCapture64\Multiplexes.xml",
                     @"C:\MediaDNA_V2\Applications\DTVCapture64\Config\Multiplexes.xml",
-                    @"D:\MediaDNA_V2\Applications\DTVCapture\Config\Multiplexes.xml",
-                    @"C:\MediaDNA_V2\Applications\DTVCapture\Config\Multiplexes.xml"
+                    @"C:\MediaDNA_V2\Applications\DTVCapture64\Multiplexes.xml",
+                    @"D:\MediaDNA_V2\Applications\DTVCapture\Config\Multiplexes.xml"
                 );
 
                 string statusPath = ResolveExistingPath(
                     _tunersStatusXmlPath,
+                    @"D:\MediaDNA_V2\Applications\DTVCapture64\DTVTunersStatus.xml",
+                    @"D:\MediaDNA_V2\Applications\DTVCapture64\Config\DTVTunersStatus.xml",
+                    @"C:\MediaDNA_V2\Applications\DTVCapture64\DTVTunersStatus.xml",
                     @"C:\MediaDNA_V2\Applications\DTVCapture64\Config\DTVTunersStatus.xml",
-                    @"D:\MediaDNA_V2\Applications\DTVCapture\Config\DTVTunersStatus.xml",
-                    @"C:\MediaDNA_V2\Applications\DTVCapture\Config\DTVTunersStatus.xml"
+                    @"D:\MediaDNA_V2\Applications\DTVCapture\DTVTunersStatus.xml"
                 );
 
                 if (!File.Exists(statusPath))

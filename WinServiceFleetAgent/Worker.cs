@@ -51,7 +51,7 @@ namespace WinServiceFleetAgent
 
             bool channelMonitoringEnabled = bool.TryParse(_configuration["ChannelMonitoring:Enabled"], out bool chEnabled) ? chEnabled : true;
             string multiplexesXmlPath = _configuration["ChannelMonitoring:MultiplexesXmlPath"] ?? @"D:\MediaDNA_V2\Applications\DTVCapture64\Config\Multiplexes.xml";
-            string tunersStatusXmlPath = _configuration["ChannelMonitoring:TunersStatusXmlPath"] ?? @"D:\MediaDNA_V2\Applications\DTVCapture64\Config\DTVTunersStatus.xml";
+            string tunersStatusXmlPath = _configuration["ChannelMonitoring:TunersStatusXmlPath"] ?? @"D:\MediaDNA_V2\Applications\DTVCapture64\DTVTunersStatus.xml";
             string telemetriaApiUrl = _configuration["ChannelMonitoring:TelemetriaApiUrl"] ?? "http://localhost:9000/api/v1/Muxes";
 
             _orchestrator = new FleetOrchestrator(
