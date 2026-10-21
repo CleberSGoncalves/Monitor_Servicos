@@ -101,6 +101,10 @@ namespace WinServiceFleetAgent.Core
 
                 using (var http = new HttpClient { Timeout = TimeSpan.FromSeconds(3) })
                 {
+                    http.DefaultRequestHeaders.Clear();
+                    http.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0");
+                    http.DefaultRequestHeaders.Add("Accept", "application/xml, text/xml, application/json, */*");
+
                     foreach (var endpoint in candidateEndpoints.Distinct(StringComparer.OrdinalIgnoreCase))
                     {
                         try
@@ -108,25 +112,80 @@ namespace WinServiceFleetAgent.Core
                             var resp = await http.GetAsync(endpoint);
                             if (resp.IsSuccessStatusCode)
                             {
-                                string apiXml = await resp.Content.ReadAsStringAsync();
-                                var apiDoc = XDocument.Parse(apiXml);
-                                foreach (var statusElem in apiDoc.Descendants().Where(e => e.Name.LocalName == "MuxMonitorStatus"))
+                                string apiContent = await resp.Content.ReadAsStringAsync();
+                                string trimmed = apiContent.Trim();
+
+                                if (trimmed.StartsWith("<"))
                                 {
-                                    string muxId = statusElem.Elements().FirstOrDefault(e => e.Name.LocalName == "MuxId")?.Value.Trim() ?? "";
-                                    var sigElem = statusElem.Elements().FirstOrDefault(e => e.Name.LocalName == "Signal");
-                                    if (sigElem != null && sigElem.Attribute(XName.Get("nil", "http://www.w3.org/2001/XMLSchema-instance"))?.Value != "true")
+                                    // Formato XML
+                                    var apiDoc = XDocument.Parse(trimmed);
+                                    foreach (var statusElem in apiDoc.Descendants().Where(e => e.Name.LocalName == "MuxMonitorStatus"))
                                     {
-                                        int? q = null;
-                                        int? s = null;
-                                        var qElem = sigElem.Elements().FirstOrDefault(e => e.Name.LocalName == "Quality");
-                                        var sElem = sigElem.Elements().FirstOrDefault(e => e.Name.LocalName == "Strength");
-                                        if (qElem != null && int.TryParse(qElem.Value, out int pq)) q = pq;
-                                        if (sElem != null && int.TryParse(sElem.Value, out int ps)) s = ps;
-                                        telemetria[muxId] = (q, s);
+                                        string muxId = statusElem.Elements().FirstOrDefault(e => e.Name.LocalName == "MuxId")?.Value.Trim() ?? "";
+                                        var sigElem = statusElem.Elements().FirstOrDefault(e => e.Name.LocalName == "Signal");
+                                        if (sigElem != null && sigElem.Attribute(XName.Get("nil", "http://www.w3.org/2001/XMLSchema-instance"))?.Value != "true")
+                                        {
+                                            int? q = null;
+                                            int? s = null;
+                                            var qElem = sigElem.Elements().FirstOrDefault(e => e.Name.LocalName == "Quality");
+                                            var sElem = sigElem.Elements().FirstOrDefault(e => e.Name.LocalName == "Strength");
+                                            if (qElem != null && int.TryParse(qElem.Value, out int pq)) q = pq;
+                                            if (sElem != null && int.TryParse(sElem.Value, out int ps)) s = ps;
+                                            telemetria[muxId] = (q, s);
+                                        }
                                     }
+                                    apiContacted = true;
+                                    FileLogger.Log($"[ChannelOrchestrator] ✅ Telemetria lida com SUCESSO (XML) de '{endpoint}'. {telemetria.Count} muxes mapeados.");
+                                    break;
                                 }
-                                apiContacted = true;
-                                break;
+                                else if (trimmed.StartsWith("[") || trimmed.StartsWith("{"))
+                                {
+                                    // Formato JSON
+                                    using var jsonDoc = System.Text.Json.JsonDocument.Parse(trimmed);
+                                    var root = jsonDoc.RootElement;
+                                    var elements = new List<System.Text.Json.JsonElement>();
+                                    if (root.ValueKind == System.Text.Json.JsonValueKind.Array)
+                                    {
+                                        foreach (var el in root.EnumerateArray()) elements.Add(el);
+                                    }
+                                    else
+                                    {
+                                        elements.Add(root);
+                                    }
+
+                                    foreach (var statusElem in elements)
+                                    {
+                                        string muxId = "";
+                                        if (statusElem.TryGetProperty("MuxId", out var mProp))
+                                        {
+                                            muxId = mProp.ValueKind == System.Text.Json.JsonValueKind.Number ? mProp.GetInt32().ToString() : (mProp.GetString() ?? "");
+                                        }
+
+                                        if (!string.IsNullOrEmpty(muxId) && statusElem.TryGetProperty("Signal", out var sigProp) && sigProp.ValueKind == System.Text.Json.JsonValueKind.Object)
+                                        {
+                                            int? q = null;
+                                            int? s = null;
+                                            if (sigProp.TryGetProperty("Quality", out var qProp))
+                                            {
+                                                if (qProp.TryGetInt32(out int pq)) q = pq;
+                                                else if (int.TryParse(qProp.GetString(), out int spq)) q = spq;
+                                            }
+                                            if (sigProp.TryGetProperty("Strength", out var sProp))
+                                            {
+                                                if (sProp.TryGetInt32(out int ps)) s = ps;
+                                                else if (int.TryParse(sProp.GetString(), out int sps)) s = sps;
+                                            }
+                                            telemetria[muxId] = (q, s);
+                                        }
+                                    }
+                                    apiContacted = true;
+                                    FileLogger.Log($"[ChannelOrchestrator] ✅ Telemetria lida com SUCESSO (JSON) de '{endpoint}'. {telemetria.Count} muxes mapeados.");
+                                    break;
+                                }
+                                else
+                                {
+                                    lastError = $"Resposta inesperada: '{trimmed.Substring(0, Math.Min(30, trimmed.Length))}'";
+                                }
                             }
                             else
                             {
