@@ -562,34 +562,93 @@ function copyAiScript(btn) {
 }
 window.copyAiScript = copyAiScript;
 
-function executeAiDiagScript(praca, canal) {
+async function executeAiDiagScript(praca, canal) {
     const pre = document.getElementById("ai-script-content");
     if (!pre) return;
-    const script = pre.innerText;
+    const script = pre.innerText.trim();
 
-    // Redireciona para o Remote Command com o host e script pré-carregados
+    // Identifica o hostname correspondente (ex: BRRS-PLT-DT01 para Pelotas CS 1)
+    let targetHost = "BRRS-PLT-DT01";
+    if (typeof allFleetHostsData !== "undefined" && Array.isArray(allFleetHostsData)) {
+        const found = allFleetHostsData.find(h => 
+            (h.praca && h.praca.toLowerCase().includes(praca.toLowerCase())) ||
+            (h.hostname && h.hostname.toLowerCase().includes("plt"))
+        );
+        if (found) targetHost = found.hostname;
+    }
+
+    const confirmed = confirm(
+        `⚡ CONFIRMAÇÃO DE EXECUÇÃO REMOTA\n\n` +
+        `Deseja disparar imediatamente a correção de auto-cura no Capture Site?\n\n` +
+        `Praça: ${praca}\n` +
+        `Host Alvo: ${targetHost}\n` +
+        `Ação: Recriação de fontes EventLog do Windows & Reset de Controller do Atria\n\n` +
+        `• Clique em [OK] para DISPARAR AGORA no host remoto.\n` +
+        `• Clique em [Cancelar] para revisar o script no Console antes de executar.`
+    );
+
+    if (confirmed) {
+        try {
+            if (typeof safeToast === "function") {
+                safeToast(`⚡ Disparando auto-cura para ${targetHost}...`, "info");
+            }
+
+            const token = getSignalsAuthToken();
+            const resp = await fetch("/api/remote-commands/execute", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    hosts: [targetHost],
+                    shell_type: "powershell",
+                    command_script: script,
+                    command_title: `Auto-Cura: Correção EventLog & Restart Atria (${praca})`
+                })
+            });
+
+            const data = await resp.json();
+            if (resp.ok && data.execution_id) {
+                if (typeof safeToast === "function") {
+                    safeToast(`✅ Comando disparado com sucesso para ${targetHost}!`, "success");
+                }
+                // Redireciona para o console e abre o terminal para acompanhar
+                const rcNavBtn = document.querySelector(".nav-btn[data-tab='remote-commands']");
+                if (rcNavBtn) rcNavBtn.click();
+                setTimeout(() => {
+                    if (typeof switchRemoteTab === "function") switchRemoteTab("rc-tab-console");
+                    if (typeof pollExecutionOutput === "function") {
+                        pollExecutionOutput(data.execution_id);
+                    }
+                }, 250);
+                return;
+            } else {
+                alert(`⚠️ Erro ao disparar comando: ${data.detail || data.error || "Falha na execução"}`);
+            }
+        } catch (err) {
+            console.error("[SignalsAnalysis] Erro ao enviar comando remoto:", err);
+            alert("Falha na comunicação com o Orquestrador de Comandos: " + err.message);
+        }
+    }
+
+    // Se optou por revisar no Console ou se houve cancelamento:
     const rcNavBtn = document.querySelector(".nav-btn[data-tab='remote-commands']");
     if (rcNavBtn) {
         rcNavBtn.click();
         setTimeout(() => {
-            const hostSelect = document.getElementById("remote-host-select");
-            const scriptArea = document.getElementById("custom-command-input");
-            if (hostSelect) {
-                // Tenta encontrar o host com a praça
-                for (let i = 0; i < hostSelect.options.length; i++) {
-                    if (hostSelect.options[i].text.toLowerCase().includes(praca.toLowerCase())) {
-                        hostSelect.selectedIndex = i;
-                        if (typeof addSelectedHost === "function") addSelectedHost();
-                        break;
-                    }
-                }
+            if (typeof switchRemoteTab === "function") switchRemoteTab("rc-tab-console");
+            if (typeof selectedRemoteHosts !== "undefined") {
+                selectedRemoteHosts = [targetHost];
+                if (typeof updateSelectedHostsUI === "function") updateSelectedHostsUI();
             }
+            const scriptArea = document.getElementById("custom-command-input");
             if (scriptArea) {
                 scriptArea.value = script;
                 scriptArea.scrollIntoView({ behavior: "smooth" });
                 scriptArea.focus();
             }
-        }, 300);
+        }, 250);
     }
 }
 window.executeAiDiagScript = executeAiDiagScript;
@@ -687,6 +746,24 @@ function executeChronicAutoHeal(issueId) {
 window.executeChronicAutoHeal = executeChronicAutoHeal;
 
 // =========================================================================
+let currentMp4ChannelImage = null;
+let currentMp4ChannelImageLoaded = false;
+
+function loadMp4ChannelSnapshot(canal, praca) {
+    currentMp4ChannelImage = new Image();
+    currentMp4ChannelImageLoaded = false;
+    currentMp4ChannelImage.crossOrigin = "anonymous";
+    currentMp4ChannelImage.src = `/api/fleet/channels/jpeg?canal=${encodeURIComponent(canal)}&praca=${encodeURIComponent(praca)}&mode=real&t=${Date.now()}`;
+    currentMp4ChannelImage.onload = () => {
+        currentMp4ChannelImageLoaded = true;
+        drawMp4PlayerFrame();
+    };
+    currentMp4ChannelImage.onerror = () => {
+        currentMp4ChannelImageLoaded = false;
+        drawMp4PlayerFrame();
+    };
+}
+
 // SUBTAB 3: ANÁLISE DE AMOSTRAS MP4 ATRIA & PLAYER DE FALHAS (EM SINAIS & RF)
 // =========================================================================
 let signalsMp4AnalysisResult = null;
@@ -899,6 +976,7 @@ function renderMp4AnalysisResult(data) {
         listEl.innerHTML = f.solucoes_tecnicas.map(s => `<li style="margin-bottom: 6px;">${escapeHtml(s)}</li>`).join("");
     }
 
+    loadMp4ChannelSnapshot(data.canal, data.praca);
     drawMp4PlayerFrame();
 }
 
@@ -934,11 +1012,23 @@ function drawMp4PlayerFrame() {
         }
     }
 
-    // Fundo base
-    ctx.fillStyle = "#090d16";
-    ctx.fillRect(0, 0, w, h);
+    // Renderiza imagem real de broadcast se disponível ou fundo simulado
+    if (currentMp4ChannelImageLoaded && currentMp4ChannelImage) {
+        ctx.drawImage(currentMp4ChannelImage, 0, 0, w, h);
+    } else {
+        const gradNominal = ctx.createLinearGradient(0, 0, w, h);
+        gradNominal.addColorStop(0, "#0f172a");
+        gradNominal.addColorStop(0.5, "#1e293b");
+        gradNominal.addColorStop(1, "#0a0f1d");
+        ctx.fillStyle = gradNominal;
+        ctx.fillRect(0, 0, w, h);
+    }
 
     if (isGlitch && signalsMp4PlayerState.glitchType === "freeze") {
+        // CENA 1: CONGELAMENTO DE QUADRO COM ARTIFATOS DE BUFFER PTS TRAVADO
+        // Filtro de congelamento sobre a imagem real
+        ctx.fillStyle = "rgba(15, 23, 42, 0.55)";
+        ctx.fillRect(0, 0, w, h);
         // CENA 1: CONGELAMENTO DE QUADRO COM ARTIFATOS DE BUFFER PTS TRAVADO
         // Simulação de frame de TV estático com carimbo de estagnação
         const gradFreeze = ctx.createLinearGradient(0, 0, w, h);

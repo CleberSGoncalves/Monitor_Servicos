@@ -1945,6 +1945,15 @@
 
         </button>
 
+        <!-- Chave Seletora de Modo de Visualização do Mosaico (Imagem Real vs Diagnóstico) -->
+        <div style="margin-left: auto; display: flex; align-items: center; gap: 4px; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 3px;">
+          <button type="button" class="btn-sm" id="btn-mosaic-view-real" onclick="setMosaicViewMode('real')" style="font-size: 11px; padding: 4px 12px; border-radius: 6px; border: none; font-weight: 700; background: #2563eb; color: #fff; cursor: pointer;" title="Exibir a imagem/foto JPEG em tempo real capturada do canal">
+            <i class="fas fa-camera"></i> 📷 Imagem Real (JPEG)
+          </button>
+          <button type="button" class="btn-sm" id="btn-mosaic-view-diag" onclick="setMosaicViewMode('diag')" style="font-size: 11px; padding: 4px 12px; border-radius: 6px; border: none; font-weight: 700; background: transparent; color: var(--text-muted); cursor: pointer;" title="Exibir painel de telemetria técnica, parâmetros de engenharia e áudio VU">
+            <i class="fas fa-chart-line"></i> 📊 Diagnóstico & Telemetria
+          </button>
+        </div>
       </div>
 
 
@@ -6031,27 +6040,27 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=3.9.8"></script>
+  <script src="/static/js/app.js?v=3.9.9"></script>
 
 
 
-  <script src="/static/js/ai_insights.js?v=3.9.8"></script>
+  <script src="/static/js/ai_insights.js?v=3.9.9"></script>
 
 
 
-  <script src="/static/js/fleet_ops.js?v=3.9.8"></script>
+  <script src="/static/js/fleet_ops.js?v=3.9.9"></script>
 
 
 
-  <script src="/static/js/remote_commands.js?v=3.9.8"></script>
+  <script src="/static/js/remote_commands.js?v=3.9.9"></script>
 
 
 
-  <script src="/static/js/signals_analysis.js?v=3.9.8"></script>
+  <script src="/static/js/signals_analysis.js?v=3.9.9"></script>
 
 
 
-  <script src="/static/js/mosaic_wall.js?v=3.9.8"></script>
+  <script src="/static/js/mosaic_wall.js?v=3.9.9"></script>
 
 
 

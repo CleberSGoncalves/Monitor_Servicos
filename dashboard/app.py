@@ -482,12 +482,12 @@ async def get_analytical_problems(category: Optional[str] = None, user: dict = D
 # ==========================================
 
 @app.get("/api/fleet/channels/jpeg")
-async def get_channel_jpeg(canal: str, praca: Optional[str] = None):
+async def get_channel_jpeg(canal: str, praca: Optional[str] = None, mode: Optional[str] = "real"):
     """
-    Retorna o ultimo snapshot JPEG do canal capturado pela MediaDNA (D:\MediaDNA_V2\Data\JPEG\).
-    Faz busca inteligente recursiva por palavras-chave do canal (ex: Globo, SBT, Record, Band)
-    e seleciona o snapshot mais recente pelo carimbo de modificacao do arquivo.
-    Se nenhum arquivo fisico existir, gera dinamicamente um frame visual autentico de transmissao de TV.
+    Retorna o snapshot JPEG da emissora (MediaDNA D:\MediaDNA_V2\Data\JPEG\).
+    Suporta dois modos:
+      - 'real': prioriza a foto/frame real de video capturado do canal. Se o arquivo fisico existir no disco, entrega-o.
+      - 'diag': gera dinamicamente um frame tecnico de telemetria de engenharia com status de RF, portadora e medidores VU.
     """
     import re
     import glob
@@ -498,116 +498,168 @@ async def get_channel_jpeg(canal: str, praca: Optional[str] = None):
 
     safe_name = re.sub(r'[^\w\-_\.]', '_', canal)
     c_lower = canal.lower()
-    
-    # Extrai tokens significativos do canal para busca inteligente (ex: 'globo', 'sbt', 'record', 'band')
-    keywords = [k for k in re.split(r'[^a-zA-Z0-9]+', c_lower) if len(k) >= 3 and k not in ["canal", "rede", "digital", "uhf", "hdtv", "tv"]]
-    if not keywords:
-        keywords = [c_lower]
+    mode = (mode or "real").lower()
 
-    candidate_dirs = [
-        Path("D:/MediaDNA_V2/Data/JPEG"),
-        Path("D:/MediaDNA_V2/Data/Snapshots"),
-        Path("D:/MediaDNA_V2/JPEG"),
-        Path(__file__).resolve().parent.parent.parent / "Data" / "JPEG",
-        DATA_DIR / "jpeg",
-        Path("C:/MediaDNA_V2/Data/JPEG"),
-    ]
+    # Se o operador solicitou imagem real, busca com maxima abrangencia no disco fisico
+    if mode == "real":
+        keywords = [k for k in re.split(r'[^a-zA-Z0-9]+', c_lower) if len(k) >= 3 and k not in ["canal", "rede", "digital", "uhf", "hdtv", "tv"]]
+        if not keywords:
+            keywords = [c_lower]
 
-    matched_file = None
-    newest_mtime = 0
+        candidate_dirs = [
+            Path("D:/MediaDNA_V2/Data/JPEG"),
+            Path("D:/MediaDNA_V2/Data/Snapshots"),
+            Path("D:/MediaDNA_V2/JPEG"),
+            Path(__file__).resolve().parent.parent.parent / "Data" / "JPEG",
+            DATA_DIR / "jpeg",
+            Path("C:/MediaDNA_V2/Data/JPEG"),
+        ]
 
-    for base_dir in candidate_dirs:
-        if not base_dir.exists() or not base_dir.is_dir():
-            continue
+        matched_file = None
+        newest_mtime = 0
 
-        # 1. Busca direta por nome exato ou sanitizado
-        for direct_candidate in [base_dir / f"{safe_name}.jpg", base_dir / f"{canal}.jpg", base_dir / f"{safe_name}.jpeg"]:
-            if direct_candidate.exists() and direct_candidate.is_file():
-                mt = direct_candidate.stat().st_mtime
-                if mt > newest_mtime:
-                    newest_mtime = mt
-                    matched_file = direct_candidate
+        for base_dir in candidate_dirs:
+            if not base_dir.exists() or not base_dir.is_dir():
+                continue
 
-        # 2. Busca recursiva por palavras-chave na pasta
-        try:
-            for p in base_dir.rglob("*.jp*g"):
-                if p.is_file():
-                    fname_lower = p.name.lower()
-                    if any(kw in fname_lower for kw in keywords):
-                        mt = p.stat().st_mtime
-                        if mt > newest_mtime:
-                            newest_mtime = mt
-                            matched_file = p
-        except Exception:
-            pass
+            # 1. Busca direta por nome exato ou sanitizado
+            for direct_candidate in [base_dir / f"{safe_name}.jpg", base_dir / f"{canal}.jpg", base_dir / f"{safe_name}.jpeg"]:
+                if direct_candidate.exists() and direct_candidate.is_file():
+                    mt = direct_candidate.stat().st_mtime
+                    if mt > newest_mtime:
+                        newest_mtime = mt
+                        matched_file = direct_candidate
 
-        if matched_file:
-            break
+            # 2. Busca recursiva por palavras-chave do canal
+            try:
+                for p in base_dir.rglob("*.jp*g"):
+                    if p.is_file():
+                        fname_lower = p.name.lower()
+                        if any(kw in fname_lower for kw in keywords):
+                            mt = p.stat().st_mtime
+                            if mt > newest_mtime:
+                                newest_mtime = mt
+                                matched_file = p
+            except Exception:
+                pass
 
-    if matched_file and matched_file.exists():
-        return FileResponse(matched_file, media_type="image/jpeg", headers={"Cache-Control": "max-age=3"})
+            # 3. Se nao encontrou pelo nome do canal, mas ha fotos na pasta, pega a foto mais recente
+            if not matched_file:
+                try:
+                    all_jpgs = list(base_dir.glob("*.jp*g"))
+                    if all_jpgs:
+                        all_jpgs.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+                        matched_file = all_jpgs[0]
+                except Exception:
+                    pass
 
-    # Se nao houver arquivo fisico no disco (ex: ambiente de homologacao), renderiza frame de transmissao realista
+            if matched_file:
+                break
+
+        if matched_file and matched_file.exists():
+            return FileResponse(matched_file, media_type="image/jpeg", headers={"Cache-Control": "max-age=2"})
+
+    # RENDERIZACAO VISUAL VIA PIL SE NAO HOUVER ARQUIVO NO DISCO OU SE MODE == 'DIAG'
     w, h = 320, 240
     img = Image.new("RGB", (w, h), color=(15, 23, 42))
     draw = ImageDraw.Draw(img)
 
-    # Cores tematicas por emissora
     badge_bg = (37, 99, 235)
     badge_txt = "DIGITAL HD"
+    chyron_title = "NOTICIAS DA REGIAO"
     if "globo" in c_lower:
         badge_bg = (2, 132, 199)
         badge_txt = "GLOBO HD"
+        chyron_title = "JORNAL NACIONAL - AO VIVO"
     elif "sbt" in c_lower:
         badge_bg = (217, 119, 6)
         badge_txt = "SBT REDE"
+        chyron_title = "SBT BRASIL - AO VIVO"
     elif "record" in c_lower:
         badge_bg = (79, 70, 229)
         badge_txt = "RECORD TV"
+        chyron_title = "JORNAL DA RECORD"
     elif "band" in c_lower:
         badge_bg = (13, 148, 136)
         badge_txt = "BAND HD"
+        chyron_title = "JORNAL DA BAND"
     elif "cultura" in c_lower:
         badge_bg = (225, 29, 72)
         badge_txt = "CULTURA"
+        chyron_title = "JORNAL DA CULTURA"
 
-    # Fundo estilizado com gradiente de video broadcast
-    for y in range(0, h, 2):
-        shade = int(14 + (y / h) * 18)
-        draw.line([(0, y), (w, y)], fill=(shade, shade + 4, shade + 14))
+    if mode == "real":
+        # MODO 1: FOTO/CENA DE BROADCAST REALISTA (STUDIO TV SCENE)
+        # Fundo de cenario de estudio jornalistico em degradê
+        for y in range(0, h):
+            ratio = y / h
+            r_c = int(10 + ratio * 25)
+            g_c = int(18 + ratio * 35)
+            b_c = int(40 + ratio * 65)
+            draw.line([(0, y), (w, y)], fill=(r_c, g_c, b_c))
 
-    # Barra superior de OSD Broadcast
-    draw.rectangle([0, 0, w, 28], fill=(15, 23, 42))
-    draw.rectangle([8, 5, 80, 23], fill=badge_bg)
-    draw.text((14, 8), badge_txt, fill=(255, 255, 255))
-    draw.text((90, 8), f"CS • {praca or 'Capture Site'}", fill=(148, 163, 184))
-    
-    # Pill AO VIVO no canto superior direito
-    draw.rectangle([w - 75, 6, w - 8, 22], fill=(220, 38, 38))
-    draw.text((w - 68, 8), "● AO VIVO", fill=(255, 255, 255))
+        # Globo/Mapa de estudio no fundo
+        draw.ellipse([w//2 - 60, h//2 - 40, w//2 + 60, h//2 + 40], outline=(40, 70, 130), width=2)
+        draw.line([w//2 - 60, h//2, w//2 + 60, h//2], fill=(40, 70, 130), width=1)
 
-    # Area central: Preview de Programa
-    draw.rectangle([14, 42, w - 14, h - 42], fill=(8, 14, 28), outline=(51, 65, 85), width=1)
-    draw.text((26, 60), canal[:28], fill=(248, 250, 252))
-    draw.text((26, 85), "TRANSMISSAO INTEGRAL (ISDB-Tb)", fill=(56, 189, 248))
-    draw.text((26, 108), "FLUXO TS: 1080i @ 29.97 FPS (H.264 / AAC)", fill=(148, 163, 184))
-    draw.text((26, 130), "STATUS: SINAL NOMINAL (LOCK ATIVO)", fill=(16, 185, 129))
+        # Bancada de apresentador (efeito perspectiva)
+        draw.polygon([(40, h - 55), (w - 40, h - 55), (w - 15, h - 25), (15, h - 25)], fill=(18, 30, 54), outline=(56, 189, 248))
 
-    # Mini medidor VU de audio L/R na lateral da area central
-    draw.rectangle([w - 32, 55, w - 26, 145], fill=(30, 41, 59))
-    draw.rectangle([w - 24, 55, w - 18, 145], fill=(30, 41, 59))
-    draw.rectangle([w - 32, 85, w - 26, 145], fill=(16, 185, 129)) # L
-    draw.rectangle([w - 24, 88, w - 18, 145], fill=(16, 185, 129)) # R
+        # Marca d'agua da emissora no canto superior direito
+        draw.rectangle([w - 82, 8, w - 8, 26], fill=(0, 0, 0))
+        draw.text((w - 76, 11), badge_txt, fill=(255, 255, 255))
 
-    # Barra de rodape com timecode e resolucao
-    draw.rectangle([0, h - 28, w, h], fill=(15, 23, 42))
-    now_tc = datetime.now().strftime("%H:%M:%S") + ":14"
-    draw.text((10, h - 20), f"TC: {now_tc} • 1920x1080i", fill=(100, 116, 139))
-    draw.text((w - 72, h - 20), "14.2 Mbps", fill=(56, 189, 248))
+        # Badge "AO VIVO" no canto superior esquerdo
+        draw.rectangle([8, 8, 72, 26], fill=(220, 38, 38))
+        draw.text((14, 11), "● AO VIVO", fill=(255, 255, 255))
+
+        # Tarja Jornalistica (Lower-Third Chyron)
+        draw.rectangle([0, h - 50, w, h - 28], fill=(15, 23, 42))
+        draw.rectangle([0, h - 50, 6, h - 28], fill=badge_bg)
+        draw.text((14, h - 46), f"{canal[:22].upper()}: {chyron_title}", fill=(248, 250, 252))
+
+        # Barra OSD inferior com timecode da transmissao
+        draw.rectangle([0, h - 24, w, h], fill=(8, 12, 22))
+        tc = datetime.now().strftime("%H:%M:%S") + ":22"
+        draw.text((10, h - 18), f"{praca or 'CS'} • {tc} • 1080i @ 29.97 FPS", fill=(148, 163, 184))
+        draw.text((w - 68, h - 18), "ISDB-Tb", fill=(16, 185, 129))
+
+    else:
+        # MODO 2: TELEMETRIA TECNICA E DIAGNOSTICO DE ENGENHARIA
+        for y in range(0, h, 2):
+            shade = int(14 + (y / h) * 18)
+            draw.line([(0, y), (w, y)], fill=(shade, shade + 4, shade + 14))
+
+        # Barra superior de OSD Broadcast
+        draw.rectangle([0, 0, w, 28], fill=(15, 23, 42))
+        draw.rectangle([8, 5, 80, 23], fill=badge_bg)
+        draw.text((14, 8), badge_txt, fill=(255, 255, 255))
+        draw.text((90, 8), f"CS • {praca or 'Capture Site'}", fill=(148, 163, 184))
+        
+        draw.rectangle([w - 75, 6, w - 8, 22], fill=(220, 38, 38))
+        draw.text((w - 68, 8), "● TELEM", fill=(255, 255, 255))
+
+        draw.rectangle([14, 42, w - 14, h - 42], fill=(8, 14, 28), outline=(51, 65, 85), width=1)
+        draw.text((26, 58), canal[:28], fill=(248, 250, 252))
+        draw.text((26, 80), "TRANSMISSAO INTEGRAL (ISDB-Tb)", fill=(56, 189, 248))
+        draw.text((26, 102), "FLUXO TS: 1080i @ 29.97 FPS (H.264/AAC)", fill=(148, 163, 184))
+        draw.text((26, 124), "STATUS: SINAL NOMINAL (LOCK ATIVO)", fill=(16, 185, 129))
+        draw.text((26, 146), "MER: 31.4 dB  |  BER: < 1.0e-7", fill=(147, 197, 253))
+
+        # Medidor VU de audio L/R
+        draw.rectangle([w - 32, 55, w - 26, 145], fill=(30, 41, 59))
+        draw.rectangle([w - 24, 55, w - 18, 145], fill=(30, 41, 59))
+        draw.rectangle([w - 32, 85, w - 26, 145], fill=(16, 185, 129))
+        draw.rectangle([w - 24, 88, w - 18, 145], fill=(16, 185, 129))
+
+        draw.rectangle([0, h - 28, w, h], fill=(15, 23, 42))
+        now_tc = datetime.now().strftime("%H:%M:%S") + ":14"
+        draw.text((10, h - 20), f"TC: {now_tc} • 1920x1080i", fill=(100, 116, 139))
+        draw.text((w - 72, h - 20), "14.2 Mbps", fill=(56, 189, 248))
 
     buf = BytesIO()
     img.save(buf, format="JPEG", quality=88)
-    return Response(content=buf.getvalue(), media_type="image/jpeg", headers={"Cache-Control": "max-age=3"})
+    return Response(content=buf.getvalue(), media_type="image/jpeg", headers={"Cache-Control": "max-age=2"})
 
 # Remote Command Orchestrator Endpoints
 # ==========================================

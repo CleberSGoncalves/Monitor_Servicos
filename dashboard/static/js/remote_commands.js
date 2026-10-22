@@ -350,6 +350,7 @@ window.selectGroupAndGoToConsole = function(groupName) {
 
 // Atualiza a visualização dos chips de hosts selecionados
 function updateSelectedHostsUI() {
+    window.selectedRemoteHosts = selectedRemoteHosts;
     const chipsContainer = document.getElementById("selected-hosts-chips");
     const countBadge = document.getElementById("selected-hosts-count");
     if (!chipsContainer) return;
@@ -365,9 +366,22 @@ function updateSelectedHostsUI() {
     selectedRemoteHosts.forEach(host => {
         const chip = document.createElement("span");
         chip.className = "host-chip";
-        chip.innerHTML = `<strong>${host}</strong> <i class="fas fa-times" onclick="removeHostFromSelection('${host}')" title="Remover"></i>`;
+        chip.style.cssText = "display: inline-flex; align-items: center; gap: 6px; background: rgba(59, 130, 246, 0.22); border: 1px solid rgba(59, 130, 246, 0.45); color: #93c5fd; padding: 4px 10px; border-radius: 14px; font-size: 12px; cursor: pointer; transition: all 0.2s;";
+        chip.title = `Clique para remover ${host}`;
+        chip.innerHTML = `<strong>${host}</strong> <span style="background: rgba(239, 68, 68, 0.28); color: #f87171; border-radius: 50%; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; margin-left: 4px;" title="Remover ${host}">✕</span>`;
+        chip.onclick = () => removeHostFromSelection(host);
         chipsContainer.appendChild(chip);
     });
+
+    if (selectedRemoteHosts.length > 1) {
+        const clearBtn = document.createElement("button");
+        clearBtn.type = "button";
+        clearBtn.className = "btn-secondary";
+        clearBtn.style.cssText = "padding: 3px 8px; font-size: 11px; border-radius: 12px; border-color: rgba(239, 68, 68, 0.4); color: #f87171; margin-left: 6px;";
+        clearBtn.innerHTML = `<i class="fas fa-trash-alt"></i> Limpar Seleção (${selectedRemoteHosts.length})`;
+        clearBtn.onclick = () => clearAllHosts();
+        chipsContainer.appendChild(clearBtn);
+    }
 }
 
 window.addHostToSelection = function() {
@@ -382,6 +396,7 @@ window.addHostToSelection = function() {
 
 window.removeHostFromSelection = function(host) {
     selectedRemoteHosts = selectedRemoteHosts.filter(h => h !== host);
+    window.selectedRemoteHosts = selectedRemoteHosts;
     updateSelectedHostsUI();
 };
 

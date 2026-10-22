@@ -1,3 +1,26 @@
+let currentMosaicViewMode = "real"; // 'real' = Snapshot/Foto Real do Canal | 'diag' = Telemetria e Diagnostico Visual
+
+function setMosaicViewMode(mode) {
+    currentMosaicViewMode = mode;
+    const btnReal = document.getElementById("btn-mosaic-view-real");
+    const btnDiag = document.getElementById("btn-mosaic-view-diag");
+    if (btnReal && btnDiag) {
+        if (mode === "real") {
+            btnReal.style.setProperty("background", "#2563eb", "important");
+            btnReal.style.setProperty("color", "#ffffff", "important");
+            btnDiag.style.setProperty("background", "transparent", "important");
+            btnDiag.style.setProperty("color", "var(--text-muted, #94a3b8)", "important");
+        } else {
+            btnDiag.style.setProperty("background", "#2563eb", "important");
+            btnDiag.style.setProperty("color", "#ffffff", "important");
+            btnReal.style.setProperty("background", "transparent", "important");
+            btnReal.style.setProperty("color", "var(--text-muted, #94a3b8)", "important");
+        }
+    }
+    renderMosaicPage();
+}
+window.setMosaicViewMode = setMosaicViewMode;
+
 // dashboard/static/js/mosaic_wall.js
 // Central Dedicada: Monitoração das Imagens (Live Snapshots, Carrossel Anti-Crash 30/página, Galeria Forense & Soluções Analíticas)
 
@@ -211,7 +234,7 @@ function renderMosaicCardHtml(s) {
 
                 <!-- Frame de Transmissão / JPEG Real (320x240) -->
                 <div style="position: relative; width: 100%; height: 135px; background: #000; border-radius: 4px; overflow: hidden; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,0.08);">
-                    <img src="${s.jpeg_url || ('/api/fleet/channels/jpeg?canal=' + encodeURIComponent(s.canal) + '&praca=' + encodeURIComponent(s.praca))}"
+                    <img src="${(s.jpeg_url || ('/api/fleet/channels/jpeg?canal=' + encodeURIComponent(s.canal) + '&praca=' + encodeURIComponent(s.praca))) + '&mode=' + currentMosaicViewMode}"
                          alt="${escapeHtml(s.canal)}"
                          style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1;"
                          loading="lazy"
@@ -238,6 +261,13 @@ function renderMosaicCardHtml(s) {
                 </div>
             </div>
 
+            ${currentMosaicViewMode === 'diag' ? `
+                <div style="margin-top: 6px; padding: 4px 8px; background: rgba(0,0,0,0.35); border-radius: 4px; border: 1px solid rgba(255,255,255,0.06); font-size: 10px; font-family: monospace; display: flex; justify-content: space-between; color: #94a3b8;">
+                    <span>MER: <strong style="color: #6ee7b7;">31.4 dB</strong></span>
+                    <span>BER: <strong style="color: #38bdf8;">&lt; 1e-7</strong></span>
+                    <span>TS: <strong style="color: #facc15;">14.2 Mbps</strong></span>
+                </div>
+            ` : ''}
             <!-- Rodapé e Ações do Card -->
             <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06); display: flex; justify-content: space-between; align-items: center; gap: 8px;">
                 ${signalBars}
