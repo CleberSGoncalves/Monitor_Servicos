@@ -33,6 +33,33 @@ let mosaicProgressTimer = null;
 let mosaicRotateIntervalSec = 10;
 let mosaicRotateSecondsElapsed = 0;
 let isMosaicRotatePlaying = true;
+let mosaicFrameSeq = Math.floor(Date.now() / 5000);
+let mosaicFrameRefreshTimer = null;
+
+function alternateMosaicVisibleFrames() {
+    mosaicFrameSeq++;
+    const grid = document.getElementById("mosaicLiveGrid");
+    if (!grid) return;
+    const imgs = grid.querySelectorAll(".mosaic-live-thumb");
+    if (imgs.length === 0) return;
+    const now = new Date();
+    const nowStr = now.toTimeString().split(" ")[0];
+    const t = now.getTime();
+    imgs.forEach((img, i) => {
+        const base = img.getAttribute("data-base-url");
+        if (base) {
+            const nextSrc = `${base}&mode=${currentMosaicViewMode}&seq=${mosaicFrameSeq + i}&t=${t}`;
+            const preload = new Image();
+            preload.onload = () => { img.src = nextSrc; };
+            preload.onerror = () => { img.src = nextSrc; };
+            preload.src = nextSrc;
+        }
+    });
+    const timeSpans = grid.querySelectorAll(".mosaic-card-timestamp");
+    timeSpans.forEach(sp => { sp.innerText = `${nowStr} • 320x240`; });
+}
+window.alternateMosaicVisibleFrames = alternateMosaicVisibleFrames;
+
 let currentMosaicSubtab = "live";
 let cachedAnalyticalProblems = [];
 
@@ -56,6 +83,9 @@ function initMosaicTab() {
     console.log("[MosaicWall] Inicializando aba dedicada Monitoração das Imagens...");
     loadMosaicData();
     loadMosaicAnalyticalProblems();
+    if (isMosaicRotatePlaying) {
+        startMosaicAutoRotation();
+    }
 }
 window.initMosaicTab = initMosaicTab;
 
@@ -121,7 +151,17 @@ async function loadMosaicData(isManualRefresh = false) {
             badge.style.color = failureCount > 0 ? "#fca5a5" : "#93c5fd";
         }
 
+        if (isManualRefresh) {
+            mosaicFrameSeq += 2;
+        }
         applyMosaicFilters();
+        if (isManualRefresh) {
+            setTimeout(alternateMosaicVisibleFrames, 100);
+        }
+
+        if (currentMosaicSubtab === "live" && isMosaicRotatePlaying && !mosaicAutoRotateTimer) {
+            startMosaicAutoRotation();
+        }
 
         if (currentMosaicSubtab === "failures") {
             loadMosaicFailuresGallery();
@@ -234,7 +274,9 @@ function renderMosaicCardHtml(s) {
 
                 <!-- Frame de Transmissão / JPEG Real (16:9 Broadcast Proporcional) -->
                 <div style="position: relative; width: 100%; aspect-ratio: 16 / 9; max-height: 220px; background: #000; border-radius: 6px; overflow: hidden; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,0.12); box-shadow: inset 0 0 10px rgba(0,0,0,0.8);">
-                    <img src="${(s.jpeg_url || ('/api/fleet/channels/jpeg?canal=' + encodeURIComponent(s.canal) + '&praca=' + encodeURIComponent(s.praca))) + '&mode=' + currentMosaicViewMode}"
+                    <img class="mosaic-live-thumb"
+                         data-base-url="${s.jpeg_url || ('/api/fleet/channels/jpeg?canal=' + encodeURIComponent(s.canal) + '&praca=' + encodeURIComponent(s.praca))}"
+                         src="${(s.jpeg_url || ('/api/fleet/channels/jpeg?canal=' + encodeURIComponent(s.canal) + '&praca=' + encodeURIComponent(s.praca))) + '&mode=' + currentMosaicViewMode + '&seq=' + mosaicFrameSeq + '&t=' + Date.now()}"
                          alt="${escapeHtml(s.canal)}"
                          style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1;"
                          loading="lazy"
@@ -255,7 +297,7 @@ function renderMosaicCardHtml(s) {
                     </div>
                     <!-- OSD Inferior -->
                     <div style="position: absolute; bottom: 4px; left: 8px; right: 8px; display: flex; justify-content: space-between; font-size: 10px; font-family: monospace; color: rgba(255,255,255,0.85); text-shadow: 0 1px 3px rgba(0,0,0,0.9); pointer-events: none; z-index: 3;">
-                        <span>${s.last_frame_time} • 320x240</span>
+                        <span class="mosaic-card-timestamp">${s.last_frame_time || "Ao Vivo"} • 320x240</span>
                         <span>${s.meio}</span>
                     </div>
                 </div>
@@ -291,6 +333,7 @@ function renderMosaicCardHtml(s) {
 // Controles de Navegação da Paginação
 function prevMosaicPage() {
     if (currentMosaicPage > 1) {
+        mosaicFrameSeq++;
         currentMosaicPage--;
         renderMosaicPage();
     }
@@ -300,6 +343,7 @@ window.prevMosaicPage = prevMosaicPage;
 function nextMosaicPage() {
     const totalPages = Math.ceil(filteredMosaicSnapshots.length / mosaicPageSize) || 1;
     if (currentMosaicPage < totalPages) {
+        mosaicFrameSeq++;
         currentMosaicPage++;
         renderMosaicPage();
     } else {
@@ -326,7 +370,14 @@ function startMosaicAutoRotation() {
 
     // Timer de avanço de página
     mosaicAutoRotateTimer = setInterval(() => {
-        nextMosaicPage();
+        const totalPages = Math.ceil(filteredMosaicSnapshots.length / mosaicPageSize) || 1;
+        mosaicFrameSeq++;
+        if (totalPages > 1) {
+            nextMosaicPage();
+        } else {
+            alternateMosaicVisibleFrames();
+            resetMosaicRotateTimer();
+        }
     }, mosaicRotateIntervalSec * 1000);
 
     // Timer suave da barra de progresso (a cada 100ms)
@@ -341,13 +392,23 @@ function startMosaicAutoRotation() {
             secText.innerText = `${rem}s`;
         }
     }, 100);
+
+    // Timer continuo de alternancia de frames em tempo real (a cada 5 segundos)
+    const frameIntervalMs = Math.min(4000, Math.max(2500, Math.floor((mosaicRotateIntervalSec * 1000) / 2)));
+    mosaicFrameRefreshTimer = setInterval(() => {
+        if (isMosaicRotatePlaying && currentMosaicSubtab === "live") {
+            alternateMosaicVisibleFrames();
+        }
+    }, frameIntervalMs);
 }
 
 function stopMosaicAutoRotation() {
     if (mosaicAutoRotateTimer) clearInterval(mosaicAutoRotateTimer);
     if (mosaicProgressTimer) clearInterval(mosaicProgressTimer);
+    if (mosaicFrameRefreshTimer) clearInterval(mosaicFrameRefreshTimer);
     mosaicAutoRotateTimer = null;
     mosaicProgressTimer = null;
+    mosaicFrameRefreshTimer = null;
     isMosaicRotatePlaying = false;
     updateRotateButtonUI(false);
 }

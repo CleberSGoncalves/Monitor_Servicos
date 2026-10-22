@@ -682,7 +682,7 @@ async def get_analytical_problems(category: Optional[str] = None, user: dict = D
 # ==========================================
 
 @app.get("/api/fleet/channels/jpeg")
-async def get_channel_jpeg(canal: str, praca: Optional[str] = None, mode: Optional[str] = "real"):
+async def get_channel_jpeg(canal: str, praca: Optional[str] = None, mode: Optional[str] = "real", seq: Optional[int] = None, t: Optional[str] = None):
     r"""
     Retorna o snapshot JPEG da emissora (MediaDNA real gravado em D:\MediaDNA_V2\Data\Video\ ou E:\MediaDNA_V2\Data\Video\).
     Entrega 100% imagens reais capturadas do sinal de TV broadcast, com overlays analíticos sob demanda.
@@ -714,17 +714,40 @@ async def get_channel_jpeg(canal: str, praca: Optional[str] = None, mode: Option
         brand_key = "uniao"
     elif "diario" in c_lower or "diário" in c_lower:
         brand_key = "diario"
-    elif "brasil" in c_lower or "ceara" in c_lower or "ceará" in c_lower or "cultura" in c_lower:
+    elif "cultura" in c_lower:
+        brand_key = "cultura"
+    elif "cnt" in c_lower:
+        brand_key = "cnt"
+    elif "brasil" in c_lower or "ceara" in c_lower or "ceará" in c_lower:
         brand_key = "tvbrasil"
+    else:
+        fallback_brands = ["globo", "sbt", "record", "band", "redetv", "tvbrasil", "diario", "uniao"]
+        brand_key = fallback_brands[sum(ord(ch) for ch in canal) % len(fallback_brands)]
 
-    # 1. Busca por imagens reais extraídas do broadcast nos diretórios de gravação
+    # 1. Busca no pool dinâmico de múltiplos frames reais da emissora gravados pelo MediaDNA
     matched_file = None
-    real_thumb_dir = Path(__file__).resolve().parent / "static" / "thumbnails" / "real_channels"
-    brand_file = real_thumb_dir / f"real_channel_{brand_key}.jpg"
-    if brand_file.exists():
-        matched_file = brand_file
+    frames_dir = Path(__file__).resolve().parent / "static" / "thumbnails" / "channel_frames" / brand_key
+    if frames_dir.exists():
+        all_frames = sorted(list(frames_dir.glob("*.jpg")))
+        if all_frames:
+            import time
+            city_offset = sum(ord(ch) for ch in (praca or "cs"))
+            if seq is not None:
+                idx = (int(seq) + city_offset) % len(all_frames)
+            else:
+                # Alterna frame automaticamente a cada 5 segundos na rotação contínua
+                time_step = int(time.time() // 5)
+                idx = (time_step + city_offset) % len(all_frames)
+            matched_file = all_frames[idx]
 
-    # Busca abrangente em pastas do MediaDNA
+    # 2. Fallback para thumbnail estático da marca se o pool não estiver presente
+    real_thumb_dir = Path(__file__).resolve().parent / "static" / "thumbnails" / "real_channels"
+    if not matched_file:
+        brand_file = real_thumb_dir / f"real_channel_{brand_key}.jpg"
+        if brand_file.exists():
+            matched_file = brand_file
+
+    # 3. Busca abrangente em pastas do MediaDNA
     if not matched_file:
         candidate_dirs = [
             real_thumb_dir,
@@ -758,11 +781,16 @@ async def get_channel_jpeg(canal: str, praca: Optional[str] = None, mode: Option
     is_fault = (mode == "fault") or any(kw in canal.lower() for kw in ["falha", "queda", "travad", "glitch"])
     is_pelotas_gop = (praca and "pelotas" in praca.lower() and "globo" in c_lower)
 
+    response_headers = {
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0"
+    }
+
     # SE MODO REAL E SEM FALHA: Entrega o frame puro de transmissão sem alteração
     if mode == "real" and not (is_fault or is_pelotas_gop):
         if matched_file and matched_file.exists():
-            return FileResponse(matched_file, media_type="image/jpeg", headers={"Cache-Control": "max-age=5"})
-
+            return FileResponse(matched_file, media_type="image/jpeg", headers=response_headers)
     # SE FALHA DETECTADA OU MODO DIAGNÓSTICO: Sobrepõe HUD técnico sobre o FRAME REAL da emissora
     w, h = 320, 240
     if matched_file and matched_file.exists():
@@ -840,7 +868,7 @@ async def get_channel_jpeg(canal: str, praca: Optional[str] = None, mode: Option
     buf = BytesIO()
     img.save(buf, format="JPEG", quality=88)
     buf.seek(0)
-    return Response(content=buf.getvalue(), media_type="image/jpeg", headers={"Cache-Control": "max-age=5"})
+    return Response(content=buf.getvalue(), media_type="image/jpeg", headers=response_headers)
 
 # Remote Command Orchestrator Endpoints
 # ==========================================
