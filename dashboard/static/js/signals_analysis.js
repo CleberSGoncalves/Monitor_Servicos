@@ -1112,42 +1112,138 @@ function drawMp4PlayerFrame() {
         ctx.fillText("CORRUPÇÃO DE FLUXO TS: PACKET CONTINUITY COUNTER ERROR (TEARING)", w / 2, h - 27);
 
     } else {
-        // CENA 3: TRANSMISSÃO NOMINAL AO VIVO
-        const grad = ctx.createLinearGradient(0, 0, w, h);
-        grad.addColorStop(0, "#0f172a");
-        grad.addColorStop(0.5, "#1e293b");
-        grad.addColorStop(1, "#0a0f1d");
+        // CENA 3: TRANSMISSÃO DE TV REAL (ESTÚDIO BROADCAST AO VIVO)
+        // 1. Fundo do estúdio: Iluminação cenográfica degradê azul cobalto
+        const grad = ctx.createLinearGradient(0, 0, 0, h);
+        grad.addColorStop(0, "#0c1527");
+        grad.addColorStop(0.5, "#162544");
+        grad.addColorStop(1, "#070d18");
         ctx.fillStyle = grad;
         ctx.fillRect(0, 0, w, h);
 
-        // Ondas de sinal ativas
-        ctx.strokeStyle = "rgba(56, 189, 248, 0.25)";
+        // 2. Parede de Vídeo / Skyline Noturno Iluminado ao Fundo
+        const buildings = [
+            { x: 30, y: 40, bw: 45, bh: h - 100 },
+            { x: 85, y: 65, bw: 55, bh: h - 120 },
+            { x: 150, y: 30, bw: 65, bh: h - 90 },
+            { x: 225, y: 55, bw: 50, bh: h - 110 },
+            { x: 285, y: 25, bw: 70, bh: h - 80 },
+            { x: 365, y: 60, bw: 60, bh: h - 115 },
+            { x: 435, y: 35, bw: 55, bh: h - 95 },
+            { x: 500, y: 50, bw: 75, bh: h - 105 }
+        ];
+
+        buildings.forEach((b, idx) => {
+            ctx.fillStyle = "#111c34";
+            ctx.strokeStyle = "#1e2e50";
+            ctx.lineWidth = 1;
+            ctx.fillRect(b.x, b.y, b.bw, b.bh);
+            ctx.strokeRect(b.x, b.y, b.bw, b.bh);
+
+            for (let wx = b.x + 6; wx < b.x + b.bw - 8; wx += 10) {
+                for (let wy = b.y + 10; wy < b.y + b.bh - 20; wy += 14) {
+                    const seed = (wx * 7 + wy * 13 + idx);
+                    if (seed % 3 === 0) {
+                        ctx.fillStyle = (seed % 6 === 0) ? "#facc15" : "#38bdf8";
+                        ctx.fillRect(wx, wy, 5, 6);
+                    }
+                }
+            }
+        });
+
+        // 3. Faixas de iluminação LED do estúdio
+        ctx.strokeStyle = "rgba(56, 189, 248, 0.4)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(15, h - 90);
+        ctx.lineTo(w - 15, h - 90);
+        ctx.stroke();
+
+        // 4. Bancada de Apresentador (Perspectiva curva)
+        ctx.fillStyle = "#0f172a";
+        ctx.strokeStyle = "#38bdf8";
         ctx.lineWidth = 1.5;
         ctx.beginPath();
-        for (let i = 0; i < w; i += 15) {
-            const yLine = h / 2 + Math.sin((i + t * 120) * 0.025) * 35;
-            if (i === 0) ctx.moveTo(i, yLine);
-            else ctx.lineTo(i, yLine);
-        }
-        ctx.stroke();
-
-        // Globo / Estúdio Central
-        ctx.beginPath();
-        ctx.arc(w / 2, h / 2, 40, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(37, 99, 235, 0.25)";
+        ctx.moveTo(60, h - 80);
+        ctx.lineTo(w - 60, h - 80);
+        ctx.lineTo(w - 30, h - 35);
+        ctx.lineTo(30, h - 35);
+        ctx.closePath();
         ctx.fill();
-        ctx.strokeStyle = "#38bdf8";
-        ctx.lineWidth = 2;
         ctx.stroke();
 
-        ctx.fillStyle = "#ffffff";
-        ctx.font = "bold 16px Inter, sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText("GRAVAÇÃO ATRIA (ISDB-Tb)", w / 2, h / 2 - 8);
+        // Tampo reflexivo da bancada
+        ctx.fillStyle = "rgba(30, 58, 138, 0.45)";
+        ctx.beginPath();
+        ctx.moveTo(75, h - 77);
+        ctx.lineTo(w - 75, h - 77);
+        ctx.lineTo(w - 45, h - 45);
+        ctx.lineTo(45, h - 45);
+        ctx.closePath();
+        ctx.fill();
 
-        ctx.fillStyle = "#10b981";
-        ctx.font = "11px Inter, sans-serif";
-        ctx.fillText("FLUXO H.264 NOMINAL • 1080i @ 29.97 FPS", w / 2, h / 2 + 14);
+        // 5. Silhueta do Âncora / Apresentador de Notícias
+        ctx.fillStyle = "#1e293b";
+        ctx.strokeStyle = "#334155";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(w / 2, h / 2 - 25, 24, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(w / 2 - 50, h - 78);
+        ctx.lineTo(w / 2 + 50, h - 78);
+        ctx.lineTo(w / 2 + 35, h / 2 + 5);
+        ctx.lineTo(w / 2 - 35, h / 2 + 5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // 6. Logotipo Oficial da Emissora (Rede Globo 3D Bug)
+        const lx = w - 45, ly = 32;
+        ctx.fillStyle = "#f1f5f9";
+        ctx.strokeStyle = "#94a3b8";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(lx, ly, 18, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = "#0f172a";
+        ctx.strokeStyle = "#38bdf8";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(lx, ly, 11, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = "#38bdf8";
+        ctx.beginPath();
+        ctx.arc(lx, ly, 5, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 7. Badge AO VIVO
+        ctx.fillStyle = "#dc2626";
+        ctx.fillRect(15, 18, 80, 22);
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 11px Inter, sans-serif";
+        ctx.textAlign = "left";
+        ctx.fillText("● AO VIVO", 24, 33);
+
+        // 8. GC (Lower-Third) Jornalístico
+        ctx.fillStyle = "rgba(15, 23, 42, 0.95)";
+        ctx.fillRect(0, h - 72, w, 34);
+        ctx.fillStyle = "#0284c7";
+        ctx.fillRect(0, h - 72, w, 3);
+        ctx.fillStyle = "#0284c7";
+        ctx.fillRect(15, h - 66, 68, 20);
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 11px Inter, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("GLOBO", 49, h - 52);
+
+        ctx.fillStyle = "#f8fafc";
+        ctx.font = "bold 12px Inter, sans-serif";
+        ctx.textAlign = "left";
+        ctx.fillText("JORNAL NACIONAL • EDIÇÃO AO VIVO (PELOTAS - RS)", 92, h - 52);
     }
 
     // OSD Barra de Áudio VU L/R

@@ -232,8 +232,8 @@ function renderMosaicCardHtml(s) {
                     </span>
                 </div>
 
-                <!-- Frame de Transmissão / JPEG Real (320x240) -->
-                <div style="position: relative; width: 100%; height: 135px; background: #000; border-radius: 4px; overflow: hidden; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,0.08);">
+                <!-- Frame de Transmissão / JPEG Real (16:9 Broadcast Proporcional) -->
+                <div style="position: relative; width: 100%; aspect-ratio: 16 / 9; max-height: 220px; background: #000; border-radius: 6px; overflow: hidden; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,0.12); box-shadow: inset 0 0 10px rgba(0,0,0,0.8);">
                     <img src="${(s.jpeg_url || ('/api/fleet/channels/jpeg?canal=' + encodeURIComponent(s.canal) + '&praca=' + encodeURIComponent(s.praca))) + '&mode=' + currentMosaicViewMode}"
                          alt="${escapeHtml(s.canal)}"
                          style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1;"

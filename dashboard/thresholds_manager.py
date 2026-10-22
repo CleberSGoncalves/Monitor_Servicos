@@ -146,4 +146,115 @@ def add_or_register_threshold(key: str, name: str, category: str, value: float, 
         return True
 
 
+def get_active_threshold_breaches(services: list = None, channels: list = None) -> list:
+    """
+    Avalia a telemetria atual de serviços e canais contra os limiares ativos.
+    Retorna a lista de violações ativas com criticidade, delta e procedimentos de ação.
+    """
+    thresholds = {t["key"]: t for t in get_all_thresholds() if t.get("is_enabled", 1)}
+    breaches = []
+    
+    if not services:
+        services = []
+    if not channels:
+        channels = []
+
+    # 1. Limiar de Disco D: Mínimo
+    disk_thresh = thresholds.get("disk_d_min_gb")
+    if disk_thresh:
+        limit_gb = float(disk_thresh["value"])
+        for s in services:
+            raw_d = str(s.get("disco_d_livre", "")).replace("GB", "").strip()
+            try:
+                val = float(raw_d)
+                if val < limit_gb:
+                    breaches.append({
+                        "id": f"disk_{s.get('hostname')}_{s.get('cs', 1)}",
+                        "severity": "critico" if val < (limit_gb * 0.5) else "alerta",
+                        "category": "armazenamento",
+                        "metric": "Espaço Livre no Disco D:",
+                        "target": f"{s.get('praca')} (CS {s.get('cs', 1)})",
+                        "hostname": s.get("hostname"),
+                        "current_value": f"{val:.1f} GB",
+                        "threshold_value": f"{limit_gb:.1f} GB",
+                        "delta": f"-{(limit_gb - val):.1f} GB",
+                        "description": f"O volume D:\\ de gravações está com apenas {val:.1f} GB livres, abaixo do limite operacional de {limit_gb:.1f} GB.",
+                        "recommended_action": "Disparar expurgo de buffers antigos ou executar limpeza de logs em Remote Commands."
+                    })
+            except Exception:
+                pass
+
+    # 2. Limiar de Qualidade e Força RF de Canais
+    rf_q_thresh = thresholds.get("rf_signal_quality_min")
+    rf_s_thresh = thresholds.get("rf_signal_strength_min")
+    for c in channels:
+        q_val = c.get("qualidade_sinal")
+        s_val = c.get("forca_sinal")
+        ch_name = c.get("canal", "Canal")
+        praca = c.get("cidade", "Praça")
+        
+        if rf_q_thresh and q_val is not None:
+            min_q = float(rf_q_thresh["value"])
+            if q_val < min_q and not c.get("has_outage"):
+                breaches.append({
+                    "id": f"rf_q_{praca}_{ch_name}",
+                    "severity": "alerta",
+                    "category": "sinal_rf",
+                    "metric": "Qualidade de Sinal RF Degradada",
+                    "target": f"{ch_name} ({praca})",
+                    "hostname": praca,
+                    "current_value": f"{q_val}%",
+                    "threshold_value": f"{min_q:.0f}%",
+                    "delta": f"-{(min_q - q_val):.0f}%",
+                    "description": f"Qualidade RF de {q_val}% está abaixo do limiar estipulado de {min_q:.0f}%, indicando risco de perda de frames e macroblocos.",
+                    "recommended_action": "Verificar apontamento de antena, conectores coaxiais ou reiniciar sintonizador TBS."
+                })
+                
+        if rf_s_thresh and s_val is not None:
+            min_s = float(rf_s_thresh["value"])
+            if s_val < min_s and not c.get("has_outage"):
+                breaches.append({
+                    "id": f"rf_s_{praca}_{ch_name}",
+                    "severity": "alerta",
+                    "category": "sinal_rf",
+                    "metric": "Força de Sinal RF Insuficiente",
+                    "target": f"{ch_name} ({praca})",
+                    "hostname": praca,
+                    "current_value": f"{s_val}%",
+                    "threshold_value": f"{min_s:.0f}%",
+                    "delta": f"-{(min_s - s_val):.0f}%",
+                    "description": f"A potência da portadora DTV está em {s_val}%, abaixo do patamar mínimo de {min_s:.0f}%.",
+                    "recommended_action": "Checar ganho do amplificador predial de antena ou consultar emissora transmissora."
+                })
+
+    # 3. Limiar de Autonomia Preditiva de Gravação MP4
+    autonomy_thresh = thresholds.get("disk_autonomy_min_hours")
+    if autonomy_thresh:
+        min_hours = float(autonomy_thresh["value"])
+        for s in services:
+            raw_d = str(s.get("disco_d_livre", "")).replace("GB", "").strip()
+            try:
+                val = float(raw_d)
+                # Estimativa média: 1.2 GB por hora por canal em 1080i H.264
+                autonomy_est = (val / 1.2)
+                if autonomy_est < min_hours:
+                    breaches.append({
+                        "id": f"autonomy_{s.get('hostname')}",
+                        "severity": "critico" if autonomy_est < 4.0 else "alerta",
+                        "category": "gravacao",
+                        "metric": "Autonomia Crítica de Gravação MP4",
+                        "target": f"{s.get('praca')} (CS {s.get('cs', 1)})",
+                        "hostname": s.get("hostname"),
+                        "current_value": f"{autonomy_est:.1f} h",
+                        "threshold_value": f"{min_hours:.1f} h",
+                        "delta": f"-{(min_hours - autonomy_est):.1f} h",
+                        "description": f"Autonomia preditiva de gravação estimada em apenas {autonomy_est:.1f} horas contínuas antes do esgotamento do disco.",
+                        "recommended_action": "Ativar retenção inteligente ou acionar expurgo do diretório registered."
+                    })
+            except Exception:
+                pass
+
+    return breaches
+
+
 init_thresholds()

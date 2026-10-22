@@ -1316,6 +1316,10 @@
         <span>🖼️</span> Monitoração das Imagens
       </button>
 
+      <button class="nav-btn" data-tab="map">
+        <span>🗺️</span> Topologia & Mapa RF
+      </button>
+
 
 
       <button class="nav-btn" data-tab="incidents">
@@ -1390,7 +1394,7 @@
 
 
 
-      <button type="button" class="btn-secondary" id="btnSystemUpdate" onclick="openSystemUpdateModal()" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; font-size: 12px; background: rgba(37,99,235,0.15); border: 1px solid rgba(37,99,235,0.4); color: #38bdf8; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer;" title="Verificar atualizações do sistema"><i class="fas fa-sync-alt" id="iconSystemUpdate"></i> <span id="labelSystemVersion">v3.9.0</span></button>
+      <button type="button" class="btn-secondary" id="btnSystemUpdate" onclick="openSystemUpdateModal()" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; font-size: 12px; background: rgba(37,99,235,0.15); border: 1px solid rgba(37,99,235,0.4); color: #38bdf8; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer;" title="Verificar atualizações do sistema"><i class="fas fa-sync-alt" id="iconSystemUpdate"></i> <span id="labelSystemVersion">v3.9.11</span></button>
         <div class="user-badge">
 
 
@@ -1777,32 +1781,71 @@
 
       </div>
 
-
-
-
-
-
+      <!-- Violações de Limiares Operacionais & Alertas Preditivos (SLA) -->
+      <div class="panel-card" style="margin-bottom: 20px;">
+        <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center;">
+          <div class="panel-title">
+            <span>⚡</span> Violações de Limiares Operacionais & Alertas Preditivos (SLA)
+            <span class="badge badge-yellow" id="badgeThresholdBreachesCount" style="margin-left: 8px;">0 Alertas</span>
+          </div>
+          <span style="font-size: 11px; color: var(--text-muted);">Calibrado via aba Configurações (Disco D, RF, Autonomia MP4, CPU/RAM)</span>
+        </div>
+        <div id="thresholdBreachesList" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin-top: 10px;">
+          <div style="color: var(--text-muted); padding: 10px;">Verificando limiares operacionais...</div>
+        </div>
+      </div>
 
       <!-- Tabela de Serviços e Infraestrutura -->
-
-
-
       <div class="panel-card">
-
-
-
         <div class="panel-header">
-
-
-
           <div class="panel-title"><span>🖥️</span> Governança de Serviços e Hosts da Frota</div>
-
-
-
           <span style="font-size: 12px; color: var(--text-muted);">Telemetria individual por processo com Auto-Cura</span>
+        </div>
 
-
-
+        <!-- Filtros Rápidos de Serviços e Consumo de Recursos -->
+        <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 14px; margin-bottom: 14px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;">
+          <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+            <div>
+              <span style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; margin-right: 4px;">Praça:</span>
+              <select id="svcFilterCity" class="form-input" style="padding: 4px 8px; font-size: 11px; width: 140px;" onchange="filterServicesTable()">
+                <option value="all">Todas as Praças</option>
+              </select>
+            </div>
+            <div>
+              <span style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; margin-right: 4px;">Serviço:</span>
+              <select id="svcFilterName" class="form-input" style="padding: 4px 8px; font-size: 11px; width: 170px;" onchange="filterServicesTable()">
+                <option value="all">Todos os Serviços</option>
+                <option value="DNA.MonitorServiceSVC">DNA.MonitorServiceSVC</option>
+                <option value="Atria Capture">Atria Capture</option>
+                <option value="DNA.MediaRecorderSVC">DNA.MediaRecorderSVC</option>
+                <option value="DNA.DetectionSVC">DNA.DetectionSVC</option>
+                <option value="DNA.ConfigMonitorSVC">DNA.ConfigMonitorSVC</option>
+                <option value="DNA.FiletransferSVC">DNA.FiletransferSVC</option>
+              </select>
+            </div>
+            <div>
+              <span style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; margin-right: 4px;">Consumo / Saúde:</span>
+              <select id="svcFilterResource" class="form-input" style="padding: 4px 8px; font-size: 11px; width: 190px;" onchange="filterServicesTable()">
+                <option value="all">Todos os Consumos</option>
+                <option value="high_cpu">🔥 Alto Consumo de CPU (&gt; 10%)</option>
+                <option value="high_ram">🧠 Alta Memória RAM (&gt; 100 MB)</option>
+                <option value="stopped">🔴 Apenas Parados / Não Encontrados</option>
+              </select>
+            </div>
+            <div>
+              <span style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; margin-right: 4px;">Ordenar:</span>
+              <select id="svcSortBy" class="form-input" style="padding: 4px 8px; font-size: 11px; width: 140px;" onchange="filterServicesTable()">
+                <option value="cpu_desc">Maior CPU</option>
+                <option value="ram_desc">Maior RAM</option>
+                <option value="praca">Praça (A-Z)</option>
+                <option value="host">Host (A-Z)</option>
+                <option value="status">Status</option>
+              </select>
+            </div>
+          </div>
+          <div style="font-size: 11px; color: var(--text-muted);">
+            <i class="fas fa-info-circle text-blue"></i> CPU reflete medição do processo vs pico global do host
+          </div>
         </div>
 
 
@@ -3519,116 +3562,265 @@
 
     </section>
 
-
-
-
-
-
-
-    <!-- TAB 3: CENTRAL DE INCIDENTES & WORKLOG -->
-
-
-
-    <section class="content-section" id="tab-incidents">
-
-
-
-      <div class="panel-card">
-
-
-
-        <div class="panel-header">
-
-
-
-          <div class="panel-title"><span>📝</span> Caderno de Incidentes e Ações Manuais (Worklog de Operações)</div>
-
-
-
-          <span style="font-size: 12px; color: var(--text-muted);">Rastreabilidade e trilha de auditoria de quem tratou e resolveu cada incidente</span>
-
-
-
+    <!-- ============================================================================== -->
+    <!-- TAB: TOPOLOGIA GEOGRÁFICA & MAPA RF LATAM / BRASIL                             -->
+    <!-- ============================================================================== -->
+    <section class="content-section" id="tab-map">
+      <!-- Barra de Filtros e Escopo Geográfico -->
+      <div class="panel-card" style="margin-bottom: 20px; padding: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px; margin-bottom: 14px;">
+          <div>
+            <div class="panel-title" style="font-size: 16px;">
+              <span>🗺️</span> Mapa Geográfico de Capture Sites & Topologia de RF (LATAM)
+            </div>
+            <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">
+              Posicionamento físico dos nós MediaDNA, correlação com torres transmissoras de TV e saúde operacional ao vivo
+            </div>
+          </div>
+          <div style="display: flex; gap: 12px; align-items: center; font-size: 12px;">
+            <span style="display: inline-flex; align-items: center; gap: 6px;"><span style="width: 10px; height: 10px; border-radius: 50%; background: #10b981; display: inline-block;"></span> 🟢 Estável / 100% Conforme</span>
+            <span style="display: inline-flex; align-items: center; gap: 6px;"><span style="width: 10px; height: 10px; border-radius: 50%; background: #facc15; display: inline-block;"></span> 🟡 Alerta de Limiar</span>
+            <span style="display: inline-flex; align-items: center; gap: 6px;"><span style="width: 10px; height: 10px; border-radius: 50%; background: #ef4444; display: inline-block;"></span> 🔴 Falha Crítica / Pendente</span>
+          </div>
         </div>
 
-
-
-        <div class="table-responsive">
-
-
-
-          <table>
-
-
-
-            <thead>
-
-
-
-              <tr>
-
-
-
-                <th>Data / Hora</th>
-
-
-
-                <th>Host</th>
-
-
-
-                <th>Alvo (Serviço/Canal)</th>
-
-
-
-                <th>Tipo de Incidente</th>
-
-
-
-                <th>Operador</th>
-
-
-
-                <th>Ação Manual Executada</th>
-
-
-
-                <th>Status de Resolução</th>
-
-
-
-              </tr>
-
-
-
-            </thead>
-
-
-
-            <tbody id="incidentHistoryTableBody">
-
-
-
-              <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">Carregando histórico...</td></tr>
-
-
-
-            </tbody>
-
-
-
-          </table>
-
-
-
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+          <div>
+            <label style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;">País / Escopo</label>
+            <select id="mapFilterCountry" class="form-input" style="width: 100%;" onchange="renderTopologyMap()">
+              <option value="all">Todos os Países (LATAM)</option>
+              <option value="Brasil" selected>🇧🇷 Brasil (Nacional)</option>
+              <option value="Argentina">🇦🇷 Argentina</option>
+              <option value="Chile">🇨🇱 Chile</option>
+              <option value="Colombia">🇨🇴 Colômbia</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;">Região / Estado</label>
+            <select id="mapFilterState" class="form-input" style="width: 100%;" onchange="renderTopologyMap()">
+              <option value="all">Todos os Estados / Regiões</option>
+              <option value="RS">Rio Grande do Sul (RS)</option>
+              <option value="SP">São Paulo (SP)</option>
+              <option value="RJ">Rio de Janeiro (RJ)</option>
+              <option value="PR">Paraná (PR)</option>
+              <option value="MG">Minas Gerais (MG)</option>
+              <option value="DF">Distrito Federal (DF)</option>
+              <option value="BA">Bahia (BA)</option>
+              <option value="PE">Pernambuco (PE)</option>
+              <option value="CE">Ceará (CE)</option>
+              <option value="SC">Santa Catarina (SC)</option>
+              <option value="GO">Goiás (GO)</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;">Condição Operacional</label>
+            <select id="mapFilterHealth" class="form-input" style="width: 100%;" onchange="renderTopologyMap()">
+              <option value="all">Todas as Condições</option>
+              <option value="red">🔴 Apenas com Falhas Pendentes (Crítico)</option>
+              <option value="yellow">🟡 Apenas Alertas de Limiar (Degradação)</option>
+              <option value="green">🟢 Apenas Conformes (Estável)</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;">Busca de Praça</label>
+            <input type="text" id="mapSearchCity" class="form-input" placeholder="Ex: Pelotas, São Paulo..." style="width: 100%;" oninput="renderTopologyMap()" />
+          </div>
         </div>
-
-
-
       </div>
 
+      <!-- Container do Mapa Interativo & Painel de Detalhes da Praça -->
+      <div style="display: grid; grid-template-columns: 1fr 340px; gap: 20px; align-items: start;">
+        <!-- Canvas / SVG do Mapa -->
+        <div class="panel-card" style="position: relative; overflow: hidden; padding: 12px; background: #070d18; border: 1px solid rgba(56, 189, 248, 0.2); min-height: 560px; display: flex; flex-direction: column;">
+          <div style="position: absolute; top: 16px; left: 16px; z-index: 10; font-size: 11px; font-family: monospace; color: #94a3b8; background: rgba(15, 23, 42, 0.85); padding: 4px 10px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.08);">
+            PROJEÇÃO: LATAM EPSG:4326 • CLIQUE NO NÓ PARA DETALHES DE RF
+          </div>
+          <div id="topologyMapSvgContainer" style="width: 100%; flex: 1; min-height: 520px; position: relative;">
+            <!-- Renderizado dinamicamente via topology_map.js -->
+          </div>
+        </div>
 
+        <!-- Painel Lateral: Detalhes de RF e Ação Rápida da Praça Selecionada -->
+        <div class="panel-card" id="mapMarketDetailPanel" style="padding: 16px;">
+          <div style="font-weight: 700; font-size: 14px; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
+            <span id="mapDetailCityName">Selecione uma Praça</span>
+            <span id="mapDetailStatusBadge" class="badge badge-blue">Info</span>
+          </div>
+          <div id="mapDetailCoords" style="font-size: 11px; font-family: monospace; color: var(--text-muted); margin-bottom: 14px;">
+            Coordenadas: Lat --.----, Lng --.----
+          </div>
 
+          <!-- Card de Enlace de RF e Torre Transmissora -->
+          <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 12px; margin-bottom: 14px;">
+            <div style="font-size: 11px; text-transform: uppercase; color: #38bdf8; font-weight: 700; margin-bottom: 8px;">
+              <i class="fas fa-broadcast-tower"></i> Linha de Visada (LOS) & Torre
+            </div>
+            <div style="font-size: 12px; font-weight: 600; color: #fff; margin-bottom: 4px;" id="mapDetailTowerName">Torre de Transmissão</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 11px; color: var(--text-muted); margin-top: 8px;">
+              <div>Distância: <strong style="color: #fff;" id="mapDetailDistance">0.0 km</strong></div>
+              <div>Azimute: <strong style="color: #fff;" id="mapDetailAzimuth">0.0°</strong></div>
+              <div>Linha de Visada: <strong style="color: #10b981;" id="mapDetailLOS">Desobstruída</strong></div>
+              <div>Perda FSPL: <strong style="color: #facc15;" id="mapDetailFSPL">104 dB</strong></div>
+            </div>
+          </div>
+
+          <!-- Métricas da Praça -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px;">
+            <div style="background: rgba(0,0,0,0.3); padding: 10px; border-radius: 6px; text-align: center; border: 1px solid rgba(255,255,255,0.05);">
+              <div style="font-size: 18px; font-weight: 800; color: #fff;" id="mapDetailTotalChannels">0</div>
+              <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">Canais Monitorados</div>
+            </div>
+            <div style="background: rgba(0,0,0,0.3); padding: 10px; border-radius: 6px; text-align: center; border: 1px solid rgba(255,255,255,0.05);">
+              <div style="font-size: 18px; font-weight: 800; color: #f87171;" id="mapDetailOutageChannels">0</div>
+              <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">Quedas / Falhas</div>
+            </div>
+          </div>
+
+          <!-- Botão de Ação: Navegar para Incidentes Filtrando a Praça -->
+          <button type="button" class="btn-primary" id="btnGoToCityIncidents" style="width: 100%; padding: 10px; font-weight: 700; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 8px;" onclick="jumpToCityIncidents()">
+            <i class="fas fa-search-location"></i> 🚨 Ver Incidentes Desta Praça
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================================== -->
+    <!-- TAB: HISTÓRICO DE INCIDENTES, RASTREABILIDADE & AÇÕES COM IA                    -->
+    <!-- ============================================================================== -->
+    <section class="content-section" id="tab-incidents">
+      <!-- Painel Superior: Métricas de Volume & MTTR -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; margin-bottom: 20px;">
+        <div class="stat-card">
+          <div class="stat-label">Total de Incidentes (Período)</div>
+          <div class="stat-value" id="kpiIncidentsTotal" style="color: #38bdf8;">0</div>
+          <div class="stat-sub" id="kpiIncidentsTotalSub">Mapeados na frota</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Incidentes Pendentes / Abertos</div>
+          <div class="stat-value text-red" id="kpiIncidentsOpen">0</div>
+          <div class="stat-sub">Requerem atuação técnica</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Incidentes Resolvidos / Mitigados</div>
+          <div class="stat-value text-green" id="kpiIncidentsResolved">0</div>
+          <div class="stat-sub">Tratados com sucesso</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">MTTR (Tempo Médio de Resolução)</div>
+          <div class="stat-value" id="kpiIncidentsMTTR" style="color: #facc15;">0 min</div>
+          <div class="stat-sub">Agilidade de Auto-Cura e Equipe</div>
+        </div>
+      </div>
+
+      <!-- Barra de Filtros Ricos e Intervalo de Tempo -->
+      <div class="panel-card" style="margin-bottom: 20px; padding: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 12px;">
+          <div class="panel-title" style="font-size: 15px;">
+            <span>📋</span> Rastreabilidade de Incidentes e Histórico Operacional
+          </div>
+          <button class="btn-secondary" onclick="loadIncidentsHistoryData()" style="padding: 6px 12px; font-size: 11px;">
+            <i class="fas fa-sync-alt"></i> Atualizar Histórico
+          </button>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px;">
+          <div>
+            <label style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;">Intervalo de Tempo</label>
+            <select id="incFilterPeriod" class="form-input" style="width: 100%;" onchange="loadIncidentsHistoryData()">
+              <option value="today">Hoje (Desde 00:00)</option>
+              <option value="24h">Últimas 24 Horas</option>
+              <option value="7d">Últimos 7 Dias</option>
+              <option value="30d" selected>Últimos 30 Dias</option>
+              <option value="all">Todo o Histórico</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;">Cidade / Praça</label>
+            <select id="incFilterCity" class="form-input" style="width: 100%;" onchange="loadIncidentsHistoryData()">
+              <option value="all">Todas as Praças</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;">Tipo de Incidente</label>
+            <select id="incFilterType" class="form-input" style="width: 100%;" onchange="loadIncidentsHistoryData()">
+              <option value="all">Todos os Tipos</option>
+              <option value="gop_stall">GOP Stall / Congelamento H.264</option>
+              <option value="rf_outage">Perda de Sinal RF / Lock</option>
+              <option value="service_stopped">Serviço Parado / Crash</option>
+              <option value="disk_space_low">Espaço em Disco D: Baixo</option>
+              <option value="audio_drop">Áudio Mudo / Desvio Lip-Sync</option>
+              <option value="high_cpu">Consumo Elevado de CPU</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;">Severidade</label>
+            <select id="incFilterSeverity" class="form-input" style="width: 100%;" onchange="loadIncidentsHistoryData()">
+              <option value="all">Todas</option>
+              <option value="critico">🔴 Crítico</option>
+              <option value="alerta">🟡 Alerta</option>
+              <option value="informativo">🔵 Informativo</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;">Status</label>
+            <select id="incFilterStatus" class="form-input" style="width: 100%;" onchange="loadIncidentsHistoryData()">
+              <option value="all">Todos os Status</option>
+              <option value="aberto">🔴 Aberto</option>
+              <option value="em_tratamento">🟣 Em Tratamento</option>
+              <option value="resolvido">🟢 Resolvido</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tabela Principal de Histórico de Incidentes -->
+      <div class="panel-card" style="margin-bottom: 24px;">
+        <div class="table-responsive">
+          <table>
+            <thead>
+              <tr>
+                <th>Código / Data</th>
+                <th>Praça</th>
+                <th>Alvo / Equipamento</th>
+                <th>Tipo de Incidente</th>
+                <th>Severidade</th>
+                <th>Duração / Status</th>
+                <th>Torre / Posição</th>
+                <th style="text-align: center;">Diagnóstico & Ações</th>
+              </tr>
+            </thead>
+            <tbody id="incidentsEventsTableBody">
+              <tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 18px;">Carregando histórico de incidentes...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Worklog de Auditoria de Ações Manuais dos Operadores -->
+      <div class="panel-card">
+        <div class="panel-header">
+          <div class="panel-title"><span>📝</span> Caderno de Auditoria & Trilha de Operações (Worklog Manual)</div>
+          <span style="font-size: 12px; color: var(--text-muted);">Registro de comandos e ações manuais executadas pelos operadores</span>
+        </div>
+        <div class="table-responsive">
+          <table>
+            <thead>
+              <tr>
+                <th>Data / Hora</th>
+                <th>Host</th>
+                <th>Alvo (Serviço/Canal)</th>
+                <th>Tipo de Incidente</th>
+                <th>Operador</th>
+                <th>Ação Manual Executada</th>
+                <th>Status de Resolução</th>
+              </tr>
+            </thead>
+            <tbody id="incidentHistoryTableBody">
+              <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">Carregando worklog...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </section>
 
 
@@ -6126,8 +6318,13 @@
           </div>
         </div>
 
+        <!-- Acesso Remoto Restrito Notice -->
+        <div id="sys-update-remote-notice" style="display: none; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 6px; padding: 12px; margin-bottom: 16px; font-size: 12px; color: #fca5a5; line-height: 1.5;">
+          🔒 <strong>Acesso Remoto Detectado:</strong> Por segurança operacional da frota 24x7, o disparo da atualização automática só pode ser executado diretamente no console local da máquina 24x7 (<code>http://localhost:8092</code>) ou via terminal (<code>atualizar_sistema.bat</code>).
+        </div>
+
         <!-- Protection Banner -->
-        <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 6px; padding: 10px; margin-bottom: 16px; font-size: 11px; color: #a7f3d0; line-height: 1.4;">
+        <div id="sys-update-protection-banner" style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 6px; padding: 10px; margin-bottom: 16px; font-size: 11px; color: #a7f3d0; line-height: 1.4;">
           🛡️ <strong>Segurança de Dados:</strong> O banco de dados SQLite local, credenciais e logs são preservados integralmente durante a atualização. O serviço Windows será reiniciado de forma transparente.
         </div>
 
@@ -6156,27 +6353,77 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=3.9.10"></script>
+  <!-- MODAL: DIAGNÓSTICO DE IA & CAUSA RAIZ COM GEOLOCALIZAÇÃO -->
+  <div class="modal-overlay" id="incidentAiModal" style="display: none; align-items: center; justify-content: center; z-index: 10000;">
+    <div class="modal" style="max-width: 720px; width: 94%; border: 1px solid #38bdf8; background: #0b1329; border-radius: 8px; box-shadow: 0 20px 35px -5px rgba(0, 0, 0, 0.8); padding: 24px;">
+      <div class="modal-header" style="border-bottom: 1px solid rgba(56, 189, 248, 0.3); padding-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 24px;">🧠</span>
+          <div>
+            <h3 style="margin: 0; color: #fff; font-size: 16px;" id="aiModalTitle">Diagnóstico de Engenharia com IA MediaDNA</h3>
+            <span style="font-size: 11px; color: #38bdf8;" id="aiModalSubtitle">Incidente INC-2026-0000 • Pelotas</span>
+          </div>
+        </div>
+        <button type="button" class="btn-secondary" style="padding: 4px 8px;" onclick="closeIncidentAiModal()">✕</button>
+      </div>
 
+      <div style="margin-top: 16px; max-height: 72vh; overflow-y: auto; padding-right: 4px;">
+        <!-- Card 1: Causa Raiz Comprovada -->
+        <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(239, 68, 68, 0.4); border-left: 4px solid #ef4444; border-radius: 6px; padding: 14px; margin-bottom: 14px;">
+          <div style="font-size: 11px; text-transform: uppercase; color: #f87171; font-weight: 700; margin-bottom: 6px;">
+            <i class="fas fa-microchip"></i> Causa Raiz Técnica Comprovada (Hardware / SO / Multiplex)
+          </div>
+          <div id="aiModalRootCause" style="font-size: 13px; color: #e2e8f0; line-height: 1.5;">
+            Analisando telemetria...
+          </div>
+        </div>
 
+        <!-- Card 2: Correlação com Torre de Transmissão & Geolocalização -->
+        <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(56, 189, 248, 0.3); border-left: 4px solid #38bdf8; border-radius: 6px; padding: 14px; margin-bottom: 14px;">
+          <div style="font-size: 11px; text-transform: uppercase; color: #38bdf8; font-weight: 700; margin-bottom: 6px;">
+            <i class="fas fa-broadcast-tower"></i> Topologia Física & Correlação Geográfica da Transmissora
+          </div>
+          <div id="aiModalGeoAnalysis" style="font-size: 13px; color: #cbd5e1; line-height: 1.5; margin-bottom: 10px;">
+            Calculando visada e atenuação de RF...
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; font-size: 11px; color: var(--text-muted); background: rgba(0,0,0,0.3); padding: 8px 12px; border-radius: 4px;">
+            <div>Torre: <strong style="color: #fff;" id="aiModalTowerName">--</strong></div>
+            <div>Distância: <strong style="color: #fff;" id="aiModalDistance">-- km</strong></div>
+            <div>Azimute: <strong style="color: #fff;" id="aiModalAzimuth">--°</strong></div>
+            <div>Confiabilidade IA: <strong style="color: #10b981;" id="aiModalConfidence">96.8%</strong></div>
+          </div>
+        </div>
 
-  <script src="/static/js/ai_insights.js?v=3.9.10"></script>
+        <!-- Card 3: Procedimentos Técnicos de Solução -->
+        <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(16, 185, 129, 0.3); border-left: 4px solid #10b981; border-radius: 6px; padding: 14px; margin-bottom: 16px;">
+          <div style="font-size: 11px; text-transform: uppercase; color: #34d399; font-weight: 700; margin-bottom: 8px;">
+            <i class="fas fa-tools"></i> Procedimentos Passo-a-Passo de Resolução Homologados
+          </div>
+          <ol id="aiModalStepsList" style="margin: 0; padding-left: 20px; font-size: 12px; color: #e2e8f0; line-height: 1.6;">
+            <li>Carregando passos técnicos...</li>
+          </ol>
+        </div>
+      </div>
 
+      <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 14px; margin-top: 8px;">
+        <span style="font-size: 11px; color: var(--text-muted);">Modelo: MediaDNA AI Engineering Engine v4.2</span>
+        <div style="display: flex; gap: 8px;">
+          <button type="button" class="btn-secondary" onclick="closeIncidentAiModal()" style="padding: 8px 16px;">Fechar</button>
+          <button type="button" class="btn-primary" id="btnExecuteAiAction" onclick="executeAiRecommendedAction()" style="padding: 8px 16px; background: linear-gradient(135deg, #0284c7, #2563eb); font-weight: 700;">
+            <i class="fas fa-bolt"></i> Executar Correção no CS
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
 
-
-  <script src="/static/js/fleet_ops.js?v=3.9.10"></script>
-
-
-
-  <script src="/static/js/remote_commands.js?v=3.9.10"></script>
-
-
-
-  <script src="/static/js/signals_analysis.js?v=3.9.10"></script>
-
-
-
-  <script src="/static/js/mosaic_wall.js?v=3.9.10"></script>
+  <script src="/static/js/app.js?v=3.9.11"></script>
+  <script src="/static/js/ai_insights.js?v=3.9.11"></script>
+  <script src="/static/js/fleet_ops.js?v=3.9.11"></script>
+  <script src="/static/js/remote_commands.js?v=3.9.11"></script>
+  <script src="/static/js/signals_analysis.js?v=3.9.11"></script>
+  <script src="/static/js/mosaic_wall.js?v=3.9.11"></script>
+  <script src="/static/js/topology_map.js?v=3.9.11"></script>
 
 
 

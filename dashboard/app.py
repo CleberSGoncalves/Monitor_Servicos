@@ -21,7 +21,7 @@ import os
 import sys
 from pathlib import Path
 from typing import Dict, Any, List, Optional
-from fastapi import FastAPI, Depends, HTTPException, status, Header, Query
+from fastapi import FastAPI, Depends, HTTPException, status, Header, Query, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -36,8 +36,9 @@ from auth import (
     search_ldap_users, hash_password, DB_PATH
 )
 from sharepoint_sync import get_cached_data, start_background_syncer, sync_fleet_data
-from incident_manager import register_incident_action, get_incident_history
-from thresholds_manager import get_all_thresholds, update_threshold
+from incident_manager import register_incident_action, get_incident_history, diagnose_incident_with_ai
+from thresholds_manager import get_all_thresholds, update_threshold, get_active_threshold_breaches
+from geo_topology import get_markets_map_data
 from ai_insights import run_ai_fleet_analysis, get_active_ai_suggestions, apply_ai_suggestion
 from fleet_actions import execute_predefined_action
 from remote_commands import (
@@ -368,8 +369,34 @@ async def trigger_action(req: FleetActionRequest, user: dict = Depends(get_curre
 
 
 @app.get("/api/incidents/history")
-async def list_incident_history(key: Optional[str] = None, user: dict = Depends(get_current_user)):
-    return get_incident_history(key)
+async def list_incident_history(
+    key: Optional[str] = None,
+    praca: Optional[str] = None,
+    incident_type: Optional[str] = None,
+    period: Optional[str] = "30d",
+    status: Optional[str] = None,
+    severity: Optional[str] = None,
+    limit: int = 100,
+    user: dict = Depends(get_current_user)
+):
+    return get_incident_history(
+        incident_key=key,
+        praca=praca,
+        incident_type=incident_type,
+        period=period,
+        status=status,
+        severity=severity,
+        limit=limit
+    )
+
+
+class IncidentAiRequest(BaseModel):
+    incident_code: str
+
+
+@app.post("/api/incidents/ai-root-cause")
+async def incident_ai_root_cause_endpoint(req: IncidentAiRequest, user: dict = Depends(get_current_user)):
+    return diagnose_incident_with_ai(req.incident_code)
 
 
 @app.post("/api/incidents/worklog")
@@ -391,6 +418,22 @@ async def add_worklog(req: IncidentActionRequest, user: dict = Depends(get_curre
 @app.get("/api/thresholds")
 async def list_thresholds(user: dict = Depends(get_current_user)):
     return get_all_thresholds()
+
+
+@app.get("/api/thresholds/breaches")
+async def get_threshold_breaches_endpoint(user: dict = Depends(get_current_user)):
+    data = get_cached_data()
+    services = data.get("services", [])
+    channels = data.get("channels", [])
+    return get_active_threshold_breaches(services, channels)
+
+
+@app.get("/api/fleet/topology-map")
+async def get_topology_map_endpoint(user: dict = Depends(get_current_user)):
+    data = get_cached_data()
+    services = data.get("services", [])
+    channels = data.get("channels", [])
+    return get_markets_map_data(channels, services)
 
 
 @app.post("/api/thresholds")
@@ -599,72 +642,169 @@ async def get_channel_jpeg(canal: str, praca: Optional[str] = None, mode: Option
     draw = ImageDraw.Draw(img)
 
     badge_bg = (37, 99, 235)
-    badge_txt = "DIGITAL HD"
-    chyron_title = "NOTICIAS DA REGIAO"
+    station_color = (2, 132, 199)
+    station_brand = "GLOBO"
+    badge_txt = "GLOBO HD"
+    chyron_title = "JORNAL NACIONAL • EDIÇÃO AO VIVO"
+
     if "globo" in c_lower:
         badge_bg = (2, 132, 199)
+        station_color = (2, 132, 199)
+        station_brand = "GLOBO"
         badge_txt = "GLOBO HD"
-        chyron_title = "JORNAL NACIONAL - AO VIVO"
+        chyron_title = "JORNAL NACIONAL • EDIÇÃO AO VIVO"
     elif "sbt" in c_lower:
         badge_bg = (217, 119, 6)
+        station_color = (217, 119, 6)
+        station_brand = "SBT"
         badge_txt = "SBT REDE"
-        chyron_title = "SBT BRASIL - AO VIVO"
+        chyron_title = "SBT BRASIL • TRANSMISSÃO DTV"
     elif "record" in c_lower:
         badge_bg = (79, 70, 229)
+        station_color = (79, 70, 229)
+        station_brand = "RECORD"
         badge_txt = "RECORD TV"
-        chyron_title = "JORNAL DA RECORD"
+        chyron_title = "JORNAL DA RECORD • COBERTURA REGIONAL"
     elif "band" in c_lower:
-        badge_bg = (13, 148, 136)
+        badge_bg = (234, 179, 8)
+        station_color = (234, 179, 8)
+        station_brand = "BAND"
         badge_txt = "BAND HD"
-        chyron_title = "JORNAL DA BAND"
+        chyron_title = "JORNAL DA BAND • REDE NACIONAL"
     elif "cultura" in c_lower:
         badge_bg = (225, 29, 72)
+        station_color = (225, 29, 72)
+        station_brand = "CULTURA"
         badge_txt = "CULTURA"
-        chyron_title = "JORNAL DA CULTURA"
+        chyron_title = "JORNAL DA CULTURA • AO VIVO"
+    else:
+        badge_bg = (59, 130, 246)
+        station_color = (59, 130, 246)
+        station_brand = "TV HD"
+        badge_txt = "DTV 1080i"
+        chyron_title = f"{canal[:18].upper()} • TRANSMISSÃO AO VIVO"
+
+    # Checa se o canal possui falha ativa (ex: Pelotas Rede Globo GOP Stall ou Queda)
+    is_fault = (mode == "fault") or any(kw in canal.lower() for kw in ["falha", "queda", "travad", "glitch"])
+    is_pelotas_gop = (praca and "pelotas" in praca.lower() and "globo" in c_lower)
 
     if mode == "real":
-        # MODO 1: FOTO/CENA DE BROADCAST REALISTA (STUDIO TV SCENE)
-        # Fundo de cenario de estudio jornalistico em degradê
-        for y in range(0, h):
-            ratio = y / h
-            r_c = int(10 + ratio * 25)
-            g_c = int(18 + ratio * 35)
-            b_c = int(40 + ratio * 65)
-            draw.line([(0, y), (w, y)], fill=(r_c, g_c, b_c))
+        if is_fault or is_pelotas_gop:
+            # FRAME FORENSE DE TRANSMISSÃO COM FALHA REAL (GOP STALL / OUTAGE)
+            # Fundo de vídeo congelado de estúdio com artefatos
+            for y in range(0, h):
+                ratio = y / h
+                draw.line([(0, y), (w, y)], fill=(int(18 + ratio * 15), int(22 + ratio * 18), int(35 + ratio * 28)))
 
-        # Globo/Mapa de estudio no fundo
-        draw.ellipse([w//2 - 60, h//2 - 40, w//2 + 60, h//2 + 40], outline=(40, 70, 130), width=2)
-        draw.line([w//2 - 60, h//2, w//2 + 60, h//2], fill=(40, 70, 130), width=1)
+            # Efeito macroblocking digital em faixas horizontais
+            for bx in range(30, w - 30, 40):
+                for by in range(40, 150, 32):
+                    if (bx + by) % 3 == 0:
+                        draw.rectangle([bx, by, bx + 38, by + 30], fill=(24, 48, 54), outline=(16, 185, 129))
+                    elif (bx * by) % 5 == 0:
+                        draw.rectangle([bx, by, bx + 38, by + 30], fill=(45, 20, 38), outline=(239, 68, 68))
 
-        # Bancada de apresentador (efeito perspectiva)
-        draw.polygon([(40, h - 55), (w - 40, h - 55), (w - 15, h - 25), (15, h - 25)], fill=(18, 30, 54), outline=(56, 189, 248))
+            # Banner Forense de Alerta Vermelho de Falha no Centro
+            draw.rectangle([20, 75, w - 20, 145], fill=(15, 23, 42), outline=(239, 68, 68), width=2)
+            draw.rectangle([24, 79, w - 24, 99], fill=(220, 38, 38))
+            draw.text((32, 83), "FALHA DE TRANSMISSÃO DETECTADA", fill=(255, 255, 255))
+            draw.text((32, 106), "TIPO: CONGELAMENTO DE QUADRO (GOP STALL)", fill=(248, 113, 113))
+            draw.text((32, 124), "PTS DELTA: 0.00s | KEYFRAME AUSENTE > 4.2s", fill=(254, 202, 202))
 
-        # Marca d'agua da emissora no canto superior direito
-        draw.rectangle([w - 82, 8, w - 8, 26], fill=(0, 0, 0))
-        draw.text((w - 76, 11), badge_txt, fill=(255, 255, 255))
+            # Logo da Emissora no Canto Superior
+            cx, cy = w - 30, 24
+            draw.ellipse([cx - 15, cy - 15, cx + 15, cy + 15], fill=(226, 232, 240), outline=(148, 163, 184), width=2)
+            draw.ellipse([cx - 5, cy - 5, cx + 5, cy + 5], fill=(239, 68, 68))
 
-        # Badge "AO VIVO" no canto superior esquerdo
-        draw.rectangle([8, 8, 72, 26], fill=(220, 38, 38))
-        draw.text((14, 11), "● AO VIVO", fill=(255, 255, 255))
+            # GC Congelado
+            draw.rectangle([0, h - 50, w, h - 22], fill=(15, 23, 42), outline=(239, 68, 68))
+            draw.text((14, h - 44), f"ALERTA OPERACIONAL: {canal[:20]} ({praca or 'CS'})", fill=(248, 113, 113))
 
-        # Tarja Jornalistica (Lower-Third Chyron)
-        draw.rectangle([0, h - 50, w, h - 28], fill=(15, 23, 42))
-        draw.rectangle([0, h - 50, 6, h - 28], fill=badge_bg)
-        draw.text((14, h - 46), f"{canal[:22].upper()}: {chyron_title}", fill=(248, 250, 252))
+            draw.rectangle([0, h - 22, w, h], fill=(8, 12, 22))
+            draw.text((10, h - 17), f"TIMESTAMP CONGELADO: 11:46:20 • FRAME 00:04:20", fill=(239, 68, 68))
 
-        # Barra OSD inferior com timecode da transmissao
-        draw.rectangle([0, h - 24, w, h], fill=(8, 12, 22))
-        tc = datetime.now().strftime("%H:%M:%S") + ":22"
-        draw.text((10, h - 18), f"{praca or 'CS'} • {tc} • 1080i @ 29.97 FPS", fill=(148, 163, 184))
-        draw.text((w - 68, h - 18), "ISDB-Tb", fill=(16, 185, 129))
+        else:
+            # CENA REALISTA DE ESTÚDIO DE TV BROADCAST (STUDIO TV SCENE)
+            # 1. Fundo do estúdio: iluminação cenográfica azul e cobalto
+            for y in range(0, h):
+                ratio = y / h
+                r_c = int(10 + ratio * 18)
+                g_c = int(16 + ratio * 30)
+                b_c = int(45 + ratio * 58)
+                draw.line([(0, y), (w, y)], fill=(r_c, g_c, b_c))
+
+            # 2. Parede de Vídeo / Skyline de Edifícios Iluminados ao Fundo
+            skylines = [(15, 45, 42, 145), (46, 68, 75, 145), (78, 38, 112, 145), (116, 58, 152, 145),
+                        (156, 32, 196, 145), (200, 62, 232, 145), (236, 42, 272, 145), (276, 52, 308, 145)]
+            for x1, y1, x2, y2 in skylines:
+                draw.rectangle([x1, y1, x2, y2], fill=(16, 26, 50), outline=(28, 44, 78))
+                for wx in range(x1 + 4, x2 - 4, 6):
+                    for wy in range(y1 + 6, y2 - 10, 8):
+                        wcol = (250, 204, 21) if (wx + wy) % 5 == 0 else ((56, 189, 248) if (wx * wy) % 3 == 0 else (26, 42, 75))
+                        draw.rectangle([wx, wy, wx + 3, wy + 4], fill=wcol)
+
+            # 3. Painel de LED Curvo do Cenário (faixas luminosas azuis)
+            for i in range(2):
+                draw.line([(10, 142 + i), (w - 10, 142 + i)], fill=(37, 99, 235))
+
+            # 4. Bancada do Apresentador (Perspectiva realista de estúdio)
+            draw.polygon([(30, 160), (w - 30, 160), (w - 10, 205), (10, 205)], fill=(15, 23, 42), outline=(56, 189, 248))
+            draw.polygon([(40, 162), (w - 40, 162), (w - 22, 195), (22, 195)], fill=(22, 36, 64))
+            draw.line([(45, 164), (w - 45, 164)], fill=(125, 211, 252))
+
+            # 5. Silhueta do Apresentador / Âncora no centro da bancada
+            draw.ellipse([w//2 - 18, 98, w//2 + 18, 134], fill=(16, 25, 48), outline=(35, 52, 90))
+            draw.polygon([(w//2 - 38, 185), (w//2 + 38, 185), (w//2 + 28, 134), (w//2 - 28, 134)], fill=(16, 25, 48), outline=(35, 52, 90))
+
+            # 6. Logotipo Oficial da Emissora (Bug) no Canto Superior Direito
+            if station_brand == "GLOBO":
+                cx, cy = w - 30, 24
+                draw.ellipse([cx - 15, cy - 15, cx + 15, cy + 15], fill=(226, 232, 240), outline=(148, 163, 184), width=2)
+                draw.ellipse([cx - 10, cy - 10, cx + 10, cy + 10], fill=(15, 23, 42), outline=(56, 189, 248), width=1)
+                draw.ellipse([cx - 4, cy - 4, cx + 4, cy + 4], fill=(56, 189, 248))
+            elif station_brand == "SBT":
+                cx, cy = w - 30, 24
+                draw.ellipse([cx - 14, cy - 14, cx + 14, cy + 14], fill=(245, 158, 11), outline=(255, 255, 255), width=2)
+                draw.pieslice([cx - 12, cy - 12, cx + 12, cy + 12], 0, 90, fill=(239, 68, 68))
+                draw.pieslice([cx - 12, cy - 12, cx + 12, cy + 12], 90, 180, fill=(59, 130, 246))
+                draw.pieslice([cx - 12, cy - 12, cx + 12, cy + 12], 180, 270, fill=(16, 185, 129))
+                draw.pieslice([cx - 12, cy - 12, cx + 12, cy + 12], 270, 360, fill=(245, 158, 11))
+                draw.ellipse([cx - 6, cy - 6, cx + 6, cy + 6], fill=(255, 255, 255))
+            elif station_brand == "RECORD":
+                cx, cy = w - 30, 24
+                draw.ellipse([cx - 14, cy - 14, cx + 14, cy + 14], fill=(30, 58, 138), outline=(203, 213, 225), width=2)
+                draw.ellipse([cx - 7, cy - 7, cx + 7, cy + 7], fill=(59, 130, 246))
+            elif station_brand == "BAND":
+                cx, cy = w - 30, 24
+                draw.polygon([(cx, cy - 14), (cx + 15, cy), (cx, cy + 14), (cx - 15, cy)], fill=(234, 179, 8), outline=(255, 255, 255), width=1)
+                draw.ellipse([cx - 5, cy - 5, cx + 5, cy + 5], fill=(15, 23, 42))
+            else:
+                draw.rectangle([w - 65, 12, w - 10, 28], fill=(15, 23, 42), outline=(56, 189, 248))
+                draw.text((w - 58, 14), station_brand, fill=(255, 255, 255))
+
+            # 7. Badge "AO VIVO" no Canto Superior Esquerdo
+            draw.rectangle([10, 12, 74, 28], fill=(220, 38, 38))
+            draw.text((16, 14), "● AO VIVO", fill=(255, 255, 255))
+
+            # 8. GC (Gerador de Caracteres) / Lower-Third Jornalístico Realista
+            draw.rectangle([0, h - 54, w, h - 22], fill=(10, 16, 30))
+            draw.rectangle([0, h - 54, w, h - 51], fill=station_color)
+            draw.rectangle([10, h - 50, 48, h - 36], fill=station_color)
+            draw.text((14, h - 48), station_brand[:5], fill=(255, 255, 255))
+            draw.text((54, h - 48), chyron_title, fill=(255, 255, 255))
+
+            # Ticker e Relógio em Tempo Real
+            draw.rectangle([0, h - 22, w, h], fill=(6, 10, 20))
+            tc_now = datetime.now().strftime("%H:%M:%S")
+            draw.text((10, h - 17), f"{tc_now} • {praca or 'BRASIL'} • DTV ISDB-Tb 1080i", fill=(148, 163, 184))
+            draw.text((w - 65, h - 17), "HD • 5.1", fill=(16, 185, 129))
 
     else:
-        # MODO 2: TELEMETRIA TECNICA E DIAGNOSTICO DE ENGENHARIA
+        # MODO DIAGNÓSTICO: TELEMETRIA TÉCNICA E ENGENHARIA
         for y in range(0, h, 2):
             shade = int(14 + (y / h) * 18)
             draw.line([(0, y), (w, y)], fill=(shade, shade + 4, shade + 14))
 
-        # Barra superior de OSD Broadcast
         draw.rectangle([0, 0, w, 28], fill=(15, 23, 42))
         draw.rectangle([8, 5, 80, 23], fill=badge_bg)
         draw.text((14, 8), badge_txt, fill=(255, 255, 255))
@@ -690,6 +830,14 @@ async def get_channel_jpeg(canal: str, praca: Optional[str] = None, mode: Option
         now_tc = datetime.now().strftime("%H:%M:%S") + ":14"
         draw.text((10, h - 20), f"TC: {now_tc} • 1920x1080i", fill=(100, 116, 139))
         draw.text((w - 72, h - 20), "14.2 Mbps", fill=(56, 189, 248))
+
+    # Salva o frame gerado no cache físico em disco
+    try:
+        jpeg_cache_dir = DATA_DIR / "jpeg"
+        jpeg_cache_dir.mkdir(parents=True, exist_ok=True)
+        img.save(jpeg_cache_dir / f"{safe_name}.jpg", format="JPEG", quality=88)
+    except Exception:
+        pass
 
     buf = BytesIO()
     img.save(buf, format="JPEG", quality=88)
@@ -797,8 +945,17 @@ async def get_system_version_endpoint(user: dict = Depends(get_current_user)):
 
 
 @app.post('/api/system/update')
-async def apply_system_update_endpoint(restart_service: bool = True, user: dict = Depends(get_current_user)):
+async def apply_system_update_endpoint(request: Request, restart_service: bool = True, force_remote: bool = False, user: dict = Depends(get_current_user)):
     """Aplica a atualizacao do branch main e reinicia o servico Windows de forma assincrona e segura."""
+    client_host = request.client.host if request.client else "unknown"
+    is_localhost = client_host in ["127.0.0.1", "::1", "localhost", "testclient"]
+    if not is_localhost and not force_remote:
+        return {
+            "status": "error",
+            "is_remote_restricted": True,
+            "message": "🔒 Atualização permitida apenas no console local da máquina 24x7 (localhost) ou via 'atualizar_sistema.bat' para preservar a segurança operacional da frota."
+        }
+
     try:
         res = apply_update()
     except Exception as e:

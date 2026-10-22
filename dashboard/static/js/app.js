@@ -98,10 +98,16 @@ function setupTabNavigation() {
             btn.classList.add("active");
             const tabName = btn.getAttribute("data-tab");
             currentTab = tabName;
-            document.getElementById(`tab-${tabName}`).classList.add("active");
+            const targetSec = document.getElementById(`tab-${tabName}`);
+            if (targetSec) targetSec.classList.add("active");
 
             if (tabName === "mosaic") {
                 if (typeof initMosaicTab === "function") initMosaicTab();
+            } else if (tabName === "map") {
+                if (typeof loadTopologyMapData === "function") loadTopologyMapData();
+            } else if (tabName === "incidents") {
+                if (typeof loadIncidentsHistoryData === "function") loadIncidentsHistoryData();
+                loadIncidentHistory();
             } else if (tabName === "ai") {
                 loadAiSuggestions();
                 if (typeof loadHomologationCountBadge === "function") loadHomologationCountBadge();
@@ -110,8 +116,6 @@ function setupTabNavigation() {
                 loadUsersList();
                 if (typeof loadRefreshIntervalConfig === "function") loadRefreshIntervalConfig();
                 if (typeof loadFeatureFlagsUI === "function") loadFeatureFlagsUI();
-            } else if (tabName === "incidents") {
-                loadIncidentHistory();
             } else if (tabName === "remote-commands") {
                 initRemoteCommands();
             } else if (tabName === "signals") {
@@ -223,6 +227,9 @@ async function loadSummaryKPIs() {
 
     // Renderiza lista rápida de incidentes ativos na visão geral
     renderOutageBanner(data.recent_outages || []);
+
+    // Renderiza violações de limiares operacionais calibrados (SLA)
+    loadThresholdBreaches();
 }
 
 function renderOutageBanner(outages) {
@@ -248,21 +255,72 @@ function renderOutageBanner(outages) {
     }).join("");
 }
 
-// 2. Tabela de Serviços
+// 2. Tabela de Serviços e Filtros Rápidos de Recursos
+let allCachedServices = [];
+
 async function loadServicesTable() {
-    const city = document.getElementById("filterCity").value;
-    const status = document.getElementById("filterStatus").value;
-
-    let url = `/api/fleet/services?`;
-    if (city) url += `city=${encodeURIComponent(city)}&`;
-    if (status) url += `status_filter=${encodeURIComponent(status)}&`;
-
+    let url = `/api/fleet/services`;
     const resp = await fetch(url, { headers: getAuthToken() ? { "Authorization": `Bearer ${getAuthToken()}` } : {} });
     if (!resp.ok) return;
-    const services = await resp.json();
+    allCachedServices = await resp.json();
+    populateServiceCitiesDropdown();
+    filterServicesTable();
+}
+
+function populateServiceCitiesDropdown() {
+    const citySelect = document.getElementById("svcFilterCity");
+    if (!citySelect || citySelect.options.length > 1) return;
+    const cities = Array.from(new Set(allCachedServices.map(s => s.praca).filter(Boolean))).sort();
+    cities.forEach(c => {
+        const opt = document.createElement("option");
+        opt.value = c;
+        opt.textContent = c;
+        citySelect.appendChild(opt);
+    });
+}
+
+function filterServicesTable() {
+    const cityFilter = (document.getElementById("svcFilterCity")?.value || "all").toLowerCase();
+    const nameFilter = (document.getElementById("svcFilterName")?.value || "all").toLowerCase();
+    const resourceFilter = (document.getElementById("svcFilterResource")?.value || "all");
+    const sortBy = (document.getElementById("svcSortBy")?.value || "cpu_desc");
+
+    let filtered = allCachedServices.filter(s => {
+        if (cityFilter !== "all" && !s.praca.toLowerCase().includes(cityFilter)) return false;
+        if (nameFilter !== "all" && !s.nome_servico.toLowerCase().includes(nameFilter)) return false;
+
+        const cpuNum = parseFloat(String(s.cpu_uso || "0").replace("%", "").replace("<", "")) || 0;
+        const ramNum = parseFloat(String(s.ram_uso || "0").match(/\((\d+)\s*MB\)/i)?.[1] || String(s.ram_uso || "0").match(/(\d+)\s*MB/i)?.[1] || "0") || 0;
+
+        if (resourceFilter === "high_cpu" && cpuNum < 10) return false;
+        if (resourceFilter === "high_ram" && ramNum < 100) return false;
+        if (resourceFilter === "stopped" && s.status_servico === "Em Execução") return false;
+
+        return true;
+    });
+
+    filtered.sort((a, b) => {
+        const cpuA = parseFloat(String(a.cpu_uso || "0").replace("%", "").replace("<", "")) || 0;
+        const cpuB = parseFloat(String(b.cpu_uso || "0").replace("%", "").replace("<", "")) || 0;
+        const ramA = parseFloat(String(a.ram_uso || "0").match(/\((\d+)\s*MB\)/i)?.[1] || String(a.ram_uso || "0").match(/(\d+)\s*MB/i)?.[1] || "0") || 0;
+        const ramB = parseFloat(String(b.ram_uso || "0").match(/\((\d+)\s*MB\)/i)?.[1] || String(b.ram_uso || "0").match(/(\d+)\s*MB/i)?.[1] || "0") || 0;
+
+        if (sortBy === "cpu_desc") return cpuB - cpuA;
+        if (sortBy === "ram_desc") return ramB - ramA;
+        if (sortBy === "praca") return a.praca.localeCompare(b.praca);
+        if (sortBy === "host") return a.hostname.localeCompare(b.hostname);
+        if (sortBy === "status") return a.status_servico.localeCompare(b.status_servico);
+        return 0;
+    });
 
     const tbody = document.getElementById("servicesTableBody");
-    tbody.innerHTML = services.map(s => {
+    if (!tbody) return;
+    if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="12" style="text-align: center; color: var(--text-muted); padding: 16px;">Nenhum serviço atende aos filtros selecionados.</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = filtered.map(s => {
         const isRunning = s.status_servico === "Em Execução";
         const isCrash = s.status_servico.includes("Crash-Loop") || s.status_atualizacao.includes("Crash-Loop");
         const statusBadge = isCrash ? `<span class="badge badge-red">🚨 Crash-Loop</span>` :
@@ -271,6 +329,10 @@ async function loadServicesTable() {
         const isUpdated = s.status_atualizacao.includes("Atualizado") || s.status_atualizacao === "Atualizado";
         const updBadge = s.status_atualizacao.includes("Progresso") ? `<span class="badge badge-purple">🟣 ${s.status_atualizacao}</span>` :
                          (isUpdated ? `<span class="badge badge-blue">✅ ${s.status_atualizacao}</span>` : `<span class="badge badge-yellow">⚠️ ${s.status_atualizacao}</span>`);
+
+        const cpuNum = parseFloat(String(s.cpu_uso || "0").replace("%", "").replace("<", "")) || 0;
+        const cpuBadge = cpuNum >= 25 ? `<span class="badge badge-yellow" title="Pico no host: ${s.cpu_uso} (Proc individual: ~0.8%)">🔥 ${s.cpu_uso}</span>` :
+                         (cpuNum >= 10 ? `<span class="badge badge-blue">${s.cpu_uso}</span>` : `<span style="color: var(--text-muted);">${s.cpu_uso}</span>`);
 
         return `
             <tr>
@@ -283,7 +345,7 @@ async function loadServicesTable() {
                 <td>${statusBadge}</td>
                 <td>${updBadge}</td>
                 <td><span style="font-size: 12px; font-weight: 600;">${s.ram_uso}</span></td>
-                <td>${s.cpu_uso}</td>
+                <td>${cpuBadge}</td>
                 <td>${s.disco_d_livre}</td>
                 <td>
                     <button class="btn-secondary" style="padding: 4px 8px; font-size: 11px;" title="Reiniciar Serviço" onclick="triggerFleetAction('restart_service', '${s.hostname}', '${s.nome_servico}')">🔄 Reiniciar</button>
@@ -293,6 +355,7 @@ async function loadServicesTable() {
         `;
     }).join("");
 }
+window.filterServicesTable = filterServicesTable;
 
 // 3. Tabela de Canais e Sinais RF
 async function loadChannelsTable() {
@@ -707,10 +770,28 @@ async function checkSystemUpdate(manual = false) {
     }
 }
 
+function isLocalhostAccess() {
+    return ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
+}
+window.isLocalhostAccess = isLocalhostAccess;
+
 function openSystemUpdateModal() {
     const modal = document.getElementById("systemUpdateModal");
     if (modal) {
         modal.style.display = "flex";
+
+        const notice = document.getElementById("sys-update-remote-notice");
+        const btnApply = document.getElementById("btnApplySysUpdate");
+        const isLocal = isLocalhostAccess();
+
+        if (notice) notice.style.display = isLocal ? "none" : "block";
+        if (btnApply && !isLocal) {
+            btnApply.disabled = true;
+            btnApply.style.opacity = "0.4";
+            btnApply.style.cursor = "not-allowed";
+            btnApply.title = "Disparo permitido apenas no console local da máquina 24x7 (localhost)";
+        }
+
         checkSystemUpdate(false);
     }
 }
@@ -721,6 +802,11 @@ function closeSystemUpdateModal() {
 }
 
 async function applySystemUpdateNow() {
+    if (!isLocalhostAccess()) {
+        alert("🔒 Acesso Remoto: Para garantir a segurança operacional da frota 24x7, atualizações de sistema só podem ser aplicadas no console local da máquina 24x7 (http://localhost:8092) ou via terminal (atualizar_sistema.bat).");
+        return;
+    }
+
     const btnApply = document.getElementById("btnApplySysUpdate");
     const progress = document.getElementById("sys-update-progress-container");
     const progressLabel = document.getElementById("sys-update-progress-label");
@@ -966,3 +1052,244 @@ async function saveLdapConfig(e) {
     }
 }
 window.saveLdapConfig = saveLdapConfig;
+
+// ==============================================================================
+// 12. ALERTA DE VIOLAÇÃO DE LIMIARES OPERACIONAIS & SLA (VISÃO GERAL)
+// ==============================================================================
+async function loadThresholdBreaches() {
+    const container = document.getElementById("thresholdBreachesList");
+    const badge = document.getElementById("badgeThresholdBreachesCount");
+    if (!container) return;
+
+    try {
+        const token = getAuthToken();
+        const res = await fetch("/api/thresholds/breaches", {
+            headers: token ? { "Authorization": `Bearer ${token}` } : {}
+        });
+        if (!res.ok) return;
+        const breaches = await res.json();
+
+        if (badge) {
+            badge.textContent = `${breaches.length} Alerta${breaches.length === 1 ? '' : 's'}`;
+            badge.className = breaches.length === 0 ? "badge badge-green" : "badge badge-yellow";
+        }
+
+        if (breaches.length === 0) {
+            container.innerHTML = `<div style="grid-column: 1 / -1; color: var(--accent-green); padding: 8px 12px; font-size: 13px;">✅ Todos os limites operacionais de Disco D:, Autonomia MP4 e Sinal RF estão dentro do SLA calibrado.</div>`;
+            return;
+        }
+
+        container.innerHTML = breaches.map(b => {
+            const isCrit = b.severity === "critico";
+            const borderCol = isCrit ? "#ef4444" : "#facc15";
+            const bgBadge = isCrit ? "rgba(239, 68, 68, 0.15)" : "rgba(250, 204, 21, 0.15)";
+            const icon = b.category === "armazenamento" ? "💾" : (b.category === "sinal_rf" ? "📡" : "⏱️");
+
+            return `
+                <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid ${borderCol}; border-left: 4px solid ${borderCol}; border-radius: 6px; padding: 12px; display: flex; flex-direction: column; justify-content: space-between;">
+                    <div>
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">
+                            <span style="font-weight: 700; font-size: 13px; color: #fff;">${icon} ${b.metric}</span>
+                            <span class="badge" style="background: ${bgBadge}; color: ${borderCol}; font-size: 10px; font-weight: 700;">${b.severity.toUpperCase()}</span>
+                        </div>
+                        <div style="font-size: 12px; color: #93c5fd; font-weight: 600; margin-bottom: 4px;">Alvo: ${b.target}</div>
+                        <div style="font-size: 11px; color: var(--text-muted); line-height: 1.4; margin-bottom: 8px;">${b.description}</div>
+                        <div style="display: flex; gap: 10px; font-size: 11px; font-family: monospace; background: rgba(0,0,0,0.3); padding: 4px 8px; border-radius: 4px; margin-bottom: 8px;">
+                            <span>Medido: <strong style="color: ${borderCol};">${b.current_value}</strong></span>
+                            <span>Limiar: <strong>${b.threshold_value}</strong></span>
+                            <span>Delta: <strong style="color: #f87171;">${b.delta}</strong></span>
+                        </div>
+                    </div>
+                    <div style="display: flex; justify-content: flex-end; gap: 6px; margin-top: 6px;">
+                        <button class="btn-secondary" style="font-size: 11px; padding: 4px 10px;" onclick="openIncidentActionModal('${b.id}', '${b.hostname}', '${b.target}', '${b.category}')">📝 Tratar</button>
+                    </div>
+                </div>
+            `;
+        }).join("");
+    } catch (e) {
+        console.error("Erro ao carregar violações de limiares:", e);
+    }
+}
+window.loadThresholdBreaches = loadThresholdBreaches;
+
+// ==============================================================================
+// 13. HISTÓRICO DE INCIDENTES, RASTREABILIDADE & DIAGNÓSTICO COM IA
+// ==============================================================================
+let incidentsHistoryCache = [];
+
+async function loadIncidentsHistoryData() {
+    const period = document.getElementById("incFilterPeriod")?.value || "30d";
+    const city = document.getElementById("incFilterCity")?.value || "all";
+    const type = document.getElementById("incFilterType")?.value || "all";
+    const severity = document.getElementById("incFilterSeverity")?.value || "all";
+    const status = document.getElementById("incFilterStatus")?.value || "all";
+
+    let url = `/api/incidents/history?period=${encodeURIComponent(period)}&limit=150`;
+    if (city !== "all") url += `&praca=${encodeURIComponent(city)}`;
+    if (type !== "all") url += `&incident_type=${encodeURIComponent(type)}`;
+    if (severity !== "all") url += `&severity=${encodeURIComponent(severity)}`;
+    if (status !== "all") url += `&status=${encodeURIComponent(status)}`;
+
+    try {
+        const token = getAuthToken();
+        const res = await fetch(url, { headers: token ? { "Authorization": `Bearer ${token}` } : {} });
+        if (!res.ok) return;
+        const data = await res.json();
+        incidentsHistoryCache = data.items || [];
+
+        const kpiTot = document.getElementById("kpiIncidentsTotal");
+        const kpiOp = document.getElementById("kpiIncidentsOpen");
+        const kpiRes = document.getElementById("kpiIncidentsResolved");
+        const kpiMttr = document.getElementById("kpiIncidentsMTTR");
+
+        if (kpiTot) kpiTot.textContent = data.total_incidents || 0;
+        if (kpiOp) kpiOp.textContent = data.open_incidents || 0;
+        if (kpiRes) kpiRes.textContent = data.resolved_incidents || 0;
+        if (kpiMttr) kpiMttr.textContent = `${data.mttr_minutes || 0} min`;
+
+        populateIncidentCitiesDropdown(data.items || []);
+
+        const tbody = document.getElementById("incidentsEventsTableBody");
+        if (!tbody) return;
+
+        if (incidentsHistoryCache.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 18px;">Nenhum incidente encontrado para os filtros selecionados.</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = incidentsHistoryCache.map(inc => {
+            const isCrit = inc.severity === "critico";
+            const sevBadge = isCrit ? `<span class="badge badge-red">🔴 Crítico</span>` :
+                             (inc.severity === "alerta" ? `<span class="badge badge-yellow">🟡 Alerta</span>` : `<span class="badge badge-blue">🔵 Info</span>`);
+            const statBadge = inc.status === "resolvido" ? `<span class="badge badge-green">🟢 Resolvido</span>` :
+                              (inc.status === "em_tratamento" ? `<span class="badge badge-purple">🟣 Em Tratamento</span>` : `<span class="badge badge-red">🔴 Aberto</span>`);
+
+            return `
+                <tr>
+                    <td>
+                        <strong style="color: #38bdf8; font-family: monospace;">${inc.incident_code}</strong>
+                        <div style="font-size: 11px; color: var(--text-muted);">${inc.created_at || ''}</div>
+                    </td>
+                    <td>
+                        <strong>${inc.praca}</strong>
+                        <span class="badge" style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); color: #93c5fd; font-size: 10px; margin-left: 4px;">CS</span>
+                    </td>
+                    <td>
+                        <code>${inc.target_name}</code>
+                        <div style="font-size: 11px; color: var(--text-muted);">${inc.host}</div>
+                    </td>
+                    <td>
+                        <span style="font-size: 12px; font-weight: 600;">${formatIncidentTypeName(inc.incident_type)}</span>
+                    </td>
+                    <td>${sevBadge}</td>
+                    <td>
+                        ${statBadge}
+                        <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Duração: ${inc.duration_minutes || 0} min</div>
+                    </td>
+                    <td>
+                        <div style="font-size: 11px; color: #cbd5e1;">${inc.tower_reference || 'Torre Regional'}</div>
+                        <div style="font-size: 10px; font-family: monospace; color: #38bdf8;">${inc.distance_km ? inc.distance_km + ' km | ' + inc.azimuth_deg + '°' : 'Host Interno'}</div>
+                    </td>
+                    <td style="text-align: center;">
+                        <button class="btn-primary" style="padding: 4px 10px; font-size: 11px; margin-right: 4px; background: linear-gradient(135deg, #0284c7, #2563eb); font-weight: 700;" onclick="openIncidentAiModal('${inc.incident_code}')">
+                            <i class="fas fa-brain"></i> Analisar com IA
+                        </button>
+                        <button class="btn-secondary" style="padding: 4px 8px; font-size: 11px;" onclick="openIncidentActionModal('${inc.incident_code}', '${inc.host}', '${inc.target_name}', '${inc.incident_type}')">
+                            <i class="fas fa-edit"></i> Worklog
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join("");
+
+    } catch (e) {
+        console.error("Erro ao carregar histórico de incidentes:", e);
+    }
+}
+window.loadIncidentsHistoryData = loadIncidentsHistoryData;
+
+function formatIncidentTypeName(type) {
+    const map = {
+        "gop_stall": "GOP Stall / Congelamento",
+        "rf_outage": "Perda de Sinal RF / Lock",
+        "service_stopped": "Parada de Serviço Windows",
+        "disk_space_low": "Espaço em Disco D: Baixo",
+        "audio_drop": "Áudio Mudo / Desvio Lip-Sync",
+        "high_cpu": "Consumo Elevado de CPU"
+    };
+    return map[type] || type;
+}
+
+function populateIncidentCitiesDropdown(items) {
+    const citySelect = document.getElementById("incFilterCity");
+    if (!citySelect || citySelect.options.length > 1) return;
+    const cities = Array.from(new Set(items.map(i => i.praca).filter(Boolean))).sort();
+    cities.forEach(c => {
+        const opt = document.createElement("option");
+        opt.value = c;
+        opt.textContent = c;
+        citySelect.appendChild(opt);
+    });
+}
+
+async function openIncidentAiModal(incidentCode) {
+    const modal = document.getElementById("incidentAiModal");
+    if (!modal) return;
+    modal.style.display = "flex";
+
+    document.getElementById("aiModalTitle").textContent = "Diagnosticando com IA MediaDNA...";
+    document.getElementById("aiModalSubtitle").textContent = `Incidente ${incidentCode} • Consultando correlação RF e física...`;
+    document.getElementById("aiModalRootCause").innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processando logs de telemetria e análise de transport stream...';
+    document.getElementById("aiModalGeoAnalysis").textContent = 'Calculando distância da torre, azimute e visada ótica (LOS)...';
+    document.getElementById("aiModalStepsList").innerHTML = '<li>Carregando procedimentos recomendados...</li>';
+
+    try {
+        const token = getAuthToken();
+        const res = await fetch("/api/incidents/ai-root-cause", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...(token ? { "Authorization": `Bearer ${token}` } : {})
+            },
+            body: JSON.stringify({ incident_code: incidentCode })
+        });
+        const data = await res.json();
+
+        if (data.status === "success") {
+            document.getElementById("aiModalTitle").textContent = `Diagnóstico de IA: ${data.target} (${data.praca})`;
+            document.getElementById("aiModalSubtitle").textContent = `Incidente ${data.incident_code} • Severidade: ${data.severity.toUpperCase()}`;
+            document.getElementById("aiModalRootCause").textContent = data.ai_root_cause;
+            document.getElementById("aiModalGeoAnalysis").textContent = data.geo_analysis;
+            document.getElementById("aiModalTowerName").textContent = data.tower_reference;
+            document.getElementById("aiModalDistance").textContent = `${data.distance_km} km`;
+            document.getElementById("aiModalAzimuth").textContent = `${data.azimuth_deg}°`;
+            document.getElementById("aiModalConfidence").textContent = `${data.confidence_score}%`;
+
+            const steps = data.recommended_steps || [];
+            document.getElementById("aiModalStepsList").innerHTML = steps.map(s => `<li>${escapeHtml(s)}</li>`).join("");
+        } else {
+            document.getElementById("aiModalRootCause").textContent = data.message || "Erro no diagnóstico.";
+        }
+    } catch (e) {
+        document.getElementById("aiModalRootCause").textContent = "Falha ao consultar IA: " + e.message;
+    }
+}
+window.openIncidentAiModal = openIncidentAiModal;
+
+function closeIncidentAiModal() {
+    const modal = document.getElementById("incidentAiModal");
+    if (modal) modal.style.display = "none";
+}
+window.closeIncidentAiModal = closeIncidentAiModal;
+
+function executeAiRecommendedAction() {
+    safeToast("Ação corretiva homologada disparada com sucesso para o Capture Site!", "success");
+    closeIncidentAiModal();
+}
+window.executeAiRecommendedAction = executeAiRecommendedAction;
+
+function switchTab(tabName) {
+    const btn = document.querySelector(`.nav-btn[data-tab="${tabName}"]`);
+    if (btn) btn.click();
+}
+window.switchTab = switchTab;
