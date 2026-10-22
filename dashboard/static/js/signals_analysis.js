@@ -434,6 +434,12 @@ async function triggerAiSignalDiagnosis() {
     btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Analisando RF & Hardware...`;
 
     try {
+        const pracaSelect = document.getElementById("signalsFilterPraca");
+        const canalSelect = document.getElementById("signalsFilterCanal");
+        const selectedOpt = canalSelect ? canalSelect.options[canalSelect.selectedIndex] : null;
+        const csVal = selectedOpt ? parseInt(selectedOpt.getAttribute("data-cs") || "1", 10) : 1;
+        const hostVal = selectedOpt ? selectedOpt.getAttribute("data-host") : "";
+
         const resp = await fetch("/api/fleet/channels/ai-diagnose", {
             method: "POST",
             headers: {
@@ -443,7 +449,9 @@ async function triggerAiSignalDiagnosis() {
             body: JSON.stringify({
                 praca: currentSignalsPraca,
                 canal: currentSignalsCanal,
-                period: currentSignalsPeriod
+                period: currentSignalsPeriod,
+                cs: csVal,
+                host: hostVal
             })
         });
 
@@ -499,8 +507,8 @@ function renderAiDiagnosisResult(diag) {
                 </div>
                 <pre style="margin: 0; color: #34d399; font-family: monospace; font-size: 11px; white-space: pre-wrap;" id="ai-script-content">${diag.script_auto_healing}</pre>
                 <div style="margin-top: 10px; display: flex; justify-content: flex-end;">
-                    <button class="btn-primary" style="font-size: 12px; padding: 6px 14px; background: #2563eb;" onclick="executeAiDiagScript('${diag.praca.replace(/'/g, "\\'")}', '${diag.canal.replace(/'/g, "\\'")}')">
-                        <i class="fas fa-play"></i> Enviar Comando Remoto para ${diag.praca}
+                    <button class="btn-primary" style="font-size: 12px; padding: 6px 14px; background: #2563eb;" onclick="executeAiDiagScript('${diag.praca.replace(/'/g, "\\'")}', '${diag.canal.replace(/'/g, "\\'")}', ${diag.cs || 1}, '${diag.host || ''}')">
+                        <i class="fas fa-play"></i> Enviar Comando Remoto para ${diag.praca} [${diag.host || 'CS ' + (diag.cs || 1)}]
                     </button>
                 </div>
             </div>
@@ -555,32 +563,67 @@ function renderAiDiagnosisResult(diag) {
 function copyAiScript(btn) {
     const pre = document.getElementById("ai-script-content");
     if (!pre) return;
-    navigator.clipboard.writeText(pre.innerText).then(() => {
-        btn.innerText = "Copiado!";
-        setTimeout(() => btn.innerText = "Copiar", 2000);
-    });
+    const text = pre.innerText;
+
+    const doFallback = () => {
+        try {
+            const ta = document.createElement("textarea");
+            ta.value = text;
+            ta.style.position = "fixed";
+            ta.style.left = "-9999px";
+            ta.style.top = "0";
+            document.body.appendChild(ta);
+            ta.focus();
+            ta.select();
+            const ok = document.execCommand("copy");
+            document.body.removeChild(ta);
+            if (ok) {
+                btn.innerText = "Copiado!";
+                setTimeout(() => btn.innerText = "Copiar", 2000);
+            } else {
+                prompt("Copie o script de correção:", text);
+            }
+        } catch (e) {
+            prompt("Copie o script de correção:", text);
+        }
+    };
+
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(() => {
+            btn.innerText = "Copiado!";
+            setTimeout(() => btn.innerText = "Copiar", 2000);
+        }).catch(doFallback);
+    } else {
+        doFallback();
+    }
 }
 window.copyAiScript = copyAiScript;
 
-async function executeAiDiagScript(praca, canal) {
+async function executeAiDiagScript(praca, canal, cs = 1, host = "") {
     const pre = document.getElementById("ai-script-content");
     if (!pre) return;
     const script = pre.innerText.trim();
 
-    // Identifica o hostname correspondente (ex: BRRS-PLT-DT01 para Pelotas CS 1)
-    let targetHost = "BRRS-PLT-DT01";
-    if (typeof allFleetHostsData !== "undefined" && Array.isArray(allFleetHostsData)) {
-        const found = allFleetHostsData.find(h => 
-            (h.praca && h.praca.toLowerCase().includes(praca.toLowerCase())) ||
-            (h.hostname && h.hostname.toLowerCase().includes("plt"))
-        );
-        if (found) targetHost = found.hostname;
+    // Identifica com precisão cirúrgica o host correspondente à Praça e ao CS escolhido
+    let targetHost = host;
+    if (!targetHost) {
+        if (praca.toLowerCase().includes("pelotas")) {
+            targetHost = (cs === 2) ? "BRRS-PLT-DT02" : "BRRS-PLT-DT01";
+        } else if (typeof allFleetHostsData !== "undefined" && Array.isArray(allFleetHostsData)) {
+            const found = allFleetHostsData.find(h => 
+                (h.praca && h.praca.toLowerCase().includes(praca.toLowerCase()) && (h.cs == cs || (h.hostname && h.hostname.includes(`0${cs}`)))) ||
+                (h.hostname && h.hostname.toLowerCase().includes(praca.substring(0, 3).toLowerCase()))
+            );
+            targetHost = found ? found.hostname : `CS-${praca.substring(0, 3).toUpperCase()}-0${cs}`;
+        } else {
+            targetHost = `BRRS-PLT-DT0${cs}`;
+        }
     }
 
     const confirmed = confirm(
         `⚡ CONFIRMAÇÃO DE EXECUÇÃO REMOTA\n\n` +
         `Deseja disparar imediatamente a correção de auto-cura no Capture Site?\n\n` +
-        `Praça: ${praca}\n` +
+        `Praça: ${praca} (CS ${cs})\n` +
         `Host Alvo: ${targetHost}\n` +
         `Ação: Recriação de fontes EventLog do Windows & Reset de Controller do Atria\n\n` +
         `• Clique em [OK] para DISPARAR AGORA no host remoto.\n` +
@@ -604,27 +647,28 @@ async function executeAiDiagScript(praca, canal) {
                     hosts: [targetHost],
                     shell_type: "powershell",
                     command_script: script,
-                    command_title: `Auto-Cura: Correção EventLog & Restart Atria (${praca})`
+                    command_title: `Auto-Cura: Correção EventLog & Restart Atria (${praca} • ${targetHost})`
                 })
             });
 
             const data = await resp.json();
-            if (resp.ok && data.execution_id) {
+            const execId = (data && data.execution_id) ? data.execution_id : (typeof data === "string" ? data : null);
+
+            if (resp.ok && execId) {
                 if (typeof safeToast === "function") {
                     safeToast(`✅ Comando disparado com sucesso para ${targetHost}!`, "success");
                 }
-                // Redireciona para o console e abre o terminal para acompanhar
                 const rcNavBtn = document.querySelector(".nav-btn[data-tab='remote-commands']");
                 if (rcNavBtn) rcNavBtn.click();
                 setTimeout(() => {
                     if (typeof switchRemoteTab === "function") switchRemoteTab("rc-tab-console");
                     if (typeof pollExecutionOutput === "function") {
-                        pollExecutionOutput(data.execution_id);
+                        pollExecutionOutput(execId);
                     }
                 }, 250);
                 return;
             } else {
-                alert(`⚠️ Erro ao disparar comando: ${data.detail || data.error || "Falha na execução"}`);
+                alert(`⚠️ Erro ao disparar comando: ${data.detail || data.error || (typeof data === "string" ? data : "Falha na execução")}`);
             }
         } catch (err) {
             console.error("[SignalsAnalysis] Erro ao enviar comando remoto:", err);

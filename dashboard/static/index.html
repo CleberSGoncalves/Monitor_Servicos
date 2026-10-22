@@ -1332,6 +1332,10 @@
 
       </button>
 
+      <button class="nav-btn" data-tab="network">
+        <span>🌐</span> Link & Upload
+      </button>
+
 
 
       <button class="nav-btn" data-tab="ai">
@@ -1394,7 +1398,7 @@
 
 
 
-      <button type="button" class="btn-secondary" id="btnSystemUpdate" onclick="openSystemUpdateModal()" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; font-size: 12px; background: rgba(37,99,235,0.15); border: 1px solid rgba(37,99,235,0.4); color: #38bdf8; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer;" title="Verificar atualizações do sistema"><i class="fas fa-sync-alt" id="iconSystemUpdate"></i> <span id="labelSystemVersion">v3.9.13</span></button>
+      <button type="button" class="btn-secondary" id="btnSystemUpdate" onclick="openSystemUpdateModal()" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; font-size: 12px; background: rgba(37,99,235,0.15); border: 1px solid rgba(37,99,235,0.4); color: #38bdf8; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer;" title="Verificar atualizações do sistema"><i class="fas fa-sync-alt" id="iconSystemUpdate"></i> <span id="labelSystemVersion">v3.9.14</span></button>
         <div class="user-badge">
 
 
@@ -1749,33 +1753,47 @@
       <!-- ============================================================== -->
       <!-- COCKPIT OPERACIONAL: AÇÕES REATIVAS VS AÇÕES PROATIVAS (DUAL)  -->
       <!-- ============================================================== -->
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(460px, 1fr)); gap: 16px; margin-bottom: 16px;">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 16px; margin-bottom: 16px;">
 
-        <!-- PAINEL REATIVO: QUEDAS & FALHAS CRÍTICAS ATIVAS -->
+        <!-- PAINEL 1 (REATIVO): QUEDAS & FALHAS CRÍTICAS ATIVAS -->
         <div class="panel-card" style="margin-bottom: 0; display: flex; flex-direction: column; max-height: 480px;">
           <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(239,68,68,0.25); padding-bottom: 10px; margin-bottom: 10px;">
             <div class="panel-title" style="color: #f87171;">
-              <span>🚨</span> Ações Reativas: Quedas & Falhas Críticas
+              <span>🚨</span> Quedas & Falhas Críticas
               <span class="badge badge-red" id="badgeActiveOutagesCount" style="margin-left: 8px;">0 Quedas</span>
             </div>
-            <span style="font-size: 11px; color: var(--text-muted);">Tratativa imediata em 1 clique</span>
+            <span style="font-size: 11px; color: var(--text-muted);">Canais / Sintonizadores TBS</span>
           </div>
           <div id="activeOutagesList" style="flex: 1; overflow-y: auto; padding-right: 6px; display: flex; flex-direction: column; gap: 8px;">
             <div style="color: var(--text-muted); padding: 10px;">Carregando incidentes ativos...</div>
           </div>
         </div>
 
-        <!-- PAINEL PROATIVO: ALERTAS PREDITIVOS & RISCOS DE SLA -->
+        <!-- PAINEL 2 (PROATIVO): ALERTAS PREDITIVOS & RISCOS DE SLA -->
         <div class="panel-card" style="margin-bottom: 0; display: flex; flex-direction: column; max-height: 480px;">
           <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(234,179,8,0.25); padding-bottom: 10px; margin-bottom: 10px;">
             <div class="panel-title" style="color: #facc15;">
-              <span>⚡</span> Ações Proativas: Alertas Preditivos & SLA
+              <span>⚡</span> Alertas Preditivos & SLA
               <span class="badge badge-yellow" id="badgeThresholdBreachesCount" style="margin-left: 8px;">0 Riscos</span>
             </div>
-            <span style="font-size: 11px; color: var(--text-muted);">Disco D, RF, Autonomia MP4, CPU</span>
+            <span style="font-size: 11px; color: var(--text-muted);">Disco D:, RF, Autonomia, CPU</span>
           </div>
           <div id="thresholdBreachesList" style="flex: 1; overflow-y: auto; padding-right: 6px; display: flex; flex-direction: column; gap: 8px;">
             <div style="color: var(--text-muted); padding: 10px;">Verificando limiares operacionais...</div>
+          </div>
+        </div>
+
+        <!-- PAINEL 3 (PIPELINE DE MÍDIA): ATRASOS .SENT, AUSÊNCIA 30MIN & LINK NOS CS -->
+        <div class="panel-card" style="margin-bottom: 0; display: flex; flex-direction: column; max-height: 480px; border: 1px solid rgba(56,189,248,0.3);">
+          <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(56,189,248,0.25); padding-bottom: 10px; margin-bottom: 10px;">
+            <div class="panel-title" style="color: #38bdf8;">
+              <span>📦</span> Pipeline & Atrasos nos CS
+              <span class="badge badge-blue" id="badgeMediaPipelineCount" style="margin-left: 8px;">0 Atrasos</span>
+            </div>
+            <span style="font-size: 11px; color: var(--text-muted);">Atraso .SENT, Ausência 30min</span>
+          </div>
+          <div id="mediaPipelineList" style="flex: 1; overflow-y: auto; padding-right: 6px; display: flex; flex-direction: column; gap: 8px;">
+            <div style="color: var(--text-muted); padding: 10px;">Inspecionando pipeline de mídias...</div>
           </div>
         </div>
 
@@ -5468,6 +5486,100 @@
 
 
 
+  
+    <!-- ============================================================================== -->
+    <!-- TAB: MONITORAMENTO DE LINK & CAPACIDADE DE UPLOAD DOS CAPTURE SITES            -->
+    <!-- ============================================================================== -->
+    <section class="content-section" id="tab-network">
+      <!-- KPIs de Conectividade de Rede -->
+      <div class="kpi-grid" style="margin-bottom: 20px;">
+        <div class="kpi-card blue">
+          <div class="kpi-icon">🚀</div>
+          <div class="kpi-info">
+            <div class="kpi-value" id="kpiNetAvgUpload">-- Mbps</div>
+            <div class="kpi-label">Throughput Médio de Upload</div>
+          </div>
+        </div>
+        <div class="kpi-card purple">
+          <div class="kpi-icon">💾</div>
+          <div class="kpi-info">
+            <div class="kpi-value" id="kpiNetTotalVolume24h">-- GB</div>
+            <div class="kpi-label">Volume Gerado em 24h</div>
+          </div>
+        </div>
+        <div class="kpi-card green">
+          <div class="kpi-icon">📦</div>
+          <div class="kpi-info">
+            <div class="kpi-value" id="kpiNetSlaSentPct">--%</div>
+            <div class="kpi-label">Mídias no Prazo (.SENT &lt; 10min)</div>
+          </div>
+        </div>
+        <div class="kpi-card red">
+          <div class="kpi-icon">⚠️</div>
+          <div class="kpi-info">
+            <div class="kpi-value" id="kpiNetAtRiskCount">0 CS</div>
+            <div class="kpi-label">Capture Sites com Risco de Gargalo</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Barra de Filtros de Rede -->
+      <div class="panel-card" style="margin-bottom: 18px; padding: 14px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+          <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+            <div>
+              <span style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;">Praça / Cidade:</span>
+              <select id="netFilterCity" class="form-input" style="min-width: 190px;" onchange="applyNetworkFilters()">
+                <option value="all">Todas as Praças</option>
+              </select>
+            </div>
+            <div>
+              <span style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;">Condição de SLA / Link:</span>
+              <select id="netFilterSLA" class="form-input" style="min-width: 200px;" onchange="applyNetworkFilters()">
+                <option value="all">Todos os Status de Link</option>
+                <option value="critico">🔴 Gargalo de Link (&gt; 25min)</option>
+                <option value="alerta">🟡 Operando Próximo do Limite (18-25min)</option>
+                <option value="estavel">🟢 Conexão Folgada (SLA 100%)</option>
+              </select>
+            </div>
+          </div>
+          <button class="btn-secondary" style="padding: 6px 14px; font-size: 12px;" onclick="loadNetworkLinkMonitoring()">
+            <i class="fas fa-sync-alt"></i> Atualizar Conectividade
+          </button>
+        </div>
+      </div>
+
+      <!-- Tabela Analítica de Conectividade -->
+      <div class="panel-card">
+        <div class="panel-header" style="border-bottom: 1px solid var(--border-color); padding-bottom: 10px; margin-bottom: 12px;">
+          <div class="panel-title" style="font-size: 14px;">
+            <span>🌐</span> Matriz de Capacidade de Upload & Escoamento de Mídias (Blocos de 30 Minutos)
+          </div>
+          <span style="font-size: 11px; color: var(--text-muted);">Métrica: Volume gerado vs Throughput real de upload para escoamento antes do próximo ciclo</span>
+        </div>
+        <div class="table-responsive">
+          <table>
+            <thead>
+              <tr>
+                <th>Praça &amp; Host Alvo</th>
+                <th>Operadora &amp; Qualidade</th>
+                <th>Canais Gravados</th>
+                <th>Volume (30min)</th>
+                <th>Upload Mínimo Requerido</th>
+                <th>Upload Real Medido</th>
+                <th>Tempo p/ Escoar</th>
+                <th>SLA de Transmissão</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="networkLinkTableBody">
+              <tr><td colspan="9" style="text-align: center; color: var(--text-muted); padding: 20px;">Carregando métricas de rede...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
   </main>
 
 
@@ -5760,7 +5872,22 @@
 
 
 
-        <div class="form-group">
+        
+        <!-- Banner com Botão de Análise de IA para Causa Raiz e Ações Relevantes -->
+        <div style="background: rgba(2, 132, 199, 0.12); border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 6px; padding: 10px 14px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <div style="font-size: 11px; text-transform: uppercase; color: #38bdf8; font-weight: 700;">
+              <i class="fas fa-robot"></i> Assistente de Engenharia & IA MediaDNA
+            </div>
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+              Descubra a causa raiz e preencha as ações homologadas
+            </div>
+          </div>
+          <button type="button" class="btn-primary" id="btnWorklogAiDiagnose" style="font-size: 11px; padding: 6px 14px; background: linear-gradient(135deg, #0284c7, #2563eb); font-weight: 700;" onclick="triggerAiInWorklogModal()">
+            <i class="fas fa-brain"></i> 🧠 Analisar com IA
+          </button>
+        </div>
+<div class="form-group">
 
 
 
@@ -6499,15 +6626,88 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=3.9.13"></script>
-  <script src="/static/js/ai_insights.js?v=3.9.13"></script>
-  <script src="/static/js/fleet_ops.js?v=3.9.13"></script>
-  <script src="/static/js/remote_commands.js?v=3.9.13"></script>
-  <script src="/static/js/signals_analysis.js?v=3.9.13"></script>
-  <script src="/static/js/mosaic_wall.js?v=3.9.13"></script>
-  <script src="/static/js/topology_map.js?v=3.9.13"></script>
+  <script src="/static/js/app.js?v=3.9.14"></script>
+  <script src="/static/js/ai_insights.js?v=3.9.14"></script>
+  <script src="/static/js/fleet_ops.js?v=3.9.14"></script>
+  <script src="/static/js/remote_commands.js?v=3.9.14"></script>
+  <script src="/static/js/signals_analysis.js?v=3.9.14"></script>
+  <script src="/static/js/mosaic_wall.js?v=3.9.14"></script>
+  <script src="/static/js/topology_map.js?v=3.9.14"></script>
+  <script src="/static/js/network_link.js?v=3.9.14"></script>
 
 
+
+
+  <!-- MODAL: DIAGNÓSTICO DE IA DE LINK & CONECTIVIDADE DE REDE -->
+  <div class="modal-overlay" id="networkAiDiagModal" style="display: none; align-items: center; justify-content: center; z-index: 10000;">
+    <div class="modal" style="max-width: 740px; width: 94%; border: 1px solid #38bdf8; background: #0b1329; border-radius: 8px; box-shadow: 0 20px 35px -5px rgba(0, 0, 0, 0.8); padding: 24px;">
+      <div class="modal-header" style="border-bottom: 1px solid rgba(56, 189, 248, 0.3); padding-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 24px;">🧠</span>
+          <div>
+            <h3 style="margin: 0; color: #fff; font-size: 16px;" id="netAiModalTitle">Diagnóstico de Link &amp; Conectividade</h3>
+            <span style="font-size: 11px; color: #38bdf8;" id="netAiModalSubtitle">Auditoria de Upload e Fila de Mídias</span>
+          </div>
+        </div>
+        <button type="button" class="btn-secondary" style="padding: 4px 8px;" onclick="closeNetworkAiModal()">✕</button>
+      </div>
+
+      <div style="margin-top: 16px; max-height: 72vh; overflow-y: auto; padding-right: 4px;">
+        <!-- Card 1: Causa Raiz Técnica de Conectividade -->
+        <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(239, 68, 68, 0.4); border-left: 4px solid #ef4444; border-radius: 6px; padding: 14px; margin-bottom: 14px;">
+          <div style="font-size: 11px; text-transform: uppercase; color: #f87171; font-weight: 700; margin-bottom: 6px;">
+            <i class="fas fa-network-wired"></i> Parecer Técnico de Rede &amp; Engenharia de Telecom
+          </div>
+          <div id="netAiModalRootCause" style="font-size: 13px; color: #e2e8f0; line-height: 1.5;">
+            Analisando tráfego...
+          </div>
+        </div>
+
+        <!-- Card 2: Especificações de Tráfego do Link -->
+        <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(56, 189, 248, 0.3); border-left: 4px solid #38bdf8; border-radius: 6px; padding: 14px; margin-bottom: 14px;">
+          <div style="font-size: 11px; text-transform: uppercase; color: #38bdf8; font-weight: 700; margin-bottom: 8px;">
+            <i class="fas fa-tachometer-alt"></i> Métricas Medidas vs Capacidade Requerida
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; font-size: 11px; color: var(--text-muted); background: rgba(0,0,0,0.3); padding: 8px 12px; border-radius: 4px;">
+            <div>Operadora: <strong style="color: #fff;" id="netAiModalOperadora">--</strong></div>
+            <div>Upload Medido: <strong style="color: #34d399;" id="netAiModalUploadReal">-- Mbps</strong></div>
+            <div>Upload Mínimo: <strong style="color: #94a3b8;" id="netAiModalUploadMin">-- Mbps</strong></div>
+            <div>Tempo p/ Escoar: <strong style="color: #facc15;" id="netAiModalDrainTime">-- min</strong></div>
+            <div>Latência / Jitter: <strong style="color: #fff;" id="netAiModalLatency">-- ms</strong></div>
+          </div>
+        </div>
+
+        <!-- Card 3: Procedimentos Homologados de Resolução -->
+        <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(16, 185, 129, 0.3); border-left: 4px solid #10b981; border-radius: 6px; padding: 14px; margin-bottom: 14px;">
+          <div style="font-size: 11px; text-transform: uppercase; color: #34d399; font-weight: 700; margin-bottom: 8px;">
+            <i class="fas fa-tools"></i> Procedimentos Passo-a-Passo de Resolução Homologados
+          </div>
+          <ol id="netAiModalStepsList" style="margin: 0; padding-left: 20px; font-size: 12px; color: #e2e8f0; line-height: 1.6;">
+            <li>Carregando passos técnicos...</li>
+          </ol>
+        </div>
+
+        <!-- Card 4: Script de Teste e Correção com Botão Copiar Universal -->
+        <div style="background: #000; border: 1px solid #1e293b; border-radius: 6px; padding: 12px; margin-bottom: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <span style="font-size: 11px; text-transform: uppercase; color: #38bdf8; font-weight: 700;">⚡ Script de Teste &amp; Reciclagem de Conexão (PowerShell):</span>
+            <button class="btn-secondary" style="padding: 2px 8px; font-size: 11px;" onclick="copyNetworkAiScript(this)">Copiar</button>
+          </div>
+          <pre style="margin: 0; color: #34d399; font-family: monospace; font-size: 11px; white-space: pre-wrap;" id="netAiModalScript"># Carregando script...</pre>
+        </div>
+      </div>
+
+      <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 14px; margin-top: 8px;">
+        <span style="font-size: 11px; color: var(--text-muted);">Modelo: MediaDNA Telecom &amp; Network AI Engine v4.2</span>
+        <div style="display: flex; gap: 8px;">
+          <button type="button" class="btn-secondary" onclick="closeNetworkAiModal()" style="padding: 8px 16px;">Fechar</button>
+          <button type="button" class="btn-primary" id="btnNetExecuteAiAction" style="padding: 8px 16px; background: linear-gradient(135deg, #0284c7, #2563eb); font-weight: 700;">
+            <i class="fas fa-bolt"></i> Disparar Teste no CS
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
 
 </body>
 

@@ -40,6 +40,10 @@ from sharepoint_sync import get_cached_data, start_background_syncer, sync_fleet
 from incident_manager import register_incident_action, get_incident_history, diagnose_incident_with_ai
 from thresholds_manager import get_all_thresholds, update_threshold, get_active_threshold_breaches
 from geo_topology import get_markets_map_data
+from media_pipeline_monitor import (
+    get_fleet_pipeline_incidents, get_link_monitoring_metrics,
+    diagnose_link_and_pipeline_with_ai
+)
 from ai_insights import run_ai_fleet_analysis, get_active_ai_suggestions, apply_ai_suggestion
 from fleet_actions import execute_predefined_action
 from remote_commands import (
@@ -319,6 +323,8 @@ class ChannelDiagnoseRequest(BaseModel):
     praca: str
     canal: str
     period: str = "24h"
+    cs: Optional[int] = 1
+    host: Optional[str] = None
 
 @app.get("/api/fleet/channels/history")
 async def get_channel_history(praca: str, canal: str, period: str = "24h", cs: Optional[int] = None, user: dict = Depends(get_current_user)):
@@ -326,7 +332,7 @@ async def get_channel_history(praca: str, canal: str, period: str = "24h", cs: O
 
 @app.post("/api/fleet/channels/ai-diagnose")
 async def ai_diagnose_channel(req: ChannelDiagnoseRequest, user: dict = Depends(get_current_user)):
-    return diagnose_channel_with_ai(req.praca, req.canal, req.period)
+    return diagnose_channel_with_ai(req.praca, req.canal, req.period, req.cs, req.host)
 
 @app.get("/api/fleet/channels/chronic-issues")
 async def list_chronic_issues(user: dict = Depends(get_current_user)):
@@ -462,6 +468,33 @@ async def get_topology_map_endpoint(user: dict = Depends(get_current_user)):
     services = data.get("services", [])
     channels = data.get("channels", [])
     return get_markets_map_data(channels, services)
+
+
+@app.get("/api/fleet/media-pipeline/incidents")
+async def get_pipeline_incidents_endpoint(threshold_min: float = 10.0, user: dict = Depends(get_current_user)):
+    data = get_cached_data()
+    services = data.get("services", [])
+    channels = data.get("channels", [])
+    return get_fleet_pipeline_incidents(services, channels, threshold_min)
+
+
+@app.get("/api/fleet/network-link/metrics")
+async def get_network_link_metrics_endpoint(user: dict = Depends(get_current_user)):
+    data = get_cached_data()
+    services = data.get("services", [])
+    channels = data.get("channels", [])
+    return get_link_monitoring_metrics(services, channels)
+
+
+class LinkDiagnoseRequest(BaseModel):
+    praca: str
+    cs: int = 1
+    hostname: Optional[str] = None
+
+
+@app.post("/api/fleet/network-link/ai-diagnose")
+async def diagnose_network_link_endpoint(req: LinkDiagnoseRequest, user: dict = Depends(get_current_user)):
+    return diagnose_link_and_pipeline_with_ai(req.praca, req.cs, req.hostname)
 
 
 @app.post("/api/thresholds")
@@ -784,7 +817,7 @@ async def execute_remote_cmd(req: RemoteCommandExecuteRequest, user: dict = Depe
         command_title=req.command_title,
         requested_by=operator_tag
     )
-    return res
+    return {"success": True, "execution_id": res, "message": "Comando disparado com sucesso!"}
 
 @app.get("/api/remote-commands/executions/{exec_id}")
 async def get_execution_status(exec_id: str, user: dict = Depends(get_current_user)):

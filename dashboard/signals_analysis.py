@@ -341,7 +341,8 @@ def get_channel_telemetry_history(praca: str, canal: str, period: str = "24h", c
     return {
         "praca": praca,
         "canal": canal,
-        "cs": selected_cs,
+        "cs": selected_cs or 1,
+        "host": ("BRRS-PLT-DT01" if "pelotas" in praca.lower() and ((selected_cs or 1) == 1) else ("BRRS-PLT-DT02" if "pelotas" in praca.lower() else "CS-FLEET")),
         "periodo": period,
         "total_pontos": len(points),
         "avg_qualidade": avg_q,
@@ -359,13 +360,13 @@ def get_channel_telemetry_history(praca: str, canal: str, period: str = "24h", c
     }
 
 
-def diagnose_channel_with_ai(praca: str, canal: str, period: str = "24h") -> Dict[str, Any]:
+def diagnose_channel_with_ai(praca: str, canal: str, period: str = "24h", cs: Optional[int] = 1, host: Optional[str] = None) -> Dict[str, Any]:
     """
     Executa diagnóstico profundo com IA para um canal e praça específicos.
     Cruza frequência física de MUX, relevo da cidade, dados da internet e histórico de oscilações
     para gerar um parecer técnico assertivo e não genérico com solução clara.
     """
-    history = get_channel_telemetry_history(praca, canal, period)
+    history = get_channel_telemetry_history(praca, canal, period, cs)
     avg_q = history["avg_qualidade"]
     min_q = history["min_qualidade"]
     avg_s = history["avg_forca"]
@@ -384,6 +385,8 @@ def diagnose_channel_with_ai(praca: str, canal: str, period: str = "24h") -> Dic
             return {
                 "praca": praca,
                 "canal": canal,
+                "cs": cs or 1,
+                "host": host or ("BRRS-PLT-DT01" if "pelotas" in praca.lower() and (cs == 1 or not cs) else ("BRRS-PLT-DT02" if "pelotas" in praca.lower() else "CS-FLEET")),
                 "periodo_analisado": period,
                 "status": "critico" if raw_status == "CRÍTICO" else "alerta",
                 "status_diagnostico": raw_status,
@@ -409,6 +412,8 @@ def diagnose_channel_with_ai(praca: str, canal: str, period: str = "24h") -> Dic
         return {
             "praca": praca,
             "canal": canal,
+                "cs": cs or 1,
+                "host": host or ("BRRS-PLT-DT01" if "pelotas" in praca.lower() and (cs == 1 or not cs) else ("BRRS-PLT-DT02" if "pelotas" in praca.lower() else "CS-FLEET")),
             "periodo_analisado": period,
             "status": "estavel",
             "status_diagnostico": "NOMINAL",
@@ -445,6 +450,8 @@ def diagnose_channel_with_ai(praca: str, canal: str, period: str = "24h") -> Dic
         return {
             "praca": praca,
             "canal": canal,
+                "cs": cs or 1,
+                "host": host or ("BRRS-PLT-DT01" if "pelotas" in praca.lower() and (cs == 1 or not cs) else ("BRRS-PLT-DT02" if "pelotas" in praca.lower() else "CS-FLEET")),
             "periodo_analisado": period,
             "status": "critico",
             "status_diagnostico": "CRÍTICO",
@@ -477,6 +484,8 @@ def diagnose_channel_with_ai(praca: str, canal: str, period: str = "24h") -> Dic
         return {
             "praca": praca,
             "canal": canal,
+                "cs": cs or 1,
+                "host": host or ("BRRS-PLT-DT01" if "pelotas" in praca.lower() and (cs == 1 or not cs) else ("BRRS-PLT-DT02" if "pelotas" in praca.lower() else "CS-FLEET")),
             "periodo_analisado": period,
             "status": "alerta",
             "status_diagnostico": "ALERTA",

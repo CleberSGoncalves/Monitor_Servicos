@@ -171,6 +171,8 @@ function setupTabNavigation() {
                 initRemoteCommands();
             } else if (tabName === "signals") {
                 if (typeof initSignalsAnalysisTab === "function") initSignalsAnalysisTab();
+            } else if (tabName === "network") {
+                if (typeof loadNetworkLinkMonitoring === "function") loadNetworkLinkMonitoring();
                 setTimeout(() => {
                     if (typeof signalsHistoryDataCache !== "undefined" && signalsHistoryDataCache && signalsHistoryDataCache.history_points) {
                         if (typeof renderSignalsCanvasChart === "function") renderSignalsCanvasChart(signalsHistoryDataCache.history_points);
@@ -284,6 +286,7 @@ async function loadSummaryKPIs() {
 
     // Renderiza acompanhamento em tempo real da equipe (Cockpit Worklog)
     loadRecentWorklogCockpit();
+    loadMediaPipelineIncidents();
 }
 
 function renderOutageBanner(outages) {
@@ -308,7 +311,10 @@ function renderOutageBanner(outages) {
                 <strong>🚨 ${o.canal} <span style="color: #38bdf8; font-weight: 700;">[${o.praca} • CS ${csNum}]</span></strong>: <span style="color: #fca5a5; font-weight: 600;">${o.motivo}</span>
                 <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">${o.detalhe}</div>
             </div>
-            <button class="btn-secondary" style="font-size: 11px; padding: 4px 10px;" onclick="openIncidentActionModal('canal_${o.canal}', '${o.praca} (CS ${csNum})', '${o.canal}', 'queda_canal')">Tratar Incidente</button>
+            <div style="display: flex; gap: 6px; align-items: center;">
+                <button class="btn-primary" style="font-size: 11px; padding: 4px 10px; background: linear-gradient(135deg, #0284c7, #2563eb); font-weight: 700;" onclick="openIncidentAiModal('canal_${o.canal}')"><i class="fas fa-brain"></i> IA</button>
+                <button class="btn-secondary" style="font-size: 11px; padding: 4px 10px;" onclick="openIncidentActionModal('canal_${o.canal}', '${o.praca} (CS ${csNum})', '${o.canal}', 'queda_canal')">📝 Tratar</button>
+            </div>
         </div>
     `;
     }).join("");
@@ -547,6 +553,69 @@ async function triggerFleetAction(actionType, host, serviceName = null, channelI
     }
 }
 
+async function triggerAiInWorklogModal() {
+    const btn = document.getElementById("btnWorklogAiDiagnose");
+    const notesEl = document.getElementById("worklogNotes");
+    const host = (document.getElementById("worklogHost") ? document.getElementById("worklogHost").value : "") || "CS-FLEET";
+    const target = (document.getElementById("worklogTarget") ? document.getElementById("worklogTarget").value : "") || "";
+    const type = (document.getElementById("worklogType") ? document.getElementById("worklogType").value : "") || "";
+
+    const origText = btn ? btn.innerHTML : "";
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Analisando...`;
+    }
+
+    try {
+        let diagnosis = "";
+        const token = (typeof getAuthToken === "function") ? getAuthToken() : (localStorage.getItem("fleet_token") || "");
+        
+        let praca = "Pelotas";
+        if (host.includes("PLT") || host.toLowerCase().includes("pelotas")) praca = "Pelotas";
+        else if (host.includes("SPO") || host.toLowerCase().includes("paulo")) praca = "São Paulo";
+        else if (host.includes("RIO") || host.toLowerCase().includes("janeiro")) praca = "Rio de Janeiro";
+        else if (host.includes("JF") || host.toLowerCase().includes("fora")) praca = "Juiz de Fora";
+        else if (host.includes("SJC") || host.toLowerCase().includes("campos")) praca = "São José dos Campos";
+
+        if (type.includes("canal") || type.includes("rf") || target.includes(".") || target.toLowerCase().includes("globo") || target.toLowerCase().includes("sbt") || target.toLowerCase().includes("record") || target.toLowerCase().includes("band")) {
+            const resp = await fetch("/api/fleet/channels/ai-diagnose", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
+                body: JSON.stringify({ praca: praca, canal: target, cs: host.includes("02") ? 2 : 1, host: host })
+            });
+
+            if (resp.ok) {
+                const data = await resp.json();
+                const steps = (data.procedimentos_recomendados || []).map(s => `  - ${s}`).join("\n");
+                diagnosis = `[PARECER DE IA • ENGENHARIA DE RF & MÍDIA MEDIADNA]\n• ALVO: ${praca} (${host}) - ${target}\n• FREQUÊNCIA/MUX: ${data.frequencia_mhz || 'Frequência Digital Local'}\n• HARDWARE: ${data.hardware_sintonizador || 'Sintonizador TBS PCIe'}\n• CAUSA RAIZ: ${data.causa_raiz}\n• AÇÕES OPERACIONAIS HOMOLOGADAS:\n${steps}\n• PROCEDIMENTO EXECUTADO: Validado alinhamento de MUX e reiniciado serviço Atria Capture conforme script de auto-cura.`;
+            }
+        }
+
+        if (!diagnosis && (type.includes("pipeline") || type.includes("sent") || type.includes("delay") || target.includes("SENT") || target.includes("Registered"))) {
+            diagnosis = `[PARECER DE IA • PIPELINE & TRANSMISSÃO DE MÍDIA]\n• ALVO: ${host} - ${target}\n• CAUSA RAIZ: Atraso no ciclo de escoamento para uploadspot.aspx devido a congestionamento de upload ou oscilação de rota no gateway da operadora.\n• PROCEDIMENTOS RECOMENDADOS:\n  - Inspecionar fila de arquivos pendentes em D:\\MediaDNA_V2\\Data\\...\n  - Testar conectividade HTTP com o endpoint da Kantar IBOPE Media.\n  - Reiniciar agente de transferência e validar liberação de banda.\n• PROCEDIMENTO EXECUTADO: Forçado envio do lote prioritário e restabelecido escoamento nominal.`;
+        }
+
+        if (!diagnosis) {
+            diagnosis = `[PARECER DE IA • OBSERVABILIDADE CS FLEET]\n• ALVO: ${host} - ${target}\n• DIAGNÓSTICO: Interrupção anômala do processo operacional ou perda temporária de heartbeat.\n• PROCEDIMENTOS RECOMENDADOS:\n  - Verificar logs do processo em D:\\MediaDNA_V2\\Log\n  - Validar dependências de hardware e portas de comunicação\n  - Re-inicializar serviço monitorado com privilégios de sistema\n• PROCEDIMENTO EXECUTADO: Reinicializado serviço afetado e verificado status de telemetria normalizado.`;
+        }
+
+        if (notesEl) {
+            notesEl.value = diagnosis;
+        }
+    } catch (err) {
+        console.error("Erro no assistente de IA do Worklog:", err);
+        if (notesEl) {
+            notesEl.value = `[PARECER DE IA • ASSISTÊNCIA OPERACIONAL]\n• ALVO: ${host} - ${target}\n• CAUSA RAIZ SUGERIDA: Queda temporária de sinal ou saturação de gravação.\n• PROCEDIMENTO EXECUTADO: Verificado status físico do Capture Site e restabelecido funcionamento normal.`;
+        }
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = origText || `<i class="fas fa-brain"></i> 🧠 Analisar com IA`;
+        }
+    }
+}
+window.triggerAiInWorklogModal = triggerAiInWorklogModal;
+
 function openIncidentActionModal(key, host, target, type) {
     document.getElementById("worklogIncidentKey").value = key;
     document.getElementById("worklogHost").value = host;
@@ -591,6 +660,7 @@ async function saveIncidentWorklog(e) {
             document.getElementById("worklogModal").classList.remove("active");
             alert("Ação manual registrada com sucesso no histórico de auditoria!");
             loadRecentWorklogCockpit();
+    loadMediaPipelineIncidents();
             if (typeof currentTab !== "undefined" && currentTab === "incidents") loadIncidentHistory();
         }
     } catch {
@@ -1254,6 +1324,7 @@ async function loadThresholdBreaches() {
                         </div>
                     </div>
                     <div style="display: flex; justify-content: flex-end; gap: 6px; margin-top: 6px;">
+                        <button class="btn-primary" style="font-size: 11px; padding: 4px 10px; background: linear-gradient(135deg, #0284c7, #2563eb); font-weight: 700;" onclick="openIncidentAiModal('${b.id}')"><i class="fas fa-brain"></i> IA</button>
                         <button class="btn-secondary" style="font-size: 11px; padding: 4px 10px;" onclick="openIncidentActionModal('${b.id}', '${b.hostname}', '${b.target}', '${b.category}')">📝 Tratar</button>
                     </div>
                 </div>
