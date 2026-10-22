@@ -15,19 +15,27 @@ MP4_FAILURE_SIGNATURES = [
         "tipo": "freeze",
         "sintoma": "PTS temporal avança no contêiner MP4, mas o buffer de vídeo exibe delta de pixels nulo (quadro estático) por mais de 4.2 segundos.",
         "causa_raiz": (
-            "A thread do encoder H.264 do ATRIA (MediaRecorderSVC) desincroniza a inserção de Keyframes (IDR) ao receber pacotes TS "
-            "com jitter de timestamp da placa sintonizadora TBS PCIe. Sem um novo I-Frame, o decoder repete o último frame decodificado."
+            "Descontinuidade no fluxo do sintonizador TBS PCIe ou instabilidade no Transport Stream da emissora. "
+            "Sem receber um novo quadro IDR (Keyframe) decodificável, o decodificador/player repete o último frame, congelando a imagem."
         ),
         "solucoes_tecnicas": [
-            "1. Forçar intervalo estrito de Keyframe (IDR) a cada 60 quadros (<KeyFrameInterval>60</KeyFrameInterval>) no configxml.xml.",
-            "2. Elevar o buffer de pré-codificação do ATRIA de 800ms para 1.500ms para amortecer o jitter da placa TBS.",
-            "3. Habilitar watchdog no Agente Fleet para reciclar graciosa e preventivamente o MediaRecorderSVC se detectar congelamento contínuo > 5s."
+            "1. Diferenciar a plataforma ativa: Atria Capture (DigitalTVReceiver.exe) vs MediaRecorder (DNA.MediaRecorderSVC) são mutuamente exclusivos.",
+            "2. No Atria Capture: Re-sintonizar via IPC/API 9000 ou reciclar o processo sintonizador DigitalTVReceiver para restaurar o fluxo MP4 (perfil MP4_MDNA).",
+            "3. No MediaRecorder (onde instalado): Reiniciar o serviço DNA.MediaRecorderSVC para restabelecer o parser de TS.",
+            "4. Executar reset de barramento PnP no hardware sintonizador TBS PCIe em caso de instabilidade de DMA.",
+            "5. Nota de Governança: O config.xml é sincronizado a cada 30min a partir da matriz e não possui parâmetros de GOP/Keyframe."
         ],
         "comando_auto_cura": (
-            "$cfg = 'D:\\MediaDNA_V2\\data\\configxml.xml'; "
-            "if (Test-Path $cfg) { "
-            "  (Get-Content $cfg) -replace '<KeyFrameInterval>.*?</KeyFrameInterval>', '<KeyFrameInterval>60</KeyFrameInterval>' | Set-Content $cfg; "
-            "  Restart-Service DNA.MediaRecorderSVC -Force; Write-Host 'Ajuste de IDR/GOP aplicado com sucesso no ATRIA.' "
+            "$isAtria = (Get-Process -Name 'DigitalTVReceiver', 'AtriaCapture*' -ErrorAction SilentlyContinue) -or (Get-Service -Name '*Atria*' -ErrorAction SilentlyContinue); "
+            "if ($isAtria) { "
+            "  Stop-Process -Name 'DigitalTVReceiver' -Force -ErrorAction SilentlyContinue; "
+            "  Get-Service -Name '*Atria*', '*Capture*' -ErrorAction SilentlyContinue | Restart-Service -Force -ErrorAction SilentlyContinue; "
+            "  Write-Host 'Atria Capture re-sincronizado com sucesso.' "
+            "} elseif (Get-Service -Name 'DNA.MediaRecorderSVC' -ErrorAction SilentlyContinue) { "
+            "  Restart-Service DNA.MediaRecorderSVC -Force; Write-Host 'DNA.MediaRecorderSVC reiniciado com sucesso.' "
+            "} else { "
+            "  Get-PnpDevice -Class Media | Where-Object { $_.FriendlyName -like '*TBS*' } | Restart-PnpDevice -Confirm:$false -ErrorAction SilentlyContinue; "
+            "  Write-Host 'Hardware TBS PCIe redefinido.' "
             "}"
         ),
         "threshold_sugerido": {
@@ -75,17 +83,22 @@ MP4_FAILURE_SIGNATURES = [
         "tipo": "audio_drop",
         "sintoma": "Arquivo MP4 com trilha de áudio zerada (-infinito dB) por mais de 5 segundos, enquanto o vídeo continua sendo gravado normalmente.",
         "causa_raiz": (
-            "Desalinhamento de cabeçalho ADTS na desmultiplexação do stream de áudio pelo ATRIA. Quando ocorre micro-queda de RF, "
+            "Desalinhamento de cabeçalho ADTS na desmultiplexação do stream de áudio. Quando ocorre micro-queda de RF, "
             "o encoder AAC descarta os frames de áudio e não restabelece a amostragem até a virada do arquivo."
         ),
         "solucoes_tecnicas": [
-            "1. Inserir a flag <StrictADTS>false</StrictADTS> na seção de áudio do configxml.xml para tolerar pequenos desvios de sincronismo.",
-            "2. Ajustar buffer de áudio para 1.200ms com auto-preenchimento de silêncio para manter o fluxo estéreo 48 kHz ininterrupto.",
-            "3. Reiniciar a thread de áudio do MediaRecorder."
+            "1. Reciclar o subsistema de captura correspondente (Atria Capture ou MediaRecorderSVC, conforme instalado).",
+            "2. Re-sintonizar o MUX de áudio da emissora via API do Atria ou reinicialização de serviço.",
+            "3. Validar estabilidade da portadora RF e ganho da antena UHF."
         ],
         "comando_auto_cura": (
-            "Restart-Service -Name DNA.MediaRecorderSVC -Force; "
-            "Write-Host 'Serviço de gravação reiniciado com flush de buffers de áudio.'"
+            "$isAtria = (Get-Service -Name '*Atria*' -ErrorAction SilentlyContinue); "
+            "if ($isAtria) { "
+            "  Get-Service -Name '*Atria*', '*Capture*' -ErrorAction SilentlyContinue | Restart-Service -Force -ErrorAction SilentlyContinue; "
+            "  Write-Host 'Pipeline de áudio do Atria reinicializado.' "
+            "} elseif (Get-Service -Name 'DNA.MediaRecorderSVC' -ErrorAction SilentlyContinue) { "
+            "  Restart-Service DNA.MediaRecorderSVC -Force; Write-Host 'DNA.MediaRecorderSVC reiniciado com flush de áudio.' "
+            "}"
         ),
         "threshold_sugerido": {
             "key": "mp4_audio_silence_max_sec",

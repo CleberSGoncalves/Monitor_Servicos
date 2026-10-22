@@ -1588,10 +1588,21 @@ function executeAiRecommendedAction() {
     else if (pLow.includes("brasília") || pLow.includes("brasilia")) host = "BRDF-BSB-DT01";
     else host = `CS-${praca.toUpperCase().replace(/\s+/g, '-')}-01`;
 
-    const script = `$cfg = 'D:\\MediaDNA_V2\\data\\config\\configxml.xml';\n` +
-                   `Write-Host '[INFO] Aplicando calibração homologada de Keyframe e Buffer para ${target} (${praca})...';\n` +
-                   `Restart-Service DNA.MediaRecorderSVC -Force;\n` +
-                   `Write-Host '[OK] Serviço DNA.MediaRecorderSVC reiniciado com parâmetros estritos de IDR.'`;
+    const script = `# Auto-Cura e Re-sincronização de Vídeo para ${target} (${praca})\n` +
+                   `$isAtria = (Get-Process -Name 'DigitalTVReceiver', 'AtriaCapture*' -ErrorAction SilentlyContinue) -or (Get-Service -Name '*Atria*' -ErrorAction SilentlyContinue);\n` +
+                   `if ($isAtria) {\n` +
+                   `  Write-Host '[INFO] Plataforma Atria Capture identificada para ${target} (${praca})...';\n` +
+                   `  Stop-Process -Name 'DigitalTVReceiver' -Force -ErrorAction SilentlyContinue;\n` +
+                   `  Get-Service -Name '*Atria*', '*Capture*' -ErrorAction SilentlyContinue | Restart-Service -Force -ErrorAction SilentlyContinue;\n` +
+                   `  Write-Host '[OK] Atria Capture e sintonia re-sincronizados com sucesso!';\n` +
+                   `} elseif (Get-Service -Name 'DNA.MediaRecorderSVC' -ErrorAction SilentlyContinue) {\n` +
+                   `  Write-Host '[INFO] Plataforma MediaRecorder identificada. Reiniciando serviço DNA.MediaRecorderSVC...';\n` +
+                   `  Restart-Service DNA.MediaRecorderSVC -Force;\n` +
+                   `  Write-Host '[OK] DNA.MediaRecorderSVC reiniciado com sucesso!';\n` +
+                   `} else {\n` +
+                   `  Get-PnpDevice -Class Media | Where-Object { $_.FriendlyName -like '*TBS*' } | Restart-PnpDevice -Confirm:$false -ErrorAction SilentlyContinue;\n` +
+                   `  Write-Host '[OK] Barramento TBS PCIe redefinido!';\n` +
+                   `}`;
 
     const title = `Auto-Cura IA: ${target} (${praca})`;
 

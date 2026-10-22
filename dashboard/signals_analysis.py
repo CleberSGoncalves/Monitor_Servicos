@@ -85,15 +85,15 @@ def detect_signal_origin_profile(canal: str, praca: str, meio: Optional[str] = N
             "causa_raiz_critica": "Oscilação de Link WAN na Operadora Local, Descarte Silencioso de UDP ou Timeout de Socket RTSP na CDN.",
             "causa_raiz_alerta": "Congestionamento Transitório de Rota IP em Horário de Pico de Tráfego.",
             "acoes_criticas": [
-                "Alterar o transporte RTSP de UDP para TCP no configxml.xml para garantir retransmissão de pacotes.",
-                "Elevar o buffer de jitter da thread de ingestão de 1.000ms para 2.500ms.",
+                "Garantir transporte confiável sobre TCP no enlace RTSP da CDN para evitar descartes por jitter de rota.",
+                "Reiniciar o subsistema de ingestão ativo na praça (Atria Capture ou MediaRecorder).",
                 "Ativar watchdog de reconexão de streaming IP após 20 segundos de fluxo zerado."
             ],
             "acoes_alerta": [
                 "Auditar estabilidade de ping com o servidor de stream IP nas próximas 12 horas.",
                 "Verificar se a rota utiliza link corporativo dedicado sem concorrência de tráfego de OCR."
             ],
-            "script_critico": "Restart-Service DNA.MediaRecorderSVC -Force; Write-Host 'Sessão de streaming RTSP reinicializada.'",
+            "script_critico": "$isAtria = (Get-Service -Name '*Atria*' -ErrorAction SilentlyContinue); if ($isAtria) { Restart-Service -Name *Atria* -Force; Write-Host 'Atria Capture reiniciado.' } elseif (Get-Service -Name 'DNA.MediaRecorderSVC' -ErrorAction SilentlyContinue) { Restart-Service DNA.MediaRecorderSVC -Force; Write-Host 'DNA.MediaRecorderSVC reiniciado.' }",
             "script_alerta": ""
         }
 
@@ -217,13 +217,16 @@ CHRONIC_CHANNEL_ISSUES = [
             "sofre jitter superior a 180ms. O socket TCP de controle permanece 'ESTABLISHED', mas a taxa de transferência cai a zero."
         ),
         "solucao_estipulada": (
-            "1. Alterar o transporte de RTSP de UDP para TCP no configxml.xml para garantir retransmissão confiável.\n"
-            "2. Ativar buffer de jitter de 2.000ms no módulo de ingestão do Atria.\n"
+            "1. Priorizar transporte RTSP sobre TCP na CDN/operadora para mitigar descartes por jitter de rota.
+"
+            "2. Reciclar a ingestão da praça conforme a plataforma instalada (Atria Capture vs MediaRecorder).
+"
             "3. Programar watchdog de tráfego que reinicia a sessão RTSP se não houver frames recebidos por 60 segundos."
         ),
         "comando_auto_cura": (
-            "# Força reinício gracioso da thread RTSP\n"
-            "Restart-Service DNA.MediaRecorderSVC -Force; Write-Host 'Sessão RTSP reinicializada.'"
+            "# Força reinício gracioso da plataforma de captura ativa
+"
+            "$isAtria = (Get-Service -Name '*Atria*' -ErrorAction SilentlyContinue); if ($isAtria) { Restart-Service -Name *Atria* -Force } elseif (Get-Service -Name 'DNA.MediaRecorderSVC' -ErrorAction SilentlyContinue) { Restart-Service DNA.MediaRecorderSVC -Force }"
         ),
         "tempo_recorrencia": "Semanal em horários de pico de tráfego de rede (18h às 21h)"
     },
@@ -289,13 +292,16 @@ CHRONIC_CHANNEL_ISSUES = [
             "quando o jitter de rede ultrapassa 220ms, deixando o gravador mudo sem derrubar o processo."
         ),
         "solucao_estipulada": (
-            "1. Migrar o transporte RTSP de UDP para TCP no configxml.xml para forçar retransmissão de pacotes perdidos.\n"
-            "2. Elevar a tolerância de jitter buffer no Atria para 2.500ms.\n"
-            "3. Habilitar watchdog de silêncio para reconectar o socket TCP após 30 segundos de fluxo zerado."
+            "1. Validar transporte RTSP na CDN/operadora para evitar descarte silencioso de pacotes.
+"
+            "2. Reciclar a thread de ingestão de streaming IP da praça ativa.
+"
+            "3. Habilitar watchdog de silêncio para reconectar o socket após 30 segundos de fluxo zerado."
         ),
         "comando_auto_cura": (
-            "# Força reinício da thread de ingestão de streaming IP\n"
-            "Restart-Service DNA.MediaRecorderSVC -Force; Write-Host 'Sessão de streaming RTSP reiniciada.'"
+            "# Força reinício da thread de ingestão de streaming IP
+"
+            "$isAtria = (Get-Service -Name '*Atria*' -ErrorAction SilentlyContinue); if ($isAtria) { Restart-Service -Name *Atria* -Force } elseif (Get-Service -Name 'DNA.MediaRecorderSVC' -ErrorAction SilentlyContinue) { Restart-Service DNA.MediaRecorderSVC -Force }"
         ),
         "tempo_recorrencia": "Intermitente em horários de pico de tráfego de rede (17h às 20h)"
     },

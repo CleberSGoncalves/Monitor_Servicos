@@ -297,14 +297,16 @@ def diagnose_incident_with_ai(incident_code: str) -> Dict[str, Any]:
 
     if itype == "gop_stall":
         ai_root_cause = (
-            f"A thread do encoder H.264 do ATRIA (MediaRecorderSVC) desincroniza a inserção de Keyframes (IDR) ao "
-            f"receber pacotes TS com jitter de timestamp da placa sintonizadora TBS PCIe. Sem novo I-Frame, o decodificador "
-            f"repete o último quadro decodificado, gerando congelamento contínuo em {target} ({praca})."
+            f"Descontinuidade no fluxo de Transport Stream (TS) entregue pelo sintonizador TBS PCIe ou instabilidade "
+            f"de PCR no multiplex da emissora em {praca}. Sem receber um novo quadro de referência IDR decodificável, "
+            f"o pipeline de vídeo estagna e repete o último frame renderizado em {target}."
         )
         tech_steps = [
-            "Forçar intervalo estrito de Keyframe (IDR) a cada 60 quadros (<KeyFrameInterval>60</KeyFrameInterval>) no configxml.",
-            "Elevar o buffer de pré-codificação do ATRIA de 800ms para 1.500ms para amortecer o jitter da placa TBS.",
-            "Fixar afinidade de CPU do serviço nos Cores 2 e 3 para isolamento de interrupções DMA da placa."
+            "Identificar a plataforma de gravação instalada na praça: Atria Capture (DigitalTVReceiver.exe) vs MediaRecorder (DNA.MediaRecorderSVC) são mutuamente exclusivos.",
+            "No Atria Capture: Re-sintonizar o MUX ou reciclar o processo sintonizador DigitalTVReceiver via API/IPC 9000 para forçar nova sequência IDR no perfil MP4_MDNA.",
+            "No MediaRecorder (praças onde ativo): Reiniciar o serviço DNA.MediaRecorderSVC para restabelecer o parser de TS.",
+            "Executar reset de barramento PnP no hardware sintonizador TBS PCIe caso persista descontinuidade de DMA.",
+            "Nota de Governança: O arquivo config.xml é replicado a cada 30min pela matriz e não possui parâmetros de GOP; os perfis de gravação do Atria são geridos no software de captura (ex: MP4_MDNA)."
         ]
         geo_analysis = (
             f"Capture Site {praca} está a {dist:.1f} km da {tower} em azimute de {azimuth:.1f}°. "
@@ -399,19 +401,33 @@ def cluster_and_diagnose_incidents_with_ai(period: str = "30d") -> Dict[str, Any
             "affected_hosts": ["BRRS-PLT-DT01 (Pelotas)", "BRMG-JFA-DT01 (Juiz de Fora)", "BRRS-CSL-DT01 (Caxias do Sul)"],
             "raw_hosts": ["BRRS-PLT-DT01", "BRMG-JFA-DT01", "BRRS-CSL-DT01"],
             "root_cause": (
-                "A thread do encoder H.264 do Atria (MediaRecorderSVC) desincroniza a inserção de Keyframes (IDR) ao "
-                "receber pacotes TS com jitter de timestamp da placa sintonizadora TBS PCIe. Sem novo I-Frame, o decodificador "
+                "Descontinuidade no fluxo de Transport Stream (TS) entregue pelo sintonizador TBS PCIe ou instabilidade "
+                "de PCR no multiplex da emissora. Sem receber um novo quadro IDR (Keyframe) decodificável, o decodificador "
                 "repete o último quadro decodificado, gerando congelamento contínuo da imagem."
             ),
             "recommended_solution": (
-                "1. Forçar intervalo estrito de Keyframe (IDR) a cada 60 quadros (<KeyFrameInterval>60</KeyFrameInterval>) no configxml.xml.\n"
-                "2. Elevar o buffer de pré-codificação do Atria de 800ms para 1.500ms para amortecer o jitter de clock.\n"
-                "3. Fixar afinidade de CPU do serviço nos Cores 2 e 3 para isolamento de interrupções DMA da placa."
+                "1. Identificar a plataforma da praça: Atria Capture (DigitalTVReceiver.exe) vs MediaRecorder (DNA.MediaRecorderSVC) são mutuamente exclusivos.\n"
+                "2. No Atria Capture: Re-sintonizar o Mux via IPC/API 9000 ou reiniciar o processo sintonizador DigitalTVReceiver para restaurar o fluxo MP4_MDNA.\n"
+                "3. No MediaRecorder (onde instalado): Reiniciar o serviço DNA.MediaRecorderSVC para reabrir o parser de TS.\n"
+                "4. Se persistir jitter de DMA no barramento, resetar o sintonizador TBS PCIe via PnP.\n"
+                "5. Nota: O config.xml é sincronizado a cada 30min da matriz e não possui parâmetros de GOP."
             ),
             "remediation_script": (
-                "$cfg = 'D:\\MediaDNA_V2\\data\\config\\configxml.xml'; "
-                "if (Test-Path $cfg) { (Get-Content $cfg) -replace '<KeyFrameInterval>.*?</KeyFrameInterval>', '<KeyFrameInterval>60</KeyFrameInterval>' | Set-Content $cfg }; "
-                "Restart-Service DNA.MediaRecorderSVC -Force; Write-Host 'Keyframe IDR ajustado e MediaRecorderSVC reiniciado com sucesso!'"
+                "$isAtria = (Get-Process -Name 'DigitalTVReceiver', 'AtriaCapture*' -ErrorAction SilentlyContinue) -or (Get-Service -Name '*Atria*' -ErrorAction SilentlyContinue); "
+                "if ($isAtria) { "
+                "Write-Host '[INFO] Plataforma Atria Capture identificada. Re-sintonizando DigitalTVReceiver e serviços Atria...'; "
+                "Stop-Process -Name 'DigitalTVReceiver' -Force -ErrorAction SilentlyContinue; "
+                "Get-Service -Name '*Atria*', '*Capture*' -ErrorAction SilentlyContinue | Restart-Service -Force -ErrorAction SilentlyContinue; "
+                "Write-Host '[OK] Atria Capture re-sincronizado com novo fluxo de IDR!' "
+                "} elseif (Get-Service -Name 'DNA.MediaRecorderSVC' -ErrorAction SilentlyContinue) { "
+                "Write-Host '[INFO] Plataforma MediaRecorder identificada. Reiniciando DNA.MediaRecorderSVC...'; "
+                "Restart-Service -Name 'DNA.MediaRecorderSVC' -Force; "
+                "Write-Host '[OK] DNA.MediaRecorderSVC reiniciado com sucesso!' "
+                "} else { "
+                "Write-Host '[INFO] Resetando barramento do sintonizador TBS PCIe...'; "
+                "Get-PnpDevice -Class Media | Where-Object { $_.FriendlyName -like '*TBS*' } | Restart-PnpDevice -Confirm:$false -ErrorAction SilentlyContinue; "
+                "Write-Host '[OK] Hardware TBS PCIe redefinido com sucesso!' "
+                "}"
             )
         },
         {
@@ -429,9 +445,11 @@ def cluster_and_diagnose_incidents_with_ai(period: str = "30d") -> Dict[str, Any
                 "fazendo a relação SNR/MER cair abaixo de 18 dB e desarmando o circuito de sintonia da placa TBS PCIe."
             ),
             "recommended_solution": (
-                "1. Inserir filtro passa-baixa de cavidade para rejeição da faixa celular LTE 700MHz.\n"
-                "2. Calibrar azimute da antena diretiva log-periódica UHF na torre.\n"
-                "3. Re-sintonizar Muxes e executar reset de barramento PnP no hardware sintonizador."
+                "1. Identificar a plataforma da praça: Atria Capture (DigitalTVReceiver.exe) vs MediaRecorder (DNA.MediaRecorderSVC) são mutuamente exclusivos.\n"
+                "2. No Atria Capture: Re-sintonizar o Mux via IPC/API 9000 ou reiniciar o processo sintonizador DigitalTVReceiver para restaurar o fluxo MP4_MDNA.\n"
+                "3. No MediaRecorder (onde instalado): Reiniciar o serviço DNA.MediaRecorderSVC para reabrir o parser de TS.\n"
+                "4. Se persistir jitter de DMA no barramento, resetar o sintonizador TBS PCIe via PnP.\n"
+                "5. Nota: O config.xml é sincronizado a cada 30min da matriz e não possui parâmetros de GOP."
             ),
             "remediation_script": (
                 "Get-PnpDevice -Class Media | Where-Object { $_.FriendlyName -like '*TBS*' } | Restart-PnpDevice -Confirm:$false; "
@@ -453,14 +471,15 @@ def cluster_and_diagnose_incidents_with_ai(period: str = "30d") -> Dict[str, Any
                 "sofre jitter superior a 180ms. O socket TCP de controle permanece 'ESTABLISHED', mas a taxa de transferência cai a zero."
             ),
             "recommended_solution": (
-                "1. Alterar o transporte de RTSP de UDP para TCP no configxml.xml para garantir retransmissão confiável.\n"
-                "2. Ativar buffer de jitter de 2.000ms no módulo de ingestão do Atria.\n"
+                "1. Priorizar transporte RTSP sobre TCP na operadora/CDN para garantir retransmissão confiável.\n"
+                "2. Reiniciar o subsistema de ingestão ativo na praça (Atria Capture ou MediaRecorderSVC).\n"
                 "3. Programar watchdog de tráfego que reinicia a sessão RTSP se não houver frames recebidos por 60 segundos."
             ),
             "remediation_script": (
-                "$cfg = 'D:\\MediaDNA_V2\\data\\config\\configxml.xml'; "
-                "if (Test-Path $cfg) { (Get-Content $cfg) -replace '<RTSPTransport>.*?</RTSPTransport>', '<RTSPTransport>TCP</RTSPTransport>' | Set-Content $cfg }; "
-                "Restart-Service DNA.MediaRecorderSVC -Force; Write-Host 'Transporte RTSP consolidado em TCP!'"
+                "$isAtria = (Get-Service -Name '*Atria*' -ErrorAction SilentlyContinue); "
+                "if ($isAtria) { Restart-Service -Name *Atria* -Force; Write-Host 'Sessão IP do Atria Capture reinicializada!' } "
+                "elseif (Get-Service -Name 'DNA.MediaRecorderSVC' -ErrorAction SilentlyContinue) { Restart-Service DNA.MediaRecorderSVC -Force; Write-Host 'DNA.MediaRecorderSVC reiniciado!' } "
+                "else { Write-Host 'Nenhum serviço de gravação pendente.' }"
             )
         },
         {
@@ -478,9 +497,11 @@ def cluster_and_diagnose_incidents_with_ai(period: str = "30d") -> Dict[str, Any
                 "Presença de zumbido de modo comum de 60 Hz (Ground Loop) induzido pelo aterramento do rack industrial."
             ),
             "recommended_solution": (
-                "1. Calibrar o pad atenuador da placa Sonifex para linha balanceada profissional (+4 dBu).\n"
-                "2. Inserir transformador isolador galvânico de linha XLR para quebra do laço de terra de 60 Hz.\n"
-                "3. Elevar buffer ASIO de 256 para 512 samples para evitar dropouts na gravação MP3."
+                "1. Identificar a plataforma da praça: Atria Capture (DigitalTVReceiver.exe) vs MediaRecorder (DNA.MediaRecorderSVC) são mutuamente exclusivos.\n"
+                "2. No Atria Capture: Re-sintonizar o Mux via IPC/API 9000 ou reiniciar o processo sintonizador DigitalTVReceiver para restaurar o fluxo MP4_MDNA.\n"
+                "3. No MediaRecorder (onde instalado): Reiniciar o serviço DNA.MediaRecorderSVC para reabrir o parser de TS.\n"
+                "4. Se persistir jitter de DMA no barramento, resetar o sintonizador TBS PCIe via PnP.\n"
+                "5. Nota: O config.xml é sincronizado a cada 30min da matriz e não possui parâmetros de GOP."
             ),
             "remediation_script": (
                 "Restart-Service -Name *Audio*, *Sonifex*, *MediaRecorder* -Force; "
@@ -502,9 +523,11 @@ def cluster_and_diagnose_incidents_with_ai(period: str = "30d") -> Dict[str, Any
                 "além da tolerância estrita de 10 minutos após o término do bloco de gravação."
             ),
             "recommended_solution": (
-                "1. Priorizar a fila do FiletransferSVC sobre o tráfego de background.\n"
-                "2. Calibrar a cota de upload concorrente de 2 para 4 threads assíncronas.\n"
-                "3. Limpar arquivos temporários bloqueados na pasta records."
+                "1. Identificar a plataforma da praça: Atria Capture (DigitalTVReceiver.exe) vs MediaRecorder (DNA.MediaRecorderSVC) são mutuamente exclusivos.\n"
+                "2. No Atria Capture: Re-sintonizar o Mux via IPC/API 9000 ou reiniciar o processo sintonizador DigitalTVReceiver para restaurar o fluxo MP4_MDNA.\n"
+                "3. No MediaRecorder (onde instalado): Reiniciar o serviço DNA.MediaRecorderSVC para reabrir o parser de TS.\n"
+                "4. Se persistir jitter de DMA no barramento, resetar o sintonizador TBS PCIe via PnP.\n"
+                "5. Nota: O config.xml é sincronizado a cada 30min da matriz e não possui parâmetros de GOP."
             ),
             "remediation_script": (
                 "Restart-Service DNA.FiletransferSVC -Force; "
@@ -526,9 +549,11 @@ def cluster_and_diagnose_incidents_with_ai(period: str = "30d") -> Dict[str, Any
                 "fazendo o serviço entrar em falha forçada após 3 restarts sucessivos pelo Service Control Manager."
             ),
             "recommended_solution": (
-                "1. Expurgo emergencial de arquivos .lock e .tmp no volume D:.\n"
-                "2. Limpeza de logs de despejo de memória na pasta applications.\n"
-                "3. Reinício limpo e ordenado do serviço com reset de contadores de falha."
+                "1. Identificar a plataforma da praça: Atria Capture (DigitalTVReceiver.exe) vs MediaRecorder (DNA.MediaRecorderSVC) são mutuamente exclusivos.\n"
+                "2. No Atria Capture: Re-sintonizar o Mux via IPC/API 9000 ou reiniciar o processo sintonizador DigitalTVReceiver para restaurar o fluxo MP4_MDNA.\n"
+                "3. No MediaRecorder (onde instalado): Reiniciar o serviço DNA.MediaRecorderSVC para reabrir o parser de TS.\n"
+                "4. Se persistir jitter de DMA no barramento, resetar o sintonizador TBS PCIe via PnP.\n"
+                "5. Nota: O config.xml é sincronizado a cada 30min da matriz e não possui parâmetros de GOP."
             ),
             "remediation_script": (
                 "Get-ChildItem 'D:\\MediaDNA_V2\\data\\records\\*.tmp' -ErrorAction SilentlyContinue | Remove-Item -Force; "

@@ -565,15 +565,14 @@ LocalAddress   LocalPort RemoteAddress RemotePort State       OwningProcess
 192.168.10.45      54212 10.200.4.18         8554 Established          5120
 127.0.0.1           9000 127.0.0.1          58412 Established          4820"""
 
-    elif "Keyframe" in script or "configxml" in script or "KeyframeInterval" in script:
-        return f"""[{now_str}] Executando calibração de Keyframe (IDR) em {host}...
-[INFO] Abrindo D:\\MediaDNA_V2\\data\\config\\configxml.xml...
-[INFO] Backup criado: configxml.xml.bak_{datetime.now().strftime('%Y%m%d_%H%M%S')}
-[OK] Intervalo de Keyframe ajustado para estrito a cada 60 quadros (<KeyframeInterval>60</KeyframeInterval>).
-[OK] Buffer de pré-codificação elevado para 1.500ms.
-[INFO] Reiniciando serviço DNA.MediaRecorderSVC para aplicar novos parâmetros...
-[OK] DNA.MediaRecorderSVC reiniciado com sucesso.
-[OK] Thread de encode H.264 sincronizada sem jitter de timestamp. Correção aplicada com êxito total!"""
+    elif "Keyframe" in script or "configxml" in script or "KeyframeInterval" in script or "DigitalTVReceiver" in script:
+        return f"""[{now_str}] Executando diagnóstico e sincronização de fluxo de vídeo em {host}...
+[INFO] Identificando plataforma de gravação instalada na praça...
+[OK] Plataforma detectada: FIFTY5 BLUE - Atria Capture (64-bit).
+[INFO] Re-sincronizando Mux e sintonizador TBS PCIe (DigitalTVReceiver)...
+[OK] MuxesController consultado via API 9000 (\.\DtvExternalCmd).
+[OK] Perfil de vídeo MP4_MDNA restabelecido sem perda de sessão.
+[OK] Fluxo de gravação H.264 normalizado com entrega contínua de quadros!"""
 
     elif "Sonifex" in script or "ASIO" in script or "AudioRecorder" in script:
         return f"""[{now_str}] Executando calibração de Áudio Analógico (Placa Sonifex) em {host}...
