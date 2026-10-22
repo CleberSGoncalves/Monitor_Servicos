@@ -686,8 +686,8 @@ window.executeChronicAutoHeal = executeChronicAutoHeal;
 // =========================================================================
 // SUBTAB 3: ANÁLISE DE AMOSTRAS MP4 ATRIA & PLAYER DE FALHAS (EM SINAIS & RF)
 // =========================================================================
-let currentMp4AnalysisResult = null;
-let mp4PlayerState = {
+let signalsMp4AnalysisResult = null;
+let signalsMp4PlayerState = {
     isPlaying: false,
     currentTime: 0,
     duration: 16,
@@ -826,7 +826,7 @@ async function startMp4SampleAnalysis() {
         if (!resp.ok) throw new Error(`Falha na análise (${resp.status})`);
 
         const data = await resp.json();
-        currentMp4AnalysisResult = data;
+        signalsMp4AnalysisResult = data;
 
         if (progBar) progBar.style.width = "100%";
         if (progPct) progPct.innerText = "100%";
@@ -856,12 +856,12 @@ function renderMp4AnalysisResult(data) {
     const f = data.falha_predominante;
     const p = data.player_payload;
 
-    mp4PlayerState.currentTime = 0;
-    mp4PlayerState.duration = p.duration_sec || 16;
-    mp4PlayerState.glitchStart = p.glitch_start_sec || 5.2;
-    mp4PlayerState.glitchDuration = p.glitch_duration_sec || 3.8;
-    mp4PlayerState.glitchType = p.glitch_type || "freeze";
-    mp4PlayerState.isPlaying = false;
+    signalsMp4PlayerState.currentTime = 0;
+    signalsMp4PlayerState.duration = p.duration_sec || 16;
+    signalsMp4PlayerState.glitchStart = p.glitch_start_sec || 5.2;
+    signalsMp4PlayerState.glitchDuration = p.glitch_duration_sec || 3.8;
+    signalsMp4PlayerState.glitchType = p.glitch_type || "freeze";
+    signalsMp4PlayerState.isPlaying = false;
 
     const metaDisplay = document.getElementById("mp4PlayerMetadata");
     if (metaDisplay) metaDisplay.innerText = `${p.sample_filename} (${p.resolution} • ${p.video_codec})`;
@@ -874,12 +874,12 @@ function renderMp4AnalysisResult(data) {
 
     const scrubber = document.getElementById("mp4Scrubber");
     if (scrubber) {
-        scrubber.max = mp4PlayerState.duration;
+        scrubber.max = signalsMp4PlayerState.duration;
         scrubber.value = 0;
     }
 
     const durText = document.getElementById("mp4TotalDuration");
-    if (durText) durText.innerText = formatPlayerTime(mp4PlayerState.duration);
+    if (durText) durText.innerText = formatPlayerTime(signalsMp4PlayerState.duration);
 
     const titleEl = document.getElementById("mp4DiagTitle");
     if (titleEl) titleEl.innerText = f.nome;
@@ -911,16 +911,16 @@ function drawMp4PlayerFrame() {
     const w = canvas.width;
     const h = canvas.height;
 
-    const t = mp4PlayerState.currentTime;
-    const isGlitch = t >= mp4PlayerState.glitchStart && t <= (mp4PlayerState.glitchStart + mp4PlayerState.glitchDuration);
+    const t = signalsMp4PlayerState.currentTime;
+    const isGlitch = t >= signalsMp4PlayerState.glitchStart && t <= (signalsMp4PlayerState.glitchStart + signalsMp4PlayerState.glitchDuration);
 
     const banner = document.getElementById("mp4GlitchOverlayBanner");
     if (banner) {
         if (isGlitch) {
             banner.style.display = "block";
-            if (mp4PlayerState.glitchType === "freeze") {
+            if (signalsMp4PlayerState.glitchType === "freeze") {
                 banner.innerText = "⚠️ FALHA DETECTADA: CONGELAMENTO DE QUADRO / PTS STALL";
-            } else if (mp4PlayerState.glitchType === "macroblock") {
+            } else if (signalsMp4PlayerState.glitchType === "macroblock") {
                 banner.innerText = "⚠️ FALHA DETECTADA: CORRUPÇÃO DE MACROBLOCOS (SLICE LOSS)";
             } else {
                 banner.innerText = "⚠️ FALHA DETECTADA: SILÊNCIO SÚBITO DE ÁUDIO AAC (-inf dB)";
@@ -933,7 +933,7 @@ function drawMp4PlayerFrame() {
     ctx.fillStyle = "#0f172a";
     ctx.fillRect(0, 0, w, h);
 
-    if (isGlitch && mp4PlayerState.glitchType === "freeze") {
+    if (isGlitch && signalsMp4PlayerState.glitchType === "freeze") {
         ctx.fillStyle = "#1e293b";
         ctx.fillRect(0, 0, w, h);
         ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
@@ -945,8 +945,8 @@ function drawMp4PlayerFrame() {
         ctx.fillText("FRAME ESTÁTICO (REPETIÇÃO DE BUFFER H.264)", w / 2, h / 2 - 10);
         ctx.font = "12px monospace";
         ctx.fillStyle = "#94a3b8";
-        ctx.fillText(`Delta de Pixels: 0.00% • GOP Bloqueado • Frame #${Math.floor(mp4PlayerState.glitchStart * 30)}`, w / 2, h / 2 + 15);
-    } else if (isGlitch && mp4PlayerState.glitchType === "macroblock") {
+        ctx.fillText(`Delta de Pixels: 0.00% • GOP Bloqueado • Frame #${Math.floor(signalsMp4PlayerState.glitchStart * 30)}`, w / 2, h / 2 + 15);
+    } else if (isGlitch && signalsMp4PlayerState.glitchType === "macroblock") {
         ctx.fillStyle = "#0a0f1d";
         ctx.fillRect(0, 0, w, h);
         for (let bx = 0; bx < w; bx += 40) {
@@ -997,7 +997,7 @@ function drawMp4PlayerFrame() {
     ctx.textAlign = "left";
     ctx.fillText("VU L/R:", 22, h - 21);
 
-    const isAudioDrop = isGlitch && mp4PlayerState.glitchType === "audio_drop";
+    const isAudioDrop = isGlitch && signalsMp4PlayerState.glitchType === "audio_drop";
     const vuWidth = isAudioDrop ? 0 : Math.max(8, 90 + Math.sin(t * 12) * 15);
     ctx.fillStyle = isAudioDrop ? "#ef4444" : "#10b981";
     ctx.fillRect(58, h - 29, vuWidth, 10);
@@ -1018,65 +1018,65 @@ function drawMp4PlayerFrame() {
 }
 
 function toggleMp4PlayPause() {
-    mp4PlayerState.isPlaying = !mp4PlayerState.isPlaying;
+    signalsMp4PlayerState.isPlaying = !signalsMp4PlayerState.isPlaying;
     const btn = document.getElementById("btnMp4PlayPause");
     const icon = document.getElementById("mp4PlayIcon");
 
-    if (mp4PlayerState.isPlaying) {
+    if (signalsMp4PlayerState.isPlaying) {
         if (icon) icon.className = "fas fa-pause";
         if (btn) btn.innerHTML = `<i class="fas fa-pause"></i> Pausar`;
         playMp4Loop();
     } else {
         if (icon) icon.className = "fas fa-play";
         if (btn) btn.innerHTML = `<i class="fas fa-play"></i> Reproduzir`;
-        cancelAnimationFrame(mp4PlayerState.animFrameId);
+        cancelAnimationFrame(signalsMp4PlayerState.animFrameId);
     }
 }
 window.toggleMp4PlayPause = toggleMp4PlayPause;
 
-let lastLoopTime = 0;
+let signalsLastLoopTime = 0;
 function playMp4Loop(timestamp) {
-    if (!lastLoopTime) lastLoopTime = timestamp;
-    const deltaSec = (timestamp - lastLoopTime) / 1000 || 0.033;
-    lastLoopTime = timestamp;
+    if (!signalsLastLoopTime) signalsLastLoopTime = timestamp;
+    const deltaSec = (timestamp - signalsLastLoopTime) / 1000 || 0.033;
+    signalsLastLoopTime = timestamp;
 
-    if (mp4PlayerState.isPlaying) {
-        mp4PlayerState.currentTime += deltaSec * mp4PlayerState.speed;
-        if (mp4PlayerState.currentTime >= mp4PlayerState.duration) {
-            mp4PlayerState.currentTime = 0;
+    if (signalsMp4PlayerState.isPlaying) {
+        signalsMp4PlayerState.currentTime += deltaSec * signalsMp4PlayerState.speed;
+        if (signalsMp4PlayerState.currentTime >= signalsMp4PlayerState.duration) {
+            signalsMp4PlayerState.currentTime = 0;
         }
         drawMp4PlayerFrame();
-        mp4PlayerState.animFrameId = requestAnimationFrame(playMp4Loop);
+        signalsMp4PlayerState.animFrameId = requestAnimationFrame(playMp4Loop);
     }
 }
 
 function restartMp4Player() {
-    mp4PlayerState.currentTime = 0;
+    signalsMp4PlayerState.currentTime = 0;
     drawMp4PlayerFrame();
 }
 window.restartMp4Player = restartMp4Player;
 
 function stepMp4Frame() {
-    mp4PlayerState.currentTime = Math.min(mp4PlayerState.duration, mp4PlayerState.currentTime + 1 / 30);
+    signalsMp4PlayerState.currentTime = Math.min(signalsMp4PlayerState.duration, signalsMp4PlayerState.currentTime + 1 / 30);
     drawMp4PlayerFrame();
 }
 window.stepMp4Frame = stepMp4Frame;
 
 function onMp4ScrubberChange(val) {
-    mp4PlayerState.currentTime = parseFloat(val);
+    signalsMp4PlayerState.currentTime = parseFloat(val);
     drawMp4PlayerFrame();
 }
 window.onMp4ScrubberChange = onMp4ScrubberChange;
 
 function changeMp4Speed(val) {
-    mp4PlayerState.speed = parseFloat(val) || 1;
+    signalsMp4PlayerState.speed = parseFloat(val) || 1;
 }
 window.changeMp4Speed = changeMp4Speed;
 
 function executeMp4AutoHeal() {
-    if (!currentMp4AnalysisResult) return;
-    const f = currentMp4AnalysisResult.falha_predominante;
-    const praca = currentMp4AnalysisResult.praca;
+    if (!signalsMp4AnalysisResult) return;
+    const f = signalsMp4AnalysisResult.falha_predominante;
+    const praca = signalsMp4AnalysisResult.praca;
 
     if (!confirm(`Deseja executar a correção automática no Capture Site (${praca})?\n\nFalha: ${f.nome}\nComando: Atualização de Parâmetros de Codec ATRIA via PowerShell.`)) {
         return;
@@ -1108,8 +1108,8 @@ function executeMp4AutoHeal() {
 window.executeMp4AutoHeal = executeMp4AutoHeal;
 
 async function registerMp4ThresholdToConfigs() {
-    if (!currentMp4AnalysisResult) return;
-    const th = currentMp4AnalysisResult.falha_predominante.threshold_sugerido;
+    if (!signalsMp4AnalysisResult) return;
+    const th = signalsMp4AnalysisResult.falha_predominante.threshold_sugerido;
     if (!th) return;
 
     try {
