@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CS Fleet Control Center - Central de Monitoração Proativa</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📡</text></svg>">
+</head>
+<body>
+
+  <!-- Navbar -->
+  <header class="navbar">
+    <div class="brand">
+      <div class="brand-icon">📡</div>
+      <div>
+        <div class="brand-title">CS Fleet Control Center</div>
+        <div class="brand-subtitle">Central de Monitoração Proativa dos Capture Sites • Kinomuse</div>
+      </div>
+    </div>
+
+    <nav class="nav-tabs">
+      <button class="nav-btn active" data-tab="overview">
+        <span>📊</span> Visão Geral
+      </button>
+      <button class="nav-btn" data-tab="channels">
+        <span>📡</span> Canais & RF
+      </button>
+      <button class="nav-btn" data-tab="incidents">
+        <span>🚨</span> Incidentes & Worklog
+      </button>
+      <button class="nav-btn" data-tab="ai">
+        <span>🧠</span> Inteligência IA
+      </button>
+      <button class="nav-btn" data-tab="fleet">
+        <span>🚀</span> Gestão de Frotas
+      </button>
+      <button class="nav-btn" data-tab="configs">
+        <span>⚙️</span> Configurações
+      </button>
+    </nav>
+
+    <div class="nav-user">
+      <div class="user-badge">
+        <div class="status-dot"></div>
+        <span id="navUserDisplay">suportesmme</span>
+      </div>
+      <button class="btn-secondary" onclick="doLogout()">Sair</button>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="main-container">
+
+    <!-- Global Filter Bar -->
+    <div class="filter-bar">
+      <div class="filter-group">
+        <span style="font-size: 13px; font-weight: 600; color: var(--text-muted);">Filtros Globais:</span>
+        <select class="filter-select" id="filterCountry">
+          <option value="">🌍 Todos os Países</option>
+          <option value="Brasil" selected>🇧🇷 Brasil</option>
+        </select>
+        <select class="filter-select" id="filterCity">
+          <option value="">🏙️ Todas as Praças / Cidades</option>
+          <option value="Caxias do Sul">Caxias do Sul</option>
+          <option value="Pelotas">Pelotas</option>
+          <option value="São Paulo">São Paulo</option>
+          <option value="Rio de Janeiro">Rio de Janeiro</option>
+          <option value="Uberlândia">Uberlândia</option>
+          <option value="Vitória">Vitória</option>
+          <option value="Campinas">Campinas</option>
+          <option value="Santos">Santos</option>
+          <option value="Ribeirão Preto">Ribeirão Preto</option>
+          <option value="Juiz de Fora">Juiz de Fora</option>
+          <option value="Aracaju">Aracaju</option>
+        </select>
+        <select class="filter-select" id="filterStatus">
+          <option value="">⚡ Todos os Status</option>
+          <option value="parado">🔴 Serviços Parados</option>
+          <option value="crash_loop">🚨 Crash-Loop / Flapping</option>
+          <option value="atualizando">🟣 Em Atualização</option>
+        </select>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <span id="lastSyncLabel" style="font-size: 11px; color: var(--text-muted);">Sincronizando...</span>
+        <button class="btn-secondary" onclick="loadAllData()">🔄 Atualizar Agora</button>
+      </div>
+    </div>
+
+    <!-- KPI Grid -->
+    <div class="kpi-grid">
+      <div class="kpi-card blue">
+        <div class="kpi-icon">🖥️</div>
+        <div class="kpi-info">
+          <div class="kpi-value" id="kpiHostsOnline">-- / --</div>
+          <div class="kpi-label">Servidores Online</div>
+        </div>
+      </div>
+      <div class="kpi-card green">
+        <div class="kpi-icon">⚙️</div>
+        <div class="kpi-info">
+          <div class="kpi-value" id="kpiServicesRunning">-- / --</div>
+          <div class="kpi-label">Serviços em Execução</div>
+        </div>
+      </div>
+      <div class="kpi-card green">
+        <div class="kpi-icon">📡</div>
+        <div class="kpi-info">
+          <div class="kpi-value" id="kpiChannelsOk">-- / --</div>
+          <div class="kpi-label">Canais com Sinal Estável</div>
+        </div>
+      </div>
+      <div class="kpi-card red">
+        <div class="kpi-icon">⚠️</div>
+        <div class="kpi-info">
+          <div class="kpi-value" id="kpiChannelsDown">0</div>
+          <div class="kpi-label">Canais em Queda / Alerta</div>
+        </div>
+      </div>
+      <div class="kpi-card purple">
+        <div class="kpi-icon">🎬</div>
+        <div class="kpi-info">
+          <div class="kpi-value" id="kpiRecordingsActive">--</div>
+          <div class="kpi-label">Gravações MP4/MP3 Ativas</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 1: VISÃO GERAL -->
+    <section class="content-section active" id="tab-overview">
+      <!-- Incidentes Recentes / Banner de Alerta -->
+      <div class="panel-card" style="margin-bottom: 20px;">
+        <div class="panel-header">
+          <div class="panel-title"><span>🚨</span> Incidentes Críticos e Quedas Ativas</div>
+        </div>
+        <div id="activeOutagesList">
+          <div style="color: var(--text-muted); padding: 10px;">Carregando incidentes...</div>
+        </div>
+      </div>
+
+      <!-- Tabela de Serviços e Infraestrutura -->
+      <div class="panel-card">
+        <div class="panel-header">
+          <div class="panel-title"><span>🖥️</span> Governança de Serviços e Hosts da Frota</div>
+          <span style="font-size: 12px; color: var(--text-muted);">Telemetria individual por processo com Auto-Cura</span>
+        </div>
+        <div class="table-responsive">
+          <table>
+            <thead>
+              <tr>
+                <th>Servidor / Host</th>
+                <th>Praça</th>
+                <th>Serviço</th>
+                <th>Versão Instalada</th>
+                <th>Versão Desejada</th>
+                <th>Status Serviço</th>
+                <th>Status Deploy</th>
+                <th>RAM (Global / Proc)</th>
+                <th>CPU</th>
+                <th>Disco D:</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="servicesTableBody">
+              <tr><td colspan="11" style="text-align: center; color: var(--text-muted);">Carregando inventário...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 2: CANAIS & SINAIS RF -->
+    <section class="content-section" id="tab-channels">
+      <div class="panel-card">
+        <div class="panel-header">
+          <div class="panel-title"><span>📡</span> Monitoramento Operacional de Canais, Sintonizadores e Mídia</div>
+          <span style="font-size: 12px; color: var(--text-muted);">Força, Qualidade de Sinal, Tuners TBS, Autonomia MP4 e Downtime</span>
+        </div>
+        <div class="table-responsive">
+          <table>
+            <thead>
+              <tr>
+                <th>Emissora / Canal</th>
+                <th>Praça</th>
+                <th>Meio</th>
+                <th>Tuner</th>
+                <th>Status Sintonizador</th>
+                <th>Qualidade de Sinal</th>
+                <th>Força de Sinal</th>
+                <th>Vídeo Congelado</th>
+                <th>Áudio Mudo</th>
+                <th>Gravação MP4 / Autonomia</th>
+                <th>Ações de Operador</th>
+              </tr>
+            </thead>
+            <tbody id="channelsTableBody">
+              <tr><td colspan="11" style="text-align: center; color: var(--text-muted);">Carregando canais...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: CENTRAL DE INCIDENTES & WORKLOG -->
+    <section class="content-section" id="tab-incidents">
+      <div class="panel-card">
+        <div class="panel-header">
+          <div class="panel-title"><span>📝</span> Caderno de Incidentes e Ações Manuais (Worklog de Operações)</div>
+          <span style="font-size: 12px; color: var(--text-muted);">Rastreabilidade e trilha de auditoria de quem tratou e resolveu cada incidente</span>
+        </div>
+        <div class="table-responsive">
+          <table>
+            <thead>
+              <tr>
+                <th>Data / Hora</th>
+                <th>Host</th>
+                <th>Alvo (Serviço/Canal)</th>
+                <th>Tipo de Incidente</th>
+                <th>Operador</th>
+                <th>Ação Manual Executada</th>
+                <th>Status de Resolução</th>
+              </tr>
+            </thead>
+            <tbody id="incidentHistoryTableBody">
+              <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">Carregando histórico...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 4: INTELIGÊNCIA IA PROATIVA -->
+    <section class="content-section" id="tab-ai">
+      <div class="panel-card">
+        <div class="panel-header">
+          <div>
+            <div class="panel-title"><span>🧠</span> Motor de Inteligência Artificial Proativa</div>
+            <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Analisa correlações de telemetria, desgaste de tuners e padrões de queda para sugerir novas automações</div>
+          </div>
+          <button class="btn-primary" id="btnTriggerAi" onclick="triggerAiAnalysis()">
+            <span>✨</span> Analisar Todo o Sistema com IA
+          </button>
+        </div>
+
+        <div class="ai-cards-grid" id="aiCardsGrid">
+          <!-- Cards dinâmicos gerados pela IA -->
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 5: GESTÃO DE FROTAS & CANARY -->
+    <section class="content-section" id="tab-fleet">
+      <div class="panel-card">
+        <div class="panel-header">
+          <div class="panel-title"><span>🚀</span> Esteira de Homologação e Deploy Canário</div>
+          <span style="font-size: 12px; color: var(--text-muted);">Validação de melhorias em 5 praças piloto antes de liberar para todo o parque</span>
+        </div>
+
+        <div style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); padding: 20px; border-radius: var(--radius-md); margin-bottom: 20px;">
+          <h4 style="margin-bottom: 8px;">Disparo Controlado de Versão</h4>
+          <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
+            Ao disparar o Deploy Canário, o sistema seleciona 5 praças piloto, audita o funcionamento por 5 minutos e só promove para a frota inteira se homologar com 100% de sucesso. Se houver falha, o <strong>Rollback Automático</strong> restaura as máquinas piloto sem afetar o restante da rede.
+          </p>
+
+          <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+            <label style="font-size: 13px; font-weight: 600;">Versão Alvo:</label>
+            <input type="text" id="canaryTargetVersion" value="1.0.14.0" style="padding: 8px 14px; background: rgba(0,0,0,0.4); border: 1px solid var(--border-color); color: #fff; border-radius: var(--radius-sm); font-family: monospace; width: 140px;">
+
+            <button class="btn-primary" onclick="triggerCanaryFromDashboard()">
+              <span>🐤</span> Validar em 5 Praças Piloto (Canary)
+            </button>
+
+            <button class="btn-secondary" onclick="triggerPromoteFleetFromDashboard()">
+              <span>🚀</span> Promover para Toda a Frota (22 Praças)
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <h4 style="margin-bottom: 8px; font-size: 13px; color: var(--text-muted);">Console de Deploy e Auditoria:</h4>
+          <pre id="canaryLogOutput" style="background: #000; padding: 14px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); font-family: monospace; font-size: 12px; color: #34d399; min-height: 120px; white-space: pre-wrap;">Pronto para homologação de versão. Selecione uma ação acima.</pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 6: CONFIGURAÇÕES & LIMIARES -->
+    <section class="content-section" id="tab-configs">
+      <!-- Limiares de Alerta -->
+      <div class="panel-card">
+        <div class="panel-header">
+          <div class="panel-title"><span>🎛️</span> Calibração de Limiares de Alerta (Thresholds)</div>
+          <span style="font-size: 12px; color: var(--text-muted);">Aumente, diminua ou ative/desative os parâmetros de sensibilidade dos alarmes</span>
+        </div>
+        <div id="thresholdsListContainer">
+          <!-- Renderizado dinamicamente via thresholds_manager -->
+        </div>
+      </div>
+
+      <!-- Gestão de Usuários e LDAP -->
+      <div class="panel-card">
+        <div class="panel-header">
+          <div class="panel-title"><span>👥</span> Usuários e Integração com Domínio (Active Directory / LDAP)</div>
+          <button class="btn-secondary" onclick="document.getElementById('newUserModal').classList.add('active')">➕ Novo Usuário Local</button>
+        </div>
+
+        <!-- Busca no Domínio LDAP -->
+        <div style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); padding: 16px; border-radius: var(--radius-sm); margin-bottom: 20px;">
+          <h5 style="margin-bottom: 8px;">🔍 Buscar no Domínio Corporativo (LDAP)</h5>
+          <div style="display: flex; gap: 10px;">
+            <input type="text" id="ldapSearchInput" placeholder="Digite nome, usuário ou e-mail corporativo..." style="flex: 1; padding: 8px 12px; background: rgba(0,0,0,0.4); border: 1px solid var(--border-color); color: #fff; border-radius: var(--radius-sm); font-size: 13px;">
+            <button class="btn-primary" onclick="searchLdapDirectory()">Buscar no Domínio</button>
+          </div>
+          <div id="ldapSearchResults" style="margin-top: 12px;"></div>
+        </div>
+
+        <div class="table-responsive">
+          <table>
+            <thead>
+              <tr>
+                <th>Usuário</th>
+                <th>Nome Completo</th>
+                <th>E-mail</th>
+                <th>Função (Role)</th>
+                <th>Tipo de Autenticação</th>
+                <th>Último Acesso</th>
+              </tr>
+            </thead>
+            <tbody id="usersTableBody">
+              <!-- Renderizado dinamicamente -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- MODAL: LOGIN -->
+  <div class="modal-overlay" id="loginModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="brand">
+          <div class="brand-icon">🔐</div>
+          <div>
+            <div class="brand-title">Autenticação de Operador</div>
+            <div class="brand-subtitle">CS Fleet Control Center</div>
+          </div>
+        </div>
+      </div>
+      <form onsubmit="doLogin(event)">
+        <div class="form-group">
+          <label class="form-label">Usuário (Local ou Domínio LDAP)</label>
+          <input type="text" class="form-input" id="loginUsername" value="suportesmme" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Senha</label>
+          <input type="password" class="form-input" id="loginPassword" value="CSp@ss2020" required>
+        </div>
+        <div id="loginError" style="display: none; color: var(--accent-red); font-size: 12px; margin-bottom: 14px;"></div>
+        <button type="submit" class="btn-primary" style="width: 100%; padding: 10px;">Acessar Central de Monitoração</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: WORKLOG / TRATAMENTO DE INCIDENTE -->
+  <div class="modal-overlay" id="worklogModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h4 id="worklogTitleDisplay">Tratamento de Incidente</h4>
+        <button class="btn-secondary close-modal-btn" style="padding: 4px 8px;">✕</button>
+      </div>
+      <form onsubmit="saveIncidentWorklog(event)">
+        <input type="hidden" id="worklogIncidentKey">
+        <input type="hidden" id="worklogHost">
+        <input type="hidden" id="worklogTarget">
+        <input type="hidden" id="worklogType">
+
+        <div class="form-group">
+          <label class="form-label">Ação Manual Realizada pelo Operador</label>
+          <textarea id="worklogNotes" class="form-input" rows="4" placeholder="Ex: Entrado em contato com o suporte da praça, verificado cabo de antena do tuner TBS #2, re-sintonizado MUX e sinal restabelecido..." required></textarea>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Status do Incidente</label>
+          <select id="worklogStatus" class="form-input">
+            <option value="resolvido">✅ Resolvido com Sucesso</option>
+            <option value="em_analise">⏳ Em Análise / Acompanhamento</option>
+            <option value="escalado">🚨 Escalado para Engenharia de Campo</option>
+          </select>
+        </div>
+
+        <button type="submit" class="btn-primary" style="width: 100%;">Salvar Registro no Histórico</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: NOVO USUÁRIO LOCAL -->
+  <div class="modal-overlay" id="newUserModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h4>Cadastrar Novo Usuário Local</h4>
+        <button class="btn-secondary close-modal-btn" style="padding: 4px 8px;">✕</button>
+      </div>
+      <form onsubmit="createNewUser(event)">
+        <div class="form-group">
+          <label class="form-label">Nome de Usuário</label>
+          <input type="text" class="form-input" id="newUsername" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Nome Completo</label>
+          <input type="text" class="form-input" id="newFullName" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">E-mail</label>
+          <input type="email" class="form-input" id="newEmail">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Senha Inicial</label>
+          <input type="password" class="form-input" id="newPassword" value="CSp@ss2020" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Função / Perfil</label>
+          <select class="form-input" id="newRole">
+            <option value="operator">Operador (Tratamento e Ações)</option>
+            <option value="admin">Administrador (Configurações e Usuários)</option>
+            <option value="viewer">Visualizador (Apenas Leitura)</option>
+          </select>
+        </div>
+        <button type="submit" class="btn-primary" style="width: 100%;">Criar Usuário</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="/static/js/app.js"></script>
+  <script src="/static/js/ai_insights.js"></script>
+  <script src="/static/js/fleet_ops.js"></script>
+
+</body>
+</html>
