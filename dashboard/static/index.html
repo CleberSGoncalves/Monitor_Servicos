@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CS Fleet Control Center - Central de Monitoração Proativa</title>
-    <link rel="stylesheet" href="/static/css/style.css?v=3.2.0">
+    <link rel="stylesheet" href="/static/css/style.css?v=3.3.0">
   <style>
     /* Critical Remote Command & Subtab Styles (Anti-Cache Guaranteed) */
     .rc-subtabs-nav {
@@ -285,6 +285,22 @@
     .ai-cmd-actions {
       display: flex;
       gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 14px;
+    }
+    .ai-cmd-actions .btn {
+      flex: 1;
+      min-width: 130px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 8px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s ease;
     }
   </style>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📡</text></svg>">
@@ -779,7 +795,7 @@
       <div id="rc-tab-ai" class="rc-subtab-content" style="display: none;">
         <div class="panel-header" style="margin-bottom: 16px;">
           <div class="panel-title"><span>🧠</span> Comandos Sugeridos pela Inteligência Artificial Baseados no Parque</div>
-          <button class="btn-secondary" onclick="loadAiCommandSuggestions()"><i class="fas fa-sync-alt"></i> Atualizar Análise da IA</button>
+          <button class="btn-secondary" onclick="loadAiCommandSuggestions(true)"><i class="fas fa-sync-alt"></i> Atualizar Análise da IA</button>
         </div>
         <div class="ai-cmd-grid" id="rc-ai-suggestions-container">
           <!-- Cards gerados pela IA -->
@@ -886,9 +902,53 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=3.2.0"></script>
-  <script src="/static/js/ai_insights.js?v=3.2.0"></script>
-  <script src="/static/js/fleet_ops.js?v=3.2.0"></script>
-  <script src="/static/js/remote_commands.js?v=3.2.0"></script>
+  <!-- MODAL: CONFIRMAÇÃO DE SEGURANÇA PARA COMANDOS CRÍTICOS -->
+  <div class="modal-overlay" id="securityConfirmModal">
+    <div class="modal-content" style="max-width: 620px; border: 1px solid #ef4444; box-shadow: 0 10px 40px rgba(239, 68, 68, 0.35);">
+      <div class="modal-header" style="border-bottom: 1px solid rgba(239, 68, 68, 0.3); padding-bottom: 12px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 24px;">🛡️</span>
+          <div>
+            <h4 style="margin: 0; color: #f87171; font-size: 16px;">Confirmação de Segurança Operacional</h4>
+            <span style="font-size: 11px; color: var(--text-muted);">Comando Remoto com Impacto em Produção</span>
+          </div>
+        </div>
+        <button type="button" class="btn-secondary" style="padding: 4px 8px;" onclick="closeSecurityModal()">✕</button>
+      </div>
+
+      <div style="margin-top: 16px;">
+        <div id="sec-modal-warning-box" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 6px; padding: 12px; margin-bottom: 16px; color: #fca5a5; font-size: 12px; line-height: 1.5;">
+          <strong style="color: #ef4444;"><i class="fas fa-exclamation-triangle"></i> ATENÇÃO:</strong> <span id="sec-modal-warning-text">Este comando pode interromper serviços ou processos ativos.</span>
+        </div>
+
+        <div style="margin-bottom: 12px;">
+          <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">Comando Alvo:</div>
+          <div id="sec-modal-cmd-title" style="font-size: 14px; font-weight: 700; color: #fff;">Título</div>
+        </div>
+
+        <div style="margin-bottom: 14px;">
+          <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">Praças Afetadas (<span id="sec-modal-hosts-count">0</span> selecionada(s)):</div>
+          <div id="sec-modal-hosts-list" style="display: flex; flex-wrap: wrap; gap: 6px; max-height: 90px; overflow-y: auto; background: rgba(0,0,0,0.3); padding: 8px; border-radius: 6px; border: 1px solid var(--border-color);"></div>
+        </div>
+
+        <div style="margin-bottom: 18px;">
+          <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">Script a ser Executado (<span id="sec-modal-shell-type" style="color: #60a5fa; text-transform: uppercase;">powershell</span>):</div>
+          <pre id="sec-modal-script-preview" style="background: #000; padding: 10px; border-radius: 6px; border: 1px solid #1e293b; color: #38bdf8; font-family: 'Consolas', monospace; font-size: 11px; max-height: 130px; overflow-y: auto; white-space: pre-wrap; margin: 0;"></pre>
+        </div>
+
+        <div style="display: flex; gap: 12px; justify-content: flex-end;">
+          <button type="button" class="btn-secondary" onclick="closeSecurityModal()" style="padding: 8px 16px;">Cancelar</button>
+          <button type="button" class="btn-primary" id="btn-confirm-sec-exec" onclick="confirmSecurityExecution()" style="background: #dc2626; border-color: #ef4444; padding: 8px 20px; font-weight: 700;">
+            <i class="fas fa-bolt"></i> Confirmar e Executar Imediatamente
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/app.js?v=3.3.0"></script>
+  <script src="/static/js/ai_insights.js?v=3.3.0"></script>
+  <script src="/static/js/fleet_ops.js?v=3.3.0"></script>
+  <script src="/static/js/remote_commands.js?v=3.3.0"></script>
 </body>
 </html>

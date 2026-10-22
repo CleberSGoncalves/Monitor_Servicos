@@ -2,12 +2,15 @@
 /**
  * Orquestrador de Comandos Remotos (Remote Command Console)
  * Suporte nativo a PowerShell e CMD Prompt, execução multi-host, cards de consulta/correção,
- * acompanhamento em tempo real, exportação TXT/Excel e sugestões inteligentes de IA.
+ * acompanhamento em tempo real, exportação TXT/Excel, sugestões inteligentes de IA,
+ * adição automática ao catálogo e modal de confirmação de segurança para comandos críticos.
  */
 
 let selectedRemoteHosts = [];
 let currentExecutionId = null;
 let catalogCommands = [];
+let currentAiSuggestions = [];
+let pendingSecurityCommand = null;
 
 // Helper seguro para obter o token de autenticação
 function getSafeToken() {
@@ -71,8 +74,8 @@ window.switchRemoteTab = function(targetId, btn) {
         target.style.display = "block";
     }
 
-    if (targetId === "rc-tab-ai") {
-        loadAiCommandSuggestions();
+    if (targetId === "rc-tab-ai" && currentAiSuggestions.length === 0) {
+        loadAiCommandSuggestions(false);
     }
 };
 
@@ -87,13 +90,13 @@ window.setShellType = function(shell) {
     });
     const promptLabel = document.getElementById("terminal-prompt-label");
     if (promptLabel) {
-        promptLabel.textContent = shell === "powershell" ? "PS C:\\MediaDNA_V2> " : "C:\\MediaDNA_V2> ";
+        promptLabel.textContent = shell === "powershell" ? "PS C:\MediaDNA_V2> " : "C:\MediaDNA_V2> ";
     }
     const input = document.getElementById("rc-terminal-input");
     if (input) {
         input.placeholder = shell === "powershell" 
             ? "Digite comandos PowerShell (ex: Get-Process | select -first 5, Get-Service DNA.*)..." 
-            : "Digite comandos CMD (ex: dir D:\\MediaDNA_V2, sc query DNA.MonitorServiceSVC)...";
+            : "Digite comandos CMD (ex: dir D:\MediaDNA_V2, sc query DNA.MonitorServiceSVC)...";
     }
 };
 
@@ -101,7 +104,7 @@ window.setShellType = function(shell) {
 window.initRemoteCommands = function() {
     loadRemoteCommandHosts();
     loadCatalogCommands();
-    loadAiCommandSuggestions();
+    loadAiCommandSuggestions(false);
     setupRemoteCommandEvents();
 };
 
@@ -325,6 +328,23 @@ window.executeTerminalCommand = function() {
     const activeShellBtn = document.querySelector(".shell-type-btn.active");
     const shellType = activeShellBtn ? activeShellBtn.getAttribute("data-shell") : "powershell";
 
+    executeRemoteScript(script, shellType, script.split("\n")[0].substring(0, 40));
+};
+
+function executeRemoteScript(script, shellType, title) {
+    if (selectedRemoteHosts.length === 0) {
+        safeToast("Selecione ao menos uma praça no seletor do topo.", "warning");
+        return;
+    }
+
+    // Carrega script no editor
+    const editor = document.getElementById("rc-terminal-input");
+    if (editor) editor.value = script;
+    setShellType(shellType);
+
+    // Muda para o console
+    switchRemoteTab("rc-tab-console");
+
     const execBtn = document.getElementById("btn-run-remote-cmd");
     if (execBtn) {
         execBtn.disabled = true;
@@ -337,9 +357,7 @@ window.executeTerminalCommand = function() {
     }
 
     const token = getSafeToken();
-    const headers = {
-        "Content-Type": "application/json"
-    };
+    const headers = { "Content-Type": "application/json" };
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
     fetch("/api/remote-commands/execute", {
@@ -349,7 +367,7 @@ window.executeTerminalCommand = function() {
             hosts: selectedRemoteHosts,
             shell_type: shellType,
             command_script: script,
-            command_title: script.split("\n")[0].substring(0, 40)
+            command_title: title || script.split("\n")[0].substring(0, 40)
         })
     })
     .then(r => r.json())
@@ -371,7 +389,7 @@ window.executeTerminalCommand = function() {
             execBtn.innerHTML = '<i class="fas fa-bolt"></i> Executar na(s) Praça(s)';
         }
     });
-};
+}
 
 function loadExecutionResults(execId) {
     if (!execId) return;
@@ -514,19 +532,27 @@ window.saveCustomCommand = function(event) {
     .catch(err => safeToast("Falha ao salvar comando: " + err.message, "danger"));
 };
 
-// Sugestões de Comandos da IA
-window.loadAiCommandSuggestions = async function() {
+// ==========================================
+// SUGESTÕES INTELIGENTES DA IA & SEGURANÇA
+// ==========================================
+
+// Carrega sugestões da IA (com suporte a rotação dinâmica via refresh=true)
+window.loadAiCommandSuggestions = async function(refresh = false) {
     const container = document.getElementById("rc-ai-suggestions-container");
     if (!container) return;
-    container.innerHTML = '<div style="color: var(--text-muted); padding: 16px;"><i class="fas fa-spinner fa-spin"></i> Consultando motor de inteligência artificial...</div>';
+    container.innerHTML = '<div style="color: var(--text-muted); padding: 24px; text-align: center;"><i class="fas fa-spinner fa-spin fa-2x"></i><br><br>Analisando telemetria em tempo real das 22 praças para propor comandos dinâmicos...</div>';
 
     try {
         const token = getSafeToken();
         const headers = token ? { "Authorization": `Bearer ${token}` } : {};
-        const r = await fetch("/api/remote-commands/ai-suggestions", { headers });
+        const url = `/api/remote-commands/ai-suggestions?refresh=${refresh ? "true" : "false"}`;
+        const r = await fetch(url, { headers });
         if (r.ok) {
-            const suggestions = await r.json();
-            renderAiSuggestions(suggestions);
+            currentAiSuggestions = await r.json();
+            renderAiSuggestions(currentAiSuggestions);
+            if (refresh) {
+                safeToast("Sugestões da IA atualizadas com nova análise da frota!", "success");
+            }
         } else {
             container.innerHTML = '<div style="color: #ef4444; padding: 16px;">Falha ao carregar sugestões da IA.</div>';
         }
@@ -542,7 +568,7 @@ function renderAiSuggestions(suggestions) {
 
     container.innerHTML = "";
     if (!suggestions || suggestions.length === 0) {
-        container.innerHTML = '<div style="color: var(--text-muted); padding: 16px;">Nenhuma anomalia detectada que necessite de novos comandos no momento.</div>';
+        container.innerHTML = '<div style="color: var(--text-muted); padding: 20px;">Nenhuma recomendação no momento. Clique no botão acima para reanalisar.</div>';
         return;
     }
 
@@ -550,18 +576,41 @@ function renderAiSuggestions(suggestions) {
         const card = document.createElement("div");
         card.className = "ai-cmd-card";
         const isPs = (item.shell_type || "").toLowerCase() === "powershell";
+        const isHighRisk = (item.risk_level || "").toLowerCase() === "alto";
+        const isCorrecao = (item.category || "").toLowerCase() === "correcao";
+
+        const riskBadge = isHighRisk 
+            ? '<span class="badge" style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.5); font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px;"><i class="fas fa-exclamation-triangle"></i> RISCO ALTO</span>'
+            : '<span class="badge" style="background: rgba(16, 185, 129, 0.2); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.5); font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px;"><i class="fas fa-shield-alt"></i> SEGURO</span>';
+
+        const categoryBadge = isCorrecao
+            ? '<span class="badge" style="background: rgba(245, 158, 11, 0.2); color: #fde68a; border: 1px solid rgba(245, 158, 11, 0.4); font-size: 10px; padding: 2px 6px; border-radius: 4px;">CORREÇÃO</span>'
+            : '<span class="badge" style="background: rgba(59, 130, 246, 0.2); color: #bfdbfe; border: 1px solid rgba(59, 130, 246, 0.4); font-size: 10px; padding: 2px 6px; border-radius: 4px;">CONSULTA</span>';
+
         card.innerHTML = `
             <div class="ai-cmd-header">
-                <h4>${escapeHtml(item.title)}</h4>
-                <span class="rc-shell-badge ${isPs ? 'badge-ps' : 'badge-cmd'}">${(item.shell_type || 'PS').toUpperCase()}</span>
+                <div>
+                    <h4 style="margin: 0 0 6px 0;">${escapeHtml(item.title)}</h4>
+                    <div style="display: flex; gap: 6px; align-items: center;">
+                        <span class="rc-shell-badge ${isPs ? 'badge-ps' : 'badge-cmd'}">${(item.shell_type || 'PS').toUpperCase()}</span>
+                        ${categoryBadge}
+                        ${riskBadge}
+                    </div>
+                </div>
             </div>
-            <div class="ai-cmd-reason">
+            <div class="ai-cmd-reason" style="margin-top: 10px;">
                 <i class="fas fa-brain text-purple"></i> <strong>Diagnóstico da IA:</strong> ${escapeHtml(item.reason)}
             </div>
             <pre class="ai-cmd-code">${escapeHtml(item.command)}</pre>
             <div class="ai-cmd-actions">
-                <button type="button" class="btn btn-sm btn-primary" onclick="loadAiCommandIntoEditor('${encodeURIComponent(item.command)}', '${item.shell_type}')">
-                    <i class="fas fa-bolt"></i> ${escapeHtml(item.action_label)}
+                <button type="button" class="btn btn-sm btn-secondary" onclick="loadAiCommandIntoEditorById('${item.id}')" title="Carregar o script no terminal para revisar">
+                    <i class="fas fa-terminal"></i> Carregar no Console
+                </button>
+                <button type="button" class="btn btn-sm" style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.4); color: #6ee7b7;" onclick="saveAiCommandToCatalogById('${item.id}')" title="Salvar permanentemente no catálogo de comandos da equipe">
+                    <i class="fas fa-save"></i> Salvar no Catálogo
+                </button>
+                <button type="button" class="btn btn-sm ${isHighRisk ? 'btn-danger' : 'btn-primary'}" onclick="triggerAiCommandExecutionById('${item.id}')" title="Executar imediatamente na(s) praça(s) selecionada(s)">
+                    <i class="fas fa-bolt"></i> Executar Agora
                 </button>
             </div>
         `;
@@ -569,14 +618,109 @@ function renderAiSuggestions(suggestions) {
     });
 }
 
-window.loadAiCommandIntoEditor = function(encodedCommand, shellType) {
-    const command = decodeURIComponent(encodedCommand);
-    const editor = document.getElementById("rc-terminal-input");
-    if (editor) editor.value = command;
+// 1. Carrega comando no terminal do console
+window.loadAiCommandIntoEditorById = function(cmdId) {
+    const item = currentAiSuggestions.find(s => s.id === cmdId);
+    if (!item) return;
 
-    setShellType(shellType);
+    const editor = document.getElementById("rc-terminal-input");
+    if (editor) editor.value = item.command;
+
+    setShellType(item.shell_type || "powershell");
     switchRemoteTab("rc-tab-console");
-    safeToast("Comando sugerido pela IA carregado no terminal!");
+    safeToast(`Comando "${item.title}" carregado no terminal!`);
+};
+
+// 2. Salva o comando sugerido diretamente no catálogo
+window.saveAiCommandToCatalogById = async function(cmdId) {
+    const item = currentAiSuggestions.find(s => s.id === cmdId);
+    if (!item) return;
+
+    const token = getSafeToken();
+    const headers = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    try {
+        const resp = await fetch("/api/remote-commands/catalog", {
+            method: "POST",
+            headers: headers,
+            body: JSON.stringify({
+                title: item.title,
+                description: item.reason,
+                category: item.category || "consulta",
+                shell_type: item.shell_type || "powershell",
+                command_script: item.command
+            })
+        });
+
+        if (resp.ok) {
+            safeToast(`Comando "${item.title}" salvo no catálogo com sucesso!`, "success");
+            loadCatalogCommands();
+        } else {
+            safeToast("Erro ao salvar comando no catálogo.", "danger");
+        }
+    } catch (err) {
+        safeToast("Erro de rede: " + err.message, "danger");
+    }
+};
+
+// 3. Dispara execução com checagem de risco e popup de segurança
+window.triggerAiCommandExecutionById = function(cmdId) {
+    const item = currentAiSuggestions.find(s => s.id === cmdId);
+    if (!item) return;
+
+    if (selectedRemoteHosts.length === 0) {
+        safeToast("Por favor, selecione ao menos uma praça no seletor do topo antes de executar.", "warning");
+        return;
+    }
+
+    const isHighRisk = (item.risk_level || "").toLowerCase() === "alto";
+
+    if (isHighRisk) {
+        // Abre o popup de segurança
+        openSecurityModal(item);
+    } else {
+        // Execução direta segura
+        executeRemoteScript(item.command, item.shell_type || "powershell", item.title);
+    }
+};
+
+function openSecurityModal(cmdItem) {
+    pendingSecurityCommand = cmdItem;
+
+    const modal = document.getElementById("securityConfirmModal");
+    if (!modal) {
+        if (confirm(`⚠️ ATENÇÃO: ${cmdItem.risk_warning || "Este comando possui alto risco."}\n\nDeseja realmente executar em ${selectedRemoteHosts.length} praça(s)?`)) {
+            executeRemoteScript(cmdItem.command, cmdItem.shell_type || "powershell", cmdItem.title);
+        }
+        return;
+    }
+
+    document.getElementById("sec-modal-cmd-title").textContent = cmdItem.title;
+    document.getElementById("sec-modal-warning-text").textContent = cmdItem.risk_warning || "Este comando pode interromper serviços ou alterar arquivos de sistema.";
+    document.getElementById("sec-modal-shell-type").textContent = (cmdItem.shell_type || "powershell").toUpperCase();
+    document.getElementById("sec-modal-hosts-count").textContent = selectedRemoteHosts.length;
+    document.getElementById("sec-modal-script-preview").textContent = cmdItem.command;
+
+    const hostsListContainer = document.getElementById("sec-modal-hosts-list");
+    if (hostsListContainer) {
+        hostsListContainer.innerHTML = selectedRemoteHosts.map(h => `<span class="host-chip" style="font-size: 11px; padding: 2px 8px;"><strong>${h}</strong></span>`).join("");
+    }
+
+    modal.classList.add("active");
+}
+
+window.closeSecurityModal = function() {
+    const modal = document.getElementById("securityConfirmModal");
+    if (modal) modal.classList.remove("active");
+    pendingSecurityCommand = null;
+};
+
+window.confirmSecurityExecution = function() {
+    if (!pendingSecurityCommand) return;
+    const cmd = pendingSecurityCommand;
+    closeSecurityModal();
+    executeRemoteScript(cmd.command, cmd.shell_type || "powershell", cmd.title);
 };
 
 function escapeHtml(text) {

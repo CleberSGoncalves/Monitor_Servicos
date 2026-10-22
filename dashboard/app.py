@@ -441,5 +441,6 @@ async def export_execution(exec_id: str, format: str = Query("txt", regex="^(txt
         )
 
 @app.get("/api/remote-commands/ai-suggestions")
-async def get_remote_cmd_ai_suggestions(user: dict = Depends(get_current_user)):
-    return get_ai_command_recommendations()
+async def get_remote_cmd_ai_suggestions(refresh: bool = False, user: dict = Depends(get_current_user)):
+    data = get_cached_data()
+    return get_ai_command_recommendations(fleet_data=data, refresh=refresh)

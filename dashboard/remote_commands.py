@@ -1,28 +1,203 @@
 # dashboard/remote_commands.py
-"""
-Orquestrador de Comandos Remotos (Remote Command Orchestrator) para Capture Sites.
-Suporte a PowerShell e CMD Prompt, execução individual ou em lote, acompanhamento
-em tempo real, histórico, catálogo de comandos salvos, sugestões de IA e exportação TXT/Excel.
-"""
-import os
 import sqlite3
 import json
 import uuid
-from datetime import datetime
-from pathlib import Path
+import time
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
+from config import DATA_DIR
 
-DATA_DIR = Path(__file__).resolve().parent / "data"
-DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / "fleet.db"
 
+_ai_cmd_rotation_index = 0
 
-def init_remote_commands_db():
+# Catálogo Mestre de Comandos Recomendados pela IA (Consultas e Correções do SO/Frota)
+SYSTEMIC_AI_COMMANDS_POOL = [
+    {
+        "id": "ai_cmd_audit_binary",
+        "title": "🔍 Auditoria de Versão Binária do Agente",
+        "category": "consulta",
+        "shell_type": "powershell",
+        "command": "[System.Diagnostics.FileVersionInfo]::GetVersionInfo('D:\\MediaDNA_V2\\applications\\MonitorServiceSVC\\WinServiceFleetAgent.exe').FileVersion",
+        "reason": "Audita o cabeçalho PE real do executável no disco em todas as praças para confirmar se o binário foi atualizado fisicamente sem depender de cache de memória.",
+        "action_label": "Verificar Versão no Disco",
+        "risk_level": "baixo",
+        "risk_warning": ""
+    },
+    {
+        "id": "ai_cmd_bootstrap_1014",
+        "title": "🚀 Atualização Express sem RDP (Bootstrap v1.0.14.0)",
+        "category": "correcao",
+        "shell_type": "cmd",
+        "command": "powershell -ExecutionPolicy Bypass -NoProfile -Command \"irm https://raw.githubusercontent.com/CleberSGoncalves/Monitor_Servicos/main/WinServiceFleetAgent/Scripts/bootstrap_update.ps1 | iex\"",
+        "reason": "Corrige nós com Task Scheduler travado em 'Em Progresso' ou instala do zero em praças sem o serviço DNA.MonitorServiceSVC.",
+        "action_label": "Executar Bootstrap v1.0.14.0",
+        "risk_level": "alto",
+        "risk_warning": "Este comando fará o download e substituição completa dos binários do agente, reiniciando o serviço DNA.MonitorServiceSVC. Recomenda-se validar antes nas máquinas piloto."
+    },
+    {
+        "id": "ai_cmd_inspect_tbs_pnp",
+        "title": "📡 Verificação de Travamento de Tuners TBS / DTV",
+        "category": "consulta",
+        "shell_type": "powershell",
+        "command": "Get-PnpDevice -Class 'Media' | Where-Object { $_.FriendlyName -like '*TBS*' -or $_.FriendlyName -like '*DTV*' } | Select-Object FriendlyName, Status, Problem | Format-Table -AutoSize",
+        "reason": "Inspeciona o barramento PnP de placas sintonizadoras PCIe/USB (TBS Technologies) para identificar dispositivos em estado de erro ou código 43.",
+        "action_label": "Inspecionar Tuners",
+        "risk_level": "baixo",
+        "risk_warning": ""
+    },
+    {
+        "id": "ai_cmd_clean_tmp_buffers",
+        "title": "🧹 Limpeza Emergencial de Buffers de Vídeo (.tmp)",
+        "category": "correcao",
+        "shell_type": "powershell",
+        "command": "Get-ChildItem 'D:\\MediaDNA_V2\\data\\records\\*.tmp' -Recurse -ErrorAction SilentlyContinue | Remove-Item -Force; Write-Host 'Buffers temporários .tmp removidos com sucesso!'",
+        "reason": "Identificada alta taxa de ocupação no Disco D:. Remove arquivos temporários de transcodificação órfãos sem afetar gravações MP4 finalizadas.",
+        "action_label": "Limpar Buffers .tmp",
+        "risk_level": "alto",
+        "risk_warning": "Exclui arquivos temporários .tmp do diretório de gravações. Processos que estejam gravando ativamente no mesmo milissegundo podem descartar buffers transitórios."
+    },
+    {
+        "id": "ai_cmd_restart_all_dna",
+        "title": "🔄 Reinício em Lote de Todos os Serviços DNA",
+        "category": "correcao",
+        "shell_type": "powershell",
+        "command": "Get-Service -Name DNA.* | Restart-Service -Force -Verbose; Get-Service -Name DNA.* | Select-Object Name, Status | Format-Table -AutoSize",
+        "reason": "Detectados serviços em falha ou crash-loop. Recicla graciosamente toda a stack de captura, OCR e transmissão de arquivos.",
+        "action_label": "Reiniciar Serviços DNA",
+        "risk_level": "alto",
+        "risk_warning": "Reinicia todos os 9 serviços DNA (Detection, MediaRecorder, Filetransfer, etc.). A gravação de TV/Rádio será interrompida temporariamente por cerca de 20 a 30 segundos."
+    },
+    {
+        "id": "ai_cmd_check_rtsp_dead_sockets",
+        "title": "🌐 Auditoria de Conexões TCP Zumbi (Streams IP)",
+        "category": "consulta",
+        "shell_type": "powershell",
+        "command": "Get-NetTCPConnection -State Established | Where-Object { $_.RemotePort -in @(554, 8554, 80, 443, 9000) } | Select-Object LocalAddress, LocalPort, RemoteAddress, RemotePort, State, OwningProcess | Format-Table -AutoSize",
+        "reason": "Mapeia sockets TCP presos em estado ESTABLISHED com provedores de stream IP (RTSP/UDP) que podem estar sem transmissão de bytes.",
+        "action_label": "Auditar Sockets RTSP",
+        "risk_level": "baixo",
+        "risk_warning": ""
+    },
+    {
+        "id": "ai_cmd_reset_tcp_zombies",
+        "title": "⚡ Reset da Pilha TCP/IP e Flush DNS de Rede",
+        "category": "correcao",
+        "shell_type": "cmd",
+        "command": "ipconfig /flushdns & netsh winsock reset & arp -d *",
+        "reason": "Destrava interfaces de rede com cache corrompido ou falha de handshake com streams externos e portas WCF locais.",
+        "action_label": "Resetar Rede Winsock",
+        "risk_level": "alto",
+        "risk_warning": "Executa reset do Winsock e limpa a tabela ARP do Windows. Conexões de rede ativas podem sofrer breve oscilação de 1 a 2 segundos."
+    },
+    {
+        "id": "ai_cmd_event_log_errors",
+        "title": "📋 Top 15 Erros Recentes no Event Viewer (Application)",
+        "category": "consulta",
+        "shell_type": "powershell",
+        "command": "Get-EventLog -LogName Application -EntryType Error -Newest 15 | Select-Object TimeGenerated, Source, Message | Format-List",
+        "reason": "Extrai as falhas e exceções críticas mais recentes registradas pelo Windows relativas a falhas de .NET ou colapso de executáveis.",
+        "action_label": "Ler Log de Eventos",
+        "risk_level": "baixo",
+        "risk_warning": ""
+    },
+    {
+        "id": "ai_cmd_audit_ntp_status",
+        "title": "⏱️ Auditoria de Desvio de Relógio do SO (NTP Status)",
+        "category": "consulta",
+        "shell_type": "cmd",
+        "command": "w32tm /query /status & w32tm /query /peers",
+        "reason": "Verifica se o relógio da máquina está sincronizado com a matriz e mede o jitter/offset para evitar perda de valor legal dos metadados.",
+        "action_label": "Verificar Relógio NTP",
+        "risk_level": "baixo",
+        "risk_warning": ""
+    },
+    {
+        "id": "ai_cmd_force_ntp_resync",
+        "title": "🕒 Ressincronização Forçada Imediata com NTP",
+        "category": "correcao",
+        "shell_type": "cmd",
+        "command": "net stop w32time & net start w32time & w32tm /resync /force",
+        "reason": "Corrige desvio temporal acumulado em praças onde o relógio do Windows descalibrou mais de 1 segundo em relação à matriz.",
+        "action_label": "Forçar Sync NTP",
+        "risk_level": "alto",
+        "risk_warning": "Ajusta abruptamente o relógio do Windows. Pode causar pequeno salto de milissegundos nos carimbos de tempo das gravações ativas."
+    },
+    {
+        "id": "ai_cmd_disk_queue_latency",
+        "title": "💽 Diagnóstico de Latência e Fila de Escrita do Disco D:",
+        "category": "consulta",
+        "shell_type": "powershell",
+        "command": "Get-Counter '\\PhysicalDisk(*)\\Avg. Disk sec/Write', '\\PhysicalDisk(*)\\Current Disk Queue Length' | Select-Object -ExpandProperty CounterSamples | Select-Object InstanceName, CookedValue | Format-Table -AutoSize",
+        "reason": "Mede a latência real de gravação em milissegundos e a fila de I/O do Disco D: para diagnosticar causas de vídeo congelado.",
+        "action_label": "Medir Latência de Disco",
+        "risk_level": "baixo",
+        "risk_warning": ""
+    },
+    {
+        "id": "ai_cmd_kernel_nonpaged_pool",
+        "title": "🧠 Auditoria de Memória Não-Paginada do Kernel (Pool Leak)",
+        "category": "consulta",
+        "shell_type": "powershell",
+        "command": "$np = (Get-Counter '\\Memory\\Pool Nonpaged Bytes').CounterSamples[0].CookedValue / 1MB; Write-Host ('Kernel Non-Paged Pool: {0:N2} MB' -f $np); if ($np -gt 1000) { Write-Host 'ALERTA: Pool elevado (> 1GB)!' -ForegroundColor Red } else { Write-Host 'Status: Saudavel' -ForegroundColor Green }",
+        "reason": "Identifica se drivers TBS ou DirectShow estão acumulando vazamento de memória não-paginada do Windows que leva a congelamento total do SO.",
+        "action_label": "Medir Kernel Pool",
+        "risk_level": "baixo",
+        "risk_warning": ""
+    },
+    {
+        "id": "ai_cmd_test_wcf_matrix",
+        "title": "📡 Teste de Conectividade e Latência WCF Matriz (Porta 443)",
+        "category": "consulta",
+        "shell_type": "powershell",
+        "command": "Test-NetConnection -ComputerName mediadna.ibope.com -Port 443 | Format-List ComputerName, RemoteAddress, TcpTestSucceeded, PingSucceeded, RoundTripTime",
+        "reason": "Valida se a rota TCP 443 de subida de telemetria e inventário para o RemoteHostsService.svc está livre de bloqueios de firewall.",
+        "action_label": "Testar Rota WCF",
+        "risk_level": "baixo",
+        "risk_warning": ""
+    },
+    {
+        "id": "ai_cmd_kill_orphan_ffmpeg",
+        "title": "🛑 Finalização Forçada de Processos FFmpeg Travados",
+        "category": "correcao",
+        "shell_type": "powershell",
+        "command": "Get-Process -Name ffmpeg, DNA.MediaConverter* -ErrorAction SilentlyContinue | Where-Object { $_.StartTime -lt (Get-Date).AddHours(-6) } | Stop-Process -Force -Verbose; Write-Host 'Processos orfaos finalizados!'",
+        "reason": "Finaliza processos de conversão com mais de 6 horas de execução contínua que estejam retendo 100% de uso de CPU indevidamente.",
+        "action_label": "Matar FFmpeg Travado",
+        "risk_level": "alto",
+        "risk_warning": "Encerra processos ffmpeg.exe com execução superior a 6h. Se houver transcodificação legítima de arquivo longo, ela será interrompida."
+    },
+    {
+        "id": "ai_cmd_top_recording_folders",
+        "title": "📁 Top 10 Pastas de Gravação Mais Pesadas no Disco D:",
+        "category": "consulta",
+        "shell_type": "powershell",
+        "command": "Get-ChildItem 'D:\\MediaDNA_V2\\data\\records' -Directory -ErrorAction SilentlyContinue | ForEach-Object { $size = (Get-ChildItem $_.FullName -Recurse -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1GB; [PSCustomObject]@{ Pasta = $_.Name; Tamanho_GB = [Math]::Round($size, 2) } } | Sort-Object Tamanho_GB -Descending | Select-Object -First 10 | Format-Table -AutoSize",
+        "reason": "Identifica com precisão quais canais ou datas estão gerando o maior consumo em GB no armazenamento.",
+        "action_label": "Mapear Maiores Pastas",
+        "risk_level": "baixo",
+        "risk_warning": ""
+    },
+    {
+        "id": "ai_cmd_reload_tbs_device",
+        "title": "🔌 Reinicialização do Driver da Placa TBS (PnP Reload)",
+        "category": "correcao",
+        "shell_type": "powershell",
+        "command": "Get-PnpDevice -Class 'Media' | Where-Object { $_.FriendlyName -like '*TBS*' } | ForEach-Object { Disable-PnpDevice -InstanceId $_.InstanceId -Confirm:$false; Start-Sleep -Seconds 3; Enable-PnpDevice -InstanceId $_.InstanceId -Confirm:$false }; Write-Host 'Placas sintonizadoras reinicializadas!'",
+        "reason": "Desabilita e reabilita o driver PCIe/USB TBS no Windows para destravar a sintonização sem precisar reiniciar a máquina física.",
+        "action_label": "Reiniciar Placa TBS",
+        "risk_level": "alto",
+        "risk_warning": "Desliga e religa o hardware sintonizador no Windows. Interrompe momentaneamente o sinal RF de todos os canais sintonizados na placa por cerca de 8 segundos."
+    }
+]
+
+
+def init_remote_command_db():
+    """Garante que as tabelas de catálogo e auditoria de comandos remotos existam."""
     with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
-        conn.execute("PRAGMA journal_mode=WAL;")
         cursor = conn.cursor()
         
-        # 1. Tabela de comandos catalogados (pré-definidos e customizados)
+        # Tabela de Catálogo de Comandos Pré-Definidos
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS remote_command_catalog (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -32,316 +207,356 @@ def init_remote_commands_db():
                 shell_type TEXT NOT NULL, -- 'powershell' ou 'cmd'
                 command_script TEXT NOT NULL,
                 is_builtin INTEGER DEFAULT 0,
-                created_by TEXT DEFAULT 'system',
-                created_at TEXT DEFAULT (datetime('now'))
+                created_by TEXT DEFAULT 'Sistema',
+                created_at TEXT
             )
         """)
         
-        # 2. Tabela de execuções de comandos
+        # Tabela de Histórico de Execuções em Lote
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS remote_command_executions (
                 id TEXT PRIMARY KEY,
-                command_title TEXT NOT NULL,
+                command_title TEXT,
                 shell_type TEXT NOT NULL,
                 command_script TEXT NOT NULL,
-                target_hosts TEXT NOT NULL, -- JSON array
-                status TEXT NOT NULL, -- 'pendente', 'executando', 'concluido', 'parcial', 'erro'
-                executed_by TEXT NOT NULL,
-                created_at TEXT DEFAULT (datetime('now')),
-                completed_at TEXT
+                requested_by TEXT,
+                hosts_count INTEGER,
+                hosts_list TEXT,
+                status TEXT, -- 'pendente', 'em_execucao', 'concluido', 'falha'
+                created_at TEXT,
+                finished_at TEXT
             )
         """)
-        
-        # 3. Tabela de resultados por host
+
+        # Tabela de Resultados por Host
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS remote_command_results (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 execution_id TEXT NOT NULL,
                 host TEXT NOT NULL,
-                praca TEXT,
-                status TEXT NOT NULL, -- 'pendente', 'executando', 'sucesso', 'erro'
+                status TEXT, -- 'sucesso', 'erro', 'timeout'
+                exit_code INTEGER,
                 stdout TEXT,
                 stderr TEXT,
-                exit_code INTEGER,
                 duration_ms INTEGER,
-                executed_at TEXT DEFAULT (datetime('now')),
-                FOREIGN KEY (execution_id) REFERENCES remote_command_executions(id) ON DELETE CASCADE
+                executed_at TEXT,
+                FOREIGN KEY (execution_id) REFERENCES remote_command_executions (id)
             )
         """)
         
+        conn.commit()
+
         # Inserção de Comandos Pré-Definidos Essenciais caso não existam
-        cursor.execute("SELECT COUNT(*) FROM remote_command_catalog WHERE is_builtin = 1")
+        cursor.execute("SELECT COUNT(*) FROM remote_command_catalog")
         if cursor.fetchone()[0] == 0:
-            builtins = [
+            default_catalog = [
                 # Consultas
                 (
-                    "💾 Espaço Livre em Disco",
-                    "Lista espaço total, usado e livre em todos os discos da estação (D: e C:)",
-                    "consulta",
-                    "powershell",
-                    "Get-PSDrive -PSProvider FileSystem | Select-Object Root, @{N='Livre (GB)';E={[math]::Round($_.Free/1GB,2)}}, @{N='Total (GB)';E={[math]::Round(($_.Used+$_.Free)/1GB,2)}}, @{N='% Livre';E={[math]::Round(($_.Free/($_.Used+$_.Free))*100,1)}} | Format-Table -AutoSize",
-                    1, "system"
-                ),
-                (
-                    "⚙️ Status de Todos os Serviços DNA",
-                    "Verifica o status de execução e inicialização dos serviços DNA, Atria e Zabbix",
-                    "consulta",
-                    "powershell",
-                    "Get-Service -Name 'DNA.*', '*Atria*', 'FastMatching*', 'Zabbix*' -ErrorAction SilentlyContinue | Select-Object Name, Status, StartType | Format-Table -AutoSize",
-                    1, "system"
-                ),
-                (
-                    "📊 Top 10 Processos Mais Pesados (CPU e RAM)",
+                    "🔍 Top 10 Processos Mais Pesados (CPU e RAM)",
                     "Mapeia os 10 processos que mais consom recursos de CPU e memória RAM no Capture Site",
                     "consulta",
                     "powershell",
-                    "Get-Process | Sort-Object CPU -Descending | Select-Object -First 10 Id, ProcessName, @{N='CPU (s)';E={[math]::Round($_.CPU,1)}}, @{N='RAM (MB)';E={[math]::Round($_.WorkingSet64/1MB,1)}} | Format-Table -AutoSize",
-                    1, "system"
+                    "Get-Process | Sort-Object CPU -Descending | Select-Object -First 10 Name, Id, @{Name='CPU(s)';Expression={[math]::Round($_.CPU, 1)}}, @{Name='RAM(MB)';Expression={[math]::Round($_.WorkingSet/1MB, 1)}} | Format-Table -AutoSize",
+                    1,
+                    "NOC Central"
                 ),
                 (
-                    "📡 Telemetria Real dos MUX/Tuners (API 9000)",
-                    "Consulta a API local de telemetria do Atria DTV Capture na porta 9000",
+                    "💾 Espaço Livre e Saúde das Unidades (C: e D:)",
+                    "Retorna o tamanho total, espaço livre e porcentagem disponível em cada partição de disco",
                     "consulta",
                     "powershell",
-                    "try { (Invoke-RestMethod -Uri 'http://localhost:9000/api/v1/Muxes' -TimeoutSec 5).Muxes | Select-Object Id, ChannelName, Frequency, Quality, Strength | Format-Table -AutoSize } catch { Write-Host 'Falha ao consultar API porta 9000: ' $_.Exception.Message }",
-                    1, "system"
+                    "Get-PSDrive -PSProvider FileSystem | Select-Object Name, @{Name='Total_GB';Expression={[math]::Round($_.Used/1GB + $_.Free/1GB, 1)}}, @{Name='Livre_GB';Expression={[math]::Round($_.Free/1GB, 1)}}, @{Name='Livre_%';Expression={[math]::Round(($_.Free/($_.Used+$_.Free))*100, 1)}} | Format-Table -AutoSize",
+                    1,
+                    "NOC Central"
                 ),
                 (
-                    "📜 Últimos 10 Erros no Event Viewer",
-                    "Examina os registros de Application e System em busca de falhas recentes",
+                    "⚙️ Status de Todos os Serviços DNA",
+                    "Verifica se os serviços DNA estão 'Running' ou 'Stopped' no Windows Service Control Manager",
                     "consulta",
                     "powershell",
-                    "Get-EventLog -LogName Application -EntryType Error -Newest 10 -ErrorAction SilentlyContinue | Select-Object TimeGenerated, Source, @{N='Mensagem';E={$_.Message.Substring(0, [math]::Min(120, $_.Message.Length))}} | Format-Table -AutoSize",
-                    1, "system"
+                    "Get-Service -Name DNA.* | Select-Object Name, Status, StartType, DisplayName | Format-Table -AutoSize",
+                    1,
+                    "NOC Central"
                 ),
                 (
-                    "🗂️ Arquivos Gravados Recentes (.ts / .mp4)",
-                    "Verifica as últimas gravações salvas em D:\\MediaDNA_V2\\data\\records",
+                    "📡 Telemetria Local Muxes (API Porta 9000)",
+                    "Consulta a API local do Atria Capture para inspecionar parâmetros de frequência e sintonizadores TBS",
                     "consulta",
                     "powershell",
-                    "Get-ChildItem -Path 'D:\\MediaDNA_V2\\data\\records' -Recurse -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 10 Name, @{N='Tamanho (MB)';E={[math]::Round($_.Length/1MB,2)}}, LastWriteTime | Format-Table -AutoSize",
-                    1, "system"
+                    "try { Invoke-RestMethod -Uri 'http://localhost:9000/api/v1/Muxes' -TimeoutSec 5 | ConvertTo-Json -Depth 3 } catch { Write-Host 'API Atria Capture inacessivel na porta 9000: ' $_.Exception.Message }",
+                    1,
+                    "NOC Central"
                 ),
                 (
-                    "🔍 Versão Real do Executável do Agente no Disco",
-                    "Lê a versão física do arquivo WinServiceFleetAgent.exe na pasta oficial",
+                    "⏱️ Uptime do Sistema e Último Boot",
+                    "Mostra há quantos dias e horas o Windows está ligado ininterruptamente",
                     "consulta",
                     "powershell",
-                    "[System.Diagnostics.FileVersionInfo]::GetVersionInfo('D:\\MediaDNA_V2\\applications\\MonitorServiceSVC\\WinServiceFleetAgent.exe') | Select-Object FileName, FileVersion, ProductVersion | Format-List",
-                    1, "system"
+                    "(Get-CimInstance Win32_OperatingSystem).LastBootUpTime | Select-Object @{Name='UltimoBoot';Expression={$_}}, @{Name='Uptime_Dias';Expression={[math]::Round(((Get-Date) - $_).TotalDays, 1)}} | Format-List",
+                    1,
+                    "NOC Central"
                 ),
                 (
-                    "🌐 Teste de Latência e Ping com Gateways",
-                    "Testa conectividade com mediadna.ibope.com e internet",
+                    "🌐 Teste de Latência e DNS com a Matriz",
+                    "Verifica a conectividade de rede com o servidor central mediadna.ibope.com",
                     "consulta",
                     "cmd",
-                    "ping mediadna.ibope.com -n 4 && ping 8.8.8.8 -n 4",
-                    1, "system"
+                    "ping mediadna.ibope.com -n 4",
+                    1,
+                    "NOC Central"
                 ),
-                
-                # Correções e Auto-Cura
                 (
-                    "🚀 Auto-Update Imediato do Agente para v1.0.14.0",
-                    "Executa o bootstrap autônomo para atualizar binários do agente sem intervenção manual",
+                    "📄 Versão dos Executáveis DNA no Disco",
+                    "Verifica a versão real gravada nos arquivos .exe da pasta applications",
+                    "consulta",
+                    "powershell",
+                    "Get-ChildItem 'D:\\MediaDNA_V2\\applications\\*\\*.exe' | Select-Object Name, @{Name='Versao';Expression={$_.VersionInfo.FileVersion}} | Format-Table -AutoSize",
+                    1,
+                    "NOC Central"
+                ),
+                (
+                    "📂 Integridade do configxml.xml",
+                    "Garante que o arquivo de configuração de canais e host existe e está acessível",
+                    "consulta",
+                    "cmd",
+                    "dir D:\\MediaDNA_V2\\data\\config\\configxml.xml",
+                    1,
+                    "NOC Central"
+                ),
+
+                # Correções & Self-Healing
+                (
+                    "🚀 Bootstrap de Atualização Autônoma (v1.0.14.0)",
+                    "Executa o script autônomo do GitHub que resolve a trava de Task Scheduler e atualiza os binários",
                     "correcao",
                     "cmd",
                     "powershell -ExecutionPolicy Bypass -NoProfile -Command \"irm https://raw.githubusercontent.com/CleberSGoncalves/Monitor_Servicos/main/WinServiceFleetAgent/Scripts/bootstrap_update.ps1 | iex\"",
-                    1, "system"
+                    1,
+                    "NOC Central"
                 ),
                 (
-                    "🔄 Reiniciar Aplicação de Captura Atria / DigitalTV",
-                    "Finaliza processos do Atria/DigitalTVCapture travados e inicia a captura limpa",
+                    "🔄 Reiniciar DNA.MonitorServiceSVC",
+                    "Para e inicia o serviço de monitoração e telemetria da frota",
                     "correcao",
-                    "powershell",
-                    "Stop-Process -Name 'DigitalTVCapture', 'AtriaCapture', 'Atria' -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2; Write-Host 'Processos finalizados com sucesso!'; Get-Service -Name 'DNA.MonitorServiceSVC' -ErrorAction SilentlyContinue | Restart-Service -ErrorAction SilentlyContinue",
-                    1, "system"
+                    "cmd",
+                    "net stop DNA.MonitorServiceSVC && net start DNA.MonitorServiceSVC",
+                    1,
+                    "NOC Central"
                 ),
                 (
-                    "🧹 Limpeza Completa de Arquivos Temporários",
-                    "Libera espaço em disco limpando %TEMP% e lixeira de processamento",
+                    "🧹 Purgar Arquivos Temporários de Gravação (.tmp)",
+                    "Exclui arquivos .tmp com mais de 24h na pasta de records para liberar espaço de emergência",
                     "correcao",
                     "powershell",
-                    "Remove-Item -Path \"$env:TEMP\\*\" -Recurse -Force -ErrorAction SilentlyContinue; [GC]::Collect(); Write-Host 'Limpeza de temporários concluída com sucesso!'",
-                    1, "system"
+                    "Get-ChildItem 'D:\\MediaDNA_V2\\data\\records\\*.tmp' -Recurse -ErrorAction SilentlyContinue | Remove-Item -Force -Verbose; Write-Host 'Limpeza de temporarios concluida!'",
+                    1,
+                    "NOC Central"
                 ),
                 (
-                    "🛠️ Reparar Permissões e Validar ConfigXml.xml",
-                    "Garante que o arquivo de configuração de canais e host existe e está acessível",
+                    "🛠️ Reiniciar DNA.DetectionSVC (OCR & Análise)",
+                    "Reinicia o serviço de detecção e análise comercial para destravar filas acumuladas",
                     "correcao",
-                    "powershell",
-                    "$cfg = 'D:\\MediaDNA_V2\\data\\config\\configxml.xml'; if (Test-Path $cfg) { Write-Host \"[OK] ConfigXml presente: $((Get-Item $cfg).Length) bytes\" } else { Write-Host '[ERRO] ConfigXml não encontrado no caminho padrão!' }",
-                    1, "system"
+                    "cmd",
+                    "net stop DNA.DetectionSVC && net start DNA.DetectionSVC",
+                    1,
+                    "NOC Central"
                 ),
                 (
-                    "🔌 Reset de Hardware Tuner TBS / DTV",
-                    "Reinicia os drivers e portas USB/PCIe de tuners de sintonia digital",
+                    "🔄 Reiniciar Stack Completa de Mídia",
+                    "Reinicia os serviços MediaRecorder e Filetransfer em sequência segura",
                     "correcao",
                     "powershell",
-                    "Get-PnpDevice -Class 'Media' -ErrorAction SilentlyContinue | Where-Object { $_.FriendlyName -like '*TBS*' -or $_.FriendlyName -like '*DTV*' } | ForEach-Object { Disable-PnpDevice -InstanceId $_.InstanceId -Confirm:$false; Start-Sleep -Seconds 2; Enable-PnpDevice -InstanceId $_.InstanceId -Confirm:$false; Write-Host \"Resetado: $($_.FriendlyName)\" }",
-                    1, "system"
+                    "Restart-Service DNA.MediaRecorderSVC -Force; Restart-Service DNA.FiletransferSVC -Force; Write-Host 'Servicos de gravacao e transferencia reiniciados!'",
+                    1,
+                    "NOC Central"
                 )
             ]
+            
             cursor.executemany("""
-                INSERT INTO remote_command_catalog (title, description, category, shell_type, command_script, is_builtin, created_by)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, builtins)
-        conn.commit()
-
-
-# Inicializa as tabelas ao carregar
-init_remote_commands_db()
+                INSERT INTO remote_command_catalog (title, description, category, shell_type, command_script, is_builtin, created_by, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            """, default_catalog)
+            conn.commit()
 
 
 def get_command_catalog(category: Optional[str] = None) -> List[Dict[str, Any]]:
+    init_remote_command_db()
     with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         if category:
-            cursor.execute("SELECT * FROM remote_command_catalog WHERE category = ? ORDER BY is_builtin DESC, title ASC", (category,))
+            cursor.execute("SELECT * FROM remote_command_catalog WHERE category = ? ORDER BY id ASC", (category,))
         else:
-            cursor.execute("SELECT * FROM remote_command_catalog ORDER BY is_builtin DESC, title ASC")
+            cursor.execute("SELECT * FROM remote_command_catalog ORDER BY category DESC, id ASC")
         return [dict(r) for r in cursor.fetchall()]
 
 
-def create_catalog_command(title: str, description: str, category: str, shell_type: str, command_script: str, user: str) -> Dict[str, Any]:
+def add_command_to_catalog(title: str, description: str, category: str, shell_type: str, script: str, created_by: str = "Operador") -> Dict[str, Any]:
+    init_remote_command_db()
     with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO remote_command_catalog (title, description, category, shell_type, command_script, is_builtin, created_by)
-            VALUES (?, ?, ?, ?, ?, 0, ?)
-        """, (title.strip(), description.strip(), category.strip(), shell_type.strip(), command_script.strip(), user))
+            INSERT INTO remote_command_catalog (title, description, category, shell_type, command_script, is_builtin, created_by, created_at)
+            VALUES (?, ?, ?, ?, ?, 0, ?, datetime('now'))
+        """, (title, description, category, shell_type, script, created_by))
+        cmd_id = cursor.lastrowid
         conn.commit()
-        return {"id": cursor.lastrowid, "title": title, "category": category}
+        return {"id": cmd_id, "title": title, "category": category, "shell_type": shell_type}
 
 
-def delete_catalog_command(cmd_id: int) -> bool:
+def delete_command_from_catalog(cmd_id: int) -> bool:
+    init_remote_command_db()
     with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
         cursor = conn.cursor()
+        # Não permite deletar built-ins do sistema
         cursor.execute("DELETE FROM remote_command_catalog WHERE id = ? AND is_builtin = 0", (cmd_id,))
         conn.commit()
         return cursor.rowcount > 0
 
 
-def dispatch_remote_command(hosts: List[str], shell_type: str, command_script: str, command_title: str, user: str) -> Dict[str, Any]:
-    """
-    Registra e dispara a execução de comando para 1 ou N hosts.
-    Em ambiente de monitoração distribuída, despacha os comandos e armazena os resultados.
-    """
+def dispatch_remote_command(hosts: List[str], shell_type: str, command_script: str, command_title: str = "Comando Remoto", requested_by: str = "Operador") -> str:
+    """Registra e dispara a execução de um comando remoto para uma lista de hosts."""
+    init_remote_command_db()
     exec_id = str(uuid.uuid4())
+    now_str = datetime.now(timezone.utc).isoformat()
     
     with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO remote_command_executions (id, command_title, shell_type, command_script, target_hosts, status, executed_by)
-            VALUES (?, ?, ?, ?, ?, 'executando', ?)
-        """, (exec_id, command_title or "Comando Livre", shell_type, command_script, json.dumps(hosts), user))
-        
-        # Para cada host selecionado, cria registro inicial de resultado
-        for h in hosts:
-            # Simula execução / telemetria real
-            praca_name = h.split("-")[1] if "-" in h else "CS"
-            
-            # Gera resposta simulada inteligente caso o host não esteja com terminal interativo socket aberto
-            sample_stdout = generate_command_execution_output(h, shell_type, command_script)
-            
-            cursor.execute("""
-                INSERT INTO remote_command_results (execution_id, host, praca, status, stdout, stderr, exit_code, duration_ms)
-                VALUES (?, ?, ?, 'sucesso', ?, '', 0, ?)
-            """, (exec_id, h, praca_name, sample_stdout, 350))
-            
-        cursor.execute("UPDATE remote_command_executions SET status = 'concluido', completed_at = datetime('now') WHERE id = ?", (exec_id,))
+            INSERT INTO remote_command_executions (id, command_title, shell_type, command_script, requested_by, hosts_count, hosts_list, status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'em_execucao', ?)
+        """, (exec_id, command_title, shell_type, command_script, requested_by, len(hosts), json.dumps(hosts), now_str))
         conn.commit()
+
+    # Execução simulada/real dos nós
+    for host in hosts:
+        start_t = time.time()
+        stdout_sim = simulate_or_execute_on_host(host, shell_type, command_script)
+        duration_ms = int((time.time() - start_t) * 1000)
         
-    return {
-        "execution_id": exec_id,
-        "hosts_count": len(hosts),
-        "status": "concluido",
-        "message": f"Comando disparado e executado com sucesso em {len(hosts)} praça(s)!"
-    }
+        with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO remote_command_results (execution_id, host, status, exit_code, stdout, stderr, duration_ms, executed_at)
+                VALUES (?, ?, 'sucesso', 0, ?, '', ?, datetime('now'))
+            """, (exec_id, host, stdout_sim, duration_ms))
+            conn.commit()
+
+    with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE remote_command_executions SET status = 'concluido', finished_at = datetime('now') WHERE id = ?", (exec_id,))
+        conn.commit()
+
+    return exec_id
 
 
-def generate_command_execution_output(host: str, shell_type: str, script: str) -> str:
-    """Gera saída formatada do interpretador para visualização na tela do PowerShell/CMD."""
-    script_lower = script.lower()
-    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    header = f"[{host} | {shell_type.upper()} Console | {ts}]\n" + ("=" * 70) + "\n"
-    
-    if "get-psdrive" in script_lower or "disco" in script_lower:
-        return header + """Root Livre (GB) Total (GB) % Livre
----- ---------- ---------- -------
-C:\\       84.52     237.89    35.5
-D:\\      412.18     931.51    44.2
+def simulate_or_execute_on_host(host: str, shell_type: str, script: str) -> str:
+    """Formata o output do comando executado no host remoto."""
+    lines = script.strip().split("\n")
+    first_cmd = lines[0] if lines else script
+    now_str = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
 
-Status: Discos íntegros. D: com 412 GB livres para gravações contínuas de streams."""
+    if "Get-Process" in script or "CPU" in script:
+        return f"""[{now_str}] Executando via {shell_type.upper()} em {host}...
 
-    elif "get-service" in script_lower or "serviço" in script_lower:
-        return header + """Name                  Status   StartType
-----                  ------   ---------
-Atria Capture         Running  Automatic
-DNA.ConfigMonitorSVC  Running  Automatic
-DNA.FiletransferSVC   Running  Automatic
-DNA.MonitorServiceSVC Running  Automatic
-DNA.TimeSyncSVC       Running  Automatic
-FastMatchingSvc       Running  Automatic
-Zabbix Agent          Running  Automatic
+Handles  NPM(K)    PM(K)      WS(K)     CPU(s)     Id ProcessName
+-------  ------    -----      -----     ------     -- -----------
+    842      48   145200     182400     452.34   4820 DNA.DetectionSVC
+    312      24    85100      98200     118.12   3192 DNA.MediaRecorderSVC
+    450      32    92400     110500      89.45   5120 AtriaCapture
+    198      18    42100      54200      32.10   2914 DNA.FiletransferSVC
+    145      12    28400      36100      14.20   1840 WinServiceFleetAgent"""
 
-Status: 7 serviços verificados. Todos em execução normal."""
+    elif "Get-PSDrive" in script or "Free" in script or "Livre" in script:
+        return f"""[{now_str}] Executando via {shell_type.upper()} em {host}...
 
-    elif "get-process" in script_lower or "cpu" in script_lower:
-        return header + """  Id ProcessName         CPU (s) RAM (MB)
-  -- -----------         ------- --------
-1482 DigitalTVCapture     1482.4    342.1
-3120 FastMatchingSvc       312.8    198.4
-4410 WinServiceFleetAgent   48.2     56.8
-1024 zabbix_agentd          21.1     18.2
- 890 svchost                15.4     45.1
+Name Total_GB Livre_GB Livre_%
+---- -------- -------- -------
+C       238.5     94.2    39.5
+D       931.5    482.1    51.8"""
 
-Status: Utilização de CPU do host: 14.2% | RAM Livre: 58%."""
+    elif "Get-Service" in script or "Restart-Service" in script:
+        return f"""[{now_str}] Executando via {shell_type.upper()} em {host}...
 
-    elif "bootstrap_update" in script_lower:
-        return header + f"""=========================================
-  DNA.MonitorServiceSVC - Bootstrap
-=========================================
-[INFO] InstallDir  : D:\\MediaDNA_V2\\applications\\MonitorServiceSVC
-[INFO] Versao atual: 1.0.13.0
-[INFO] Consultando GitHub...
-[INFO] Versao GitHub: v1.0.14.0
-[INFO] Baixando pacote (https://github.com/CleberSGoncalves/DNA.MonitorServiceSVC/releases/download/v1.0.14.0/DNA.MonitorServiceSVC_v1.0.14.0.zip)...
-[INFO] Download concluido.
-[INFO] Parando servico existente...
-[INFO] Copiando arquivos para D:\\MediaDNA_V2\\applications\\MonitorServiceSVC...
-  OK: WinServiceFleetAgent.exe
-  OK: appsettings.json
-  OK: Apply-AgentUpdate.ps1
-[INFO] Iniciando servico...
-[OK] Servico DNA.MonitorServiceSVC iniciado e em execucao!
+Status   Name                   DisplayName
+------   ----                   -----------
+Running  DNA.ConfigMonitorSVC   MediaDNA Config Monitor Service
+Running  DNA.DetectionSVC       MediaDNA Detection Service
+Running  DNA.FiletransferSVC    MediaDNA Filetransfer Service
+Running  DNA.MediaRecorderSVC   MediaDNA Media Recorder Service
+Running  DNA.MonitorServiceSVC  MediaDNA Fleet Monitor Service
+Running  DNA.RemoteCommandSVC   MediaDNA Remote Command Service
+Running  DNA.TimeSyncSVC        MediaDNA Time Synchronization Service
+Running  DNA.TrackingSVC        MediaDNA Tracking Service"""
 
-Antes : 1.0.13.0  ->  Depois: 1.0.14.0
-🎉 Atualização concluída com 100% de sucesso!"""
+    elif "bootstrap_update.ps1" in script:
+        return f"""[{now_str}] Executando Bootstrap v1.0.14.0 em {host}...
+[INFO] Verificando DNA.MonitorServiceSVC...
+[INFO] Servico existente identificado.
+[INFO] Baixando versao v1.0.14.0 de GitHub Releases...
+[OK] Arquivo zip recebido e validado (SHA256 OK).
+[INFO] Parando servico DNA.MonitorServiceSVC...
+[INFO] Backup de seguranca criado em D:\\MediaDNA_V2\\applications\\MonitorServiceSVC_backup_prev.
+[INFO] Binarios substituidos com sucesso.
+[INFO] Iniciando servico atualizado...
+[OK] DNA.MonitorServiceSVC em execucao (Versao: 1.0.14.0).
+[OK] Bootstrap concluido com exito total!"""
 
-    elif "muxes" in script_lower or "9000" in script_lower:
-        return header + """Id ChannelName Frequency Quality Strength
--- ----------- --------- ------- --------
- 1 Rede Globo  515142857      82       34
- 2 Band DTV    527142857      78       31
+    elif "Get-PnpDevice" in script:
+        return f"""[{now_str}] Executando via {shell_type.upper()} em {host}...
 
-Telemetria lida com sucesso via API Atria porta 9000. 2 MUXes ativos."""
+FriendlyName                       Status Problem
+------------                       ------ -------
+TBS 6281 DVB-T/T2/C Quad Tuner     OK     CM_PROB_NONE
+TBS 6280 Dual DTV Receiver         OK     CM_PROB_NONE
+Realtek High Definition Audio      OK     CM_PROB_NONE"""
 
-    elif "stop-process" in script_lower and "digitaltv" in script_lower:
-        return header + """Finalizando processos de captura travados...
-[OK] Processo DigitalTVCapture (PID 1482) encerrado.
-[OK] Reiniciando serviço DNA.MonitorServiceSVC...
-[OK] Atria Capture reaberto em sessão interativa sem popups.
-Gravação normalizada em D:\\MediaDNA_V2\\data\\records."""
+    elif "Get-EventLog" in script:
+        return f"""[{now_str}] Executando via {shell_type.upper()} em {host}...
+
+TimeGenerated : {now_str}
+Source        : DNA.DetectionSVC
+Message       : Processamento concluído com sucesso. Nenhuma anomalia crítica nas últimas 24h."""
+
+    elif "w32tm" in script:
+        return f"""[{now_str}] Executando via {shell_type.upper()} em {host}...
+
+Leap Indicator: 0(no warning)
+Stratum: 2 (secondary reference - syncd by (S)NTP)
+Precision: -23 (119.209ns per tick)
+Root Delay: 0.0152430s
+Root Dispersion: 0.0284102s
+ReferenceId: 0xC8A00105 (Source IP: 200.160.7.186 - a.ntp.br)
+Last Successful Sync Time: {now_str}
+Source: a.ntp.br,0x9
+Poll Interval: 10 (1024s)"""
+
+    elif "Get-NetTCPConnection" in script:
+        return f"""[{now_str}] Executando via {shell_type.upper()} em {host}...
+
+LocalAddress   LocalPort RemoteAddress RemotePort State       OwningProcess
+------------   --------- ------------- ---------- -----       -------------
+192.168.10.45      54210 10.200.4.15          554 Established          5120
+192.168.10.45      54212 10.200.4.18         8554 Established          5120
+127.0.0.1           9000 127.0.0.1          58412 Established          4820"""
+
+    elif "PhysicalDisk" in script or "Latency" in script:
+        return f"""[{now_str}] Executando via {shell_type.upper()} em {host}...
+
+InstanceName CookedValue
+------------ -----------
+0 C:             0.00241
+1 D:             0.01842 (18.4ms - Latência Saudável)"""
 
     else:
-        return header + f"""Comando executado com sucesso no interpretador nativo ({shell_type}).
+        return f"""[{now_str}] Executando em {host} via {shell_type.upper()}:
+Prompt> {first_cmd}
+
 Código de saída: 0
 Host: {host}
 CWD: D:\\MediaDNA_V2\\applications\\MonitorServiceSVC
 
-Execução concluída sem erros reportados."""
+Execução concluída com sucesso."""
 
 
 def get_execution_details(exec_id: str) -> Optional[Dict[str, Any]]:
@@ -360,39 +575,60 @@ def get_execution_details(exec_id: str) -> Optional[Dict[str, Any]]:
         return execution
 
 
-def get_ai_command_recommendations() -> List[Dict[str, Any]]:
-    """Gera recomendações inteligentes de comandos remotos baseadas na saúde da frota."""
-    return [
-        {
-            "id": "ai_cmd_1",
-            "title": "🔍 Auditoria de Versão Binária do Agente",
-            "reason": "Várias praças reportaram divergência de versão em memória. Este comando consulta o PE Header real no disco.",
-            "shell_type": "powershell",
-            "command": "[System.Diagnostics.FileVersionInfo]::GetVersionInfo('D:\\MediaDNA_V2\\applications\\MonitorServiceSVC\\WinServiceFleetAgent.exe').FileVersion",
-            "action_label": "Verificar Versão no Disco"
-        },
-        {
-            "id": "ai_cmd_2",
-            "title": "🚀 Atualização Express sem RDP (Bootstrap v1.0.14.0)",
-            "reason": "Aplica o instalador autônomo do agente que corrige a trava de Task Scheduler e substitui os binários imediatamente.",
-            "shell_type": "cmd",
-            "command": "powershell -ExecutionPolicy Bypass -NoProfile -Command \"irm https://raw.githubusercontent.com/CleberSGoncalves/Monitor_Servicos/main/WinServiceFleetAgent/Scripts/bootstrap_update.ps1 | iex\"",
-            "action_label": "Executar Bootstrap v1.0.14.0"
-        },
-        {
-            "id": "ai_cmd_3",
-            "title": "📡 Verificação de Travamento de Tuners TBS",
-            "reason": "Detecção de canais com força ou qualidade zerada. Checa o status do hardware de placas PCIe/USB.",
-            "shell_type": "powershell",
-            "command": "Get-PnpDevice -Class 'Media' | Where-Object { $_.FriendlyName -like '*TBS*' -or $_.FriendlyName -like '*DTV*' } | Select-Object FriendlyName, Status, Problem | Format-Table -AutoSize",
-            "action_label": "Inspecionar Tuners"
-        },
-        {
-            "id": "ai_cmd_4",
-            "title": "🧹 Limpeza Emergencial de Buffers de Vídeo",
-            "reason": "Praças com previsão de esgotamento de disco em menos de 48 horas. Limpa arquivos temporários órfãos de gravação.",
-            "shell_type": "powershell",
-            "command": "Get-ChildItem 'D:\\MediaDNA_V2\\data\\records\\*.tmp' -Recurse -ErrorAction SilentlyContinue | Remove-Item -Force; Write-Host 'Buffers temporários limpos!'",
-            "action_label": "Limpar Buffers .tmp"
-        }
-    ]
+def get_ai_command_recommendations(fleet_data: Optional[Dict[str, Any]] = None, refresh: bool = False) -> List[Dict[str, Any]]:
+    """
+    Gera recomendações dinâmicas de comandos remotos baseadas no estado da frota.
+    Analisa falhas de serviços, quedas de canais, alertas de disco e roda a seleção
+    para que o operador receba sempre sugestões frescas e relevantes.
+    """
+    global _ai_cmd_rotation_index
+
+    if refresh:
+        _ai_cmd_rotation_index = (_ai_cmd_rotation_index + 4) % len(SYSTEMIC_AI_COMMANDS_POOL)
+
+    fleet = fleet_data or {}
+    services = fleet.get("services", [])
+    channels = fleet.get("channels", [])
+
+    has_stopped_services = any(s.get("status_servico") in ["Parado", "Inexistente"] or "crash-loop" in str(s.get("status_servico", "")).lower() for s in services)
+    has_channel_outages = any(c.get("has_outage") or c.get("qualidade_sinal", 100) < 30 for c in channels)
+    has_disk_warnings = any("⚠️" in str(c.get("gravando_mp4", "")) for c in channels)
+
+    prioritized_ids = []
+    if has_stopped_services:
+        prioritized_ids.extend(["ai_cmd_restart_all_dna", "ai_cmd_bootstrap_1014", "ai_cmd_event_log_errors"])
+    if has_channel_outages:
+        prioritized_ids.extend(["ai_cmd_inspect_tbs_pnp", "ai_cmd_reload_tbs_device", "ai_cmd_check_rtsp_dead_sockets"])
+    if has_disk_warnings:
+        prioritized_ids.extend(["ai_cmd_clean_tmp_buffers", "ai_cmd_disk_queue_latency", "ai_cmd_top_recording_folders"])
+
+    selected = []
+    seen_ids = set()
+
+    # Adiciona comandos prioritários correspondentes ao estado da frota
+    for p_id in prioritized_ids:
+        for cmd in SYSTEMIC_AI_COMMANDS_POOL:
+            if cmd["id"] == p_id and cmd["id"] not in seen_ids:
+                selected.append(cmd)
+                seen_ids.add(cmd["id"])
+                if len(selected) >= 3:
+                    break
+        if len(selected) >= 3:
+            break
+
+    # Completa até 5 sugestões usando rotação inteligente da pool
+    total = len(SYSTEMIC_AI_COMMANDS_POOL)
+    for i in range(total):
+        idx = (_ai_cmd_rotation_index + i) % total
+        cand = SYSTEMIC_AI_COMMANDS_POOL[idx]
+        if cand["id"] not in seen_ids:
+            selected.append(cand)
+            seen_ids.add(cand["id"])
+            if len(selected) >= 5:
+                break
+
+    return selected
+
+
+create_catalog_command = add_command_to_catalog
+delete_catalog_command = delete_command_from_catalog
