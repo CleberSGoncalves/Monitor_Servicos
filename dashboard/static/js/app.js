@@ -106,6 +106,7 @@ function setupTabNavigation() {
                 loadThresholds();
                 loadUsersList();
                 if (typeof loadRefreshIntervalConfig === "function") loadRefreshIntervalConfig();
+                if (typeof loadFeatureFlagsUI === "function") loadFeatureFlagsUI();
             } else if (tabName === "incidents") {
                 loadIncidentHistory();
             } else if (tabName === "remote-commands") {

@@ -1,6 +1,18 @@
 // dashboard/static/js/signals_analysis.js
 // Central de Observabilidade e Análise de Sinal & RF para Capture Sites LATAM
 
+function getSignalsAuthToken() {
+    try {
+        if (typeof getAuthToken === "function") {
+            const t = getAuthToken();
+            if (t) return t;
+        }
+    } catch (e) {}
+    try {
+        if (typeof authToken !== "undefined" && authToken) return authToken;
+    } catch (e) {}
+    return localStorage.getItem("fleet_token") || "";
+}
 let currentSignalsPeriod = "24h";
 let currentSignalsPraca = "";
 let currentSignalsCanal = "";
@@ -60,7 +72,7 @@ async function populateSignalsPracaFilter() {
 
     try {
         const resp = await fetch("/api/fleet/channels", {
-            headers: { "Authorization": `Bearer ${authToken}` }
+            headers: { "Authorization": `Bearer ${getSignalsAuthToken()}` }
         });
         if (!resp.ok) return;
         const channels = await resp.json();
@@ -111,7 +123,7 @@ async function onSignalsPracaChanged() {
 
     try {
         const resp = await fetch(`/api/fleet/channels?city=${encodeURIComponent(currentSignalsPraca)}`, {
-            headers: { "Authorization": `Bearer ${authToken}` }
+            headers: { "Authorization": `Bearer ${getSignalsAuthToken()}` }
         });
         if (!resp.ok) return;
         const channels = await resp.json();
@@ -152,7 +164,7 @@ async function loadSignalsHistoryData() {
     try {
         const url = `/api/fleet/channels/history?praca=${encodeURIComponent(currentSignalsPraca)}&canal=${encodeURIComponent(currentSignalsCanal)}&period=${currentSignalsPeriod}`;
         const resp = await fetch(url, {
-            headers: { "Authorization": `Bearer ${authToken}` }
+            headers: { "Authorization": `Bearer ${getSignalsAuthToken()}` }
         });
         if (!resp.ok) {
             console.error("[SignalsAnalysis] Falha ao obter telemetria:", resp.status);
@@ -356,7 +368,7 @@ async function triggerAiSignalDiagnosis() {
         const resp = await fetch("/api/fleet/channels/ai-diagnose", {
             method: "POST",
             headers: {
-                "Authorization": `Bearer ${authToken}`,
+                "Authorization": `Bearer ${getSignalsAuthToken()}`,
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({
@@ -519,7 +531,7 @@ async function loadChronicIssuesList() {
 
     try {
         const resp = await fetch("/api/fleet/channels/chronic-issues", {
-            headers: { "Authorization": `Bearer ${authToken}` }
+            headers: { "Authorization": `Bearer ${getSignalsAuthToken()}` }
         });
         if (!resp.ok) return;
 

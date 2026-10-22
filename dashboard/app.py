@@ -2,6 +2,8 @@ from ai_homologation import (
     get_homologation_items, approve_suggestion_for_homologation,
     run_pilot_validation_tests, deploy_feature_to_fleet
 )
+from feature_flags import get_all_feature_flags, set_feature_flag
+from mosaic_manager import get_channel_live_snapshots
 from mp4_analyzer import (
     analyze_channel_mp4_samples, register_mp4_threshold_from_diagnosis
 )
@@ -437,6 +439,34 @@ async def register_mp4_threshold(req: Mp4RegisterThresholdRequest, user: dict = 
     if not res.get("success"):
         raise HTTPException(status_code=400, detail=res.get("error", "Erro ao cadastrar limiar"))
     return res
+
+
+# ==========================================
+# Feature Flags & Kill-Switch Operacional
+# ==========================================
+class FeatureFlagUpdateRequest(BaseModel):
+    scope_type: str = "global"
+    scope_value: str = "*"
+    flag_key: str
+    is_enabled: bool
+
+@app.get("/api/fleet/feature-flags")
+async def list_feature_flags(user: dict = Depends(get_current_user)):
+    return get_all_feature_flags()
+
+@app.post("/api/fleet/feature-flags")
+async def update_feature_flag(req: FeatureFlagUpdateRequest, user: dict = Depends(get_current_user)):
+    ok = set_feature_flag(req.scope_type, req.scope_value, req.flag_key, req.is_enabled, user.get("username", "operador"))
+    return {"success": ok}
+
+# ==========================================
+# Mosaico Visual de Canais (Live Snapshots)
+# ==========================================
+@app.get("/api/fleet/channels/snapshots")
+async def get_channels_mosaic(country: Optional[str] = None, city: Optional[str] = None, user: dict = Depends(get_current_user)):
+    data = get_cached_data()
+    channels = data.get("channels", [])
+    return get_channel_live_snapshots(channels, country, city)
 
 
 # ==========================================

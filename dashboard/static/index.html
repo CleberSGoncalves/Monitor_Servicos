@@ -14,7 +14,7 @@
       margin-bottom: 20px;
       padding-bottom: 8px;
     }
-    .rc-subtab-btn {
+    .rc-subtab-btn, .sig-subtab-btn, .ai-subtab-btn, .chan-subtab-btn, .cfg-subtab-btn {
       background: transparent;
       border: none;
       color: var(--text-muted, #94a3b8);
@@ -28,11 +28,11 @@
       align-items: center;
       gap: 8px;
     }
-    .rc-subtab-btn:hover {
+    .rc-subtab-btn:hover, .sig-subtab-btn:hover, .ai-subtab-btn:hover, .chan-subtab-btn:hover, .cfg-subtab-btn:hover {
       color: #fff;
       background: rgba(255, 255, 255, 0.05);
     }
-    .rc-subtab-btn.active {
+    .rc-subtab-btn.active, .sig-subtab-btn.active, .ai-subtab-btn.active, .chan-subtab-btn.active, .cfg-subtab-btn.active {
       color: #fff;
       background: #2563eb;
     }
@@ -473,11 +473,53 @@
           </table>
         </div>
       </div>
+      </div>
+      <!-- SUBTAB 2: MOSAICO VISUAL LIVE -->
+      <div id="channels-content-mosaic" style="display: none;">
+        <!-- Control Bar Mosaico -->
+        <div class="panel-card" style="margin-bottom: 20px; padding: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
+            <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+              <div>
+                <label style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;">Atualização de Snapshots:</label>
+                <select id="mosaicIntervalSelect" class="form-input" style="width: 200px;" onchange="changeMosaicInterval(this.value)">
+                  <option value="10" selected>A cada 10 segundos (Tempo Real Leve)</option>
+                  <option value="30">A cada 30 segundos (Intervalo Atria)</option>
+                  <option value="60">A cada 1 minuto (Econômico)</option>
+                  <option value="0">Pausar Atualização Automática</option>
+                </select>
+              </div>
+              <div>
+                <span id="mosaicTimerStatus" class="badge" style="background: rgba(37, 99, 235, 0.2); color: #60a5fa; border: 1px solid #2563eb; padding: 6px 12px; font-weight: 600;">
+                  ⏱️ 10s ativo
+                </span>
+              </div>
+            </div>
+            <button class="btn-secondary" onclick="loadChannelsMosaic()"><i class="fas fa-sync-alt"></i> Atualizar Mosaico Agora</button>
+          </div>
+        </div>
+        <!-- Grid de Cards do Mosaico -->
+        <div id="channelsMosaicGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); gap: 18px;">
+          <!-- Cards renderizados dinamicamente via mosaic_wall.js -->
+        </div>
+      </div>
     </section>
 
     <!-- TAB 2: CANAIS & SINAIS RF -->
     <section class="content-section" id="tab-channels">
-      <div class="panel-card">
+      <!-- Sub-navegação interna de Canais -->
+      <div class="rc-subtabs-nav" style="margin-bottom: 20px;">
+        <button class="chan-subtab-btn active" id="btn-chan-subtab-table" onclick="switchChannelsSubtab('table')">
+          <i class="fas fa-table"></i> 📋 Tabela Operacional de Canais
+        </button>
+        <button class="chan-subtab-btn" id="btn-chan-subtab-mosaic" onclick="switchChannelsSubtab('mosaic')">
+          <i class="fas fa-th-large"></i> 🖼️ Mosaico Visual de Snapshots em Tempo Real (Live JPEG Wall)
+        </button>
+      </div>
+
+      <!-- SUBTAB 1: TABELA OPERACIONAL -->
+      <div id="channels-content-table">
+        <div class="panel-card">
         <div class="panel-header">
           <div class="panel-title"><span>📡</span> Monitoramento Operacional de Canais, Sintonizadores e Mídia</div>
           <span style="font-size: 12px; color: var(--text-muted);">Força, Qualidade de Sinal, Tuners TBS, Autonomia MP4 e Downtime</span>
@@ -505,6 +547,36 @@
           </table>
         </div>
       </div>
+      </div>
+      <!-- SUBTAB 2: MOSAICO VISUAL LIVE -->
+      <div id="channels-content-mosaic" style="display: none;">
+        <!-- Control Bar Mosaico -->
+        <div class="panel-card" style="margin-bottom: 20px; padding: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
+            <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+              <div>
+                <label style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;">Atualização de Snapshots:</label>
+                <select id="mosaicIntervalSelect" class="form-input" style="width: 200px;" onchange="changeMosaicInterval(this.value)">
+                  <option value="10" selected>A cada 10 segundos (Tempo Real Leve)</option>
+                  <option value="30">A cada 30 segundos (Intervalo Atria)</option>
+                  <option value="60">A cada 1 minuto (Econômico)</option>
+                  <option value="0">Pausar Atualização Automática</option>
+                </select>
+              </div>
+              <div>
+                <span id="mosaicTimerStatus" class="badge" style="background: rgba(37, 99, 235, 0.2); color: #60a5fa; border: 1px solid #2563eb; padding: 6px 12px; font-weight: 600;">
+                  ⏱️ 10s ativo
+                </span>
+              </div>
+            </div>
+            <button class="btn-secondary" onclick="loadChannelsMosaic()"><i class="fas fa-sync-alt"></i> Atualizar Mosaico Agora</button>
+          </div>
+        </div>
+        <!-- Grid de Cards do Mosaico -->
+        <div id="channelsMosaicGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); gap: 18px;">
+          <!-- Cards renderizados dinamicamente via mosaic_wall.js -->
+        </div>
+      </div>
     </section>
 
     <!-- ========================================== -->
@@ -513,13 +585,13 @@
     <section id="tab-signals" class="content-section">
       <!-- Sub-navegação interna da aba de sinais -->
       <div class="rc-subtabs-nav" style="margin-bottom: 20px;">
-        <button class="rc-subtab-btn active" id="btn-signals-subtab-history" onclick="switchSignalsSubtab('history')">
+        <button class="sig-subtab-btn active" id="btn-signals-subtab-history" onclick="switchSignalsSubtab('history')">
           <i class="fas fa-chart-line"></i> 📈 Histórico & Diagnóstico Temporal
         </button>
-        <button class="rc-subtab-btn" id="btn-signals-subtab-chronic" onclick="switchSignalsSubtab('chronic')">
+        <button class="sig-subtab-btn" id="btn-signals-subtab-chronic" onclick="switchSignalsSubtab('chronic')">
           <i class="fas fa-exclamation-triangle"></i> ⚠️ Problemáticas Crônicas Mapeadas & Soluções Estipuladas
         </button>
-        <button class="rc-subtab-btn" id="btn-signals-subtab-mp4" onclick="switchSignalsSubtab('mp4')">
+        <button class="sig-subtab-btn" id="btn-signals-subtab-mp4" onclick="switchSignalsSubtab('mp4')">
           <i class="fas fa-film"></i> 🎬 Análise de Amostras MP4 & Diagnóstico de Falhas (ATRIA)
         </button>
       </div>
@@ -816,6 +888,36 @@
           </table>
         </div>
       </div>
+      </div>
+      <!-- SUBTAB 2: MOSAICO VISUAL LIVE -->
+      <div id="channels-content-mosaic" style="display: none;">
+        <!-- Control Bar Mosaico -->
+        <div class="panel-card" style="margin-bottom: 20px; padding: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
+            <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+              <div>
+                <label style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;">Atualização de Snapshots:</label>
+                <select id="mosaicIntervalSelect" class="form-input" style="width: 200px;" onchange="changeMosaicInterval(this.value)">
+                  <option value="10" selected>A cada 10 segundos (Tempo Real Leve)</option>
+                  <option value="30">A cada 30 segundos (Intervalo Atria)</option>
+                  <option value="60">A cada 1 minuto (Econômico)</option>
+                  <option value="0">Pausar Atualização Automática</option>
+                </select>
+              </div>
+              <div>
+                <span id="mosaicTimerStatus" class="badge" style="background: rgba(37, 99, 235, 0.2); color: #60a5fa; border: 1px solid #2563eb; padding: 6px 12px; font-weight: 600;">
+                  ⏱️ 10s ativo
+                </span>
+              </div>
+            </div>
+            <button class="btn-secondary" onclick="loadChannelsMosaic()"><i class="fas fa-sync-alt"></i> Atualizar Mosaico Agora</button>
+          </div>
+        </div>
+        <!-- Grid de Cards do Mosaico -->
+        <div id="channelsMosaicGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); gap: 18px;">
+          <!-- Cards renderizados dinamicamente via mosaic_wall.js -->
+        </div>
+      </div>
     </section>
 
     <!-- TAB 4: INTELIGÊNCIA IA PROATIVA, HOMOLOGAÇÃO & AUDITORIA DE MP4 -->
@@ -910,7 +1012,22 @@
 
     <!-- TAB 6: CONFIGURAÇÕES & LIMIARES -->
     <section class="content-section" id="tab-configs">
-      <!-- Frequência de Atualização Automática (Polling) -->
+      <!-- Sub-navegação interna de Configurações -->
+      <div class="rc-subtabs-nav" style="margin-bottom: 20px;">
+        <button class="cfg-subtab-btn active" id="btn-cfg-subtab-thresholds" onclick="switchConfigsSubtab('thresholds')">
+          <i class="fas fa-sliders-h"></i> 🎛️ Limiares & Atualização
+        </button>
+        <button class="cfg-subtab-btn" id="btn-cfg-subtab-flags" onclick="switchConfigsSubtab('flags')">
+          <i class="fas fa-shield-alt"></i> 🛡️ Feature Flags & Kill-Switch Operacional
+        </button>
+        <button class="cfg-subtab-btn" id="btn-cfg-subtab-users" onclick="switchConfigsSubtab('users')">
+          <i class="fas fa-users"></i> 👥 Usuários e Domínio LDAP
+        </button>
+      </div>
+
+      <!-- SUBTAB 1: LIMIARES & ATUALIZAÇÃO -->
+      <div id="configs-content-thresholds">
+        <!-- Frequência de Atualização Automática (Polling) -->
       <div class="panel-card">
         <div class="panel-header">
           <div class="panel-title"><span>⏱️</span> Frequência de Atualização do Dashboard (Auto-Refresh)</div>
@@ -948,8 +1065,37 @@
         </div>
       </div>
 
-      <!-- Gestão de Usuários e LDAP -->
-      <div class="panel-card">
+      </div><!-- Fecha configs-content-thresholds -->
+
+      <!-- SUBTAB 2: FEATURE FLAGS & KILL-SWITCH OPERACIONAL -->
+      <div id="configs-content-flags" style="display: none;">
+        <div class="panel-card" style="margin-bottom: 20px;">
+          <div class="panel-header">
+            <div>
+              <div class="panel-title"><span>🛡️</span> Chaves de Desativação Granular de Monitoramento (Kill-Switch)</div>
+              <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+                Desative preventivamente rotinas de captura de imagem, análise de MP4 ou inspeção pesada por Escopo (Global, País ou Praça Específica) sem reiniciar o Windows nem interromper o Atria.
+              </div>
+            </div>
+            <button class="btn-secondary" onclick="loadFeatureFlagsUI()"><i class="fas fa-sync-alt"></i> Atualizar Chaves</button>
+          </div>
+          <div style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 14px; margin-bottom: 16px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+            <label style="font-size: 12px; font-weight: 700; color: #fff;">Filtrar Escopo de Chaves:</label>
+            <select id="featureFlagsScopeFilter" class="form-input" style="width: 240px;" onchange="filterFeatureFlagsDisplay(this.value)">
+              <option value="all">Todas as Chaves e Escopos</option>
+              <option value="global">Apenas Escopo Global (*)</option>
+              <option value="city">Apenas Praças Específicas</option>
+            </select>
+          </div>
+          <div id="featureFlagsListContainer" style="display: flex; flex-direction: column; gap: 12px;">
+            <!-- Renderizado dinamicamente -->
+          </div>
+        </div>
+      </div>
+
+      <!-- SUBTAB 3: USUÁRIOS E LDAP -->
+      <div id="configs-content-users" style="display: none;">
+        <div class="panel-card">
         <div class="panel-header">
           <div class="panel-title"><span>👥</span> Usuários e Integração com Domínio (Active Directory / LDAP)</div>
           <button class="btn-secondary" onclick="document.getElementById('newUserModal').classList.add('active')">➕ Novo Usuário Local</button>
@@ -981,6 +1127,36 @@
               <!-- Renderizado dinamicamente -->
             </tbody>
           </table>
+        </div>
+      </div>
+      </div>
+      <!-- SUBTAB 2: MOSAICO VISUAL LIVE -->
+      <div id="channels-content-mosaic" style="display: none;">
+        <!-- Control Bar Mosaico -->
+        <div class="panel-card" style="margin-bottom: 20px; padding: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
+            <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+              <div>
+                <label style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;">Atualização de Snapshots:</label>
+                <select id="mosaicIntervalSelect" class="form-input" style="width: 200px;" onchange="changeMosaicInterval(this.value)">
+                  <option value="10" selected>A cada 10 segundos (Tempo Real Leve)</option>
+                  <option value="30">A cada 30 segundos (Intervalo Atria)</option>
+                  <option value="60">A cada 1 minuto (Econômico)</option>
+                  <option value="0">Pausar Atualização Automática</option>
+                </select>
+              </div>
+              <div>
+                <span id="mosaicTimerStatus" class="badge" style="background: rgba(37, 99, 235, 0.2); color: #60a5fa; border: 1px solid #2563eb; padding: 6px 12px; font-weight: 600;">
+                  ⏱️ 10s ativo
+                </span>
+              </div>
+            </div>
+            <button class="btn-secondary" onclick="loadChannelsMosaic()"><i class="fas fa-sync-alt"></i> Atualizar Mosaico Agora</button>
+          </div>
+        </div>
+        <!-- Grid de Cards do Mosaico -->
+        <div id="channelsMosaicGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); gap: 18px;">
+          <!-- Cards renderizados dinamicamente via mosaic_wall.js -->
         </div>
       </div>
     </section>
@@ -1169,6 +1345,40 @@
 
   </main>
 
+  
+  <!-- MODAL: STORYBOARD FORENSE DE INCIDENTE (SEQUÊNCIA DE JPEGs) -->
+  <div class="modal-overlay" id="storyboardModal">
+    <div class="modal-content" style="max-width: 820px; border: 1px solid #38bdf8; box-shadow: 0 10px 40px rgba(56, 189, 248, 0.25);">
+      <div class="modal-header" style="border-bottom: 1px solid rgba(56, 189, 248, 0.3); padding-bottom: 12px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 24px;">🎞️</span>
+          <div>
+            <h4 style="margin: 0; color: #38bdf8; font-size: 16px;">Storyboard Forense de Incidente Visual</h4>
+            <span style="font-size: 11px; color: var(--text-muted);" id="storyboardSubtitle">Sequência de 3 quadros de amostra que originaram o alerta</span>
+          </div>
+        </div>
+        <button type="button" class="btn-secondary" style="padding: 4px 8px;" onclick="closeStoryboardModal()">✕</button>
+      </div>
+
+      <div style="margin-top: 16px;">
+        <div id="storyboardFramesContainer" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 16px;">
+          <!-- 3 quadros renderizados dinamicamente -->
+        </div>
+
+        <div style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 6px; padding: 12px; margin-bottom: 16px;">
+          <div style="font-size: 11px; font-weight: 700; color: #f87171; text-transform: uppercase; margin-bottom: 4px;">
+            <i class="fas fa-search"></i> Diagnóstico de Evidência Visual:
+          </div>
+          <div style="font-size: 12px; color: #cbd5e1; line-height: 1.5;" id="storyboardDiagnosticText">O algoritmo de hash perceptual detectou delta de pixels estático entre os quadros T-30s e T-0s, confirmando travamento da thread de renderização com mais de 5s contínuos.</div>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end;">
+          <button type="button" class="btn-secondary" onclick="closeStoryboardModal()" style="padding: 8px 18px;">Fechar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- MODAL: LOGIN -->
   <div class="modal-overlay" id="loginModal">
     <div class="modal-content">
@@ -1309,10 +1519,10 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=3.6.0"></script>
-  <script src="/static/js/ai_insights.js?v=3.6.0"></script>
+  <script src="/static/js/app.js?v=3.7.0"></script>
+  <script src="/static/js/ai_insights.js?v=3.7.0"></script>
   <script src="/static/js/fleet_ops.js?v=3.4.0"></script>
-  <script src="/static/js/remote_commands.js?v=3.6.0"></script>
-  <script src="/static/js/signals_analysis.js?v=3.6.0"></script>
+  <script src="/static/js/remote_commands.js?v=3.7.0"></script>
+  <script src="/static/js/signals_analysis.js?v=3.7.0"></script>
 </body>
 </html>
