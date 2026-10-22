@@ -8,11 +8,13 @@
 # ==============================================================================
 param(
     [string]$ServiceName = "DNA.MonitorServiceSVC",
-    [string]$TargetVersion = "1.0.13.1",
+    [string]$TargetVersion = "1.0.14.0",
     [int]$CanaryCount = 5,
     [int]$TimeoutMinutes = 10,
-    [bool]$AutoPromote = $true
+    $AutoPromote = $true
 )
+
+$doAutoPromote = ($AutoPromote -eq $true -or $AutoPromote -eq "true" -or $AutoPromote -eq 1 -or $AutoPromote -eq "1")
 
 Add-Type -AssemblyName System.Security
 
@@ -229,7 +231,7 @@ Write-Host " HOMOLOGACAO CONCLUIDA COM 100% DE SUCESSO NAS 5 MAQUINAS PILOTO!" -
 Write-Host " O recurso/versao '$TargetVersion' esta estavel e auditado." -ForegroundColor Green
 Write-Host "==================================================================" -ForegroundColor Green
 
-if ($AutoPromote) {
+if ($doAutoPromote) {
     $remainingHosts = $candidates | Where-Object { $_.fields.Hostname -notin $pilotHostnames }
     Write-Host ""
     Write-Host "[Passo 4/4] Promovendo versao '$TargetVersion' para as demais $($remainingHosts.Count) maquinas da frota..." -ForegroundColor Cyan
