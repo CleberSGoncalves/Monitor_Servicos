@@ -21,11 +21,20 @@ Write-Host "=========================================" -ForegroundColor Cyan
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
+$isFreshInstall = $false
 $svc = Get-WmiObject Win32_Service -Filter "Name='$SERVICE_NAME'" -ErrorAction SilentlyContinue
-if (-not $svc) { Write-Host "[ERRO] Servico nao encontrado." -ForegroundColor Red; exit 1 }
-$exePath    = $svc.PathName.Trim('"')
-$installDir = Split-Path $exePath -Parent
-$currentVer = (Get-Item $exePath -ErrorAction SilentlyContinue).VersionInfo.FileVersion
+if (-not $svc) {
+    Write-Host "[INFO] Servico '$SERVICE_NAME' nao encontrado no host. Modo INSTALACAO LIMPA ativado!" -ForegroundColor Yellow
+    $isFreshInstall = $true
+    $baseDrive = if (Test-Path "D:\") { "D:\" } else { "C:\" }
+    $installDir = Join-Path $baseDrive "MediaDNA_V2\applications\MonitorServiceSVC"
+    $currentVer = "Nenhuma (Instalacao Nova)"
+    New-Item -ItemType Directory -Path $installDir -Force | Out-Null
+} else {
+    $exePath    = $svc.PathName.Trim('"')
+    $installDir = Split-Path $exePath -Parent
+    $currentVer = (Get-Item $exePath -ErrorAction SilentlyContinue).VersionInfo.FileVersion
+}
 Write-Host "[INFO] InstallDir  : $installDir"
 Write-Host "[INFO] Versao atual: $currentVer"
 
@@ -67,15 +76,17 @@ Expand-Archive -Path $zipPath -DestinationPath $extractPath -Force
 $newExe = Join-Path $extractPath $EXE_NAME
 if (-not (Test-Path $newExe)) { Write-Host "[ERRO] EXE nao encontrado no ZIP." -ForegroundColor Red; exit 1 }
 
-Write-Host "[INFO] Parando servico..."
-try { Stop-Service -Name $SERVICE_NAME -Force -ErrorAction Stop } catch {}
-$deadline = [DateTime]::Now.AddSeconds(30)
-while ([DateTime]::Now -lt $deadline) {
-    if ((Get-Service $SERVICE_NAME -ErrorAction SilentlyContinue).Status -eq "Stopped") { break }
-    Start-Sleep -Seconds 2
+if (-not $isFreshInstall) {
+    Write-Host "[INFO] Parando servico existente..."
+    try { Stop-Service -Name $SERVICE_NAME -Force -ErrorAction Stop } catch {}
+    $deadline = [DateTime]::Now.AddSeconds(30)
+    while ([DateTime]::Now -lt $deadline) {
+        if ((Get-Service $SERVICE_NAME -ErrorAction SilentlyContinue).Status -eq "Stopped") { break }
+        Start-Sleep -Seconds 2
+    }
+    Get-Process -Name "WinServiceFleetAgent" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 1
 }
-Get-Process -Name "WinServiceFleetAgent" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-Start-Sleep -Seconds 1
 
 Write-Host "[INFO] Copiando arquivos para $installDir..."
 Get-ChildItem -Path $extractPath -File | ForEach-Object {
@@ -84,9 +95,24 @@ Get-ChildItem -Path $extractPath -File | ForEach-Object {
     catch { Write-Host "  WARN: $($_.Name) - $_" -ForegroundColor Yellow }
 }
 
+if ($isFreshInstall) {
+    Write-Host "[INFO] Registrando servico Windows '$SERVICE_NAME'..."
+    $binPath = Join-Path $installDir $EXE_NAME
+    sc.exe create $SERVICE_NAME binPath= "`"$binPath`"" start= auto displayname= "$SERVICE_NAME"
+    sc.exe description $SERVICE_NAME "Agente nativo em C# .NET para inventario, monitoramento e atualizacao remota da frota de servicos Windows."
+}
+
 Write-Host "[INFO] Iniciando servico..."
 for ($i=1; $i -le 3; $i++) {
-    try { Start-Service -Name $SERVICE_NAME -ErrorAction Stop; Write-Host "[OK] Servico iniciado!" -ForegroundColor Green; break }
+    try {
+        sc.exe start $SERVICE_NAME | Out-Null
+        Start-Service -Name $SERVICE_NAME -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 2
+        if ((Get-Service $SERVICE_NAME -ErrorAction SilentlyContinue).Status -eq "Running") {
+            Write-Host "[OK] Servico $SERVICE_NAME iniciado e em execucao!" -ForegroundColor Green
+            break
+        }
+    }
     catch { Write-Host "  tentativa $i/3 falhou"; Start-Sleep -Seconds 3 }
 }
 
