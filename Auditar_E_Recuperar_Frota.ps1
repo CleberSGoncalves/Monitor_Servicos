@@ -1,28 +1,64 @@
 # ==============================================================================
 # WATCHDOG & AUDITOR DE FROTAS (DNA Monitor Fleet)
 # ==============================================================================
-# 1. Audita todas as estacoes do servico no SharePoint.
-# 2. Diagnostica porque cada maquina esta desatualizada (Offline, Parado, Erro no Log).
-# 3. Tenta auto-recuperacao se a maquina estiver ativa (Acao_Solicitada = Atualizar).
-# 4. Se a maquina estiver offline ha mais de 3h ou com erro persistente,
+# 1. Auto-atualiza este proprio script a partir do repositorio GitHub (main).
+# 2. Descobre dinamicamente a versao mais recente da release do servico no GitHub.
+# 3. Audita todas as estacoes do servico no SharePoint.
+# 4. Diagnostica porque cada maquina esta desatualizada (Offline, Parado, Erro no Log).
+# 5. Tenta auto-recuperacao se a maquina estiver ativa (Acao_Solicitada = Atualizar).
+# 6. Se a maquina estiver offline ha mais de 3h ou com erro persistente,
 #    classifica como "Necessario Update Manual" e isola das rotinas automaticas.
 # ==============================================================================
 param(
     [string]$ServiceName = "DNA.MonitorServiceSVC",
-    [string]$TargetVersion = "1.0.13.1",
+    [string]$TargetVersion = "latest",
     [int]$OfflineThresholdHours = 3,
-    [bool]$AutoRecover = $true
+    $AutoRecover = $true,
+    $AutoUpdateScript = $true
 )
 
 Add-Type -AssemblyName System.Security
 
+$doAutoRecover = ($AutoRecover -eq $true -or $AutoRecover -eq "true" -or $AutoRecover -eq 1 -or $AutoRecover -eq "1")
+$doAutoUpdateScript = ($AutoUpdateScript -eq $true -or $AutoUpdateScript -eq "true" -or $AutoUpdateScript -eq 1 -or $AutoUpdateScript -eq "1")
+
+# 0. Sincronizacao / Auto-Update do proprio script do Auditor via GitHub
+if ($doAutoUpdateScript -and $MyInvocation.MyCommand.Path) {
+    try {
+        $rawUrl = "https://raw.githubusercontent.com/CleberSGoncalves/Monitor_Servicos/main/Auditar_E_Recuperar_Frota.ps1"
+        $remoteCode = Invoke-RestMethod -Uri $rawUrl -Headers @{ "User-Agent" = "DNA-Auditor" } -TimeoutSec 8
+        $currentCode = Get-Content -Path $MyInvocation.MyCommand.Path -Raw
+        if ($remoteCode -and $remoteCode.Length -gt 500 -and $remoteCode.Trim() -ne $currentCode.Trim()) {
+            Write-Host "[Self-Update] Nova versao do script do Auditor detectada no GitHub. Atualizando..." -ForegroundColor Yellow
+            [System.IO.File]::WriteAllText($MyInvocation.MyCommand.Path, $remoteCode, [System.Text.Encoding]::UTF8)
+            Write-Host "[Self-Update] Script atualizado com sucesso! Reiniciando execucao com o novo codigo..." -ForegroundColor Green
+            & powershell.exe -ExecutionPolicy Bypass -NoProfile -File $MyInvocation.MyCommand.Path -ServiceName $ServiceName -TargetVersion $TargetVersion -OfflineThresholdHours $OfflineThresholdHours -AutoRecover "true" -AutoUpdateScript "false"
+            exit 0
+        }
+    } catch { }
+}
+
+# 1. Resolucao Automatica da Versao Alvo via GitHub Releases
+if ([string]::IsNullOrWhiteSpace($TargetVersion) -or $TargetVersion -eq "latest") {
+    try {
+        $ghRepo = if ($ServiceName.Contains("/")) { $ServiceName } else { "CleberSGoncalves/$ServiceName" }
+        $ghApiUrl = "https://api.github.com/repos/$ghRepo/releases/latest"
+        $ghResp = Invoke-RestMethod -Uri $ghApiUrl -Headers @{ "User-Agent" = "DNA-Auditor" } -TimeoutSec 10
+        if ($ghResp.tag_name) {
+            $TargetVersion = $ghResp.tag_name.TrimStart('v', 'V')
+        }
+    } catch {
+        $TargetVersion = "1.0.13.1"
+    }
+}
+
 Write-Host "==================================================================" -ForegroundColor Cyan
 Write-Host " [DNA Fleet] WATCHDOG E AUDITOR INTELIGENTE DA FROTA" -ForegroundColor Cyan
 Write-Host " Servico: $ServiceName | Versao Alvo: $TargetVersion" -ForegroundColor Yellow
-Write-Host " Limite Offline: $OfflineThresholdHours horas | Auto-Recuperacao: $AutoRecover" -ForegroundColor Yellow
+Write-Host " Limite Offline: $OfflineThresholdHours horas | Auto-Recuperacao: $doAutoRecover" -ForegroundColor Yellow
 Write-Host "==================================================================" -ForegroundColor Cyan
 
-# 1. Autenticacao SPN no Microsoft Graph
+# 2. Autenticacao SPN no Microsoft Graph
 $rawSecret = "ENC:pmGCK1dfa+FaAQAtlvRow3fpazdGco1b5BlFcuBrkhvGnneyKLXk93FsMzUJZWE6Hcy2YtNVIgn+70DsqWJP8g=="
 $base64 = $rawSecret.Substring(4)
 $rawBytes = [Convert]::FromBase64String($base64)
@@ -59,7 +95,7 @@ $listId = "2e2afc16-dfd6-4277-a16c-cd78bdd2e769"
 
 $headers = Get-GraphHeaders
 
-# 2. Carregar Itens da Frota
+# 3. Carregar Itens da Frota
 Write-Host ""
 Write-Host "[Passo 1/3] Consultando inventario no SharePoint..." -ForegroundColor Cyan
 
@@ -92,7 +128,7 @@ if ($matchingItems.Count -eq 0) {
     exit 0
 }
 
-# 3. Funcao para buscar erro recente no log do SharePoint Drive
+# 4. Funcao para buscar erro recente no log do SharePoint Drive
 function Get-LatestLogError {
     param([string]$Hostname, [string]$Srv)
     try {
@@ -113,7 +149,7 @@ function Get-LatestLogError {
     return ""
 }
 
-# 4. Auditoria e Diagnostico
+# 5. Auditoria e Diagnostico
 Write-Host ""
 Write-Host "[Passo 2/3] Diagnosticando saude e versoes de cada maquina..." -ForegroundColor Cyan
 
@@ -134,7 +170,6 @@ foreach ($item in $matchingItems) {
     $acao = $item.fields.Acao_Solicitada
     $lastRaw = $item.fields.Ultima_atualizacao
 
-    # Calcula idade da ultima telemetria
     $lastDate = if ($lastRaw) { [DateTime]::Parse($lastRaw).ToUniversalTime() } else { [DateTime]::MinValue }
     $diffHours = if ($lastDate -gt [DateTime]::MinValue) { ($now - $lastDate).TotalHours } else { 9999 }
 
@@ -188,7 +223,7 @@ foreach ($item in $matchingItems) {
     $auditReport += $entry
 }
 
-# 5. Execucao de Remediacao e Classificacao
+# 6. Execucao de Remediacao e Classificacao
 Write-Host ""
 Write-Host "[Passo 3/3] Aplicando acoes de remediacao e isolamento..." -ForegroundColor Cyan
 
@@ -214,7 +249,7 @@ foreach ($item in $auditReport) {
         }
         $manualUpdateList += $item
     }
-    elseif ($item.Acao -eq "Auto-Recuperacao" -and $AutoRecover) {
+    elseif ($item.Acao -eq "Auto-Recuperacao" -and $doAutoRecover) {
         try {
             $patchBody = @{
                 Versao_Desejada = $TargetVersion
@@ -233,7 +268,7 @@ foreach ($item in $auditReport) {
     }
 }
 
-# 6. Relatorio Final Formatado
+# 7. Relatorio Final Formatado
 Write-Host ""
 Write-Host "==================================================================" -ForegroundColor Cyan
 Write-Host " RELATORIO CONSOLIDADO DA AUDITORIA DA FROTA" -ForegroundColor Cyan
