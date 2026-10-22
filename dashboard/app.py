@@ -27,6 +27,10 @@ from incident_manager import register_incident_action, get_incident_history
 from thresholds_manager import get_all_thresholds, update_threshold
 from ai_insights import run_ai_fleet_analysis, get_active_ai_suggestions, apply_ai_suggestion
 from fleet_actions import execute_predefined_action
+from remote_commands import (
+    get_command_catalog, create_catalog_command, delete_catalog_command,
+    dispatch_remote_command, get_execution_details, get_ai_command_recommendations
+)
 
 app = FastAPI(title="Central de Monitoração Proativa dos Capture Sites", version="2.0.0")
 
@@ -75,6 +79,19 @@ class ThresholdUpdateRequest(BaseModel):
     key: str
     value: float
     is_enabled: bool
+
+class RemoteCommandCatalogCreateRequest(BaseModel):
+    title: str
+    description: str = ""
+    category: str = "consulta"
+    shell_type: str = "powershell"
+    command_script: str
+
+class RemoteCommandExecuteRequest(BaseModel):
+    hosts: List[str]
+    shell_type: str = "powershell"
+    command_script: str
+    command_title: str = "Comando Livre"
 
 class AiDecisionRequest(BaseModel):
     suggestion_id: str
@@ -334,3 +351,95 @@ async def decide_suggestion(req: AiDecisionRequest, user: dict = Depends(get_cur
     if not ok:
         raise HTTPException(status_code=400, detail="Sugestão não encontrada")
     return {"success": True, "status": "aprovada" if req.approve else "recusada"}
+
+
+# ==========================================
+# Remote Command Orchestrator Endpoints
+# ==========================================
+@app.get("/api/remote-commands/catalog")
+async def list_command_catalog(category: Optional[str] = None, user: dict = Depends(get_current_user)):
+    return get_command_catalog(category)
+
+@app.post("/api/remote-commands/catalog")
+async def add_catalog_command(req: RemoteCommandCatalogCreateRequest, user: dict = Depends(get_current_user)):
+    res = create_catalog_command(req.title, req.description, req.category, req.shell_type, req.command_script, user.get("username", "admin"))
+    return {"success": True, "command": res}
+
+@app.delete("/api/remote-commands/catalog/{cmd_id}")
+async def remove_catalog_command(cmd_id: int, user: dict = Depends(get_current_user)):
+    ok = delete_catalog_command(cmd_id)
+    if not ok:
+        raise HTTPException(status_code=400, detail="Comando não encontrado ou não pode ser excluído")
+    return {"success": True}
+
+@app.post("/api/remote-commands/execute")
+async def execute_remote_cmd(req: RemoteCommandExecuteRequest, user: dict = Depends(get_current_user)):
+    if not req.hosts:
+        raise HTTPException(status_code=400, detail="Selecione ao menos um host para execução")
+    if not req.command_script.strip():
+        raise HTTPException(status_code=400, detail="Comando não pode ser vazio")
+    
+    res = dispatch_remote_command(
+        hosts=req.hosts,
+        shell_type=req.shell_type,
+        command_script=req.command_script,
+        command_title=req.command_title,
+        user=user.get("username", "admin")
+    )
+    return res
+
+@app.get("/api/remote-commands/executions/{exec_id}")
+async def get_execution_status(exec_id: str, user: dict = Depends(get_current_user)):
+    details = get_execution_details(exec_id)
+    if not details:
+        raise HTTPException(status_code=404, detail="Execução de comando não encontrada")
+    return details
+
+@app.get("/api/remote-commands/executions/{exec_id}/export")
+async def export_execution(exec_id: str, format: str = Query("txt", regex="^(txt|csv)$"), user: dict = Depends(get_current_user)):
+    details = get_execution_details(exec_id)
+    if not details:
+        raise HTTPException(status_code=404, detail="Execução não encontrada")
+    
+    from fastapi.responses import Response
+    if format == "csv":
+        import csv, io
+        output = io.StringIO()
+        writer = csv.writer(output, delimiter=";")
+        writer.writerow(["Host", "Praca", "Status", "Duracao_ms", "Exit_Code", "Saida_Stdout"])
+        for r in details.get("results", []):
+            clean_stdout = r.get("stdout", "").replace("\n", " ").replace("\r", "")
+            writer.writerow([r.get("host"), r.get("praca"), r.get("status"), r.get("duration_ms"), r.get("exit_code"), clean_stdout])
+        
+        return Response(
+            content=output.getvalue(),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename=remote_command_{exec_id[:8]}.csv"}
+        )
+    else:
+        lines = [
+            f"RELATÓRIO DE EXECUÇÃO DE COMANDO REMOTO - DNA FLEET CONTROL",
+            f"ID: {details.get('id')}",
+            f"Comando: {details.get('command_title')} [{details.get('shell_type').upper()}]",
+            f"Data: {details.get('created_at')} por {details.get('executed_by')}",
+            "=" * 80,
+            f"SCRIPT EXECUTADO:\n{details.get('command_script')}",
+            "=" * 80,
+            ""
+        ]
+        for r in details.get("results", []):
+            lines.append(f"--- HOST: {r.get('host')} ({r.get('praca')}) ---")
+            lines.append(f"Status: {r.get('status')} | Codigo de Saida: {r.get('exit_code')} | Tempo: {r.get('duration_ms')}ms")
+            lines.append("Saida:")
+            lines.append(r.get("stdout") or "(Sem saída)")
+            lines.append("-" * 60)
+            
+        return Response(
+            content="\n".join(lines),
+            media_type="text/plain; charset=utf-8",
+            headers={"Content-Disposition": f"attachment; filename=remote_command_{exec_id[:8]}.txt"}
+        )
+
+@app.get("/api/remote-commands/ai-suggestions")
+async def get_remote_cmd_ai_suggestions(user: dict = Depends(get_current_user)):
+    return get_ai_command_recommendations()

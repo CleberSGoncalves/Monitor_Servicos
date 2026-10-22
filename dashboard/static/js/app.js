@@ -106,6 +106,8 @@ function setupTabNavigation() {
                 loadUsersList();
             } else if (tabName === "incidents") {
                 loadIncidentHistory();
+            } else if (tabName === "remote-commands") {
+                initRemoteCommands();
             }
         });
     });
@@ -510,4 +512,28 @@ function setupModals() {
             document.querySelectorAll(".modal-overlay").forEach(m => m.classList.remove("active"));
         });
     });
+}
+
+function getAuthToken() {
+    return authToken || localStorage.getItem("fleet_token") || "";
+}
+
+function showToast(message, type = "info") {
+    let container = document.getElementById("fleet-toast-container");
+    if (!container) {
+        container = document.createElement("div");
+        container.id = "fleet-toast-container";
+        container.style.cssText = "position: fixed; bottom: 24px; right: 24px; z-index: 9999; display: flex; flex-direction: column; gap: 8px;";
+        document.body.appendChild(container);
+    }
+    const toast = document.createElement("div");
+    toast.className = `alert alert-${type}`;
+    toast.style.cssText = "background: #1e293b; color: #fff; border: 1px solid #3b82f6; padding: 10px 16px; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); font-size: 13px;";
+    toast.innerHTML = `<i class="fas fa-bell"></i> ${message}`;
+    container.appendChild(toast);
+    setTimeout(() => {
+        toast.style.opacity = "0";
+        toast.style.transition = "opacity 0.3s";
+        setTimeout(() => toast.remove(), 300);
+    }, 3500);
 }
