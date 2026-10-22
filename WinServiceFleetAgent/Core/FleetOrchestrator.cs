@@ -226,6 +226,14 @@ namespace WinServiceFleetAgent.Core
                 {
                     githubLatestVer = await GitHubDownloader.GetLatestReleaseVersionAsync(srv.GithubRepo, _githubToken);
                 }
+                else if (!string.IsNullOrWhiteSpace(srv.TargetVersion))
+                {
+                    githubLatestVer = srv.TargetVersion;
+                }
+                else if (srv.ServiceName.Equals("Atria Capture", StringComparison.OrdinalIgnoreCase))
+                {
+                    githubLatestVer = "2.0.0.2";
+                }
 
                 FileLogger.Log($"[FleetOrchestrator] Processando '{_hostname}_{srv.ServiceName}' -> País: '{paisTitle}', Status: '{statusServico}', Instalada: '{installedVer}', GitHub Desejada: '{githubLatestVer}'");
 
@@ -459,7 +467,7 @@ namespace WinServiceFleetAgent.Core
 
             if (isAtriaUpdate)
             {
-                string atriaTargetVer = !string.IsNullOrWhiteSpace(action.VersaoDesejada) ? action.VersaoDesejada : "2.0.2.2";
+                string atriaTargetVer = !string.IsNullOrWhiteSpace(action.VersaoDesejada) ? action.VersaoDesejada : (!string.IsNullOrWhiteSpace(srvConfig.TargetVersion) ? srvConfig.TargetVersion : "2.0.0.2");
                 await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Em Progresso", versaoDesejada: atriaTargetVer);
                 FileLogger.Log($"[FleetOrchestrator] 🚀 Disparando fluxo customizado de atualização do Atria Capture (vc_redist.x64.exe + installer script)...");
 

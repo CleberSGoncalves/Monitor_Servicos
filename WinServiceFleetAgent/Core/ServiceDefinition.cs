@@ -7,5 +7,6 @@ namespace WinServiceFleetAgent.Core
         public string ExeName { get; set; } = string.Empty;
         public string ConfigFile { get; set; } = string.Empty;
         public string GithubRepo { get; set; } = string.Empty;
+        public string TargetVersion { get; set; } = string.Empty;
     }
 }
