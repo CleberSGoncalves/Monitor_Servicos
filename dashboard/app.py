@@ -33,7 +33,8 @@ sys.path.insert(0, str(ROOT_DIR))
 from config import PORT, DOMAIN_NAME, DATA_DIR
 from auth import (
     authenticate_user, create_session, validate_session,
-    search_ldap_users, hash_password, DB_PATH
+    search_ldap_users, hash_password, update_user_role,
+    get_rbac_roles_matrix, DB_PATH
 )
 from sharepoint_sync import get_cached_data, start_background_syncer, sync_fleet_data
 from incident_manager import register_incident_action, get_incident_history, diagnose_incident_with_ai
@@ -200,12 +201,16 @@ async def get_ldap_settings(user: dict = Depends(get_current_user)):
 
 @app.post("/api/ldap/config")
 async def save_ldap_settings(req: LdapConfigUpdateRequest, user: dict = Depends(get_current_user)):
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Apenas administradores podem configurar a integração LDAP.")
     from ldap_manager import save_ldap_config
     ok = save_ldap_config(req.model_dump())
     return {"success": ok}
 
 @app.post("/api/ldap/test")
 async def test_ldap_settings(req: LdapConfigUpdateRequest, user: dict = Depends(get_current_user)):
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Apenas administradores podem testar a conexão LDAP.")
     from ldap_manager import test_ldap_connection
     res = test_ldap_connection(req.model_dump())
     return res
@@ -223,6 +228,27 @@ async def list_users(user: dict = Depends(get_current_user)):
         cursor = conn.cursor()
         cursor.execute("SELECT id, username, full_name, email, role, auth_type, is_active, created_at, last_login FROM users ORDER BY username")
         return [dict(r) for r in cursor.fetchall()]
+
+
+class UserRoleUpdateRequest(BaseModel):
+    user_id: int
+    role: str
+    is_active: Optional[bool] = None
+
+
+@app.get("/api/rbac/roles")
+async def list_rbac_roles(user: dict = Depends(get_current_user)):
+    return get_rbac_roles_matrix()
+
+
+@app.post("/api/users/update-role")
+async def change_user_role(req: UserRoleUpdateRequest, user: dict = Depends(get_current_user)):
+    if user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Apenas administradores podem gerenciar perfis e permissões de acesso.")
+    ok = update_user_role(req.user_id, req.role, req.is_active)
+    if not ok:
+        raise HTTPException(status_code=400, detail="Usuário não encontrado ou perfil inválido.")
+    return {"success": True, "message": "Perfil atualizado com sucesso."}
 
 
 @app.post("/api/users")
@@ -354,6 +380,8 @@ async def get_rf_analytics(user: dict = Depends(get_current_user)):
 # Ações Operacionais e Incident Response
 @app.post("/api/fleet/action")
 async def trigger_action(req: FleetActionRequest, user: dict = Depends(get_current_user)):
+    if user.get("role") == "n1":
+        raise HTTPException(status_code=403, detail="Perfil N1 possui acesso apenas de visualização. Ações operacionais reservadas para N2 e Administrador.")
     res = execute_predefined_action(
         action_type=req.action_type,
         host=req.host,
@@ -438,6 +466,8 @@ async def get_topology_map_endpoint(user: dict = Depends(get_current_user)):
 
 @app.post("/api/thresholds")
 async def save_threshold(req: ThresholdUpdateRequest, user: dict = Depends(get_current_user)):
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Apenas Administradores podem calibrar limiares operacionais.")
     ok = update_threshold(req.key, req.value, req.is_enabled)
     if not ok:
         raise HTTPException(status_code=400, detail="Limiar não encontrado")
@@ -863,17 +893,20 @@ async def remove_catalog_command(cmd_id: int, user: dict = Depends(get_current_u
 
 @app.post("/api/remote-commands/execute")
 async def execute_remote_cmd(req: RemoteCommandExecuteRequest, user: dict = Depends(get_current_user)):
+    if user.get("role") == "n1":
+        raise HTTPException(status_code=403, detail="🔒 Perfil N1 possui acesso restrito para monitoramento. Execução de comandos remotos requer Perfil N2 ou Administrador.")
     if not req.hosts:
         raise HTTPException(status_code=400, detail="Selecione ao menos um host para execução")
     if not req.command_script.strip():
         raise HTTPException(status_code=400, detail="Comando não pode ser vazio")
     
+    operator_tag = f"{user.get('full_name', user.get('username'))} ({user.get('username')})"
     res = dispatch_remote_command(
         hosts=req.hosts,
         shell_type=req.shell_type,
         command_script=req.command_script,
         command_title=req.command_title,
-        user=user.get("username", "admin")
+        requested_by=operator_tag
     )
     return res
 
@@ -947,6 +980,8 @@ async def get_system_version_endpoint(user: dict = Depends(get_current_user)):
 @app.post('/api/system/update')
 async def apply_system_update_endpoint(request: Request, restart_service: bool = True, force_remote: bool = False, user: dict = Depends(get_current_user)):
     """Aplica a atualizacao do branch main e reinicia o servico Windows de forma assincrona e segura."""
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Apenas Administradores podem acionar atualização do sistema.")
     client_host = request.client.host if request.client else "unknown"
     is_localhost = client_host in ["127.0.0.1", "::1", "localhost", "testclient"]
     if not is_localhost and not force_remote:

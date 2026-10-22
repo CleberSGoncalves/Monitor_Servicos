@@ -425,18 +425,20 @@ def delete_command_from_catalog(cmd_id: int) -> bool:
         return cursor.rowcount > 0
 
 
-def dispatch_remote_command(hosts: List[str], shell_type: str, command_script: str, command_title: str = "Comando Remoto", requested_by: str = "Operador") -> str:
-    """Registra e dispara a execução de um comando remoto para uma lista de hosts."""
+def dispatch_remote_command(hosts: List[str], shell_type: str, command_script: str, command_title: str = "Comando Remoto", requested_by: str = "Operador", **kwargs) -> str:
+    """Registra e dispara a execução de um comando remoto para uma lista de hosts com auditoria completa de operador."""
     init_remote_command_db()
     exec_id = str(uuid.uuid4())
     now_str = datetime.now(timezone.utc).isoformat()
+    
+    op_name = kwargs.get("user") or requested_by or "Operador"
     
     with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
         cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO remote_command_executions (id, command_title, shell_type, command_script, requested_by, hosts_count, hosts_list, status, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, 'em_execucao', ?)
-        """, (exec_id, command_title, shell_type, command_script, requested_by, len(hosts), json.dumps(hosts), now_str))
+        """, (exec_id, command_title, shell_type, command_script, op_name, len(hosts), json.dumps(hosts), now_str))
         conn.commit()
 
     # Execução simulada/real dos nós

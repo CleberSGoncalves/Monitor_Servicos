@@ -87,6 +87,10 @@ def init_db():
             )
         """)
 
+        # Migração automática de perfis legado para RBAC justo (admin, n2, n1)
+        cursor.execute("UPDATE users SET role = 'n2' WHERE role = 'operator'")
+        cursor.execute("UPDATE users SET role = 'n1' WHERE role = 'viewer'")
+
         conn.commit()
         
         # Cria usuário admin padrão se não existir
@@ -201,15 +205,92 @@ def create_session(username: str, role: str) -> str:
 
 
 def validate_session(token: str) -> Optional[Dict[str, Any]]:
-    """Valida o token da sessão."""
+    """Valida o token da sessão e recupera os dados atualizados do usuário."""
     if not token:
         return None
     with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM sessions WHERE token = ? AND expires_at > ?", (token, time.time()))
+        cursor.execute("""
+            SELECT s.token, s.username, COALESCE(u.role, s.role) AS role, s.expires_at,
+                   u.full_name, u.email, u.auth_type, u.is_active
+            FROM sessions s
+            LEFT JOIN users u ON LOWER(u.username) = LOWER(s.username)
+            WHERE s.token = ? AND s.expires_at > ?
+        """, (token, time.time()))
         row = cursor.fetchone()
-        return dict(row) if row else None
+        if not row:
+            return None
+        res = dict(row)
+        if res.get("is_active") == 0:
+            return None
+        if not res.get("full_name"):
+            res["full_name"] = res["username"]
+        return res
+
+
+def update_user_role(user_id: int, new_role: str, is_active: Optional[bool] = None) -> bool:
+    """Atualiza o perfil de acesso (admin, n2, n1) e status do usuário."""
+    if new_role not in ["admin", "n2", "n1"]:
+        return False
+    with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
+        cursor = conn.cursor()
+        if is_active is not None:
+            cursor.execute("UPDATE users SET role = ?, is_active = ? WHERE id = ?", (new_role, 1 if is_active else 0, user_id))
+        else:
+            cursor.execute("UPDATE users SET role = ? WHERE id = ?", (new_role, user_id))
+        
+        cursor.execute("""
+            UPDATE sessions SET role = ?
+            WHERE LOWER(username) = (SELECT LOWER(username) FROM users WHERE id = ?)
+        """, (new_role, user_id))
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def get_rbac_roles_matrix() -> List[Dict[str, Any]]:
+    """Retorna a matriz oficial de permissões dos perfis de acesso."""
+    return [
+        {
+            "role": "admin",
+            "name": "Administrador",
+            "badge": "badge-red",
+            "description": "Controle total e irrestrito da ferramenta, segurança e governança de frota.",
+            "can_view_dashboard": True,
+            "can_treat_incidents": True,
+            "can_execute_remote_commands": True,
+            "can_access_configs": True,
+            "can_update_system": True,
+            "can_manage_users": True,
+            "can_calibrate_thresholds": True
+        },
+        {
+            "role": "n2",
+            "name": "Perfil N2 (Operador Avançado / Sênior)",
+            "badge": "badge-purple",
+            "description": "Atuação técnica ativa, remediação de falhas e disparo de correções nos Capture Sites.",
+            "can_view_dashboard": True,
+            "can_treat_incidents": True,
+            "can_execute_remote_commands": True,
+            "can_access_configs": False,
+            "can_update_system": False,
+            "can_manage_users": False,
+            "can_calibrate_thresholds": False
+        },
+        {
+            "role": "n1",
+            "name": "Perfil N1 (Operador de Monitoração / Triagem)",
+            "badge": "badge-blue",
+            "description": "Observabilidade contínua de telemetria, mosaico visual, RF e notas de acompanhamento.",
+            "can_view_dashboard": True,
+            "can_treat_incidents": True,
+            "can_execute_remote_commands": False,
+            "can_access_configs": False,
+            "can_update_system": False,
+            "can_manage_users": False,
+            "can_calibrate_thresholds": False
+        }
+    ]
 
 
 init_db()

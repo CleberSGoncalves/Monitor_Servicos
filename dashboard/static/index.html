@@ -1394,7 +1394,7 @@
 
 
 
-      <button type="button" class="btn-secondary" id="btnSystemUpdate" onclick="openSystemUpdateModal()" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; font-size: 12px; background: rgba(37,99,235,0.15); border: 1px solid rgba(37,99,235,0.4); color: #38bdf8; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer;" title="Verificar atualizações do sistema"><i class="fas fa-sync-alt" id="iconSystemUpdate"></i> <span id="labelSystemVersion">v3.9.11</span></button>
+      <button type="button" class="btn-secondary" id="btnSystemUpdate" onclick="openSystemUpdateModal()" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; font-size: 12px; background: rgba(37,99,235,0.15); border: 1px solid rgba(37,99,235,0.4); color: #38bdf8; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer;" title="Verificar atualizações do sistema"><i class="fas fa-sync-alt" id="iconSystemUpdate"></i> <span id="labelSystemVersion">v3.9.12</span></button>
         <div class="user-badge">
 
 
@@ -1403,7 +1403,8 @@
 
 
 
-        <span id="navUserDisplay">suportesmme</span>
+        <span id="navUserDisplay">Usuário</span>
+        <span id="navRoleDisplay" class="badge badge-purple" style="font-size: 10px; margin-left: 6px; text-transform: uppercase;">ADMIN</span>
 
 
 
@@ -1745,108 +1746,118 @@
 
     <section class="content-section active" id="tab-overview">
 
+      <!-- ============================================================== -->
+      <!-- COCKPIT OPERACIONAL: AÇÕES REATIVAS VS AÇÕES PROATIVAS (DUAL)  -->
+      <!-- ============================================================== -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(460px, 1fr)); gap: 16px; margin-bottom: 16px;">
 
-
-      <!-- Incidentes Recentes / Banner de Alerta -->
-
-
-
-      <div class="panel-card" style="margin-bottom: 20px;">
-
-
-
-        <div class="panel-header">
-
-
-
-          <div class="panel-title"><span>🚨</span> Incidentes Críticos e Quedas Ativas</div>
-
-
-
+        <!-- PAINEL REATIVO: QUEDAS & FALHAS CRÍTICAS ATIVAS -->
+        <div class="panel-card" style="margin-bottom: 0; display: flex; flex-direction: column; max-height: 480px;">
+          <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(239,68,68,0.25); padding-bottom: 10px; margin-bottom: 10px;">
+            <div class="panel-title" style="color: #f87171;">
+              <span>🚨</span> Ações Reativas: Quedas & Falhas Críticas
+              <span class="badge badge-red" id="badgeActiveOutagesCount" style="margin-left: 8px;">0 Quedas</span>
+            </div>
+            <span style="font-size: 11px; color: var(--text-muted);">Tratativa imediata em 1 clique</span>
+          </div>
+          <div id="activeOutagesList" style="flex: 1; overflow-y: auto; padding-right: 6px; display: flex; flex-direction: column; gap: 8px;">
+            <div style="color: var(--text-muted); padding: 10px;">Carregando incidentes ativos...</div>
+          </div>
         </div>
 
-
-
-        <div id="activeOutagesList">
-
-
-
-          <div style="color: var(--text-muted); padding: 10px;">Carregando incidentes...</div>
-
-
-
+        <!-- PAINEL PROATIVO: ALERTAS PREDITIVOS & RISCOS DE SLA -->
+        <div class="panel-card" style="margin-bottom: 0; display: flex; flex-direction: column; max-height: 480px;">
+          <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(234,179,8,0.25); padding-bottom: 10px; margin-bottom: 10px;">
+            <div class="panel-title" style="color: #facc15;">
+              <span>⚡</span> Ações Proativas: Alertas Preditivos & SLA
+              <span class="badge badge-yellow" id="badgeThresholdBreachesCount" style="margin-left: 8px;">0 Riscos</span>
+            </div>
+            <span style="font-size: 11px; color: var(--text-muted);">Disco D, RF, Autonomia MP4, CPU</span>
+          </div>
+          <div id="thresholdBreachesList" style="flex: 1; overflow-y: auto; padding-right: 6px; display: flex; flex-direction: column; gap: 8px;">
+            <div style="color: var(--text-muted); padding: 10px;">Verificando limiares operacionais...</div>
+          </div>
         </div>
-
-
 
       </div>
 
-      <!-- Violações de Limiares Operacionais & Alertas Preditivos (SLA) -->
-      <div class="panel-card" style="margin-bottom: 20px;">
-        <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center;">
-          <div class="panel-title">
-            <span>⚡</span> Violações de Limiares Operacionais & Alertas Preditivos (SLA)
-            <span class="badge badge-yellow" id="badgeThresholdBreachesCount" style="margin-left: 8px;">0 Alertas</span>
+      <!-- ============================================================== -->
+      <!-- PAINEL DE ACOMPANHAMENTO OPERACIONAL DA EQUIPE EM TEMPO REAL   -->
+      <!-- ============================================================== -->
+      <div class="panel-card" style="margin-bottom: 16px;">
+        <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 8px; margin-bottom: 10px;">
+          <div class="panel-title" style="color: #60a5fa;">
+            <span>📝</span> Acompanhamento Operacional da Equipe (Tratativas Recentes)
           </div>
-          <span style="font-size: 11px; color: var(--text-muted);">Calibrado via aba Configurações (Disco D, RF, Autonomia MP4, CPU/RAM)</span>
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <span style="font-size: 11px; color: var(--text-muted);">Histórico vivo de ações operacionais com operador, data/hora e status</span>
+            <button type="button" class="btn-secondary" style="font-size: 11px; padding: 3px 8px;" onclick="loadRecentWorklogCockpit()">Atualizar Feed</button>
+          </div>
         </div>
-        <div id="thresholdBreachesList" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin-top: 10px;">
-          <div style="color: var(--text-muted); padding: 10px;">Verificando limiares operacionais...</div>
+        <div id="overviewWorklogFeed" style="max-height: 180px; overflow-y: auto; padding-right: 4px;">
+          <div style="color: var(--text-muted); padding: 8px; font-size: 12px;">Carregando histórico operacional recente...</div>
         </div>
       </div>
 
-      <!-- Tabela de Serviços e Infraestrutura -->
-      <div class="panel-card">
-        <div class="panel-header">
-          <div class="panel-title"><span>🖥️</span> Governança de Serviços e Hosts da Frota</div>
-          <span style="font-size: 12px; color: var(--text-muted);">Telemetria individual por processo com Auto-Cura</span>
-        </div>
+      <!-- ============================================================== -->
+      <!-- INVENTÁRIO GERAL DE SERVIÇOS (COLAPSÁVEL - ELIMINA SCROLLING)   -->
+      <!-- ============================================================== -->
+      <details class="panel-card" style="margin-bottom: 20px; padding: 12px 18px;" id="detailsServicesInventory">
+        <summary style="font-weight: 700; cursor: pointer; color: var(--text-main); font-size: 13px; display: flex; justify-content: space-between; align-items: center; list-style: none; user-select: none;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 16px;">🖥️</span>
+            <span>Governança & Inventário Geral de Serviços da Frota (312 Processos)</span>
+            <span class="badge badge-blue" style="font-size: 10px; font-weight: normal;">Expandir Telemetria Detalhada</span>
+          </div>
+          <span style="font-size: 11px; color: var(--text-muted);"><i class="fas fa-chevron-down"></i> Clique para expandir / ocultar</span>
+        </summary>
 
-        <!-- Filtros Rápidos de Serviços e Consumo de Recursos -->
-        <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 14px; margin-bottom: 14px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;">
-          <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
-            <div>
-              <span style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; margin-right: 4px;">Praça:</span>
-              <select id="svcFilterCity" class="form-input" style="padding: 4px 8px; font-size: 11px; width: 140px;" onchange="filterServicesTable()">
-                <option value="all">Todas as Praças</option>
-              </select>
+        <div style="margin-top: 14px; border-top: 1px solid var(--border-color); padding-top: 12px;">
+          <!-- Filtros Rápidos de Serviços e Consumo de Recursos -->
+          <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 14px; margin-bottom: 14px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;">
+            <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+              <div>
+                <span style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; margin-right: 4px;">Praça:</span>
+                <select id="svcFilterCity" class="form-input" style="padding: 4px 8px; font-size: 11px; width: 140px;" onchange="filterServicesTable()">
+                  <option value="all">Todas as Praças</option>
+                </select>
+              </div>
+              <div>
+                <span style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; margin-right: 4px;">Serviço:</span>
+                <select id="svcFilterName" class="form-input" style="padding: 4px 8px; font-size: 11px; width: 170px;" onchange="filterServicesTable()">
+                  <option value="all">Todos os Serviços</option>
+                  <option value="DNA.MonitorServiceSVC">DNA.MonitorServiceSVC</option>
+                  <option value="Atria Capture">Atria Capture</option>
+                  <option value="DNA.MediaRecorderSVC">DNA.MediaRecorderSVC</option>
+                  <option value="DNA.DetectionSVC">DNA.DetectionSVC</option>
+                  <option value="DNA.ConfigMonitorSVC">DNA.ConfigMonitorSVC</option>
+                  <option value="DNA.FiletransferSVC">DNA.FiletransferSVC</option>
+                </select>
+              </div>
+              <div>
+                <span style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; margin-right: 4px;">Consumo / Saúde:</span>
+                <select id="svcFilterResource" class="form-input" style="padding: 4px 8px; font-size: 11px; width: 190px;" onchange="filterServicesTable()">
+                  <option value="all">Todos os Consumos</option>
+                  <option value="high_cpu">🔥 Alto Consumo de CPU (&gt; 10%)</option>
+                  <option value="high_ram">🧠 Alta Memória RAM (&gt; 100 MB)</option>
+                  <option value="stopped">🔴 Apenas Parados / Não Encontrados</option>
+                </select>
+              </div>
+              <div>
+                <span style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; margin-right: 4px;">Ordenar:</span>
+                <select id="svcSortBy" class="form-input" style="padding: 4px 8px; font-size: 11px; width: 140px;" onchange="filterServicesTable()">
+                  <option value="cpu_desc">Maior CPU</option>
+                  <option value="ram_desc">Maior RAM</option>
+                  <option value="praca">Praça (A-Z)</option>
+                  <option value="host">Host (A-Z)</option>
+                  <option value="status">Status</option>
+                </select>
+              </div>
             </div>
-            <div>
-              <span style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; margin-right: 4px;">Serviço:</span>
-              <select id="svcFilterName" class="form-input" style="padding: 4px 8px; font-size: 11px; width: 170px;" onchange="filterServicesTable()">
-                <option value="all">Todos os Serviços</option>
-                <option value="DNA.MonitorServiceSVC">DNA.MonitorServiceSVC</option>
-                <option value="Atria Capture">Atria Capture</option>
-                <option value="DNA.MediaRecorderSVC">DNA.MediaRecorderSVC</option>
-                <option value="DNA.DetectionSVC">DNA.DetectionSVC</option>
-                <option value="DNA.ConfigMonitorSVC">DNA.ConfigMonitorSVC</option>
-                <option value="DNA.FiletransferSVC">DNA.FiletransferSVC</option>
-              </select>
-            </div>
-            <div>
-              <span style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; margin-right: 4px;">Consumo / Saúde:</span>
-              <select id="svcFilterResource" class="form-input" style="padding: 4px 8px; font-size: 11px; width: 190px;" onchange="filterServicesTable()">
-                <option value="all">Todos os Consumos</option>
-                <option value="high_cpu">🔥 Alto Consumo de CPU (&gt; 10%)</option>
-                <option value="high_ram">🧠 Alta Memória RAM (&gt; 100 MB)</option>
-                <option value="stopped">🔴 Apenas Parados / Não Encontrados</option>
-              </select>
-            </div>
-            <div>
-              <span style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; margin-right: 4px;">Ordenar:</span>
-              <select id="svcSortBy" class="form-input" style="padding: 4px 8px; font-size: 11px; width: 140px;" onchange="filterServicesTable()">
-                <option value="cpu_desc">Maior CPU</option>
-                <option value="ram_desc">Maior RAM</option>
-                <option value="praca">Praça (A-Z)</option>
-                <option value="host">Host (A-Z)</option>
-                <option value="status">Status</option>
-              </select>
+            <div style="font-size: 11px; color: var(--text-muted);">
+              <i class="fas fa-info-circle text-blue"></i> CPU reflete medição do processo vs pico global do host
             </div>
           </div>
-          <div style="font-size: 11px; color: var(--text-muted);">
-            <i class="fas fa-info-circle text-blue"></i> CPU reflete medição do processo vs pico global do host
-          </div>
-        </div>
 
 
 
@@ -1936,15 +1947,10 @@
 
           </table>
 
-
-
         </div>
 
-
-
       </div>
-
-
+    </details>
 
     </section>
 
@@ -4598,79 +4604,68 @@
 
           <div id="ldapSearchResults" style="margin-top: 12px;"></div>
 
-
-
         </div>
 
-
-
-
-
-
+        <!-- Matriz de Perfis e Permissionamento (RBAC) -->
+        <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border-color); border-radius: 8px; padding: 14px 16px; margin-bottom: 16px;">
+          <div style="font-weight: 700; font-size: 13px; color: var(--text-main); margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+            <span>🛡️</span> Matriz de Papeis e Permissionamento de Acesso (RBAC)
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px;">
+            <div style="background: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 6px; padding: 10px 12px;">
+              <div style="font-weight: 700; color: #c084fc; font-size: 12px; margin-bottom: 4px;">👑 Administrador (admin)</div>
+              <div style="font-size: 11px; color: var(--text-muted); line-height: 1.4;">
+                Acesso total irrestrito: Configurações, Domínio LDAP, Atualização do Sistema (Localhost), Calibração de Limiares, Gestão de Perfis e Comandos Remotos Críticos.
+              </div>
+            </div>
+            <div style="background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 6px; padding: 10px 12px;">
+              <div style="font-weight: 700; color: #60a5fa; font-size: 12px; margin-bottom: 4px;">⚡ Perfil N2 - Operador Sênior (n2)</div>
+              <div style="font-size: 11px; color: var(--text-muted); line-height: 1.4;">
+                Permissivo para operações: Tratativas de incidentes, reinício de serviços, execução de comandos remotos aprovados e registro de worklog. Sem acesso a Configurações/Update.
+              </div>
+            </div>
+            <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 6px; padding: 10px 12px;">
+              <div style="font-weight: 700; color: #34d399; font-size: 12px; margin-bottom: 4px;">👁️ Perfil N1 - Triagem & Monitoração (n1)</div>
+              <div style="font-size: 11px; color: var(--text-muted); line-height: 1.4;">
+                Foco em monitoração contínua: Mosaico de Imagens, Topologia/Mapa, Análise de Sinal RF e notas de triagem. Bloqueado de alterar configurações, atualizar ou disparar comandos.
+              </div>
+            </div>
+          </div>
+        </div>
 
         <div class="table-responsive">
 
-
-
           <table>
-
-
 
             <thead>
 
-
-
               <tr>
-
-
 
                 <th>Usuário</th>
 
-
-
                 <th>Nome Completo</th>
-
-
 
                 <th>E-mail</th>
 
-
-
-                <th>Função (Role)</th>
-
-
+                <th>Perfil RBAC (Papel)</th>
 
                 <th>Tipo de Autenticação</th>
 
-
-
                 <th>Último Acesso</th>
 
-
+                <th>Ações</th>
 
               </tr>
 
-
-
             </thead>
-
-
 
             <tbody id="usersTableBody">
 
-
-
               <!-- Renderizado dinamicamente -->
-
-
 
             </tbody>
 
-
-
           </table>
-
-
 
         </div>
 
@@ -5672,23 +5667,11 @@
 
 
 
-          <input type="text" class="form-input" id="loginUsername" value="suportesmme" required>
-
-
-
+          <input type="text" class="form-input" id="loginUsername" placeholder="Usuário de rede ou local (ex: cleber.goncalves)" autocomplete="username" required>
         </div>
-
-
-
         <div class="form-group">
-
-
-
           <label class="form-label">Senha</label>
-
-
-
-          <input type="password" class="form-input" id="loginPassword" value="CSp@ss2020" required>
+          <input type="password" class="form-input" id="loginPassword" placeholder="Sua senha de rede ou local" autocomplete="current-password" required>
 
 
 

@@ -30,6 +30,7 @@ async function fetchCurrentUser() {
         if (resp.ok) {
             currentUser = await resp.json();
             document.getElementById("navUserDisplay").innerText = currentUser.username;
+            applyRolePermissions(currentUser.role);
             hideLoginModal();
             loadAllData();
             startAutoRefresh();
@@ -38,6 +39,55 @@ async function fetchCurrentUser() {
         }
     } catch {
         showLoginModal();
+    }
+}
+
+function applyRolePermissions(role) {
+    role = (role || "n1").toLowerCase();
+    const roleBadge = document.getElementById("navRoleDisplay");
+    if (roleBadge) {
+        if (role === "admin") {
+            roleBadge.innerText = "ADMIN";
+            roleBadge.className = "badge badge-purple";
+            roleBadge.title = "Administrador: Acesso irrestrito a configurações, update e gestão da frota";
+        } else if (role === "n2") {
+            roleBadge.innerText = "PERFIL N2";
+            roleBadge.className = "badge badge-blue";
+            roleBadge.title = "Operador Sênior: Acesso operacional, comandos remotos e tratativas ativas";
+        } else {
+            roleBadge.innerText = "PERFIL N1";
+            roleBadge.className = "badge badge-green";
+            roleBadge.title = "Monitoração / Triagem: Acesso de visualização e apontamento de notas";
+        }
+    }
+
+    // Configurações: restrito a admin
+    document.querySelectorAll("[data-tab='configs']").forEach(el => {
+        el.style.display = (role === "admin") ? "" : "none";
+    });
+
+    // Update do sistema: restrito a admin
+    const updBtn = document.getElementById("btnSystemUpdate");
+    if (updBtn) {
+        updBtn.style.display = (role === "admin") ? "inline-flex" : "none";
+    }
+
+    // Se estiver em aba restrita e logar como n1/n2, volta para overview
+    if (role !== "admin" && typeof currentTab !== "undefined" && currentTab === "configs") {
+        const ovBtn = document.querySelector("[data-tab='overview']");
+        if (ovBtn) ovBtn.click();
+    }
+
+    // Perfil N1: bloqueio de ações destrutivas / disparo de comandos remotos
+    const runCmdBtn = document.getElementById("btnRunRemoteCommand");
+    if (runCmdBtn) {
+        if (role === "n1") {
+            runCmdBtn.disabled = true;
+            runCmdBtn.title = "Perfil N1 possui permissão de apenas visualização. Disparo permitido para N2 e Admin.";
+        } else {
+            runCmdBtn.disabled = false;
+            runCmdBtn.title = "Executar comando remoto no host selecionado";
+        }
     }
 }
 
@@ -68,6 +118,7 @@ async function doLogin(e) {
             localStorage.setItem("fleet_token", authToken);
             currentUser = data;
             document.getElementById("navUserDisplay").innerText = currentUser.username;
+            applyRolePermissions(currentUser.role);
             hideLoginModal();
             loadAllData();
             startAutoRefresh();
@@ -230,10 +281,18 @@ async function loadSummaryKPIs() {
 
     // Renderiza violações de limiares operacionais calibrados (SLA)
     loadThresholdBreaches();
+
+    // Renderiza acompanhamento em tempo real da equipe (Cockpit Worklog)
+    loadRecentWorklogCockpit();
 }
 
 function renderOutageBanner(outages) {
     const container = document.getElementById("activeOutagesList");
+    const badge = document.getElementById("badgeActiveOutagesCount");
+    if (badge) {
+        badge.innerText = `${outages.length} Queda${outages.length === 1 ? '' : 's'}`;
+        badge.className = outages.length > 0 ? "badge badge-red" : "badge badge-green";
+    }
     if (!container) return;
 
     if (outages.length === 0) {
@@ -254,6 +313,48 @@ function renderOutageBanner(outages) {
     `;
     }).join("");
 }
+
+async function loadRecentWorklogCockpit() {
+    const feed = document.getElementById("overviewWorklogFeed");
+    if (!feed) return;
+
+    try {
+        const resp = await fetch("/api/incidents/history", {
+            headers: getAuthToken() ? { "Authorization": `Bearer ${getAuthToken()}` } : {}
+        });
+        if (!resp.ok) return;
+        const history = await resp.json();
+
+        if (!history || history.length === 0) {
+            feed.innerHTML = `<div style="color: var(--text-muted); padding: 12px; font-size: 12px;">✅ Nenhuma tratativa recente registrada. As ações da equipe de operadores (N1/N2/Admin) aparecerão aqui em tempo real.</div>`;
+            return;
+        }
+
+        const recent = history.slice(0, 6);
+        feed.innerHTML = recent.map(h => {
+            const timeStr = h.created_at || "";
+            return `
+            <div style="background: rgba(15, 23, 42, 0.5); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 12px; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; font-size: 12px;">
+                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                    <span style="font-size: 11px; color: var(--text-muted); font-family: monospace;">${timeStr}</span>
+                    <span class="badge badge-purple" style="font-size: 10px;">${h.incident_type || 'Ação'}</span>
+                    <span style="font-weight: 700; color: #fff;">${h.host}</span>
+                    <span style="color: #93c5fd;">[${h.target_name}]</span>
+                    <span style="color: var(--text-muted);">Tratado por:</span>
+                    <strong style="color: #60a5fa;"><i class="fas fa-user-check"></i> ${h.operator_name || h.operator_username || 'Sistema'}</strong>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="color: #cbd5e1; font-style: italic; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">"${h.action_taken || '-'}"</span>
+                    <span class="badge badge-green" style="font-size: 10px;">${h.resolution_status || 'Concluído'}</span>
+                </div>
+            </div>
+            `;
+        }).join("");
+    } catch (e) {
+        console.error("Erro ao carregar histórico operacional do cockpit:", e);
+    }
+}
+window.loadRecentWorklogCockpit = loadRecentWorklogCockpit;
 
 // 2. Tabela de Serviços e Filtros Rápidos de Recursos
 let allCachedServices = [];
@@ -489,7 +590,8 @@ async function saveIncidentWorklog(e) {
         if (resp.ok) {
             document.getElementById("worklogModal").classList.remove("active");
             alert("Ação manual registrada com sucesso no histórico de auditoria!");
-            if (currentTab === "incidents") loadIncidentHistory();
+            loadRecentWorklogCockpit();
+            if (typeof currentTab !== "undefined" && currentTab === "incidents") loadIncidentHistory();
         }
     } catch {
         alert("Erro ao registrar ação.");
@@ -561,7 +663,7 @@ async function saveSingleThreshold(key) {
     }
 }
 
-// 6. Gestão de Usuários e LDAP
+// 6. Gestão de Usuários e LDAP (RBAC)
 async function loadUsersList() {
     if (typeof loadLdapStatus === "function") loadLdapStatus();
     const resp = await fetch("/api/users", {
@@ -571,17 +673,61 @@ async function loadUsersList() {
     const users = await resp.json();
 
     const tbody = document.getElementById("usersTableBody");
-    tbody.innerHTML = users.map(u => `
+    if (!tbody) return;
+
+    const isAdmin = currentUser && currentUser.role === "admin";
+    tbody.innerHTML = users.map(u => {
+        const roleNorm = (u.role || "n1").toLowerCase();
+        return `
         <tr>
             <td><strong>${u.username}</strong></td>
             <td>${u.full_name}</td>
             <td>${u.email || '-'}</td>
-            <td><span class="badge badge-blue">${u.role}</span></td>
-            <td><span class="badge ${u.auth_type === 'ldap' ? 'badge-purple' : 'badge-green'}">${u.auth_type.toUpperCase()}</span></td>
+            <td>
+                ${isAdmin ? `
+                <select class="form-input" style="padding: 3px 8px; font-size: 11px; font-weight: 600; width: 180px;" onchange="changeUserRole(${u.id}, this.value)">
+                    <option value="admin" ${roleNorm === 'admin' ? 'selected' : ''}>👑 Administrador (Tudo)</option>
+                    <option value="n2" ${roleNorm === 'n2' ? 'selected' : ''}>⚡ Perfil N2 (Operador)</option>
+                    <option value="n1" ${roleNorm === 'n1' ? 'selected' : ''}>👁️ Perfil N1 (Triagem)</option>
+                </select>
+                ` : `
+                <span class="badge ${roleNorm === 'admin' ? 'badge-purple' : (roleNorm === 'n2' ? 'badge-blue' : 'badge-green')}">${roleNorm.toUpperCase()}</span>
+                `}
+            </td>
+            <td><span class="badge ${u.auth_type === 'ldap' ? 'badge-purple' : 'badge-green'}">${(u.auth_type || 'local').toUpperCase()}</span></td>
             <td>${u.last_login || 'Nunca'}</td>
+            <td>
+                <span style="font-size: 11px; color: ${u.is_active ? 'var(--accent-green)' : 'var(--accent-red)'}; font-weight: 600;">
+                    ${u.is_active ? '● Ativo' : '○ Inativo'}
+                </span>
+            </td>
         </tr>
-    `).join("");
+    `}).join("");
 }
+
+async function changeUserRole(userId, newRole) {
+    try {
+        const resp = await fetch("/api/users/update-role", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${getAuthToken()}`
+            },
+            body: JSON.stringify({ user_id: userId, role: newRole })
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+            alert(`Papel RBAC atualizado para ${newRole.toUpperCase()} com sucesso!`);
+            loadUsersList();
+        } else {
+            alert(data.detail || "Erro ao atualizar papel do usuário");
+            loadUsersList();
+        }
+    } catch {
+        alert("Erro de conexão ao atualizar perfil RBAC.");
+    }
+}
+window.changeUserRole = changeUserRole;
 
 async function searchLdapDirectory() {
     const q = document.getElementById("ldapSearchInput").value;
@@ -606,28 +752,35 @@ async function searchLdapDirectory() {
                 <strong>${u.full_name}</strong> (${u.username})
                 <div style="font-size: 11px; color: var(--text-muted);">${u.email} - ${u.department}</div>
             </div>
-            <button class="btn-primary" style="font-size: 11px; padding: 4px 10px;" onclick="registerLdapUser('${u.username}', '${u.full_name}', '${u.email}')">Adicionar Operador</button>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <select id="roleSelect_${u.username}" class="form-input" style="padding: 3px 6px; font-size: 11px;">
+                    <option value="n2">Perfil N2 (Operador)</option>
+                    <option value="n1">Perfil N1 (Triagem)</option>
+                    <option value="admin">Administrador</option>
+                </select>
+                <button class="btn-primary" style="font-size: 11px; padding: 4px 10px;" onclick="registerLdapUser('${u.username}', '${u.full_name}', '${u.email}', document.getElementById('roleSelect_${u.username}').value)">Adicionar com Perfil</button>
+            </div>
         </div>
     `).join("");
 }
 
-async function registerLdapUser(username, fullName, email) {
+async function registerLdapUser(username, fullName, email, role = "n2") {
     const resp = await fetch("/api/users", {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${authToken}`
+            "Authorization": `Bearer ${getAuthToken()}`
         },
         body: JSON.stringify({
             username: username,
             full_name: fullName,
             email: email,
-            role: "operator",
+            role: role,
             auth_type: "ldap"
         })
     });
     if (resp.ok) {
-        alert(`Usuário '${username}' integrado e registrado com sucesso!`);
+        alert(`Usuário '${username}' integrado com sucesso no perfil ${role.toUpperCase()}!`);
         loadUsersList();
     } else {
         const d = await resp.json();
