@@ -4,7 +4,289 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CS Fleet Control Center - Central de Monitoração Proativa</title>
-  <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/style.css?v=3.2.0">
+  <style>
+    /* Critical Remote Command & Subtab Styles (Anti-Cache Guaranteed) */
+    .rc-subtabs-nav {
+      display: flex;
+      gap: 10px;
+      border-bottom: 1px solid var(--border-color, #1e293b);
+      margin-bottom: 20px;
+      padding-bottom: 8px;
+    }
+    .rc-subtab-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted, #94a3b8);
+      font-size: 13px;
+      font-weight: 600;
+      padding: 8px 16px;
+      border-radius: var(--radius-sm, 6px);
+      cursor: pointer;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .rc-subtab-btn:hover {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.05);
+    }
+    .rc-subtab-btn.active {
+      color: #fff;
+      background: #2563eb;
+    }
+    .rc-subtab-content {
+      display: none;
+    }
+    .rc-subtab-content.active {
+      display: block;
+    }
+    .rc-console-grid {
+      display: grid;
+      grid-template-columns: 310px 1fr 310px;
+      gap: 20px;
+    }
+    @media (max-width: 1200px) {
+      .rc-console-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    .rc-column-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      max-height: 800px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+    .rc-command-card {
+      background: rgba(17, 24, 39, 0.7);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 8px;
+      padding: 14px;
+      transition: all 0.2s;
+    }
+    .rc-command-card:hover {
+      border-color: #3b82f6;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+    }
+    .rc-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 8px;
+      gap: 8px;
+    }
+    .rc-card-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #f1f5f9;
+      line-height: 1.3;
+    }
+    .rc-shell-badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      text-transform: uppercase;
+    }
+    .badge-ps {
+      background: #012456;
+      border: 1px solid #1e40af;
+      color: #60a5fa;
+    }
+    .badge-cmd {
+      background: #1f2937;
+      border: 1px solid #4b5563;
+      color: #e5e7eb;
+    }
+    .rc-card-desc {
+      font-size: 11px;
+      color: #94a3b8;
+      margin-bottom: 12px;
+      line-height: 1.4;
+    }
+    .rc-card-actions {
+      margin-top: 10px;
+    }
+    .btn-load-terminal {
+      width: 100%;
+      padding: 6px 12px;
+      font-size: 11px;
+      font-weight: 600;
+      border-radius: 6px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      background: rgba(59, 130, 246, 0.15);
+      border: 1px solid rgba(59, 130, 246, 0.4);
+      color: #93c5fd;
+      transition: all 0.2s ease;
+    }
+    .btn-load-terminal:hover {
+      background: #2563eb;
+      color: #fff;
+      border-color: #2563eb;
+    }
+    .rc-terminal-container {
+      background: #080c14;
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    }
+    .rc-terminal-header {
+      background: #0f172a;
+      border-bottom: 1px solid #1e293b;
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .rc-shell-switch {
+      display: flex;
+      background: rgba(0, 0, 0, 0.4);
+      border-radius: 6px;
+      border: 1px solid #1e293b;
+      padding: 2px;
+    }
+    .shell-type-btn {
+      background: transparent;
+      border: none;
+      color: #94a3b8;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .shell-type-btn.active {
+      background: #2563eb;
+      color: #fff;
+    }
+    .rc-terminal-input-wrapper {
+      background: #060910;
+      padding: 14px 16px;
+      border-bottom: 1px solid #1e293b;
+    }
+    .rc-terminal-input {
+      width: 100%;
+      min-height: 130px;
+      background: transparent;
+      border: none;
+      color: #4ade80;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 13px;
+      line-height: 1.5;
+      outline: none;
+      resize: vertical;
+    }
+    .rc-terminal-actions {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 16px;
+      background: #0a0f1d;
+      border-bottom: 1px solid #1e293b;
+    }
+    .rc-console-output-box {
+      min-height: 280px;
+      max-height: 480px;
+      overflow-y: auto;
+      background: #04060a;
+      padding: 14px 16px;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      color: #e2e8f0;
+    }
+    .rc-terminal-meta {
+      color: #94a3b8;
+      font-size: 11px;
+      padding-bottom: 8px;
+      margin-bottom: 8px;
+      border-bottom: 1px dashed rgba(255, 255, 255, 0.1);
+    }
+    .rc-terminal-stdout {
+      white-space: pre-wrap;
+      word-break: break-all;
+      color: #cbd5e1;
+    }
+    .rc-terminal-stderr {
+      white-space: pre-wrap;
+      word-break: break-all;
+      color: #f87171;
+      background: rgba(239, 68, 68, 0.1);
+      padding: 8px;
+      border-radius: 4px;
+      margin-top: 8px;
+    }
+    .host-chip {
+      background: rgba(59, 130, 246, 0.2);
+      border: 1px solid rgba(59, 130, 246, 0.4);
+      color: #93c5fd;
+      padding: 4px 10px;
+      border-radius: 14px;
+      font-size: 12px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .host-chip i {
+      cursor: pointer;
+      color: #ef4444;
+    }
+    .ai-cmd-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+      gap: 16px;
+    }
+    .ai-cmd-card {
+      background: rgba(17, 24, 39, 0.8);
+      border: 1px solid rgba(139, 92, 246, 0.3);
+      border-radius: 8px;
+      padding: 18px;
+      transition: all 0.2s;
+    }
+    .ai-cmd-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .ai-cmd-header h4 {
+      font-size: 14px;
+      color: #c4b5fd;
+    }
+    .ai-cmd-reason {
+      font-size: 12px;
+      color: #94a3b8;
+      margin-bottom: 12px;
+      line-height: 1.4;
+    }
+    .ai-cmd-code {
+      background: rgba(0, 0, 0, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 6px;
+      padding: 10px;
+      font-family: 'Consolas', monospace;
+      font-size: 11px;
+      color: #a7f3d0;
+      white-space: pre-wrap;
+      word-break: break-all;
+      margin-bottom: 14px;
+    }
+    .ai-cmd-actions {
+      display: flex;
+      gap: 8px;
+    }
+  </style>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📡</text></svg>">
 </head>
 <body>
@@ -369,19 +651,19 @@
 
       <!-- Sub-tabs Navigation -->
       <div class="rc-subtabs-nav">
-        <button class="rc-subtab-btn active" data-target="rc-tab-console">
+        <button class="rc-subtab-btn active" data-target="rc-tab-console" onclick="switchRemoteTab('rc-tab-console', this)">
           <i class="fas fa-terminal"></i> Console & Execução
         </button>
-        <button class="rc-subtab-btn" data-target="rc-tab-create">
+        <button class="rc-subtab-btn" data-target="rc-tab-create" onclick="switchRemoteTab('rc-tab-create', this)">
           <i class="fas fa-plus-circle"></i> Criar Novo Comando
         </button>
-        <button class="rc-subtab-btn" data-target="rc-tab-ai">
+        <button class="rc-subtab-btn" data-target="rc-tab-ai" onclick="switchRemoteTab('rc-tab-ai', this)">
           <i class="fas fa-brain text-purple"></i> Sugestões da IA de Diagnóstico
         </button>
       </div>
 
       <!-- Subtab 1: Console & Execução (3 Colunas) -->
-      <div id="rc-tab-console" class="rc-subtab-content active">
+      <div id="rc-tab-console" class="rc-subtab-content active" style="display: block;">
         <div class="rc-console-grid">
 
           <!-- Coluna 1: Comandos Pré-Definidos de Consulta -->
@@ -402,8 +684,8 @@
                 <span style="font-size: 12px; font-weight: 600; color: #94a3b8;">Terminal Remoto</span>
               </div>
               <div class="rc-shell-switch">
-                <button class="shell-type-btn active" data-shell="powershell">PowerShell</button>
-                <button class="shell-type-btn" data-shell="cmd">CMD Prompt</button>
+                <button class="shell-type-btn active" data-shell="powershell" onclick="setShellType('powershell')">PowerShell</button>
+                <button class="shell-type-btn" data-shell="cmd" onclick="setShellType('cmd')">CMD Prompt</button>
               </div>
             </div>
 
@@ -454,7 +736,7 @@
       </div>
 
       <!-- Subtab 2: Criar Novo Comando Pré-Definido -->
-      <div id="rc-tab-create" class="rc-subtab-content">
+      <div id="rc-tab-create" class="rc-subtab-content" style="display: none;">
         <div class="panel-card" style="max-width: 800px; margin: 0 auto;">
           <div class="panel-header">
             <div class="panel-title"><span>➕</span> Salvar Novo Comando no Catálogo da Equipe</div>
@@ -494,7 +776,7 @@
       </div>
 
       <!-- Subtab 3: Sugestões Inteligentes da IA -->
-      <div id="rc-tab-ai" class="rc-subtab-content">
+      <div id="rc-tab-ai" class="rc-subtab-content" style="display: none;">
         <div class="panel-header" style="margin-bottom: 16px;">
           <div class="panel-title"><span>🧠</span> Comandos Sugeridos pela Inteligência Artificial Baseados no Parque</div>
           <button class="btn-secondary" onclick="loadAiCommandSuggestions()"><i class="fas fa-sync-alt"></i> Atualizar Análise da IA</button>
@@ -604,10 +886,9 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js"></script>
-  <script src="/static/js/ai_insights.js"></script>
-  <script src="/static/js/fleet_ops.js"></script>
-
-  <script src="/static/js/remote_commands.js"></script>
+  <script src="/static/js/app.js?v=3.2.0"></script>
+  <script src="/static/js/ai_insights.js?v=3.2.0"></script>
+  <script src="/static/js/fleet_ops.js?v=3.2.0"></script>
+  <script src="/static/js/remote_commands.js?v=3.2.0"></script>
 </body>
 </html>

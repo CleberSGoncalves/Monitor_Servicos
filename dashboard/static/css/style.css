@@ -873,3 +873,36 @@ tr:hover td {
   word-break: break-all;
   margin-bottom: 14px;
 }
+
+.ai-cmd-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.rc-card-actions {
+  margin-top: 10px;
+}
+
+.btn-load-terminal {
+  width: 100%;
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: rgba(59, 130, 246, 0.15);
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  color: #93c5fd;
+  transition: all 0.2s ease;
+}
+
+.btn-load-terminal:hover {
+  background: var(--accent-blue);
+  color: #fff;
+  border-color: var(--accent-blue);
+  transform: translateY(-1px);
+}
