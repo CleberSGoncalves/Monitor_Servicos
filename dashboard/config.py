@@ -13,9 +13,9 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Configurações de Rede e Servidor
-PORT = 8090
+PORT = 8092
 HOST = "0.0.0.0"
-DOMAIN_NAME = "localhost:8090"
+DOMAIN_NAME = "localhost:8092"
 LOCAL_IP = "192.168.15.17"
 
 # Credenciais Padrão do Administrador
