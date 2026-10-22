@@ -1,3 +1,4 @@
+from signals_analysis import record_channels_telemetry_snapshot
 import time
 import json
 import threading
@@ -180,6 +181,7 @@ def sync_fleet_data():
                     "atualizacao": ch_item["atualizacao"]
                 })
 
+        record_channels_telemetry_snapshot(channels_list)
         # Métricas Globais da Frota
         now = datetime.now(timezone.utc)
         unique_hosts = set(s["hostname"] for s in services_list)

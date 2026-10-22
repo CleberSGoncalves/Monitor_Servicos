@@ -1,3 +1,6 @@
+from signals_analysis import (
+    get_channel_telemetry_history, diagnose_channel_with_ai, get_all_chronic_issues
+)
 # dashboard/app.py
 """
 Central de Monitoração Proativa dos Capture Sites (CS Fleet Control Center).
@@ -235,6 +238,23 @@ async def get_channels(city: Optional[str] = None, outage_only: bool = False, us
         
     return channels
 
+
+class ChannelDiagnoseRequest(BaseModel):
+    praca: str
+    canal: str
+    period: str = "24h"
+
+@app.get("/api/fleet/channels/history")
+async def get_channel_history(praca: str, canal: str, period: str = "24h", user: dict = Depends(get_current_user)):
+    return get_channel_telemetry_history(praca, canal, period)
+
+@app.post("/api/fleet/channels/ai-diagnose")
+async def ai_diagnose_channel(req: ChannelDiagnoseRequest, user: dict = Depends(get_current_user)):
+    return diagnose_channel_with_ai(req.praca, req.canal, req.period)
+
+@app.get("/api/fleet/channels/chronic-issues")
+async def list_chronic_issues(user: dict = Depends(get_current_user)):
+    return get_all_chronic_issues()
 
 @app.get("/api/fleet/rf-analytics")
 async def get_rf_analytics(user: dict = Depends(get_current_user)):

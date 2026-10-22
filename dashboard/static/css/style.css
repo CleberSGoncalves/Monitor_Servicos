@@ -923,3 +923,29 @@ tr:hover td {
   border-color: var(--accent-blue);
   transform: translateY(-1px);
 }
+
+
+/* Signals & RF Analysis Styles */
+.period-btn {
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  transition: all 0.2s ease;
+}
+
+.period-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.period-btn.active {
+  background: #2563eb;
+  color: #fff;
+  border-color: #3b82f6;
+  box-shadow: 0 0 10px rgba(37, 99, 235, 0.4);
+}

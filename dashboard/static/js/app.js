@@ -104,10 +104,13 @@ function setupTabNavigation() {
             } else if (tabName === "configs") {
                 loadThresholds();
                 loadUsersList();
+                if (typeof loadRefreshIntervalConfig === "function") loadRefreshIntervalConfig();
             } else if (tabName === "incidents") {
                 loadIncidentHistory();
             } else if (tabName === "remote-commands") {
                 initRemoteCommands();
+            } else if (tabName === "signals") {
+                if (typeof initSignalsAnalysisTab === "function") initSignalsAnalysisTab();
             }
         });
     });
@@ -121,11 +124,58 @@ function setupFilters() {
     statusFilter.addEventListener("change", () => loadAllData());
 }
 
+function getRefreshIntervalSeconds() {
+    const saved = localStorage.getItem("dashboard_refresh_interval");
+    if (saved === null) return 15;
+    const parsed = parseInt(saved, 10);
+    if (isNaN(parsed) || parsed < 0) return 15;
+    if (parsed > 0 && parsed < 10) return 10;
+    return parsed;
+}
+
 function startAutoRefresh() {
     clearInterval(autoRefreshTimer);
+    const secs = getRefreshIntervalSeconds();
+    updateRefreshIntervalUI(secs);
+    if (secs === 0) {
+        console.log("[AutoRefresh] Atualização automática pausada pelo operador.");
+        return;
+    }
     autoRefreshTimer = setInterval(() => {
         if (authToken) loadAllData(true);
-    }, 15000); // 15 segundos
+    }, secs * 1000);
+}
+
+function changeAutoRefreshInterval(newVal) {
+    const secs = parseInt(newVal, 10);
+    localStorage.setItem("dashboard_refresh_interval", secs);
+    startAutoRefresh();
+}
+window.changeAutoRefreshInterval = changeAutoRefreshInterval;
+
+function loadRefreshIntervalConfig() {
+    const secs = getRefreshIntervalSeconds();
+    updateRefreshIntervalUI(secs);
+}
+window.loadRefreshIntervalConfig = loadRefreshIntervalConfig;
+
+function updateRefreshIntervalUI(secs) {
+    const sel = document.getElementById("autoRefreshIntervalSelect");
+    const status = document.getElementById("refreshTimerStatus");
+    if (sel) sel.value = secs.toString();
+    if (status) {
+        if (secs === 0) {
+            status.innerHTML = "⏸️ Pausado";
+            status.style.background = "rgba(100, 116, 139, 0.2)";
+            status.style.color = "#94a3b8";
+            status.style.borderColor = "#64748b";
+        } else {
+            status.innerHTML = `⏱️ ${secs}s ativo`;
+            status.style.background = "rgba(37, 99, 235, 0.2)";
+            status.style.color = "#60a5fa";
+            status.style.borderColor = "#2563eb";
+        }
+    }
 }
 
 async function loadAllData(isSilent = false) {
