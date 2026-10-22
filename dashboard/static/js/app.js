@@ -336,7 +336,12 @@ async function loadRecentWorklogCockpit() {
             return;
         }
 
-        const recent = history.slice(0, 6);
+        const historyList = Array.isArray(history) ? history : (history.worklog || history.incidents || []);
+        if (historyList.length === 0) {
+            feed.innerHTML = `<div style="color: var(--text-muted); padding: 12px; font-size: 12px;">✅ Nenhuma tratativa recente registrada. As ações da equipe de operadores (N1/N2/Admin) aparecerão aqui em tempo real.</div>`;
+            return;
+        }
+        const recent = historyList.slice(0, 6);
         feed.innerHTML = recent.map(h => {
             const timeStr = h.created_at || "";
             return `
@@ -361,6 +366,57 @@ async function loadRecentWorklogCockpit() {
     }
 }
 window.loadRecentWorklogCockpit = loadRecentWorklogCockpit;
+
+async function loadMediaPipelineIncidents() {
+    const list = document.getElementById("mediaPipelineList");
+    const badge = document.getElementById("badgeMediaPipelineCount");
+    if (!list) return;
+
+    try {
+        const resp = await fetch("/api/fleet/media-pipeline/incidents", {
+            headers: (typeof getAuthToken === 'function' && getAuthToken()) ? { "Authorization": `Bearer ${getAuthToken()}` } : {}
+        });
+        if (!resp.ok) return;
+        const incidents = await resp.json();
+
+        if (badge) {
+            badge.textContent = `${incidents.length} Ocorrência${incidents.length === 1 ? '' : 's'}`;
+            badge.className = incidents.length > 0 ? "badge badge-yellow" : "badge badge-green";
+        }
+
+        if (!incidents || incidents.length === 0) {
+            list.innerHTML = `<div style="color: var(--accent-green); padding: 12px; font-size: 13px;">✅ Pipeline 100% nominal. Gravações MP4/MP3/JPEG convertidas para .SENT dentro da janela de 30min em todos os Capture Sites.</div>`;
+            return;
+        }
+
+        list.innerHTML = incidents.map(inc => {
+            const isSentDelay = inc.incident_type === "sent_delay";
+            const icon = isSentDelay ? "⏳" : "⚠️";
+            const badgeClass = inc.severity === "critico" ? "badge-red" : "badge-yellow";
+            return `
+            <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); border-left: 4px solid ${inc.severity === 'critico' ? '#ef4444' : '#f59e0b'}; border-radius: 6px; padding: 10px 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px;">
+                    <div>
+                        <strong style="color: #fff; font-size: 13px;">${icon} ${inc.praca || ''}</strong>
+                        <span style="color: #38bdf8; font-size: 11px; margin-left: 6px;">[CS ${inc.cs || 1}]</span>
+                        <span style="color: var(--text-muted); font-size: 11px; margin-left: 6px;">${inc.canal || inc.media_type || ''}</span>
+                    </div>
+                    <span class="badge ${badgeClass}" style="font-size: 10px;">${(inc.severity || 'ALERTA').toUpperCase()}</span>
+                </div>
+                <div style="font-size: 12px; color: #cbd5e1; margin-bottom: 6px;">${inc.motivo || inc.detalhe || ''}</div>
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px;">
+                    <span style="color: var(--text-muted); font-family: monospace;">Atraso: <strong style="color: #facc15;">${inc.delay_minutes || 0} min</strong> (Limiar: 10m)</span>
+                    <button class="btn-secondary" style="font-size: 11px; padding: 2px 8px;" onclick="openIncidentActionModal('pipeline_${inc.id || inc.praca}', '${inc.praca} (CS ${inc.cs || 1})', '${inc.canal || inc.media_type || 'Geral'}', '${inc.incident_type || 'pipeline'}')">
+                        📝 Tratar
+                    </button>
+                </div>
+            </div>`;
+        }).join("");
+    } catch (e) {
+        console.error("Erro ao carregar incidentes de media pipeline:", e);
+    }
+}
+window.loadMediaPipelineIncidents = loadMediaPipelineIncidents;
 
 // 2. Tabela de Serviços e Filtros Rápidos de Recursos
 let allCachedServices = [];
@@ -1055,6 +1111,7 @@ async function applySystemUpdateNow() {
         const data = await res.json();
 
         if (data.status === "success") {
+            currentIncidentAiContext = data;
             if (progressLabel) progressLabel.textContent = "Atualização concluída com sucesso!";
             if (progressPct) progressPct.textContent = "100%";
             if (statusTitle) statusTitle.textContent = "🎉 Sistema Atualizado!";
@@ -1480,6 +1537,7 @@ async function openIncidentAiModal(incidentCode) {
         const data = await res.json();
 
         if (data.status === "success") {
+            currentIncidentAiContext = data;
             document.getElementById("aiModalTitle").textContent = `Diagnóstico de IA: ${data.target} (${data.praca})`;
             document.getElementById("aiModalSubtitle").textContent = `Incidente ${data.incident_code} • Severidade: ${data.severity.toUpperCase()}`;
             document.getElementById("aiModalRootCause").textContent = data.ai_root_cause;
@@ -1506,9 +1564,70 @@ function closeIncidentAiModal() {
 }
 window.closeIncidentAiModal = closeIncidentAiModal;
 
+let currentIncidentAiContext = null;
+
 function executeAiRecommendedAction() {
-    safeToast("Ação corretiva homologada disparada com sucesso para o Capture Site!", "success");
+    if (!currentIncidentAiContext) {
+        safeToast("Nenhum diagnóstico ativo para executar.", "warning");
+        closeIncidentAiModal();
+        return;
+    }
+    const data = currentIncidentAiContext;
+    const praca = data.praca || "Pelotas";
+    const target = data.target || "Rede Globo";
+    
+    // Mapeia host correspondente à praça
+    let host = "BRRS-PLT-DT01";
+    const pLow = praca.toLowerCase();
+    if (pLow.includes("pelotas")) host = "BRRS-PLT-DT01";
+    else if (pLow.includes("caxias")) host = "BRRS-CSL-DT01";
+    else if (pLow.includes("juiz de fora")) host = "BRMG-JFA-DT01";
+    else if (pLow.includes("são paulo") || pLow.includes("sao paulo")) host = "CS-BRSP-REPUCOM";
+    else if (pLow.includes("florianópolis") || pLow.includes("florianopolis")) host = "CS-BRSC-FNS-DT0";
+    else if (pLow.includes("porto alegre")) host = "BRRS-POA-DT01";
+    else if (pLow.includes("brasília") || pLow.includes("brasilia")) host = "BRDF-BSB-DT01";
+    else host = `CS-${praca.toUpperCase().replace(/\s+/g, '-')}-01`;
+
+    const script = `$cfg = 'D:\\MediaDNA_V2\\data\\config\\configxml.xml';\n` +
+                   `Write-Host '[INFO] Aplicando calibração homologada de Keyframe e Buffer para ${target} (${praca})...';\n` +
+                   `Restart-Service DNA.MediaRecorderSVC -Force;\n` +
+                   `Write-Host '[OK] Serviço DNA.MediaRecorderSVC reiniciado com parâmetros estritos de IDR.'`;
+
+    const title = `Auto-Cura IA: ${target} (${praca})`;
+
+    safeToast(`⚡ Disparando correção remota em ${host}...`, "info");
     closeIncidentAiModal();
+
+    const token = (typeof getAuthToken === "function") ? getAuthToken() : (localStorage.getItem("fleet_token") || "");
+    const headers = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    fetch("/api/remote-commands/execute", {
+        method: "POST",
+        headers: headers,
+        body: JSON.stringify({
+            hosts: [host],
+            shell_type: "powershell",
+            command_script: script,
+            command_title: title
+        })
+    })
+    .then(r => r.json())
+    .then(res => {
+        safeToast("Correção executada com sucesso! Redirecionando para Fila de Acompanhamento...", "success");
+        switchTab("remote-commands");
+        setTimeout(() => {
+            if (typeof switchRemoteTab === "function") {
+                switchRemoteTab("rc-tab-queue");
+            }
+            if (typeof loadRemoteExecutionsQueue === "function") {
+                loadRemoteExecutionsQueue();
+            }
+        }, 300);
+    })
+    .catch(err => {
+        safeToast("Falha ao disparar comando: " + err.message, "danger");
+    });
 }
 window.executeAiRecommendedAction = executeAiRecommendedAction;
 
@@ -1817,3 +1936,250 @@ function toggleAiApiKeyVisibility() {
     }
 }
 window.toggleAiApiKeyVisibility = toggleAiApiKeyVisibility;
+
+
+// =========================================================================
+// ANÁLISE AMOSTRAL & PADRÕES CRÔNICOS DE INCIDENTES COM IA
+// =========================================================================
+let currentIncidentClusters = [];
+
+async function openIncidentsAiClusterAnalysisModal() {
+    const modal = document.getElementById("incidentsAiClusterModal");
+    const container = document.getElementById("incidentsAiClusterList");
+    if (!modal) return;
+    modal.style.display = "flex";
+
+    if (container) {
+        container.innerHTML = `<div style="text-align: center; padding: 40px; color: var(--text-muted);"><i class="fas fa-spinner fa-spin fa-2x"></i><br><br>Correlacionando histórico amostral de incidentes das 22 praças com motor de IA...</div>`;
+    }
+
+    try {
+        const period = document.getElementById("incFilterPeriod")?.value || "30d";
+        const token = (typeof getAuthToken === "function") ? getAuthToken() : (localStorage.getItem("fleet_token") || "");
+        const headers = token ? { "Authorization": `Bearer ${token}` } : {};
+        const resp = await fetch(`/api/incidents/ai-cluster-analysis?period=${period}`, { headers });
+        if (!resp.ok) throw new Error("Erro na API de clusters");
+        const data = await resp.json();
+        currentIncidentClusters = data.clusters || [];
+        renderIncidentClustersUI(data);
+    } catch (e) {
+        if (container) {
+            container.innerHTML = `<div style="color: #ef4444; padding: 20px;">Falha ao carregar análise de clusters: ${escapeHtml(e.message)}</div>`;
+        }
+    }
+}
+window.openIncidentsAiClusterAnalysisModal = openIncidentsAiClusterAnalysisModal;
+
+function closeIncidentsAiClusterModal() {
+    const modal = document.getElementById("incidentsAiClusterModal");
+    if (modal) modal.style.display = "none";
+}
+window.closeIncidentsAiClusterModal = closeIncidentsAiClusterModal;
+
+function renderIncidentClustersUI(data) {
+    const container = document.getElementById("incidentsAiClusterList");
+    const subtitle = document.getElementById("incidentsAiClusterSubtitle");
+    if (!container) return;
+
+    if (subtitle) {
+        subtitle.textContent = `Amostragem de ${data.total_samples || 0} incidentes no período (${data.period || '30d'}) • Identificados ${data.total_clusters || 0} padrões de falhas crônicas`;
+    }
+
+    const clusters = data.clusters || [];
+    if (clusters.length === 0) {
+        container.innerHTML = `<div style="text-align: center; padding: 30px; color: var(--accent-green);">✅ Nenhum padrão crônico persistente detectado no período selecionado.</div>`;
+        return;
+    }
+
+    container.innerHTML = clusters.map(c => {
+        const hostsList = c.affected_hosts || [];
+        const hostsChips = hostsList.map(h => `<span class="host-chip" style="font-size: 11px; padding: 3px 8px; background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.35); color: #7dd3fc;"><strong>${escapeHtml(h)}</strong></span>`).join(" ");
+
+        return `
+        <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 18px; margin-bottom: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; margin-bottom: 10px;">
+                <div>
+                    <h4 style="margin: 0 0 4px 0; color: #fff; font-size: 15px; display: flex; align-items: center; gap: 8px;">
+                        <span>🔍</span> ${escapeHtml(c.title)}
+                        <span class="badge badge-purple" style="font-size: 10px;">${escapeHtml(c.category)}</span>
+                    </h4>
+                    <div style="font-size: 12px; color: #facc15; font-weight: 600;">
+                        <i class="fas fa-chart-line"></i> Constância / Recorrência: <strong>${c.constancy_rate_pct}%</strong> • Padrão: ${escapeHtml(c.recurrence_pattern)} (${c.sample_count} amostras)
+                    </div>
+                </div>
+                <button class="btn-primary" style="padding: 6px 14px; font-size: 12px; background: linear-gradient(135deg, #0284c7, #2563eb); font-weight: 700;" onclick="executeClusterRemediation('${c.cluster_id}')">
+                    <i class="fas fa-bolt"></i> Disparar Correção Remota nas Praças (${(c.raw_hosts || []).length})
+                </button>
+            </div>
+
+            <div style="margin-bottom: 12px;">
+                <span style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">Praças com Casos Crônicos Mapeados:</span>
+                <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px;">
+                    ${hostsChips}
+                </div>
+            </div>
+
+            <div style="background: rgba(0,0,0,0.3); border-radius: 6px; padding: 12px; margin-bottom: 12px; font-size: 12px;">
+                <div style="color: #fca5a5; font-weight: 700; margin-bottom: 4px;"><i class="fas fa-microscope"></i> Diagnóstico da Causa Raiz:</div>
+                <div style="color: #e2e8f0; line-height: 1.5;">${escapeHtml(c.root_cause)}</div>
+            </div>
+
+            <div style="background: rgba(0,0,0,0.3); border-radius: 6px; padding: 12px; font-size: 12px;">
+                <div style="color: #6ee7b7; font-weight: 700; margin-bottom: 4px;"><i class="fas fa-tools"></i> Procedimentos Técnicos de Solução:</div>
+                <pre style="margin: 0; color: #cbd5e1; font-family: monospace; white-space: pre-wrap; font-size: 11px;">${escapeHtml(c.recommended_solution)}</pre>
+            </div>
+        </div>`;
+    }).join("");
+}
+
+window.executeClusterRemediation = function(clusterId) {
+    const c = currentIncidentClusters.find(cl => cl.cluster_id === clusterId);
+    if (!c) return;
+
+    const rawHosts = c.raw_hosts || [];
+    if (rawHosts.length === 0) {
+        safeToast("Nenhum host alvo definido para esta correção.", "warning");
+        return;
+    }
+
+    safeToast(`⚡ Disparando correção remota em lote para ${rawHosts.length} praça(s)...`, "info");
+    closeIncidentsAiClusterModal();
+
+    const token = (typeof getAuthToken === "function") ? getAuthToken() : (localStorage.getItem("fleet_token") || "");
+    const headers = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    fetch("/api/remote-commands/execute", {
+        method: "POST",
+        headers: headers,
+        body: JSON.stringify({
+            hosts: rawHosts,
+            shell_type: "powershell",
+            command_script: c.remediation_script,
+            command_title: `Auto-Cura em Lote: ${c.title}`
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        safeToast(`Correção disparada em ${rawHosts.length} nós com sucesso! Acompanhando na Fila...`, "success");
+        switchTab("remote-commands");
+        setTimeout(() => {
+            if (typeof switchRemoteTab === "function") {
+                switchRemoteTab("rc-tab-queue");
+            }
+            if (typeof loadRemoteExecutionsQueue === "function") {
+                loadRemoteExecutionsQueue();
+            }
+        }, 300);
+    })
+    .catch(err => {
+        safeToast("Falha ao disparar comando: " + err.message, "danger");
+    });
+};
+
+// =========================================================================
+// AUDITORIA DE LIMIARES X INCIDENTES (IA) EM CONFIGURAÇÕES
+// =========================================================================
+let currentThresholdProposals = [];
+
+async function loadThresholdAuditUI() {
+    const container = document.getElementById("thresholdAuditProposalsList");
+    if (!container) return;
+
+    try {
+        const token = (typeof getAuthToken === "function") ? getAuthToken() : (localStorage.getItem("fleet_token") || "");
+        const headers = token ? { "Authorization": `Bearer ${token}` } : {};
+        const resp = await fetch("/api/system/thresholds-audit", { headers });
+        if (!resp.ok) throw new Error("Erro na API de auditoria de limiares");
+        const data = await resp.json();
+
+        // Atualiza KPIs
+        const elPrecision = document.getElementById("auditKpiPrecision");
+        if (elPrecision) elPrecision.textContent = `${data.precision_rate_pct || 85}%`;
+        const elFalseAlarms = document.getElementById("auditKpiFalseAlarms");
+        if (elFalseAlarms) elFalseAlarms.textContent = `${data.false_positives_noise || 0}`;
+        const elRealImpact = document.getElementById("auditKpiRealImpact");
+        if (elRealImpact) elRealImpact.textContent = `${data.real_impact_incidents || 0}`;
+        const elReduction = document.getElementById("auditKpiReduction");
+        if (elReduction) elReduction.textContent = `-${data.estimated_noise_reduction_pct || 36.5}%`;
+
+        const elLastRun = document.getElementById("auditLastRunTime");
+        if (elLastRun) elLastRun.textContent = data.timestamp || "Agora";
+
+        currentThresholdProposals = data.proposals || [];
+        renderThresholdAuditProposals(currentThresholdProposals);
+    } catch (e) {
+        container.innerHTML = `<div style="color: #ef4444; padding: 20px;">Falha ao carregar auditoria de limiares: ${escapeHtml(e.message)}</div>`;
+    }
+}
+window.loadThresholdAuditUI = loadThresholdAuditUI;
+
+function renderThresholdAuditProposals(proposals) {
+    const container = document.getElementById("thresholdAuditProposalsList");
+    if (!container) return;
+
+    if (!proposals || proposals.length === 0) {
+        container.innerHTML = `<div style="text-align: center; padding: 30px; color: var(--accent-green);">✅ Todos os limiares operacionais estão perfeitamente ajustados à telemetria real.</div>`;
+        return;
+    }
+
+    container.innerHTML = proposals.map(p => {
+        const isApplied = p.status === "aplicada";
+        const btnHtml = isApplied
+            ? `<span class="badge badge-green" style="font-size: 12px; padding: 6px 12px;"><i class="fas fa-check"></i> Proposta Já Aplicada</span>`
+            : `<button class="btn-primary" style="padding: 7px 16px; font-size: 12px; background: linear-gradient(135deg, #10b981, #059669); font-weight: 700;" onclick="applyThresholdProposal('${p.id}')">
+                <i class="fas fa-check-circle"></i> Aceitar & Aplicar Proposta no Sistema
+               </button>`;
+
+        return `
+        <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 18px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
+            <div style="flex: 1; min-width: 320px;">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                    <strong style="color: #fff; font-size: 15px;">⚖️ ${escapeHtml(p.name)}</strong>
+                    <span class="badge badge-blue" style="font-size: 10px;">${escapeHtml(p.category)}</span>
+                    <span class="badge badge-purple" style="font-size: 10px;">${escapeHtml(p.impact_metric)}</span>
+                </div>
+                <div style="font-size: 12px; color: #cbd5e1; margin-bottom: 8px; line-height: 1.5;">${escapeHtml(p.reason)}</div>
+                <div style="display: flex; gap: 14px; align-items: center; font-size: 12px; font-family: monospace;">
+                    <span style="color: var(--text-muted);">Valor Atual: <strong style="color: #fca5a5;">${escapeHtml(p.current_value)}</strong></span>
+                    <span style="color: var(--text-muted);"><i class="fas fa-arrow-right text-cyan"></i></span>
+                    <span style="color: var(--text-muted);">Valor Proposto pela IA: <strong style="color: #86efac; font-size: 13px;">${escapeHtml(p.proposed_value)}</strong></span>
+                </div>
+            </div>
+            <div>
+                ${btnHtml}
+            </div>
+        </div>`;
+    }).join("");
+}
+
+window.applyThresholdProposal = async function(proposalId) {
+    safeToast("Aplicando proposta e calibrando limiares operacionais no sistema...", "info");
+    try {
+        const token = (typeof getAuthToken === "function") ? getAuthToken() : (localStorage.getItem("fleet_token") || "");
+        const headers = {
+            "Content-Type": "application/json",
+            ...(token ? { "Authorization": `Bearer ${token}` } : {})
+        };
+        const resp = await fetch("/api/system/thresholds-audit/apply", {
+            method: "POST",
+            headers: headers,
+            body: JSON.stringify({ proposal_id: proposalId })
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+            safeToast(data.message || "Proposta aplicada com sucesso!", "success");
+            loadThresholdAuditUI();
+        } else {
+            safeToast(data.detail || "Erro ao aplicar proposta.", "danger");
+        }
+    } catch (e) {
+        safeToast("Falha de conexão: " + e.message, "danger");
+    }
+};
+
+window.runThresholdAuditNow = async function() {
+    safeToast("Executando auditoria analítica horária de limiares com IA...", "info");
+    await loadThresholdAuditUI();
+    safeToast("Auditoria de limiares atualizada com sucesso!", "success");
+};

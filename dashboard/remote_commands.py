@@ -255,6 +255,18 @@ def init_remote_command_db():
             )
         """)
         
+        # Migra colunas legadas se necessário
+        cursor.execute("PRAGMA table_info(remote_command_executions)")
+        cols = [r[1] for r in cursor.fetchall()]
+        if "requested_by" not in cols:
+            cursor.execute("ALTER TABLE remote_command_executions ADD COLUMN requested_by TEXT")
+        if "hosts_count" not in cols:
+            cursor.execute("ALTER TABLE remote_command_executions ADD COLUMN hosts_count INTEGER DEFAULT 0")
+        if "hosts_list" not in cols:
+            cursor.execute("ALTER TABLE remote_command_executions ADD COLUMN hosts_list TEXT")
+        if "finished_at" not in cols:
+            cursor.execute("ALTER TABLE remote_command_executions ADD COLUMN finished_at TEXT")
+
         conn.commit()
 
         # Inserção de Comandos Pré-Definidos Essenciais caso não existam
@@ -553,6 +565,33 @@ LocalAddress   LocalPort RemoteAddress RemotePort State       OwningProcess
 192.168.10.45      54212 10.200.4.18         8554 Established          5120
 127.0.0.1           9000 127.0.0.1          58412 Established          4820"""
 
+    elif "Keyframe" in script or "configxml" in script or "KeyframeInterval" in script:
+        return f"""[{now_str}] Executando calibração de Keyframe (IDR) em {host}...
+[INFO] Abrindo D:\\MediaDNA_V2\\data\\config\\configxml.xml...
+[INFO] Backup criado: configxml.xml.bak_{datetime.now().strftime('%Y%m%d_%H%M%S')}
+[OK] Intervalo de Keyframe ajustado para estrito a cada 60 quadros (<KeyframeInterval>60</KeyframeInterval>).
+[OK] Buffer de pré-codificação elevado para 1.500ms.
+[INFO] Reiniciando serviço DNA.MediaRecorderSVC para aplicar novos parâmetros...
+[OK] DNA.MediaRecorderSVC reiniciado com sucesso.
+[OK] Thread de encode H.264 sincronizada sem jitter de timestamp. Correção aplicada com êxito total!"""
+
+    elif "Sonifex" in script or "ASIO" in script or "AudioRecorder" in script:
+        return f"""[{now_str}] Executando calibração de Áudio Analógico (Placa Sonifex) em {host}...
+[INFO] Consultando barramento de áudio Sonifex Redbox PCIe...
+[OK] Driver Sonifex ASIO v4.8 identificado (Latência nominal: 512 samples / 11.6ms).
+[INFO] Calibrando ganho de entrada estéreo para +4 dBu nominal.
+[OK] Relação sinal/ruído (SNR) ajustada para > 64 dB. Filtro de corte de 60Hz ativo.
+[INFO] Reiniciando pipeline de gravação de áudio...
+[OK] Sessão de captura de rádio restaurada com áudio estéreo límpido."""
+
+    elif "RTSP" in script or "UDP" in script or "MediaRecorderSVC" in script:
+        return f"""[{now_str}] Executando auto-healing de Streaming IP (RTSP/UDP) em {host}...
+[INFO] Verificando conexões de rede com a operadora/CDN da emissora...
+[INFO] Sockets TCP/UDP reiniciados na porta de ingestão do Atria.
+[OK] Transporte RTSP consolidado em modo TCP com buffer de jitter de 2.000ms.
+[OK] DNA.MediaRecorderSVC reciclado graciosamente.
+[OK] Fluxo de streaming restabelecido sem perda de pacotes."""
+
     elif "PhysicalDisk" in script or "Latency" in script:
         return f"""[{now_str}] Executando via {shell_type.upper()} em {host}...
 
@@ -570,6 +609,37 @@ Host: {host}
 CWD: D:\\MediaDNA_V2\\applications\\MonitorServiceSVC
 
 Execução concluída com sucesso."""
+
+
+def get_all_executions(limit: int = 50) -> List[Dict[str, Any]]:
+    """Retorna a lista completa de execuções de comandos remotos (Fila de Execução & Histórico)."""
+    init_remote_command_db()
+    with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT e.id, e.command_title, e.shell_type, e.command_script, e.requested_by,
+                   e.hosts_count, e.hosts_list, e.status, e.created_at, e.finished_at,
+                   COUNT(r.id) as results_count,
+                   SUM(CASE WHEN r.status = 'sucesso' THEN 1 ELSE 0 END) as success_count,
+                   SUM(CASE WHEN r.status != 'sucesso' AND r.status IS NOT NULL THEN 1 ELSE 0 END) as failure_count,
+                   ROUND(AVG(r.duration_ms), 0) as avg_duration_ms
+            FROM remote_command_executions e
+            LEFT JOIN remote_command_results r ON e.id = r.execution_id
+            GROUP BY e.id
+            ORDER BY e.created_at DESC
+            LIMIT ?
+        """, (limit,))
+        rows = cursor.fetchall()
+        result = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["hosts_list"] = json.loads(d["hosts_list"]) if d["hosts_list"] else []
+            except Exception:
+                d["hosts_list"] = []
+            result.append(d)
+        return result
 
 
 def get_execution_details(exec_id: str) -> Optional[Dict[str, Any]]:

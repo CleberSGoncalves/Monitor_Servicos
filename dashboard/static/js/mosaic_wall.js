@@ -599,14 +599,16 @@ function switchConfigsSubtab(subtabId) {
     const btnFlags = document.getElementById("btn-cfg-subtab-flags");
     const btnUsers = document.getElementById("btn-cfg-subtab-users");
     const btnAi = document.getElementById("btn-cfg-subtab-ai");
+    const btnTuning = document.getElementById("btn-cfg-subtab-tuning");
 
     const contentThresh = document.getElementById("configs-content-thresholds");
     const contentFlags = document.getElementById("configs-content-flags");
     const contentUsers = document.getElementById("configs-content-users");
     const contentAi = document.getElementById("configs-content-ai");
+    const contentTuning = document.getElementById("configs-content-tuning");
 
-    [btnThresh, btnFlags, btnUsers, btnAi].forEach(b => b && b.classList.remove("active"));
-    [contentThresh, contentFlags, contentUsers, contentAi].forEach(c => c && (c.style.display = "none"));
+    [btnThresh, btnFlags, btnUsers, btnAi, btnTuning].forEach(b => b && b.classList.remove("active"));
+    [contentThresh, contentFlags, contentUsers, contentAi, contentTuning].forEach(c => c && (c.style.display = "none"));
 
     if (subtabId === "thresholds") {
         if (btnThresh) btnThresh.classList.add("active");
@@ -623,6 +625,10 @@ function switchConfigsSubtab(subtabId) {
         if (btnAi) btnAi.classList.add("active");
         if (contentAi) contentAi.style.display = "block";
         if (typeof loadAiGovernanceUI === "function") loadAiGovernanceUI();
+    } else if (subtabId === "tuning") {
+        if (btnTuning) btnTuning.classList.add("active");
+        if (contentTuning) contentTuning.style.display = "block";
+        if (typeof loadThresholdAuditUI === "function") loadThresholdAuditUI();
     }
 }
 window.switchConfigsSubtab = switchConfigsSubtab;

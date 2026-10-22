@@ -1,3 +1,145 @@
+import re
+from typing import List, Dict, Any, Optional, Tuple
+def detect_signal_origin_profile(canal: str, praca: str, meio: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Diferencia com precisão absoluta a arquitetura de origem do sinal:
+    1. Digital Terrestre (ISDB-Tb com Tuner TBS PCIe)
+    2. Rádio Analógica (Placa de Som Profissional Sonifex / FM / AM)
+    3. Streaming IP (RTSP / UDP / HLS / TCP)
+    Garante que diagnósticos de IA, causas-raiz e ações recomendadas correspondam
+    estritamente ao meio físico de recepção.
+    """
+    c_lower = (canal or "").lower()
+    m_lower = (meio or "").lower()
+
+    # 1. Rádio Analógica (Sonifex)
+    if "sonifex" in m_lower or "sonifex" in c_lower or "rádio" in c_lower or "radio" in c_lower or bool(re.search(r'\b(fm|am)\b', c_lower)):
+        freq_est = "FM 102.3 MHz (Analógico)" if "fm" in c_lower or "rádio" in c_lower or "radio" in c_lower else "AM 780 kHz"
+        return {
+            "origin_type": "radio_sonifex",
+            "meio": "Rádio Analógica (Placa Sonifex)",
+            "tuner_modelo": "Placa Sonifex Pro PCIe (ASIO)",
+            "frequencia_display": freq_est,
+            "metricas_label": "Nível dBFS & SNR Analógico",
+            "snr_nominal": "64.8 dB (SNR de Áudio)",
+            "ber_nominal": "Fase: 0.99 (Livre de Hum 60Hz)",
+            "snr_alerta": "42.1 dB (Degradação Analógica)",
+            "ber_alerta": "Fase: 0.72 (Ruído de Modo Comum)",
+            "snr_critico": "18.5 dB (Saturação / Clipping)",
+            "ber_critico": "Fase: 0.35 (Hum 60Hz Severo)",
+            "diagnostico_nominal": (
+                f"Captação analógica do canal de rádio '{canal}' em {praca} opera em conformidade estrita. "
+                "Nível de áudio em -18.2 dBFS nominal, SNR de 64 dB e resposta estéreo balanceada sem indução de zumbido de terra."
+            ),
+            "diagnostico_critico": (
+                f"Detectada anomalia severa no canal de rádio '{canal}' em {praca}. "
+                "Presença de zumbido de terra (Hum 60 Hz) e saturação de ganho pré-amplificador analógico na placa Sonifex PCIe, "
+                "gerando clipping e degradação contínua no encoder MP3."
+            ),
+            "diagnostico_alerta": (
+                f"Canal de rádio '{canal}' em {praca} apresenta pequenas oscilações de nível analógico (-24 dBFS a -14 dBFS), "
+                "mas mantém relação sinal-ruído acima do limiar de inteligibilidade sonora. Variação sazonal de modulação da emissora."
+            ),
+            "causa_raiz_critica": "Descasamento de Impedância, Ruído de Modo Comum (Ground Loop 60Hz) ou Buffer Underrun de Driver Sonifex ASIO.",
+            "causa_raiz_alerta": "Flutuação Transitória de Ganho no Sintonizador FM ou Variação de Modulação da Geradora.",
+            "acoes_criticas": [
+                "Calibrar o trim de ganho da placa Sonifex para +4 dBu nominal no painel de mixagem.",
+                "Instalar transformador isolador galvânico de linha XLR para eliminação de Ground Loop de 60 Hz.",
+                "Elevar buffer ASIO de 256 para 512 samples no Atria AudioRecorder para amortecer picos de CPU."
+            ],
+            "acoes_alerta": [
+                "Monitorar níveis de áudio RMS nas próximas 24 horas.",
+                "Verificar aterramento do rack industrial onde a placa Sonifex está instalada."
+            ],
+            "script_critico": "Restart-Service -Name *Audio*, *Sonifex* -Force; Write-Host 'Driver Sonifex e captura de rádio reciclados.'",
+            "script_alerta": ""
+        }
+
+    # 2. Streaming IP (RTSP / UDP / HLS)
+    elif "stream" in m_lower or "rtsp" in m_lower or "udp" in m_lower or "ip" in m_lower or "obs" in c_lower or "streaming" in c_lower:
+        return {
+            "origin_type": "streaming_ip",
+            "meio": "Streaming IP (RTSP / UDP / HLS)",
+            "tuner_modelo": "Virtual Tuner IP / Ingestão Atria",
+            "frequencia_display": "N/A (Stream IP Porta 554/8554)",
+            "metricas_label": "Jitter de Rede & Perda de Pacotes",
+            "snr_nominal": "Jitter: 12ms (Estável)",
+            "ber_nominal": "Perda UDP: 0.0% (Livre de Perdas)",
+            "snr_alerta": "Jitter: 95ms (Flutuação de Rota)",
+            "ber_alerta": "Perda UDP: 1.2% (Descarte Leve)",
+            "snr_critico": "Jitter: 280ms (Timeout de Socket)",
+            "ber_critico": "Perda UDP: 14.5% (Fluxo Interrompido)",
+            "diagnostico_nominal": (
+                f"Fluxo de streaming IP do canal '{canal}' em {praca} opera com estabilidade total. "
+                "Jitter de rede inferior a 20ms, latência de socket nominal e entrega contínua de frames sem descarte de pacotes UDP."
+            ),
+            "diagnostico_critico": (
+                f"Detectada interrupção de fluxo no streaming IP do canal '{canal}' em {praca}. "
+                "O socket TCP sofreu timeout ou a rota WAN registrou jitter superior a 220ms com descarte em massa de pacotes UDP, "
+                "deixando o buffer do decodificador esvaziado."
+            ),
+            "diagnostico_alerta": (
+                f"Streaming IP do canal '{canal}' em {praca} apresenta jitter transitório de rota, "
+                "mas o buffer de amortecimento do Atria conseguiu absorver as micro-oscilações sem perda visível de quadros."
+            ),
+            "causa_raiz_critica": "Oscilação de Link WAN na Operadora Local, Descarte Silencioso de UDP ou Timeout de Socket RTSP na CDN.",
+            "causa_raiz_alerta": "Congestionamento Transitório de Rota IP em Horário de Pico de Tráfego.",
+            "acoes_criticas": [
+                "Alterar o transporte RTSP de UDP para TCP no configxml.xml para garantir retransmissão de pacotes.",
+                "Elevar o buffer de jitter da thread de ingestão de 1.000ms para 2.500ms.",
+                "Ativar watchdog de reconexão de streaming IP após 20 segundos de fluxo zerado."
+            ],
+            "acoes_alerta": [
+                "Auditar estabilidade de ping com o servidor de stream IP nas próximas 12 horas.",
+                "Verificar se a rota utiliza link corporativo dedicado sem concorrência de tráfego de OCR."
+            ],
+            "script_critico": "Restart-Service DNA.MediaRecorderSVC -Force; Write-Host 'Sessão de streaming RTSP reinicializada.'",
+            "script_alerta": ""
+        }
+
+    # 3. Digital Terrestre (ISDB-Tb com Tuner TBS PCIe)
+    else:
+        return {
+            "origin_type": "isdb_tb",
+            "meio": "Digital Terrestre (ISDB-Tb)",
+            "tuner_modelo": "TBS 6281 PCIe Dual/Quad Tuner",
+            "frequencia_display": "545.143 MHz (Canal 26 UHF)",
+            "metricas_label": "MER (dB) & BER Digital",
+            "snr_nominal": "31.4 dB (Excelente)",
+            "ber_nominal": "< 1.0e-7 (Livre de Erros)",
+            "snr_alerta": "22.5 dB (Aceitável)",
+            "ber_alerta": "6.5e-4 (Micro-oscilações)",
+            "snr_critico": "16.8 dB (Abaixo do Lock)",
+            "ber_critico": "1.2e-2 (Elevada Perda TS)",
+            "diagnostico_nominal": (
+                f"Sinal digital ISDB-Tb do canal '{canal}' em {praca} opera em conformidade nominal estrita. "
+                "Relação sinal-ruído (SNR/MER) acima de 29 dB, modulação 64-QAM e visada desobstruída com a torre transmissora."
+            ),
+            "diagnostico_critico": (
+                f"Detectada instabilidade severa no sinal ISDB-Tb do canal '{canal}' em {praca}. "
+                "A relação sinal-ruído caiu abaixo do limiar de lock da placa TBS PCIe, provocando perda de pacotes TS "
+                "e congelamento de vídeo."
+            ),
+            "diagnostico_alerta": (
+                f"O canal '{canal}' em {praca} apresenta pequenas oscilações de sinal RF, "
+                "mas manteve o sintonizador TBS em estado Lock. Variação típica de condições climáticas sazonais."
+            ),
+            "causa_raiz_critica": "Perda de Margem de Ruído (SNR < 18 dB), Atenuação Coaxial ou Interferência Adjacente LTE 700MHz.",
+            "causa_raiz_alerta": "Flutuação Transitória de Propagação Troposférica e Variação Térmica Diurna.",
+            "acoes_criticas": [
+                "Instalar filtro passa-baixa de cavidade para corte da banda LTE 700MHz de telefonia celular.",
+                "Ajustar azimute da antena diretiva log-periódica UHF na torre.",
+                "Executar re-sintonia no Atria Capture com ajuste fino de ganho RF."
+            ],
+            "acoes_alerta": [
+                "Monitorar oscilações climáticas nas próximas 48 horas.",
+                "Inspecionar conectorização coaxial RG-6 na entrada da placa TBS."
+            ],
+            "script_critico": "Get-PnpDevice -Class Media | Where-Object { $_.FriendlyName -like '*TBS*' } | Restart-PnpDevice; Restart-Service -Name *Atria* -Force",
+            "script_alerta": ""
+        }
+
+
 # dashboard/signals_analysis.py
 import sqlite3
 import random
@@ -108,6 +250,54 @@ CHRONIC_CHANNEL_ISSUES = [
             "try { Invoke-RestMethod -Uri 'http://localhost:9000/api/v1/Muxes' -TimeoutSec 4 } catch { $_.Exception.Message }"
         ),
         "tempo_recorrencia": "Diário entre 05:30 e 08:30 da manhã durante o inverno/primavera"
+    },
+    {
+        "id": "chronic_poa_radio_sonifex",
+        "praca": "Porto Alegre",
+        "cs": 1,
+        "canal": "Rádio Gaúcha FM",
+        "frequencia": "FM 93.7 MHz (Analógico)",
+        "meio": "Rádio Analógica (Placa Sonifex)",
+        "tuner": "Sonifex PCIe Audio #0 (ASIO)",
+        "status_atual": "Distorção Harmônica / Clipping (Nível -8 dBFS)",
+        "diagnostico_ia": (
+            "Distorção harmônica analógica provocada por descasamento de impedância e saturação de ganho de entrada (+4 dBu vs -10 dBV) "
+            "na placa de áudio Sonifex PCIe. Presença de zumbido de modo comum de 60 Hz decorrente de aterramento compartilhado no rack."
+        ),
+        "solucao_estipulada": (
+            "1. Calibrar o attenuator pad da placa Sonifex para linha balanceada profissional (+4 dBu) no painel de mixagem.\n"
+            "2. Inserir transformador isolador galvânico de linha XLR para quebra de Ground Loop de 60 Hz.\n"
+            "3. Configurar buffer ASIO de 512 samples no Atria AudioRecorder para evitar dropouts de amostragem."
+        ),
+        "comando_auto_cura": (
+            "# Recicla subsistema de áudio Sonifex e normaliza ganho\n"
+            "Restart-Service -Name *Audio*, *Sonifex* -Force; Write-Host 'Captura de áudio analógico Sonifex reciclada com sucesso.'"
+        ),
+        "tempo_recorrencia": "Contínuo durante operação sob aterramento flutuante"
+    },
+    {
+        "id": "chronic_rec_radio_rtsp",
+        "praca": "Recife",
+        "cs": 1,
+        "canal": "Rádio Jornal Stream",
+        "frequencia": "N/A (Stream IP Porta 554)",
+        "meio": "Streaming (RTSP / IP)",
+        "tuner": "Virtual Tuner IP #1",
+        "status_atual": "Queda Intermitente de Stream (Socket Timeout)",
+        "diagnostico_ia": (
+            "Interrupção de fluxo de áudio MP3 causada por timeout de socket RTSP e descarte de pacotes UDP na CDN externa "
+            "quando o jitter de rede ultrapassa 220ms, deixando o gravador mudo sem derrubar o processo."
+        ),
+        "solucao_estipulada": (
+            "1. Migrar o transporte RTSP de UDP para TCP no configxml.xml para forçar retransmissão de pacotes perdidos.\n"
+            "2. Elevar a tolerância de jitter buffer no Atria para 2.500ms.\n"
+            "3. Habilitar watchdog de silêncio para reconectar o socket TCP após 30 segundos de fluxo zerado."
+        ),
+        "comando_auto_cura": (
+            "# Força reinício da thread de ingestão de streaming IP\n"
+            "Restart-Service DNA.MediaRecorderSVC -Force; Write-Host 'Sessão de streaming RTSP reiniciada.'"
+        ),
+        "tempo_recorrencia": "Intermitente em horários de pico de tráfego de rede (17h às 20h)"
     },
     {
         "id": "chronic_fln_record_interf",
@@ -422,13 +612,16 @@ def diagnose_channel_with_ai(praca: str, canal: str, period: str = "24h", cs: Op
                 "is_chronic": True
             }
 
-    # 2. Diagnóstico Geral Fundamentado
+    # 2. Diagnóstico Geral Fundamentado (Diferenciado por Origem: ISDB-Tb vs Rádio Sonifex vs Streaming RTSP)
+    prof = detect_signal_origin_profile(canal, praca)
+    target_host = host or ("BRRS-PLT-DT01" if "pelotas" in praca.lower() and (cs == 1 or not cs) else ("BRRS-PLT-DT02" if "pelotas" in praca.lower() else "CS-FLEET"))
+
     if avg_q >= 75.0 and drops == 0:
         return {
             "praca": praca,
             "canal": canal,
-                "cs": cs or 1,
-                "host": host or ("BRRS-PLT-DT01" if "pelotas" in praca.lower() and (cs == 1 or not cs) else ("BRRS-PLT-DT02" if "pelotas" in praca.lower() else "CS-FLEET")),
+            "cs": cs or 1,
+            "host": target_host,
             "periodo_analisado": period,
             "status": "estavel",
             "status_diagnostico": "NOMINAL",
@@ -436,37 +629,28 @@ def diagnose_channel_with_ai(praca: str, canal: str, period: str = "24h", cs: Op
             "stability_pct": 100.0,
             "avg_qualidade": avg_q,
             "avg_forca": avg_s,
-            "frequencia_uhf": "533.143 MHz (Canal 24 UHF)",
-            "meio": "Digital Terrestre (ISDB-Tb)",
-            "tuner_modelo": "TBS 6281 PCIe Dual Tuner",
-            "snr_mer_estimado": "31.4 dB (Excelente)",
-            "taxa_ber_estimada": "< 1.0e-7 (Livre de Erros)",
-            "diagnostico_tecnico": (
-                f"Sinal do canal '{canal}' em {praca} opera em conformidade nominal estrita. "
-                f"Qualidade média de {avg_q}% e Força de {avg_s}% mantêm a relação sinal-ruído (SNR) "
-                f"acima de 29 dB. Modulação 64-QAM com intervalo de guarda 1/16 sem detecção de perda de pacotes TS no Atria."
-            ),
-            "causa_raiz": "Transmissão e Recepção Estáveis sem Degradação Eletromagnética ou Térmica.",
+            "frequencia_uhf": prof["frequencia_display"],
+            "meio": prof["meio"],
+            "tuner_modelo": prof["tuner_modelo"],
+            "snr_mer_estimado": prof["snr_nominal"],
+            "taxa_ber_estimada": prof["ber_nominal"],
+            "diagnostico_tecnico": prof["diagnostico_nominal"],
+            "causa_raiz": f"Transmissão e Recepção Estáveis sem Degradação no Meio de {prof['meio']}.",
             "solucao_estipulada": "Nenhuma intervenção necessária. Parâmetros dentro do SLA ouro (100% de estabilidade).",
             "acoes_recomendadas": [
-                "Manter rotina padrão de observabilidade sem necessidade de calibração.",
-                "Parâmetros de RF e estabilidade de sincronismo dentro da margem de segurança."
+                f"Manter rotina padrão de observabilidade para {prof['meio']}.",
+                f"Parâmetros de sinal ({prof['metricas_label']}) operando na margem de segurança nominal."
             ],
             "script_auto_healing": "",
             "is_chronic": False
         }
 
     elif avg_q < 45.0 or drops > 5:
-        acoes = [
-            "Instalar filtro passa-baixa de cavidade para corte da banda de telefonia celular acima de 698 MHz (LTE 700MHz).",
-            "Realizar varredura de Mux no Atria Capture para verificar se a frequência de offset necessita de ajuste de sintonia em +125 kHz.",
-            "Inspecionar conectorização coaxial RG-6 na entrada do sintonizador TBS PCIe e testar perda de retorno (VSWR)."
-        ]
         return {
             "praca": praca,
             "canal": canal,
-                "cs": cs or 1,
-                "host": host or ("BRRS-PLT-DT01" if "pelotas" in praca.lower() and (cs == 1 or not cs) else ("BRRS-PLT-DT02" if "pelotas" in praca.lower() else "CS-FLEET")),
+            "cs": cs or 1,
+            "host": target_host,
             "periodo_analisado": period,
             "status": "critico",
             "status_diagnostico": "CRÍTICO",
@@ -474,33 +658,25 @@ def diagnose_channel_with_ai(praca: str, canal: str, period: str = "24h", cs: Op
             "stability_pct": stability,
             "avg_qualidade": avg_q,
             "avg_forca": avg_s,
-            "frequencia_uhf": "557.143 MHz (Canal 28 UHF)",
-            "meio": "Digital Terrestre (ISDB-Tb)",
-            "tuner_modelo": "TBS 6281 PCIe Dual Tuner",
-            "snr_mer_estimado": "16.8 dB (Abaixo do Limiar de Lock)",
-            "taxa_ber_estimada": "1.2e-2 (Elevada perda de pacotes TS)",
-            "diagnostico_tecnico": (
-                f"Detectada instabilidade severa no canal '{canal}' em {praca}. A qualidade média ({avg_q}%) "
-                f"ficou abaixo do limiar de lock ({history['threshold_lock_min']}%) por {drops} vezes no período analisado ({period}). "
-                f"A variação indica espúrios na faixa de 700 MHz ou atenuação excessiva na linha de transmissão."
-            ),
-            "causa_raiz": "Perda de Margem de Ruído (SNR < 18 dB), Atenuação na Linha ou Interferência Adjacente LTE 4G/5G.",
-            "solucao_estipulada": "\n".join(acoes),
-            "acoes_recomendadas": acoes,
-            "script_auto_healing": "Get-PnpDevice -Class Media | Where-Object { $_.FriendlyName -like '*TBS*' } | Restart-PnpDevice; Restart-Service -Name *Atria* -Force",
+            "frequencia_uhf": prof["frequencia_display"],
+            "meio": prof["meio"],
+            "tuner_modelo": prof["tuner_modelo"],
+            "snr_mer_estimado": prof["snr_critico"],
+            "taxa_ber_estimada": prof["ber_critico"],
+            "diagnostico_tecnico": prof["diagnostico_critico"],
+            "causa_raiz": prof["causa_raiz_critica"],
+            "solucao_estipulada": "\n".join(prof["acoes_criticas"]),
+            "acoes_recomendadas": prof["acoes_criticas"],
+            "script_auto_healing": prof["script_critico"],
             "is_chronic": False
         }
 
     else:
-        acoes = [
-            "Monitorar tendência de oscilação nas próximas 48 horas para correlacionar com a variação de umidade e chuva.",
-            "Revisar vedação com fita de autofusão no dipolo da antena na torre caso as oscilações aumentem em dias chuvosos."
-        ]
         return {
             "praca": praca,
             "canal": canal,
-                "cs": cs or 1,
-                "host": host or ("BRRS-PLT-DT01" if "pelotas" in praca.lower() and (cs == 1 or not cs) else ("BRRS-PLT-DT02" if "pelotas" in praca.lower() else "CS-FLEET")),
+            "cs": cs or 1,
+            "host": target_host,
             "periodo_analisado": period,
             "status": "alerta",
             "status_diagnostico": "ALERTA",
@@ -508,19 +684,16 @@ def diagnose_channel_with_ai(praca: str, canal: str, period: str = "24h", cs: Op
             "stability_pct": stability,
             "avg_qualidade": avg_q,
             "avg_forca": avg_s,
-            "frequencia_uhf": "581.143 MHz (UHF)",
-            "meio": "Digital Terrestre (ISDB-Tb)",
-            "tuner_modelo": "TBS 6280 Dual Tuner",
-            "snr_mer_estimado": "22.5 dB (Aceitável)",
-            "taxa_ber_estimada": "6.5e-4 (Micro-oscilações)",
-            "diagnostico_tecnico": (
-                f"O canal '{canal}' em {praca} apresenta pequenas oscilações de qualidade ({min_q}% a {history['max_qualidade']}%), "
-                f"mas manteve o sintonizador em estado Lock em {stability}% do tempo. Variação típica de condições climáticas sazonais."
-            ),
-            "causa_raiz": "Flutuação Transitória de Propagação Troposférica e Variação Térmica Diurna.",
-            "solucao_estipulada": "\n".join(acoes),
-            "acoes_recomendadas": acoes,
-            "script_auto_healing": "",
+            "frequencia_uhf": prof["frequencia_display"],
+            "meio": prof["meio"],
+            "tuner_modelo": prof["tuner_modelo"],
+            "snr_mer_estimado": prof["snr_alerta"],
+            "taxa_ber_estimada": prof["ber_alerta"],
+            "diagnostico_tecnico": prof["diagnostico_alerta"],
+            "causa_raiz": prof["causa_raiz_alerta"],
+            "solucao_estipulada": "\n".join(prof["acoes_alerta"]),
+            "acoes_recomendadas": prof["acoes_alerta"],
+            "script_auto_healing": prof["script_alerta"],
             "is_chronic": False
         }
 

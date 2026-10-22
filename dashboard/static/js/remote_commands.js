@@ -134,6 +134,9 @@ window.switchRemoteTab = function(targetId, btn) {
     if (targetId === "rc-tab-ai" && currentAiSuggestions.length === 0) {
         loadAiCommandSuggestions(false);
     }
+    if (targetId === "rc-tab-queue") {
+        loadRemoteExecutionsQueue();
+    }
 };
 
 // Alternância de Shell (PowerShell vs CMD)
@@ -582,6 +585,11 @@ function executeRemoteScript(script, shellType, title) {
         exportBtns.forEach(b => b.removeAttribute("disabled"));
         // Carrega os resultados detalhados
         loadExecutionResults(currentExecutionId);
+        // Atualiza e navega para a subaba de Fila de Execução & Acompanhamento
+        if (typeof loadRemoteExecutionsQueue === "function") {
+            loadRemoteExecutionsQueue();
+        }
+        switchRemoteTab("rc-tab-queue");
     })
     .catch(err => {
         safeToast("Falha ao disparar comando: " + err.message, "danger");
@@ -939,3 +947,117 @@ if (document.readyState === "complete" || document.readyState === "interactive")
         setTimeout(initRemoteCommands, 300);
     });
 }
+
+
+// =========================================================================
+// FILA DE EXECUÇÃO & ACOMPANHAMENTO EM TEMPO REAL DE COMANDOS REMOTOS
+// =========================================================================
+async function loadRemoteExecutionsQueue() {
+    const tbody = document.getElementById("rcQueueTableBody");
+    const countBadge = document.getElementById("rc-queue-count");
+    const activeBadge = document.getElementById("rcQueueActiveBadge");
+    if (!tbody) return;
+
+    try {
+        const token = getSafeToken();
+        const headers = token ? { "Authorization": `Bearer ${token}` } : {};
+        const resp = await fetch("/api/remote-commands/executions?limit=50", { headers });
+        if (!resp.ok) return;
+        const list = await resp.json();
+
+        if (countBadge) countBadge.textContent = list.length;
+        const activeCount = list.filter(e => e.status === "em_execucao").length;
+        if (activeBadge) activeBadge.textContent = `${activeCount} Ativo(s)`;
+
+        const statusFilter = document.getElementById("rcQueueStatusFilter")?.value || "all";
+        const filtered = list.filter(e => {
+            if (statusFilter === "all") return true;
+            return e.status === statusFilter;
+        });
+
+        if (filtered.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 24px;">Nenhuma execução encontrada para os filtros selecionados.</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = filtered.map(exec => {
+            const isRunning = exec.status === "em_execucao";
+            const isSuccess = exec.status === "concluido";
+            const statusBadge = isRunning 
+                ? '<span class="badge" style="background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4);"><i class="fas fa-spinner fa-spin"></i> Em Execução</span>'
+                : (isSuccess
+                    ? '<span class="badge" style="background: rgba(16, 185, 129, 0.2); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.4);"><i class="fas fa-check-circle"></i> Concluído</span>'
+                    : '<span class="badge" style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.4);"><i class="fas fa-times-circle"></i> Falha</span>');
+
+            const shellBadge = (exec.shell_type || "PS").toLowerCase() === "powershell"
+                ? '<span class="rc-shell-badge badge-ps">PS</span>'
+                : '<span class="rc-shell-badge badge-cmd">CMD</span>';
+
+            const hostsList = Array.isArray(exec.hosts_list) ? exec.hosts_list : [];
+            const hostsPills = hostsList.slice(0, 3).map(h => `<span class="host-chip" style="font-size: 10px; padding: 2px 6px;">${escapeHtml(h)}</span>`).join(" ");
+            const extraHosts = hostsList.length > 3 ? `<span style="font-size: 10px; color: var(--text-muted);">+${hostsList.length - 3} mais</span>` : "";
+
+            const timeDisplay = (exec.created_at || "").substring(11, 19) || (exec.created_at || "");
+            const dateDisplay = (exec.created_at || "").substring(0, 10);
+
+            return `
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 12px; transition: background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.02)'" onmouseout="this.style.background='transparent'">
+                <td style="padding: 10px; font-family: monospace; white-space: nowrap;">
+                    <div style="color: #fff; font-weight: 700;">${timeDisplay}</div>
+                    <div style="font-size: 10px; color: var(--text-muted);">${dateDisplay}</div>
+                </td>
+                <td style="padding: 10px;">
+                    <strong style="color: #fff;">${escapeHtml(exec.command_title || 'Comando Remoto')}</strong>
+                    <div style="font-size: 11px; color: var(--text-muted); max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: monospace;">${escapeHtml(exec.command_script || '')}</div>
+                </td>
+                <td style="padding: 10px;">${shellBadge}</td>
+                <td style="padding: 10px; color: #93c5fd; white-space: nowrap;">
+                    <i class="fas fa-user-shield" style="font-size: 10px;"></i> ${escapeHtml(exec.requested_by || 'Operador')}
+                </td>
+                <td style="padding: 10px;">
+                    <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
+                        ${hostsPills} ${extraHosts}
+                    </div>
+                </td>
+                <td style="padding: 10px; font-family: monospace; color: #cbd5e1;">
+                    ${exec.avg_duration_ms ? exec.avg_duration_ms + 'ms' : '<1s'}
+                </td>
+                <td style="padding: 10px;">${statusBadge}</td>
+                <td style="padding: 10px; text-align: center; white-space: nowrap;">
+                    <button class="btn btn-sm btn-secondary" style="font-size: 11px; padding: 4px 8px;" onclick="viewExecutionInConsole('${exec.id}')" title="Ver saída e telemetria no console">
+                        <i class="fas fa-terminal"></i> Console
+                    </button>
+                    <button class="btn btn-sm btn-secondary" style="font-size: 11px; padding: 4px 8px; margin-left: 4px;" onclick="exportSpecificExecution('${exec.id}', 'txt')" title="Baixar relatório em TXT">
+                        <i class="fas fa-download"></i> TXT
+                    </button>
+                </td>
+            </tr>`;
+        }).join("");
+    } catch (e) {
+        console.error("Erro ao carregar fila de execuções remotas:", e);
+    }
+}
+window.loadRemoteExecutionsQueue = loadRemoteExecutionsQueue;
+
+window.viewExecutionInConsole = function(execId) {
+    currentExecutionId = execId;
+    loadExecutionResults(execId);
+    switchRemoteTab("rc-tab-console");
+    safeToast("Carregando telemetria da execução no console...", "info");
+};
+
+window.exportSpecificExecution = function(execId, format) {
+    const token = getSafeToken();
+    const headers = token ? { "Authorization": `Bearer ${token}` } : {};
+    const url = `/api/remote-commands/executions/${execId}/export?format=${format}`;
+    fetch(url, { headers })
+    .then(r => r.blob())
+    .then(b => {
+        const a = document.createElement("a");
+        a.href = window.URL.createObjectURL(b);
+        a.download = `exec_${execId.substring(0, 8)}.${format}`;
+        a.click();
+        safeToast("Relatório exportado com sucesso!");
+    })
+    .catch(err => safeToast("Falha ao exportar: " + err.message, "danger"));
+};

@@ -3727,6 +3727,9 @@
           </button>
         </div>
       </div>
+
+      
+
     </section>
 
     <!-- ============================================================================== -->
@@ -3763,9 +3766,14 @@
           <div class="panel-title" style="font-size: 15px;">
             <span>📋</span> Rastreabilidade de Incidentes e Histórico Operacional
           </div>
-          <button class="btn-secondary" onclick="loadIncidentsHistoryData()" style="padding: 6px 12px; font-size: 11px;">
-            <i class="fas fa-sync-alt"></i> Atualizar Histórico
-          </button>
+          <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+            <button class="btn-primary" id="btnIncidentsAiCluster" onclick="openIncidentsAiClusterAnalysisModal()" style="padding: 6px 14px; font-size: 11px; background: linear-gradient(135deg, #7c3aed, #2563eb); font-weight: 700;">
+              <i class="fas fa-brain"></i> 🧠 Análise Amostral & Padrões Crônicos com IA
+            </button>
+            <button class="btn-secondary" onclick="loadIncidentsHistoryData()" style="padding: 6px 12px; font-size: 11px;">
+              <i class="fas fa-sync-alt"></i> Atualizar Histórico
+            </button>
+          </div>
         </div>
 
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px;">
@@ -3866,6 +3874,28 @@
           </table>
         </div>
       </div>
+    
+  <!-- Modal: Análise Amostral de Padrões & Resolução de Casos Crônicos com IA -->
+  <div class="modal-overlay" id="incidentsAiClusterModal" style="display: none;">
+    <div class="modal-card" style="max-width: 980px; width: 95%; max-height: 92vh; overflow-y: auto; padding: 22px;">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 12px; margin-bottom: 16px;">
+        <div>
+          <div style="font-size: 18px; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 8px;">
+            <span>🧠</span> Diagnóstico Amostral de Padrões & Resolução de Casos Crônicos
+          </div>
+          <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;" id="incidentsAiClusterSubtitle">
+            Agrupamento por tipo de falha, análise de constância/recorrência e propostas de solução aplicáveis via Remote Command
+          </div>
+        </div>
+        <button type="button" class="btn-secondary" onclick="closeIncidentsAiClusterModal()" style="padding: 6px 12px;">✕ Fechar</button>
+      </div>
+
+      <div id="incidentsAiClusterList" style="display: flex; flex-direction: column; gap: 12px;">
+        <div style="text-align: center; padding: 30px; color: var(--text-muted);">Inspecionando histórico de incidentes...</div>
+      </div>
+    </div>
+  </div>
+
     </section>
 
 
@@ -4284,6 +4314,9 @@
 
           <i class="fas fa-brain"></i> 🧠 Consumo de IA & Governança
 
+        </button>
+        <button class="cfg-subtab-btn" id="btn-cfg-subtab-tuning" onclick="switchConfigsSubtab('tuning')">
+          <i class="fas fa-balance-scale text-yellow"></i> ⚖️ Auditoria de Limiares x Incidentes
         </button>
 
 
@@ -4924,6 +4957,60 @@
       </div>
 
 
+    
+      <!-- SUBTAB 5: AUDITORIA DE LIMIARES X INCIDENTES (IA) -->
+      <div id="configs-content-tuning" style="display: none;">
+        <div class="panel-card" style="padding: 20px; margin-bottom: 20px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;">
+            <div>
+              <div class="panel-title" style="font-size: 16px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px;">
+                <span>⚖️</span> Auditoria Horária de Limiares x Incidentes (Prevenção de Falsos Alertas)
+              </div>
+              <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+                Análise preditiva horária da eficiência dos limiares. Identifica flapping, alertas de ruído sem impacto na mídia e propõe ajustes calibrados.
+              </div>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <span style="font-size: 11px; color: var(--text-muted);">Última Auditoria: <strong id="auditLastRunTime" style="color: #38bdf8;">--:--:--</strong></span>
+              <button class="btn-primary" style="padding: 6px 14px; font-size: 12px; background: linear-gradient(135deg, #0284c7, #2563eb); font-weight: 700;" onclick="runThresholdAuditNow()">
+                <i class="fas fa-sync-alt"></i> Reanalisar Agora com IA
+              </button>
+            </div>
+          </div>
+
+          <!-- Métricas de Eficiência dos Limiares -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; margin-bottom: 20px;">
+            <div class="stat-card">
+              <div class="stat-label">Taxa de Precisão dos Limiares</div>
+              <div class="stat-value text-green" id="auditKpiPrecision">88.4%</div>
+              <div class="stat-sub">Alertas com real impacto técnico</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Falsos Positivos / Ruído Operacional</div>
+              <div class="stat-value text-yellow" id="auditKpiFalseAlarms">16</div>
+              <div class="stat-sub">Duração < 30s ou sem queda de frames</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Alertas Reais com Impacto</div>
+              <div class="stat-value" id="auditKpiRealImpact" style="color: #38bdf8;">82</div>
+              <div class="stat-sub">Incidentes válidos atendidos</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Redução Estimada de Alertas</div>
+              <div class="stat-value text-green" id="auditKpiReduction">-36.5%</div>
+              <div class="stat-sub">Ganho de assertividade com propostas</div>
+            </div>
+          </div>
+
+          <!-- Lista de Propostas de Calibração -->
+          <div style="font-size: 13px; font-weight: 700; color: #fff; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+            <span>💡</span> Propostas de Ajuste Calibrado da IA (Clique para Aplicar Imediatamente)
+          </div>
+          <div id="thresholdAuditProposalsList" style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="color: var(--text-muted); padding: 15px; text-align: center;">Carregando propostas de auditoria...</div>
+          </div>
+        </div>
+
     </section>
 
 
@@ -5144,6 +5231,9 @@
 
 
 
+        </button>
+        <button class="rc-subtab-btn" data-target="rc-tab-queue" onclick="switchRemoteTab('rc-tab-queue', this)">
+          <i class="fas fa-tasks text-cyan"></i> 📋 Fila de Execução & Acompanhamento (<span id="rc-queue-count">0</span>)
         </button>
 
 
@@ -5700,6 +5790,54 @@
 
 
 
+    
+      <!-- Subtab 5: Fila de Execução & Acompanhamento de Comandos -->
+      <div id="rc-tab-queue" class="rc-subtab-content" style="display: none;">
+        <div class="panel-header" style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+          <div>
+            <div class="panel-title" style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 18px;">📋</span> Fila de Execução & Acompanhamento em Tempo Real
+              <span class="badge badge-blue" id="rcQueueActiveBadge">0 Ativos</span>
+            </div>
+            <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+              Histórico detalhado de comandos disparados, progresso de execução nas praças, logs de saída e telemetria de resposta
+            </div>
+          </div>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <select id="rcQueueStatusFilter" class="form-input" style="padding: 6px 10px; font-size: 12px;" onchange="loadRemoteExecutionsQueue()">
+              <option value="all">Todos os Status</option>
+              <option value="em_execucao">⏳ Em Execução</option>
+              <option value="concluido">✅ Concluídos</option>
+              <option value="falha">❌ Com Falha</option>
+            </select>
+            <button class="btn-secondary" style="padding: 6px 12px; font-size: 12px;" onclick="loadRemoteExecutionsQueue()">
+              <i class="fas fa-sync-alt"></i> Atualizar Fila
+            </button>
+          </div>
+        </div>
+
+        <div class="table-responsive">
+          <table class="table" style="width: 100%; border-collapse: collapse;">
+            <thead>
+              <tr style="border-bottom: 1px solid rgba(255,255,255,0.08); text-align: left; font-size: 11px; text-transform: uppercase; color: var(--text-muted);">
+                <th style="padding: 10px;">ID / Horário</th>
+                <th style="padding: 10px;">Título do Comando / Ação</th>
+                <th style="padding: 10px;">Shell</th>
+                <th style="padding: 10px;">Operador</th>
+                <th style="padding: 10px;">Praças Alvo</th>
+                <th style="padding: 10px;">Duração Média</th>
+                <th style="padding: 10px;">Status</th>
+                <th style="padding: 10px; text-align: center;">Ações</th>
+              </tr>
+            </thead>
+            <tbody id="rcQueueTableBody">
+              <tr>
+                <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 24px;">Carregando fila de execuções...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </section>
 
 
@@ -5798,7 +5936,10 @@
               <tr><td colspan="9" style="text-align: center; color: var(--text-muted); padding: 20px;">Carregando métricas de rede...</td></tr>
             </tbody>
           </table>
-        </div>
+        
+            </div>
+
+    </div>
       </div>
     </section>
 

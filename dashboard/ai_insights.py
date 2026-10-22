@@ -292,27 +292,54 @@ def run_ai_fleet_analysis(fleet_data: dict) -> List[Dict[str, Any]]:
             }
         })
 
-    # Procura serviços parados ou em crash-loop
+    # Procura serviços parados ou em crash-loop (deduplicação estrita)
     stopped_services = [s for s in services if s.get("status_servico") in ["Parado", "Inexistente"] or "crash" in str(s.get("status_servico", "")).lower()]
-    if stopped_services and not any("Auto-Healing de Serviços" in t for t in existing_status):
-        sample_srv = stopped_services[0]
-        fresh_candidates.append({
-            "id": str(uuid.uuid4())[:8],
-            "title": f"Auto-Healing e Proteção contra Crash-Loop de Serviços ({sample_srv.get('nome_servico')})",
-            "category": "auto_healing",
-            "severity": "alta",
-            "description": (
-                f"O serviço '{sample_srv.get('nome_servico')}' na praça '{sample_srv.get('hostname')}' entrou em "
-                f"parada forçada ou crash-loop. A IA sugere auto-recuperação progressiva com limpeza de arquivos "
-                f"de lock órfãos e restart limpo via ServiceController."
-            ),
-            "suggested_rule": {
-                "type": "service_crash_loop_healing",
-                "scope": "todos_os_hosts",
-                "service_name": sample_srv.get("nome_servico"),
-                "action": "clean_lock_and_restart"
-            }
-        })
+    if stopped_services:
+        for srv in stopped_services[:2]:
+            srv_name = srv.get("nome_servico") or "DNA.Service"
+            srv_title = f"Auto-Healing e Proteção contra Crash-Loop de Serviços ({srv_name})"
+            if srv_title not in existing_status and not any(c["title"] == srv_title for c in fresh_candidates):
+                fresh_candidates.append({
+                    "id": str(uuid.uuid4())[:8],
+                    "title": srv_title,
+                    "category": "auto_healing",
+                    "severity": "alta",
+                    "description": (
+                        f"O serviço '{srv_name}' na praça '{srv.get('hostname')}' entrou em "
+                        f"parada forçada ou crash-loop. A IA sugere auto-recuperação progressiva com limpeza de arquivos "
+                        f"de lock órfãos e restart limpo via ServiceController."
+                    ),
+                    "suggested_rule": {
+                        "type": "service_crash_loop_healing",
+                        "scope": "todos_os_hosts",
+                        "service_name": srv_name,
+                        "action": "clean_lock_and_restart"
+                    }
+                })
+
+    # Procura oportunidades em Rádios Analógicas Sonifex
+    radio_channels = [c for c in channels if "rádio" in str(c.get("canal", "")).lower() or "radio" in str(c.get("canal", "")).lower() or "sonifex" in str(c.get("meio", "")).lower()]
+    if radio_channels:
+        radio_title = "Calibração de Ganho & Equipotencialização XLR para Rádios Analógicas (Placa Sonifex PCIe)"
+        if radio_title not in existing_status and not any(c["title"] == radio_title for c in fresh_candidates):
+            fresh_candidates.append({
+                "id": str(uuid.uuid4())[:8],
+                "title": radio_title,
+                "category": "radio_sonifex",
+                "severity": "alta",
+                "description": (
+                    "Recepção de emissoras de rádio via placas de som profissionais Sonifex PCIe registra hum residual de aterramento (60 Hz) "
+                    "e desvio de trim analógico em horários de pico. A IA propõe calibração do pad atenuador para +4 dBu profissional "
+                    "e elevação do buffer ASIO para 512 samples para evitar dropouts na gravação MP3."
+                ),
+                "suggested_rule": {
+                    "type": "sonifex_gain_calibration",
+                    "scope": "todos_os_hosts",
+                    "input_level": "+4dBu",
+                    "asio_buffer": 512,
+                    "action": "apply_sonifex_gain_and_asio_tuning"
+                }
+            })
 
     if fresh_candidates:
         with sqlite3.connect(DB_PATH, timeout=30.0) as conn:

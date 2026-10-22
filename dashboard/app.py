@@ -452,6 +452,62 @@ async def add_worklog(req: IncidentActionRequest, user: dict = Depends(get_curre
     return {"success": True, "id": rowid}
 
 
+
+# ==============================================================================
+# AUDITORIA DE LIMIARES X INCIDENTES (IA) & ANÁLISE AMOSTRAL DE CLUSTERS
+# ==============================================================================
+@app.get("/api/incidents/ai-cluster-analysis")
+async def get_incidents_ai_cluster_analysis(period: str = "30d", user: dict = Depends(get_current_user)):
+    try:
+        from incident_manager import cluster_and_diagnose_incidents_with_ai
+        return cluster_and_diagnose_incidents_with_ai(period=period)
+    except Exception as e:
+        logger.error(f"Erro ao gerar cluster de incidentes: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/system/thresholds-audit")
+async def get_thresholds_audit_endpoint(user: dict = Depends(get_current_user)):
+    try:
+        from threshold_audit_service import run_threshold_audit_analysis
+        return run_threshold_audit_analysis()
+    except Exception as e:
+        logger.error(f"Erro ao auditar limiares x incidentes: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/system/thresholds-audit/run")
+async def run_thresholds_audit_endpoint(user: dict = Depends(get_current_user)):
+    try:
+        from threshold_audit_service import run_threshold_audit_analysis
+        return run_threshold_audit_analysis()
+    except Exception as e:
+        logger.error(f"Erro ao rodar auditoria de limiares: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class ThresholdAuditApplyRequest(BaseModel):
+    proposal_id: str
+
+
+@app.post("/api/system/thresholds-audit/apply")
+async def apply_thresholds_audit_endpoint(req: ThresholdAuditApplyRequest, user: dict = Depends(get_current_user)):
+    if user.get("role") == "n1":
+        raise HTTPException(status_code=403, detail="Perfil N1 possui acesso somente leitura para auditoria.")
+    try:
+        from threshold_audit_service import apply_threshold_audit_proposal
+        operator_name = user.get("full_name", user.get("username", "suportesmme"))
+        res = apply_threshold_audit_proposal(req.proposal_id, operator_name)
+        if not res.get("success"):
+            raise HTTPException(status_code=400, detail=res.get("error", "Erro ao aplicar"))
+        return res
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erro ao aplicar proposta de limiar: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # Limiares de Alerta (Thresholds)
 @app.get("/api/thresholds")
 async def list_thresholds(user: dict = Depends(get_current_user)):
@@ -822,6 +878,15 @@ async def execute_remote_cmd(req: RemoteCommandExecuteRequest, user: dict = Depe
         requested_by=operator_tag
     )
     return {"success": True, "execution_id": res, "message": "Comando disparado com sucesso!"}
+
+@app.get("/api/remote-commands/executions")
+async def list_remote_command_executions(limit: int = 50, user: dict = Depends(get_current_user)):
+    try:
+        from remote_commands import get_all_executions
+        return get_all_executions(limit=limit)
+    except Exception as e:
+        logger.error(f"Erro ao listar execuções remotas: {e}")
+        return []
 
 @app.get("/api/remote-commands/executions/{exec_id}")
 async def get_execution_status(exec_id: str, user: dict = Depends(get_current_user)):
