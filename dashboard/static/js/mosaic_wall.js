@@ -598,13 +598,15 @@ function switchConfigsSubtab(subtabId) {
     const btnThresh = document.getElementById("btn-cfg-subtab-thresholds");
     const btnFlags = document.getElementById("btn-cfg-subtab-flags");
     const btnUsers = document.getElementById("btn-cfg-subtab-users");
+    const btnAi = document.getElementById("btn-cfg-subtab-ai");
 
     const contentThresh = document.getElementById("configs-content-thresholds");
     const contentFlags = document.getElementById("configs-content-flags");
     const contentUsers = document.getElementById("configs-content-users");
+    const contentAi = document.getElementById("configs-content-ai");
 
-    [btnThresh, btnFlags, btnUsers].forEach(b => b && b.classList.remove("active"));
-    [contentThresh, contentFlags, contentUsers].forEach(c => c && (c.style.display = "none"));
+    [btnThresh, btnFlags, btnUsers, btnAi].forEach(b => b && b.classList.remove("active"));
+    [contentThresh, contentFlags, contentUsers, contentAi].forEach(c => c && (c.style.display = "none"));
 
     if (subtabId === "thresholds") {
         if (btnThresh) btnThresh.classList.add("active");
@@ -617,6 +619,10 @@ function switchConfigsSubtab(subtabId) {
         if (btnUsers) btnUsers.classList.add("active");
         if (contentUsers) contentUsers.style.display = "block";
         if (typeof loadUsersList === "function") loadUsersList();
+    } else if (subtabId === "ai") {
+        if (btnAi) btnAi.classList.add("active");
+        if (contentAi) contentAi.style.display = "block";
+        if (typeof loadAiGovernanceUI === "function") loadAiGovernanceUI();
     }
 }
 window.switchConfigsSubtab = switchConfigsSubtab;

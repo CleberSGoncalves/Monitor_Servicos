@@ -9,6 +9,11 @@ obj/
 ## Local Credentials (Ignored by Git)
 github_token.txt
 publish/github_token.txt
+.gemini_api_key
+*/.gemini_api_key
+dashboard/data/.gemini_api_key
+*.db
+dashboard/data/*.db
 
 ## Deploy Staging & Backups
 RollbackBackups/

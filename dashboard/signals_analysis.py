@@ -376,6 +376,21 @@ def diagnose_channel_with_ai(praca: str, canal: str, period: str = "24h", cs: Op
     p_lower = praca.lower()
     c_lower = canal.lower()
 
+    # Enriquecimento com Google Gemini se habilitado
+    gemini_insight = None
+    try:
+        from gemini_service import execute_gemini_prompt, get_ai_settings
+        ai_cfg = get_ai_settings()
+        if ai_cfg.get("enabled"):
+            target_h = host or ("BRRS-PLT-DT01" if "pelotas" in praca.lower() and (cs == 1 or not cs) else ("BRRS-PLT-DT02" if "pelotas" in praca.lower() else "CS-FLEET"))
+            p_text = (
+                f"Engenharia MediaDNA/Kantar IBOPE: Emita parecer de RF em 1 parágrafo curto para {praca} ({target_h}) "
+                f"Canal {canal}: Qualidade {avg_q}%, Força {avg_s}%, Quedas {drops}. Causa raiz física e recomendação."
+            )
+            gemini_insight = execute_gemini_prompt(p_text, module="rf_signals", target=f"{praca} • {canal}", operator="suportesmme")
+    except Exception:
+        gemini_insight = None
+
     # 1. Verifica se é um caso crônico pré-mapeado
     for issue in CHRONIC_CHANNEL_ISSUES:
         if issue["praca"].lower() in p_lower and (issue["canal"].lower() in c_lower or c_lower in issue["canal"].lower()):

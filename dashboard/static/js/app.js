@@ -1517,3 +1517,303 @@ function switchTab(tabName) {
     if (btn) btn.click();
 }
 window.switchTab = switchTab;
+
+
+// =========================================================================
+// GOVERNANÇA, CONSUMO DE IA & GERENCIAMENTO DE CHAVE GOOGLE GEMINI
+// =========================================================================
+let cachedAiConfig = null;
+
+async function loadAiGovernanceUI() {
+    const token = (typeof getAuthToken === "function") ? getAuthToken() : (localStorage.getItem("fleet_token") || "");
+    const headers = token ? { "Authorization": `Bearer ${token}` } : {};
+
+    try {
+        // 1. Carrega configurações salvas da IA
+        const cfgResp = await fetch("/api/system/ai-config", { headers });
+        if (cfgResp.ok) {
+            const cfg = await cfgResp.json();
+            cachedAiConfig = cfg;
+
+            const chkEnabled = document.getElementById("aiConfigMasterEnabled");
+            if (chkEnabled) chkEnabled.checked = !!cfg.enabled;
+
+            const selMode = document.getElementById("aiConfigOperationalMode");
+            if (selMode) selMode.value = cfg.operational_mode || "economico";
+
+            const selModel = document.getElementById("aiConfigModel");
+            if (selModel) selModel.value = cfg.selected_model || "gemini-2.5-flash";
+
+            const inpBudget = document.getElementById("aiConfigMonthlyBudget");
+            if (inpBudget) inpBudget.value = cfg.monthly_budget_usd || 15.0;
+
+            const selCluster = document.getElementById("aiConfigClusterBatching");
+            if (selCluster) selCluster.value = cfg.cluster_batching ? "true" : "false";
+
+            const inpKey = document.getElementById("aiConfigApiKey");
+            if (inpKey) {
+                inpKey.value = cfg.api_key_masked || "";
+                inpKey.dataset.rawPresent = "true";
+            }
+
+            const badgeStatus = document.getElementById("aiStatusBadge");
+            if (badgeStatus) {
+                if (cfg.enabled) {
+                    badgeStatus.innerText = "ATIVO (PRO)";
+                    badgeStatus.style.background = "rgba(16, 185, 129, 0.2)";
+                    badgeStatus.style.color = "#34d399";
+                    badgeStatus.style.borderColor = "#10b981";
+                } else {
+                    badgeStatus.innerText = "DESATIVADO (MOTOR LOCAL)";
+                    badgeStatus.style.background = "rgba(239, 68, 68, 0.2)";
+                    badgeStatus.style.color = "#f87171";
+                    badgeStatus.style.borderColor = "#ef4444";
+                }
+            }
+        }
+
+        // 2. Carrega Métricas de Consumo e Auditoria
+        const metricsResp = await fetch("/api/system/ai-metrics?limit=50", { headers });
+        if (metricsResp.ok) {
+            const data = await metricsResp.json();
+            renderAiMetricsAndHistory(data);
+        }
+    } catch (err) {
+        console.error("Erro ao carregar governança de IA:", err);
+    }
+}
+window.loadAiGovernanceUI = loadAiGovernanceUI;
+
+function renderAiMetricsAndHistory(data) {
+    if (!data) return;
+    const summary = data.summary || {};
+    const proj = data.projections_500_servers || {};
+
+    const elCostUsd = document.getElementById("aiKpiCostUsd");
+    if (elCostUsd) elCostUsd.innerText = `$${(summary.total_cost_usd || 0).toFixed(4)}`;
+
+    const elCostBrl = document.getElementById("aiKpiCostBrl");
+    if (elCostBrl) elCostBrl.innerText = `R$ ${(summary.total_cost_brl || 0).toFixed(2)}`;
+
+    const elBudgetCap = document.getElementById("aiKpiBudgetCap");
+    if (elBudgetCap && cachedAiConfig) elBudgetCap.innerText = `$${(cachedAiConfig.monthly_budget_usd || 15).toFixed(2)}`;
+
+    const elTokens = document.getElementById("aiKpiTotalTokens");
+    if (elTokens) elTokens.innerText = (summary.total_tokens || 0).toLocaleString("pt-BR");
+
+    const elPromptTokens = document.getElementById("aiKpiPromptTokens");
+    if (elPromptTokens) elPromptTokens.innerText = (summary.total_prompt_tokens || 0).toLocaleString("pt-BR");
+
+    const elCompTokens = document.getElementById("aiKpiCompletionTokens");
+    if (elCompTokens) elCompTokens.innerText = (summary.total_completion_tokens || 0).toLocaleString("pt-BR");
+
+    const elReqs = document.getElementById("aiKpiTotalRequests");
+    if (elReqs) elReqs.innerText = summary.total_requests || 0;
+
+    const elSuccRate = document.getElementById("aiKpiSuccessRate");
+    if (elSuccRate) elSuccRate.innerText = `${summary.success_rate_pct || 100}%`;
+
+    const elAvgLat = document.getElementById("aiKpiAvgLatency");
+    if (elAvgLat) elAvgLat.innerText = `${Math.round(summary.avg_latency_ms || 0)}ms`;
+
+    const elProj = document.getElementById("aiKpiProjection500");
+    if (elProj && proj.economic_mode) {
+        elProj.innerText = `~$${proj.economic_mode.cost_usd.toFixed(2)} / mês`;
+    }
+
+    // Tabela de Auditoria
+    const tbody = document.getElementById("aiUsageAuditTableBody");
+    if (!tbody) return;
+
+    const history = data.history || [];
+    if (history.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="10" style="text-align: center; color: var(--text-muted); padding: 18px;">Nenhuma requisição de IA registrada ainda.</td></tr>`;
+        return;
+    }
+
+    const moduleLabels = {
+        "rf_signals": "📡 Sinais RF",
+        "worklog": "🚨 Worklog",
+        "link_upload": "🌐 Pipeline Link",
+        "proactive_fleet": "⚡ Frota Cluster",
+        "topography": "🗺️ Topografia"
+    };
+
+    tbody.innerHTML = history.map(item => {
+        const isOk = item.status === "OK";
+        const dateStr = item.timestamp ? new Date(item.timestamp).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "--:--";
+        const badgeStatus = isOk 
+            ? `<span class="badge badge-green" style="font-size: 10px;">OK</span>`
+            : `<span class="badge badge-red" style="font-size: 10px;">FALHA</span>`;
+
+        const modeBadge = item.operational_mode === "economico"
+            ? `<span style="color: #34d399; font-size: 11px;">Sob Demanda</span>`
+            : `<span style="color: #38bdf8; font-size: 11px;">Fluido</span>`;
+
+        return `
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                <td style="padding: 9px 10px; color: var(--text-muted); font-family: monospace;">${dateStr}</td>
+                <td style="padding: 9px 10px; color: #fff; font-weight: 600;">${item.operator || 'suportesmme'}</td>
+                <td style="padding: 9px 10px; color: #e2e8f0;">${moduleLabels[item.module] || item.module}</td>
+                <td style="padding: 9px 10px; color: #38bdf8; font-weight: 500;">${item.target || 'CS-FLEET'}</td>
+                <td style="padding: 9px 10px;">${modeBadge}</td>
+                <td style="padding: 9px 10px; color: #cbd5e1; font-family: monospace; font-size: 11px;">${item.model_used || 'gemini-2.5-flash'}</td>
+                <td style="padding: 9px 10px; color: #c084fc; font-family: monospace; font-weight: 600;">${item.total_tokens || 0}</td>
+                <td style="padding: 9px 10px; color: #94a3b8; font-family: monospace;">$${(item.cost_usd || 0).toFixed(6)}</td>
+                <td style="padding: 9px 10px; color: #94a3b8; font-family: monospace;">${item.latency_ms || 0}ms</td>
+                <td style="padding: 9px 10px;">${badgeStatus}</td>
+            </tr>
+        `;
+    }).join("");
+}
+
+async function saveAiGovernanceConfig() {
+    const btn = document.getElementById("btnSaveAiConfig");
+    const origText = btn ? btn.innerHTML : "";
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Salvando...`;
+    }
+
+    try {
+        const token = (typeof getAuthToken === "function") ? getAuthToken() : (localStorage.getItem("fleet_token") || "");
+        const inpKey = document.getElementById("aiConfigApiKey").value.trim();
+        const enabled = document.getElementById("aiConfigMasterEnabled").checked;
+        const mode = document.getElementById("aiConfigOperationalMode").value;
+        const model = document.getElementById("aiConfigModel").value;
+        const budget = parseFloat(document.getElementById("aiConfigMonthlyBudget").value) || 15.0;
+        const cluster = document.getElementById("aiConfigClusterBatching").value === "true";
+
+        const payload = {
+            enabled: enabled,
+            operational_mode: mode,
+            selected_model: model,
+            monthly_budget_usd: budget,
+            cluster_batching: cluster
+        };
+
+        if (inpKey && !inpKey.includes("...")) {
+            payload.api_key = inpKey;
+        }
+
+        const resp = await fetch("/api/system/ai-config", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...(token ? { "Authorization": `Bearer ${token}` } : {})
+            },
+            body: JSON.stringify(payload)
+        });
+
+        const resData = await resp.json();
+        if (resp.ok) {
+            alert(resData.message || "Configurações de IA salvas com sucesso!");
+            loadAiGovernanceUI();
+        } else {
+            alert("Erro ao salvar: " + (resData.detail || "Falha na requisição"));
+        }
+    } catch (err) {
+        alert("Falha de rede ao salvar configurações de IA: " + err.message);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = origText || `<i class="fas fa-save"></i> Salvar Configurações`;
+        }
+    }
+}
+window.saveAiGovernanceConfig = saveAiGovernanceConfig;
+
+async function testAiApiConnection() {
+    const btn = document.getElementById("btnTestAiConnection");
+    const box = document.getElementById("aiTestResultBox");
+    const title = document.getElementById("aiTestStatusTitle");
+    const detail = document.getElementById("aiTestStatusDetail");
+
+    const origText = btn ? btn.innerHTML : "";
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Testando...`;
+    }
+
+    try {
+        const token = (typeof getAuthToken === "function") ? getAuthToken() : (localStorage.getItem("fleet_token") || "");
+        const inpKey = document.getElementById("aiConfigApiKey").value.trim();
+        const model = document.getElementById("aiConfigModel").value;
+
+        const payload = { model };
+        if (inpKey && !inpKey.includes("...")) {
+            payload.api_key = inpKey;
+        }
+
+        const resp = await fetch("/api/system/ai-config/test", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...(token ? { "Authorization": `Bearer ${token}` } : {})
+            },
+            body: JSON.stringify(payload)
+        });
+
+        const res = await resp.json();
+        if (resp.ok && res.success) {
+            if (box) {
+                box.style.background = "rgba(16, 185, 129, 0.08)";
+                box.style.borderColor = "rgba(16, 185, 129, 0.3)";
+            }
+            if (title) {
+                title.style.color = "#34d399";
+                title.innerHTML = `<i class="fas fa-check-circle"></i> Chave Pro Conectada com Sucesso!`;
+            }
+            if (detail) {
+                detail.innerHTML = `Latência de resposta: <strong>${res.latency_ms}ms</strong> • Tier: <strong>${res.service_tier || 'Standard Pro'}</strong> • Modelo: <strong>${res.model}</strong>`;
+            }
+        } else {
+            if (box) {
+                box.style.background = "rgba(239, 68, 68, 0.08)";
+                box.style.borderColor = "rgba(239, 68, 68, 0.3)";
+            }
+            if (title) {
+                title.style.color = "#f87171";
+                title.innerHTML = `<i class="fas fa-exclamation-triangle"></i> Falha no Teste de Conexão`;
+            }
+            if (detail) {
+                detail.innerText = res.error || "Não foi possível validar a chave com o Google AI.";
+            }
+        }
+    } catch (err) {
+        if (title) {
+            title.style.color = "#f87171";
+            title.innerHTML = `<i class="fas fa-exclamation-triangle"></i> Erro de Rede`;
+        }
+        if (detail) {
+            detail.innerText = err.message;
+        }
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = origText || `<i class="fas fa-bolt"></i> Testar Conexão`;
+        }
+    }
+}
+window.testAiApiConnection = testAiApiConnection;
+
+function toggleAiApiKeyVisibility() {
+    const inp = document.getElementById("aiConfigApiKey");
+    const icon = document.getElementById("aiApiKeyEyeIcon");
+    if (!inp) return;
+
+    if (inp.type === "password") {
+        inp.type = "text";
+        if (icon) {
+            icon.classList.remove("fa-eye");
+            icon.classList.add("fa-eye-slash");
+        }
+    } else {
+        inp.type = "password";
+        if (icon) {
+            icon.classList.remove("fa-eye-slash");
+            icon.classList.add("fa-eye");
+        }
+    }
+}
+window.toggleAiApiKeyVisibility = toggleAiApiKeyVisibility;

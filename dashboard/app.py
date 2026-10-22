@@ -40,6 +40,10 @@ from sharepoint_sync import get_cached_data, start_background_syncer, sync_fleet
 from incident_manager import register_incident_action, get_incident_history, diagnose_incident_with_ai
 from thresholds_manager import get_all_thresholds, update_threshold, get_active_threshold_breaches
 from geo_topology import get_markets_map_data
+from gemini_service import (
+    get_ai_settings, update_ai_settings, test_gemini_connection,
+    get_ai_metrics_and_history, execute_gemini_prompt
+)
 from media_pipeline_monitor import (
     get_fleet_pipeline_incidents, get_link_monitoring_metrics,
     diagnose_link_and_pipeline_with_ai
@@ -880,6 +884,46 @@ async def get_remote_cmd_ai_suggestions(refresh: bool = False, user: dict = Depe
 # ==============================================================================
 # ATUALIZACAO AUTOMATICA DO SISTEMA VIA GITHUB
 # ==============================================================================
+
+
+# ==============================================================================
+# GOVERNANÇA, CONSUMO E CONFIGURAÇÃO DO GOOGLE GEMINI AI
+# ==============================================================================
+class AiConfigUpdateRequest(BaseModel):
+    enabled: bool = True
+    api_key: Optional[str] = None
+    operational_mode: str = "economico"
+    selected_model: str = "gemini-2.5-flash"
+    monthly_budget_usd: float = 15.00
+    cluster_batching: bool = True
+
+class AiConnectionTestRequest(BaseModel):
+    api_key: Optional[str] = None
+    model: str = "gemini-2.5-flash"
+
+@app.get("/api/system/ai-config")
+async def get_system_ai_config(user: dict = Depends(get_current_user)):
+    """Retorna configurações de governança e chave da IA."""
+    return get_ai_settings()
+
+@app.post("/api/system/ai-config")
+async def save_system_ai_config(req: AiConfigUpdateRequest, user: dict = Depends(get_current_user)):
+    """Salva configurações de IA (apenas Administradores)."""
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Apenas Administradores podem configurar parâmetros de IA.")
+    ok = update_ai_settings(req.enabled, req.api_key, req.operational_mode, req.selected_model, req.monthly_budget_usd, req.cluster_batching)
+    return {"success": ok, "message": "Configurações de IA e governança salvas com sucesso!"}
+
+@app.post("/api/system/ai-config/test")
+async def test_system_ai_config(req: AiConnectionTestRequest, user: dict = Depends(get_current_user)):
+    """Testa a conectividade com a API do Google Gemini em tempo real."""
+    return test_gemini_connection(req.api_key, req.model)
+
+@app.get("/api/system/ai-metrics")
+async def get_system_ai_metrics(limit: int = 50, user: dict = Depends(get_current_user)):
+    """Retorna KPIs de consumo de tokens, gastos em USD/BRL, histórico e projeções para 500+ CS."""
+    return get_ai_metrics_and_history(limit)
+
 @app.get('/api/system/version')
 async def get_system_version_endpoint(user: dict = Depends(get_current_user)):
     """Retorna versao atual, commit local e checa novas versoes no GitHub."""

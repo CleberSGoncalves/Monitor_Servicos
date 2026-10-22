@@ -4260,11 +4260,13 @@
 
         <button class="cfg-subtab-btn" id="btn-cfg-subtab-users" onclick="switchConfigsSubtab('users')">
 
-
-
           <i class="fas fa-users"></i> 👥 Usuários e Domínio LDAP
 
+        </button>
 
+        <button class="cfg-subtab-btn" id="btn-cfg-subtab-ai" onclick="switchConfigsSubtab('ai')">
+
+          <i class="fas fa-brain"></i> 🧠 Consumo de IA & Governança
 
         </button>
 
@@ -4700,6 +4702,210 @@
 
       </div>
 
+
+
+    
+      <!-- ========================================================================= -->
+      <!-- SUBTAB 4: GOVERNANÇA, CONSUMO & CHAVE DE API GOOGLE GEMINI               -->
+      <!-- ========================================================================= -->
+      <div id="configs-content-ai" style="display: none;">
+        
+        <!-- Header & Banner Informativo de Governança -->
+        <div style="background: linear-gradient(135deg, rgba(2, 132, 199, 0.15), rgba(147, 51, 234, 0.12)); border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 8px; padding: 18px 24px; margin-bottom: 22px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
+          <div>
+            <div style="font-size: 16px; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 10px;">
+              <i class="fas fa-brain" style="color: #38bdf8; font-size: 20px;"></i>
+              <span>Governança, Consumo de IA & Chave Google Gemini Pro</span>
+              <span class="badge" id="aiStatusBadge" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid #10b981; font-size: 11px; padding: 2px 8px;">ATIVO (PRO)</span>
+            </div>
+            <div style="font-size: 12px; color: var(--text-muted); margin-top: 5px; max-width: 800px; line-height: 1.5;">
+              Monitoramento transparente de tokens, custos em dólares/reais e controle de escala orçamentária.
+              Suporte nativo ao modo <strong>Econômico (Sob Demanda)</strong> para contenção de custos em escala de <strong>500+ servidores</strong> com fallback automático para o motor de engenharia local MediaDNA.
+            </div>
+          </div>
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <button class="btn-secondary" style="font-size: 12px; padding: 7px 14px; background: rgba(255,255,255,0.06); font-weight: 700;" onclick="loadAiGovernanceUI()">
+              <i class="fas fa-sync-alt"></i> Atualizar Métricas
+            </button>
+          </div>
+        </div>
+
+        <!-- Cards de KPIs de Custos e Consumo -->
+        <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin-bottom: 22px;">
+          <div class="kpi-card" style="border-left: 4px solid #38bdf8;">
+            <div class="kpi-value" id="aiKpiCostUsd" style="color: #38bdf8;">$0.0003</div>
+            <div class="kpi-label">Gasto Acumulado no Mês (USD)</div>
+            <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">Aprox. <strong id="aiKpiCostBrl" style="color: #34d399;">R$ 0,00</strong> • Teto: <span id="aiKpiBudgetCap">$15.00</span></div>
+          </div>
+
+          <div class="kpi-card" style="border-left: 4px solid #a855f7;">
+            <div class="kpi-value" id="aiKpiTotalTokens" style="color: #c084fc;">2.065</div>
+            <div class="kpi-label">Total de Tokens Processados</div>
+            <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;"><span id="aiKpiPromptTokens">1.525</span> prompt • <span id="aiKpiCompletionTokens">540</span> resposta</div>
+          </div>
+
+          <div class="kpi-card" style="border-left: 4px solid #10b981;">
+            <div class="kpi-value" id="aiKpiTotalRequests" style="color: #34d399;">5</div>
+            <div class="kpi-label">Requisições com Sucesso</div>
+            <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">Taxa: <strong id="aiKpiSuccessRate" style="color: #34d399;">100%</strong> • Latência: <span id="aiKpiAvgLatency">902ms</span></div>
+          </div>
+
+          <div class="kpi-card" style="border-left: 4px solid #f59e0b;">
+            <div class="kpi-value" id="aiKpiProjection500" style="color: #fbbf24; font-size: 17px;">~$0.27 / mês</div>
+            <div class="kpi-label">Projeção Futura (500+ CS)</div>
+            <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">Modo Econômico: <strong style="color: #34d399;">R$ 1,57/mês</strong></div>
+          </div>
+        </div>
+
+        <!-- Grid de Configurações da IA (Controle Operacional vs Chave) -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px;">
+          
+          <!-- Coluna 1: Modo Operacional e Governança -->
+          <div class="panel-card" style="background: rgba(15, 23, 42, 0.65); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 20px;">
+            <div class="panel-header" style="margin-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 10px;">
+              <h5 style="color: #fff; margin: 0; font-size: 14px; font-weight: 700;">
+                <i class="fas fa-sliders-h text-blue"></i> Parâmetros Operacionais de IA
+              </h5>
+            </div>
+
+            <!-- Switch Master Ativar / Desativar -->
+            <div class="form-group" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; padding: 12px; background: rgba(255,255,255,0.03); border-radius: 6px;">
+              <div>
+                <label style="color: #fff; font-weight: 700; font-size: 13px; display: block;">Habilitar Google Gemini AI</label>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+                  Se desativado, o sistema utiliza 100% o motor local MediaDNA com custo zero ($0.00).
+                </div>
+              </div>
+              <input type="checkbox" id="aiConfigMasterEnabled" checked style="width: 20px; height: 20px; cursor: pointer; accent-color: #38bdf8;">
+            </div>
+
+            <!-- Seletor de Modo Operacional -->
+            <div class="form-group" style="margin-bottom: 16px;">
+              <label class="form-label" style="font-size: 12px; font-weight: 700; color: #e2e8f0;">Modo Operacional de Consumo:</label>
+              <select id="aiConfigOperationalMode" class="form-input" style="font-size: 12px; padding: 8px 12px; background: #0f172a;">
+                <option value="economico">🟢 Modo Econômico (Sob Demanda) - Dispara IA apenas quando o operador clica (Ideal para 500+ CS)</option>
+                <option value="fluido">⚡ Modo Fluido (Pró-Ativo) - Monitoramento contínuo em lote agrupado por praça</option>
+              </select>
+              <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">
+                * No modo Econômico, nenhuma chamada é gerada em background, mantendo o custo extremamente baixo mesmo com 500+ servidores.
+              </div>
+            </div>
+
+            <!-- Seletor de Modelo Gemini -->
+            <div class="form-group" style="margin-bottom: 16px;">
+              <label class="form-label" style="font-size: 12px; font-weight: 700; color: #e2e8f0;">Modelo Fundacional Google:</label>
+              <select id="aiConfigModel" class="form-input" style="font-size: 12px; padding: 8px 12px; background: #0f172a;">
+                <option value="gemini-2.5-flash">Gemini 2.5 Flash (Padrão e Recomendado • Ultra Rápido • 1M Tokens)</option>
+                <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash-Lite (Super Econômico • 50% Menor Custo)</option>
+                <option value="gemini-2.5-pro">Gemini 2.5 Pro (Raciocínio Profundo • Casos Críticos Complexos)</option>
+              </select>
+            </div>
+
+            <!-- Teto Orçamentário Mensal e Clusterização -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+              <div class="form-group">
+                <label class="form-label" style="font-size: 11px; font-weight: 700; color: #cbd5e1;">Teto Mensal Limite (USD):</label>
+                <input type="number" id="aiConfigMonthlyBudget" class="form-input" value="15.00" step="1.00" min="1.00" style="font-size: 12px; padding: 8px 12px;">
+              </div>
+              <div class="form-group">
+                <label class="form-label" style="font-size: 11px; font-weight: 700; color: #cbd5e1;">Clusterização Regional:</label>
+                <select id="aiConfigClusterBatching" class="form-input" style="font-size: 12px; padding: 8px 12px; background: #0f172a;">
+                  <option value="true">Ativada (Economia de 90% em Lote)</option>
+                  <option value="false">Desativada (Chamadas Individuais)</option>
+                </select>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Coluna 2: Chave de API e Teste de Conexão -->
+          <div class="panel-card" style="background: rgba(15, 23, 42, 0.65); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 20px; display: flex; flex-direction: column; justify-content: space-between;">
+            <div>
+              <div class="panel-header" style="margin-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 10px;">
+                <h5 style="color: #fff; margin: 0; font-size: 14px; font-weight: 700;">
+                  <i class="fas fa-key text-blue"></i> Gerenciamento da Chave de API Google
+                </h5>
+              </div>
+
+              <div class="form-group" style="margin-bottom: 16px;">
+                <label class="form-label" style="font-size: 12px; font-weight: 700; color: #e2e8f0;">Chave de API Gemini (Google AI Studio / Vertex AI):</label>
+                <div style="position: relative;">
+                  <input type="password" id="aiConfigApiKey" class="form-input" placeholder="Cole sua chave de API Gemini aqui..." style="font-size: 12px; padding: 8px 36px 8px 12px; font-family: monospace; letter-spacing: 0.5px;">
+                  <button type="button" onclick="toggleAiApiKeyVisibility()" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #94a3b8; cursor: pointer;">
+                    <i class="fas fa-eye" id="aiApiKeyEyeIcon"></i>
+                  </button>
+                </div>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+                  * A chave é salva de forma segura e protegida contra visualização por usuários não administradores.
+                </div>
+              </div>
+
+              <!-- Caixa de Feedback do Teste de Conectividade -->
+              <div id="aiTestResultBox" style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 6px; padding: 12px 14px; margin-bottom: 16px;">
+                <div style="font-size: 12px; font-weight: 700; color: #34d399; display: flex; align-items: center; gap: 8px;">
+                  <i class="fas fa-check-circle"></i>
+                  <span id="aiTestStatusTitle">Chave Pro Conectada com Sucesso</span>
+                </div>
+                <div id="aiTestStatusDetail" style="font-size: 11px; color: #cbd5e1; margin-top: 4px;">
+                  Latência de resposta: <strong>863ms</strong> • Tier: <strong>Standard Pro</strong> • Modelo: <strong>gemini-2.5-flash</strong>
+                </div>
+              </div>
+            </div>
+
+            <!-- Botões de Ação -->
+            <div style="display: flex; gap: 10px; margin-top: 15px;">
+              <button type="button" class="btn-primary" id="btnSaveAiConfig" style="flex: 1; padding: 9px 16px; font-size: 12px; font-weight: 700; background: linear-gradient(135deg, #0284c7, #2563eb);" onclick="saveAiGovernanceConfig()">
+                <i class="fas fa-save"></i> Salvar Configurações
+              </button>
+              <button type="button" class="btn-secondary" id="btnTestAiConnection" style="padding: 9px 16px; font-size: 12px; font-weight: 700;" onclick="testAiApiConnection()">
+                <i class="fas fa-bolt"></i> Testar Conexão
+              </button>
+            </div>
+
+          </div>
+
+        </div>
+
+        <!-- Tabela de Auditoria e Consumo de IA em Tempo Real -->
+        <div class="panel-card" style="background: rgba(15, 23, 42, 0.65); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 20px;">
+          <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 10px;">
+            <div>
+              <h5 style="color: #fff; margin: 0; font-size: 14px; font-weight: 700;">
+                <i class="fas fa-history text-blue"></i> Histórico de Chamadas e Auditoria de Tokens
+              </h5>
+              <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+                Registro completo de cada diagnóstico acionado pela equipe de suporte ou automação
+              </div>
+            </div>
+            <span class="badge" style="background: rgba(255,255,255,0.05); color: #cbd5e1; font-size: 11px;">
+              Últimas 50 transações
+            </span>
+          </div>
+
+          <div class="table-responsive" style="max-height: 380px; overflow-y: auto;">
+            <table class="data-table" style="width: 100%; border-collapse: collapse; font-size: 12px;">
+              <thead>
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.1); text-align: left; color: #94a3b8; font-size: 11px; text-transform: uppercase;">
+                  <th style="padding: 10px;">Data / Hora</th>
+                  <th style="padding: 10px;">Operador</th>
+                  <th style="padding: 10px;">Módulo</th>
+                  <th style="padding: 10px;">Alvo / Praça</th>
+                  <th style="padding: 10px;">Modo</th>
+                  <th style="padding: 10px;">Modelo</th>
+                  <th style="padding: 10px;">Tokens</th>
+                  <th style="padding: 10px;">Custo Est. (USD)</th>
+                  <th style="padding: 10px;">Latência</th>
+                  <th style="padding: 10px;">Status</th>
+                </tr>
+              </thead>
+              <tbody id="aiUsageAuditTableBody">
+                <!-- Renderizado via JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
 
 
     </section>
@@ -6626,14 +6832,14 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=3.9.14"></script>
-  <script src="/static/js/ai_insights.js?v=3.9.14"></script>
-  <script src="/static/js/fleet_ops.js?v=3.9.14"></script>
-  <script src="/static/js/remote_commands.js?v=3.9.14"></script>
-  <script src="/static/js/signals_analysis.js?v=3.9.14"></script>
-  <script src="/static/js/mosaic_wall.js?v=3.9.14"></script>
-  <script src="/static/js/topology_map.js?v=3.9.14"></script>
-  <script src="/static/js/network_link.js?v=3.9.14"></script>
+  <script src="/static/js/app.js?v=3.9.15"></script>
+  <script src="/static/js/ai_insights.js?v=3.9.15"></script>
+  <script src="/static/js/fleet_ops.js?v=3.9.15"></script>
+  <script src="/static/js/remote_commands.js?v=3.9.15"></script>
+  <script src="/static/js/signals_analysis.js?v=3.9.15"></script>
+  <script src="/static/js/mosaic_wall.js?v=3.9.15"></script>
+  <script src="/static/js/topology_map.js?v=3.9.15"></script>
+  <script src="/static/js/network_link.js?v=3.9.15"></script>
 
 
 
