@@ -199,7 +199,8 @@ async function onSignalsPracaChanged() {
     canalSelect.innerHTML = channels.map(c => {
         const outageIcon = c.has_outage ? "⚠️ " : "";
         const q = (c.qualidade_sinal !== null && c.qualidade_sinal !== undefined) ? `${c.qualidade_sinal}%` : "N/A";
-        return `<option value="${c.canal}">${outageIcon}${c.canal} (Q: ${q} | CS ${c.id_cs || 1})</option>`;
+        const csVal = c.id_cs || 1;
+        return `<option value="${escapeHtml(c.canal)}" data-cs="${csVal}">${outageIcon}${escapeHtml(c.canal)} (Q: ${q} | CS ${csVal})</option>`;
     }).join("");
 
     const problemChannel = channels.find(c => c.has_outage) || channels[0];
@@ -223,7 +224,9 @@ async function loadSignalsHistoryData() {
     if (diagPanel) diagPanel.style.display = "none";
 
     try {
-        const url = `/api/fleet/channels/history?praca=${encodeURIComponent(currentSignalsPraca)}&canal=${encodeURIComponent(currentSignalsCanal)}&period=${currentSignalsPeriod}`;
+        const selectedOpt = canalSelect.options[canalSelect.selectedIndex];
+        const csVal = selectedOpt ? selectedOpt.getAttribute("data-cs") : "";
+        const url = `/api/fleet/channels/history?praca=${encodeURIComponent(currentSignalsPraca)}&canal=${encodeURIComponent(currentSignalsCanal)}&period=${currentSignalsPeriod}${csVal ? `&cs=${csVal}` : ""}`;
         const resp = await fetch(url, {
             headers: { "Authorization": `Bearer ${getSignalsAuthToken()}` }
         });
@@ -254,7 +257,7 @@ function updateSignalsKPIs(data) {
     if (avgQ) avgQ.innerText = `${data.avg_qualidade}%`;
     if (minQ) minQ.innerText = `Mínima: ${data.min_qualidade}%`;
     if (avgF) avgF.innerText = `${data.avg_forca}%`;
-    if (minF) minF.innerText = `Mínima: ${data.min_forca}%`;
+    if (minF) minF.innerText = `Mínima: ${data.min_forca !== undefined && data.min_forca !== null ? data.min_forca : 0}%`;
     if (stab) stab.innerText = `${data.stability_index_pct}%`;
     if (drops) drops.innerText = data.lock_drops_count;
 
@@ -856,11 +859,12 @@ function renderMp4AnalysisResult(data) {
     const f = data.falha_predominante;
     const p = data.player_payload;
 
-    signalsMp4PlayerState.currentTime = 0;
     signalsMp4PlayerState.duration = p.duration_sec || 16;
     signalsMp4PlayerState.glitchStart = p.glitch_start_sec || 5.2;
     signalsMp4PlayerState.glitchDuration = p.glitch_duration_sec || 3.8;
     signalsMp4PlayerState.glitchType = p.glitch_type || "freeze";
+    // Posiciona o player diretamente no ponto exato da anomalia detectada
+    signalsMp4PlayerState.currentTime = signalsMp4PlayerState.glitchStart;
     signalsMp4PlayerState.isPlaying = false;
 
     const metaDisplay = document.getElementById("mp4PlayerMetadata");
@@ -875,7 +879,7 @@ function renderMp4AnalysisResult(data) {
     const scrubber = document.getElementById("mp4Scrubber");
     if (scrubber) {
         scrubber.max = signalsMp4PlayerState.duration;
-        scrubber.value = 0;
+        scrubber.value = signalsMp4PlayerState.currentTime;
     }
 
     const durText = document.getElementById("mp4TotalDuration");
@@ -919,88 +923,160 @@ function drawMp4PlayerFrame() {
         if (isGlitch) {
             banner.style.display = "block";
             if (signalsMp4PlayerState.glitchType === "freeze") {
-                banner.innerText = "⚠️ FALHA DETECTADA: CONGELAMENTO DE QUADRO / PTS STALL";
+                banner.innerHTML = `<i class="fas fa-snowflake" style="color: #60a5fa; margin-right: 6px;"></i> <strong>FALHA DETECTADA: CONGELAMENTO DE QUADRO (PTS STALL)</strong> • FRAME #${Math.floor(t * 30)}`;
             } else if (signalsMp4PlayerState.glitchType === "macroblock") {
-                banner.innerText = "⚠️ FALHA DETECTADA: CORRUPÇÃO DE MACROBLOCOS (SLICE LOSS)";
+                banner.innerHTML = `<i class="fas fa-th-large" style="color: #f59e0b; margin-right: 6px;"></i> <strong>FALHA DETECTADA: CORRUPÇÃO DE MACROBLOCOS (SLICE LOSS)</strong> • FRAME #${Math.floor(t * 30)}`;
             } else {
-                banner.innerText = "⚠️ FALHA DETECTADA: SILÊNCIO SÚBITO DE ÁUDIO AAC (-inf dB)";
+                banner.innerHTML = `<i class="fas fa-volume-mute" style="color: #ef4444; margin-right: 6px;"></i> <strong>FALHA DETECTADA: SILÊNCIO SÚBITO DE ÁUDIO AAC (-inf dB)</strong> • FRAME #${Math.floor(t * 30)}`;
             }
         } else {
             banner.style.display = "none";
         }
     }
 
-    ctx.fillStyle = "#0f172a";
+    // Fundo base
+    ctx.fillStyle = "#090d16";
     ctx.fillRect(0, 0, w, h);
 
     if (isGlitch && signalsMp4PlayerState.glitchType === "freeze") {
-        ctx.fillStyle = "#1e293b";
+        // CENA 1: CONGELAMENTO DE QUADRO COM ARTIFATOS DE BUFFER PTS TRAVADO
+        // Simulação de frame de TV estático com carimbo de estagnação
+        const gradFreeze = ctx.createLinearGradient(0, 0, w, h);
+        gradFreeze.addColorStop(0, "#1e293b");
+        gradFreeze.addColorStop(1, "#0f172a");
+        ctx.fillStyle = gradFreeze;
         ctx.fillRect(0, 0, w, h);
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
-        ctx.strokeRect(50, 50, w - 100, h - 100);
 
-        ctx.fillStyle = "#ef4444";
-        ctx.font = "bold 16px Inter, sans-serif";
+        // Grade de pixels congelada
+        ctx.strokeStyle = "rgba(148, 163, 184, 0.08)";
+        ctx.lineWidth = 1;
+        for (let x = 0; x < w; x += 30) {
+            ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+        }
+        for (let y = 0; y < h; y += 30) {
+            ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+        }
+
+        // Moldura de alerta vermelha
+        ctx.strokeStyle = "#ef4444";
+        ctx.lineWidth = 3;
+        ctx.strokeRect(10, 10, w - 20, h - 20);
+
+        // Retângulo central de HUD de Diagnóstico do Frame
+        ctx.fillStyle = "rgba(15, 23, 42, 0.88)";
+        ctx.fillRect(40, h / 2 - 50, w - 80, 100);
+        ctx.strokeStyle = "rgba(239, 68, 68, 0.5)";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(40, h / 2 - 50, w - 80, 100);
+
+        ctx.fillStyle = "#f87171";
+        ctx.font = "bold 15px Inter, sans-serif";
         ctx.textAlign = "center";
-        ctx.fillText("FRAME ESTÁTICO (REPETIÇÃO DE BUFFER H.264)", w / 2, h / 2 - 10);
-        ctx.font = "12px monospace";
+        ctx.fillText("⚠️ QUADRO ESTÁTICO / REPETIÇÃO DE BUFFER H.264", w / 2, h / 2 - 20);
+
+        ctx.fillStyle = "#38bdf8";
+        ctx.font = "bold 13px monospace";
+        ctx.fillText(`DELTA DE PIXELS: 0.00% • GOP BLOQUEADO (STALL +${(t - signalsMp4PlayerState.glitchStart).toFixed(2)}s)`, w / 2, h / 2 + 5);
+
         ctx.fillStyle = "#94a3b8";
-        ctx.fillText(`Delta de Pixels: 0.00% • GOP Bloqueado • Frame #${Math.floor(signalsMp4PlayerState.glitchStart * 30)}`, w / 2, h / 2 + 15);
+        ctx.font = "11px monospace";
+        ctx.fillText(`PTS: 0x2A1B8C40 • Frame #${Math.floor(signalsMp4PlayerState.glitchStart * 30)} • DTVCapture64 Hang`, w / 2, h / 2 + 28);
+
     } else if (isGlitch && signalsMp4PlayerState.glitchType === "macroblock") {
-        ctx.fillStyle = "#0a0f1d";
+        // CENA 2: CORRUPÇÃO VISUAL DE MACROBLOCOS (MOSAIC / SLICE LOSS)
+        ctx.fillStyle = "#050b14";
         ctx.fillRect(0, 0, w, h);
-        for (let bx = 0; bx < w; bx += 40) {
-            for (let by = 0; by < h; by += 40) {
-                if (Math.sin(bx + t * 10) > 0.3) {
-                    ctx.fillStyle = (bx + by) % 80 === 0 ? "rgba(16, 185, 129, 0.6)" : "rgba(100, 116, 139, 0.4)";
-                    ctx.fillRect(bx, by, 38, 38);
+
+        // Renderiza blocos YUV corrompidos característicos de decodificação H.264
+        const blockColors = [
+            "rgba(16, 185, 129, 0.75)",   // Verde chroma
+            "rgba(236, 72, 153, 0.75)",   // Magenta chroma
+            "rgba(56, 189, 248, 0.65)",   // Ciano
+            "rgba(234, 179, 8, 0.7)",     // Amarelo
+            "rgba(30, 41, 59, 0.9)"       // Preto corrompido
+        ];
+
+        for (let bx = 0; bx < w; bx += 32) {
+            for (let by = 0; by < h; by += 24) {
+                const seed = Math.sin(bx * 0.15 + by * 0.25 + t * 4);
+                if (seed > -0.2) {
+                    const colIdx = Math.abs(Math.floor(seed * 10)) % blockColors.length;
+                    ctx.fillStyle = blockColors[colIdx];
+                    ctx.fillRect(bx, by, 30, 22);
                 }
             }
         }
+
+        // Linhas de rasgo digital (digital tear lines)
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, (Math.floor(t * 120) % (h - 20)), w, 4);
+        ctx.fillStyle = "rgba(239, 68, 68, 0.85)";
+        ctx.fillRect(0, (Math.floor(t * 80 + 40) % (h - 20)), w, 6);
+
+        // Banner inferior de corrupção
+        ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
+        ctx.fillRect(30, h - 45, w - 60, 28);
         ctx.fillStyle = "#f87171";
-        ctx.font = "bold 14px monospace";
+        ctx.font = "bold 11px monospace";
         ctx.textAlign = "center";
-        ctx.fillText("CORRUPÇÃO DE FLUXO TS: PACKET CONTINUITY COUNTER ERROR", w / 2, h - 30);
+        ctx.fillText("CORRUPÇÃO DE FLUXO TS: PACKET CONTINUITY COUNTER ERROR (TEARING)", w / 2, h - 27);
+
     } else {
+        // CENA 3: TRANSMISSÃO NOMINAL AO VIVO
         const grad = ctx.createLinearGradient(0, 0, w, h);
-        grad.addColorStop(0, "#1e3a8a");
-        grad.addColorStop(1, "#0f172a");
+        grad.addColorStop(0, "#0f172a");
+        grad.addColorStop(0.5, "#1e293b");
+        grad.addColorStop(1, "#0a0f1d");
         ctx.fillStyle = grad;
         ctx.fillRect(0, 0, w, h);
 
-        const xAnim = 100 + ((t * 80) % (w - 200));
+        // Ondas de sinal ativas
+        ctx.strokeStyle = "rgba(56, 189, 248, 0.25)";
+        ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.arc(xAnim, h / 2, 45, 0, Math.PI * 2);
-        ctx.fillStyle = "#38bdf8";
-        ctx.fill();
-
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.15)";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        for (let i = 0; i < w; i += 20) {
-            const yLine = h / 2 + Math.sin((i + t * 100) * 0.03) * 30;
+        for (let i = 0; i < w; i += 15) {
+            const yLine = h / 2 + Math.sin((i + t * 120) * 0.025) * 35;
             if (i === 0) ctx.moveTo(i, yLine);
             else ctx.lineTo(i, yLine);
         }
         ctx.stroke();
 
-        ctx.fillStyle = "#fff";
-        ctx.font = "bold 18px Inter, sans-serif";
+        // Globo / Estúdio Central
+        ctx.beginPath();
+        ctx.arc(w / 2, h / 2, 40, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(37, 99, 235, 0.25)";
+        ctx.fill();
+        ctx.strokeStyle = "#38bdf8";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 16px Inter, sans-serif";
         ctx.textAlign = "center";
-        ctx.fillText("TRANSMISSÃO ATRIA GRAVADA", w / 2, h / 2 - 10);
+        ctx.fillText("GRAVAÇÃO ATRIA (ISDB-Tb)", w / 2, h / 2 - 8);
+
+        ctx.fillStyle = "#10b981";
+        ctx.font = "11px Inter, sans-serif";
+        ctx.fillText("FLUXO H.264 NOMINAL • 1080i @ 29.97 FPS", w / 2, h / 2 + 14);
     }
 
-    ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
-    ctx.fillRect(15, h - 35, 140, 22);
+    // OSD Barra de Áudio VU L/R
+    ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
+    ctx.fillRect(15, h - 34, 160, 22);
     ctx.fillStyle = "#94a3b8";
     ctx.font = "9px monospace";
     ctx.textAlign = "left";
-    ctx.fillText("VU L/R:", 22, h - 21);
+    ctx.fillText("VU L/R:", 22, h - 20);
 
     const isAudioDrop = isGlitch && signalsMp4PlayerState.glitchType === "audio_drop";
-    const vuWidth = isAudioDrop ? 0 : Math.max(8, 90 + Math.sin(t * 12) * 15);
+    const vuWidth = isAudioDrop ? 0 : Math.max(8, 85 + Math.sin(t * 14) * 18);
     ctx.fillStyle = isAudioDrop ? "#ef4444" : "#10b981";
-    ctx.fillRect(58, h - 29, vuWidth, 10);
+    ctx.fillRect(62, h - 28, vuWidth, 10);
+    if (isAudioDrop) {
+        ctx.fillStyle = "#f87171";
+        ctx.font = "bold 9px monospace";
+        ctx.fillText("MUTE -inf dB", 64, h - 20);
+    }
 
     const timecodeEl = document.getElementById("mp4OsdTimecode");
     if (timecodeEl) {
@@ -1016,6 +1092,15 @@ function drawMp4PlayerFrame() {
     const scrubber = document.getElementById("mp4Scrubber");
     if (scrubber && !scrubber.matches(":active")) scrubber.value = t;
 }
+
+function jumpToGlitchPoint() {
+    signalsMp4PlayerState.currentTime = signalsMp4PlayerState.glitchStart || 5.2;
+    signalsMp4PlayerState.isPlaying = false;
+    const scrubber = document.getElementById("mp4Scrubber");
+    if (scrubber) scrubber.value = signalsMp4PlayerState.currentTime;
+    drawMp4PlayerFrame();
+}
+window.jumpToGlitchPoint = jumpToGlitchPoint;
 
 function toggleMp4PlayPause() {
     signalsMp4PlayerState.isPlaying = !signalsMp4PlayerState.isPlaying;

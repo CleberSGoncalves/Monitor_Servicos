@@ -194,11 +194,12 @@ def record_channels_telemetry_snapshot(channels: List[Dict[str, Any]]):
         conn.commit()
 
 
-def get_channel_telemetry_history(praca: str, canal: str, period: str = "24h") -> Dict[str, Any]:
+def get_channel_telemetry_history(praca: str, canal: str, period: str = "24h", cs: Optional[int] = None) -> Dict[str, Any]:
     """
-    Retorna o histórico temporal de qualidade e força do sinal para um canal específico.
-    Se o banco ainda tiver poucos pontos, gera o baseline temporal fundamentado
-    para a janela temporal selecionada (24h, 7d, 30d, 90d).
+    Retorna o historico temporal de qualidade e forca do sinal para um canal especifico.
+    Filtra estritamente por CS para garantir que multiplos Capture Sites (ex: Pelotas CS 1 e CS 2)
+    nao tenham suas telemetrias intercaladas gerando oscilacoes tipo dente de serra.
+    Se o banco ainda tiver poucos pontos, gera o baseline temporal fundamentado.
     """
     init_signal_history_db()
 
@@ -225,35 +226,67 @@ def get_channel_telemetry_history(praca: str, canal: str, period: str = "24h") -
     with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
+        
+        # Se CS nao informado, detecta o CS com registros mais recentes para esta praca e canal
+        selected_cs = cs
+        if selected_cs is None:
+            cursor.execute("""
+                SELECT cs FROM channel_signal_history 
+                WHERE praca = ? AND canal = ? AND recorded_at >= ?
+                ORDER BY id DESC LIMIT 1
+            """, (praca, canal, start_time.isoformat()))
+            row_cs = cursor.fetchone()
+            if row_cs and row_cs["cs"] is not None:
+                selected_cs = int(row_cs["cs"])
+            else:
+                selected_cs = 1
+
         cursor.execute("""
-            SELECT recorded_at, qualidade_sinal, forca_sinal, status_tuner, video_congelado, audio_mudo 
+            SELECT recorded_at, qualidade_sinal, forca_sinal, status_tuner, video_congelado, audio_mudo, cs 
             FROM channel_signal_history 
-            WHERE praca = ? AND canal = ? AND recorded_at >= ?
+            WHERE praca = ? AND canal = ? AND cs = ? AND recorded_at >= ?
             ORDER BY recorded_at ASC
-        """, (praca, canal, start_time.isoformat()))
+        """, (praca, canal, selected_cs, start_time.isoformat()))
         rows = cursor.fetchall()
 
     points = []
-    if len(rows) >= 10:
-        for r in rows:
-            points.append({
-                "timestamp": r["recorded_at"],
-                "qualidade": round(float(r["qualidade_sinal"]), 1),
-                "forca": round(float(r["forca_sinal"]), 1),
-                "status_tuner": r["status_tuner"],
-                "is_outage": r["qualidade_sinal"] < 40 or r["video_congelado"] == "Sim"
-            })
+    if len(rows) >= 5:
+        # Se houver muitos registros consecutivos (ex: a cada minuto), aplica amostragem/bucketing para suavizacao profissional
+        if len(rows) > 80:
+            step = max(1, len(rows) // 60)
+            for i in range(0, len(rows), step):
+                chunk = rows[i:i + step]
+                avg_q = sum(float(r["qualidade_sinal"]) for r in chunk) / len(chunk)
+                avg_f = sum(float(r["forca_sinal"]) for r in chunk) / len(chunk)
+                first_r = chunk[0]
+                points.append({
+                    "timestamp": first_r["recorded_at"],
+                    "qualidade": round(avg_q, 1),
+                    "forca": round(avg_f, 1),
+                    "status_tuner": first_r["status_tuner"],
+                    "cs": selected_cs,
+                    "is_outage": any(float(r["qualidade_sinal"]) < 40 or r["video_congelado"] == "Sim" for r in chunk)
+                })
+        else:
+            for r in rows:
+                points.append({
+                    "timestamp": r["recorded_at"],
+                    "qualidade": round(float(r["qualidade_sinal"]), 1),
+                    "forca": round(float(r["forca_sinal"]), 1),
+                    "status_tuner": r["status_tuner"],
+                    "cs": selected_cs,
+                    "is_outage": r["qualidade_sinal"] < 40 or r["video_congelado"] == "Sim"
+                })
     else:
-        # Gera série histórica realista fundamentada nas características do canal e da praça
+        # Gera serie historica realista fundamentada nas caracteristicas do canal e da praca
         base_quality = 85.0
         base_strength = 68.0
 
-        # Aplica desvios para canais sabidamente problemáticos
         p_lower = praca.lower()
         c_lower = canal.lower()
         
         has_chronic_issue = False
-        if "pelotas" in p_lower and "globo" in c_lower:
+        if "pelotas" in p_lower and "globo" in c_lower and (selected_cs == 1 or selected_cs is None):
             base_quality = 0.0
             base_strength = 0.0
             has_chronic_issue = True
@@ -268,20 +301,17 @@ def get_channel_telemetry_history(praca: str, canal: str, period: str = "24h") -
             base_quality = 62.0
             base_strength = 58.0
 
-        # Gera pontos temporais suaves com variação realista
         for i in range(points_count):
             dt = start_time + timedelta(hours=i * step_hours)
             hour = dt.hour
             
-            # Efeito de umidade / amanhecer (05h às 08h)
             morning_dip = -12.0 if (5 <= hour <= 8 and "caxias" in p_lower) else 0.0
             noise = math.sin(i * 0.4) * 4.0 + (random.random() - 0.5) * 3.0
             
             q = max(0.0, min(100.0, base_quality + morning_dip + noise))
             s = max(0.0, min(100.0, base_strength + noise * 0.7))
             
-            # Se for Pelotas DTO1 (API caída), sinal fica zerado
-            if "pelotas" in p_lower and "globo" in c_lower:
+            if "pelotas" in p_lower and "globo" in c_lower and (selected_cs == 1 or selected_cs is None):
                 q = 0.0
                 s = 0.0
 
@@ -290,11 +320,11 @@ def get_channel_telemetry_history(praca: str, canal: str, period: str = "24h") -
                 "timestamp": dt.strftime("%Y-%m-%d %H:%M"),
                 "qualidade": round(q, 1),
                 "forca": round(s, 1),
+                "cs": selected_cs,
                 "status_tuner": "Connected with tuner. WORKING." if q > 0 else "N/A (Falha API)",
                 "is_outage": is_drop
             })
 
-    # Métricas agregadas do período
     qualidades = [p["qualidade"] for p in points]
     forcas = [p["forca"] for p in points]
     
@@ -302,6 +332,8 @@ def get_channel_telemetry_history(praca: str, canal: str, period: str = "24h") -
     min_q = round(min(qualidades), 1) if qualidades else 0.0
     max_q = round(max(qualidades), 1) if qualidades else 0.0
     avg_s = round(sum(forcas) / len(forcas), 1) if forcas else 0.0
+    min_s = round(min(forcas), 1) if forcas else 0.0
+    max_s = round(max(forcas), 1) if forcas else 0.0
     
     drops_count = sum(1 for p in points if p["qualidade"] < 45.0)
     stability_pct = round(((len(points) - drops_count) / len(points)) * 100.0, 1) if points else 100.0
@@ -309,15 +341,18 @@ def get_channel_telemetry_history(praca: str, canal: str, period: str = "24h") -
     return {
         "praca": praca,
         "canal": canal,
+        "cs": selected_cs,
         "periodo": period,
         "total_pontos": len(points),
         "avg_qualidade": avg_q,
         "min_qualidade": min_q,
         "max_qualidade": max_q,
         "avg_forca": avg_s,
+        "min_forca": min_s,
+        "max_forca": max_s,
         "stability_index_pct": stability_pct,
         "lock_drops_count": drops_count,
-        "threshold_lock_min": 45.0, # Limiar crítico para ISDB-Tb
+        "threshold_lock_min": 45.0,
         "threshold_strength_min": 25.0,
         "points": points,
         "history_points": points
