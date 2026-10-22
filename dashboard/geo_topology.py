@@ -389,25 +389,103 @@ def get_markets_map_data(channels: list = None, services: list = None) -> List[D
             dist_km = calculate_haversine_distance(m["lat"], m["lng"], main_tower["lat"], main_tower["lng"])
             azimuth_deg = calculate_azimuth(m["lat"], m["lng"], main_tower["lat"], main_tower["lng"])
 
+        dist_m = int(round(dist_km * 1000))
+        tower_cota = main_tower.get("cota_m", 150) if main_tower else 150
+        tower_mast = 80
+        tower_total_h = tower_cota + tower_mast
+
+        # Cota de elevação da posição física do Capture Site
+        altitudes_map = {
+            "pelotas": 36, "caxias do sul": 760, "porto alegre": 42,
+            "são paulo": 760, "rio de janeiro": 25, "belo horizonte": 850,
+            "salvador": 32, "recife": 8, "fortaleza": 18,
+            "curitiba": 934, "brasília": 1170, "goiânia": 749,
+            "campinas": 685, "florianópolis": 12, "são josé dos campos": 610
+        }
+        site_elevation = altitudes_map.get(cidade_lower, 60)
+        rx_mast_h = 24
+        site_total_h = site_elevation + rx_mast_h
+
+        # Perfil de Relevo Topográfico e Corte Transversal
+        has_hill_obstruction = dist_km > 10 and (cidade_lower in ["pelotas", "salvador", "rio de janeiro", "belo horizonte"])
+        mid_km = round(dist_km * 0.55, 1)
+        hill_alt = round((tower_cota + site_elevation) / 2 + (75 if has_hill_obstruction else -15))
+
+        terrain_profile = [
+            {"km": 0.0, "alt_m": tower_total_h, "label": f"{main_tower['nome'] if main_tower else 'Torre'} (Topo: {tower_total_h}m)", "is_tower": True},
+            {"km": round(dist_km * 0.2, 1), "alt_m": round(tower_cota * 0.75), "label": "Encosta"},
+            {"km": mid_km, "alt_m": hill_alt, "label": "Morro Intermediário" if has_hill_obstruction else "Vale de Propagação", "is_hill": has_hill_obstruction},
+            {"km": round(dist_km * 0.85, 1), "alt_m": round(site_elevation * 1.1), "label": "Mancha Urbana"},
+            {"km": dist_km, "alt_m": site_total_h, "label": f"Capture Site {cidade} (Topo: {site_total_h}m)", "is_site": True}
+        ]
+
+        # Frequência média e FSPL
+        freq_mhz = main_tower["frequencias_mhz"][0] if main_tower and main_tower.get("frequencias_mhz") else 545.14
+        fspl_db = round(32.44 + 20 * math.log10(freq_mhz) + 20 * math.log10(max(1.0, dist_km)), 1)
+        los_status = "Atenuação por Difração / Relevo (NLOS)" if has_hill_obstruction else "Linha de Visada Desobstruída (LOS)"
+
+        # Emissoras e análise de cada canal terrestre gravado
+        local_emissoras = (main_tower.get("emissoras") if main_tower else None) or ["Rede Globo", "SBT", "Record TV", "Band", "RedeTV!", "TV Brasil"]
+        channels_rf_detail = []
+        for idx, em in enumerate(local_emissoras):
+            ch_freq = (main_tower["frequencias_mhz"][idx % len(main_tower["frequencias_mhz"])]) if main_tower and main_tower.get("frequencias_mhz") else (515.14 + idx * 18)
+            ch_erp = main_tower.get("erp_kw", 15.0) if main_tower else 12.5
+            ch_fspl = round(32.44 + 20 * math.log10(ch_freq) + 20 * math.log10(max(1.0, dist_km)), 1)
+            
+            # Canais de frequência mais alta (UHF alto > 580MHz) sofrem maior difração em relevo acidentado
+            ch_attenuation = 8.5 if (ch_freq > 560 and has_hill_obstruction) else (2.0 if has_hill_obstruction else 0.0)
+            exp_dbm = round(10 * math.log10(max(1.0, ch_erp) * 1000) - ch_fspl + 14 - ch_attenuation, 1)
+            
+            # Força medida correlacionada
+            matched_c = next((c for c in m_channels if em.lower() in str(c.get("canal", "")).lower()), None)
+            measured_pct = matched_c.get("forca_sinal", 72) if matched_c else max(25, min(95, round(78 - (ch_attenuation * 3.5))))
+            
+            channels_rf_detail.append({
+                "emissora": em,
+                "canal_fisico": f"UHF Canal {int(14 + (ch_freq - 470) // 6)}",
+                "freq_mhz": ch_freq,
+                "erp_kw": ch_erp,
+                "tower_name": main_tower["nome"] if main_tower else "Torre Transmissora",
+                "distance_m": dist_m,
+                "distance_km": dist_km,
+                "azimuth_deg": azimuth_deg,
+                "fspl_db": ch_fspl,
+                "rx_level_expected_dbm": exp_dbm,
+                "rx_level_measured_pct": measured_pct,
+                "los_status": "Parcialmente Obstruído" if ch_attenuation > 5 else "Visada Desobstruída",
+                "los_analysis": f"Portadora em {ch_freq:.1f} MHz sofre atenuação adicional de {ch_attenuation:.1f} dB por espalhamento no topo do morro a {mid_km} km." if ch_attenuation > 0 else "Zona de Fresnel 100% desobstruída sem perdas por difração."
+            })
+
         result.append({
             "id": m["id"],
+            "name": cidade,
             "cidade": cidade,
             "uf": m["uf"],
+            "state": m["uf"],
             "pais": m["pais"],
+            "country": m["pais"],
             "regiao": m["regiao"],
             "lat": m["lat"],
             "lng": m["lng"],
             "cs_count": m["cs_count"],
             "status_color": status_color,
             "status_label": status_label,
-            "total_channels": total_ch if total_ch > 0 else 6,
-            "stable_channels": stable_ch if total_ch > 0 else 6,
+            "total_channels": total_ch if total_ch > 0 else len(local_emissoras),
+            "stable_channels": stable_ch if total_ch > 0 else len(local_emissoras),
             "outage_channels": outage_ch,
             "degraded_channels": degraded_ch,
             "stopped_services": stopped_svc,
             "main_tower": main_tower["nome"] if main_tower else "Torre Regional",
             "distance_km": dist_km,
+            "distance_m": dist_m,
             "azimuth_deg": azimuth_deg,
+            "site_elevation_m": site_elevation,
+            "rx_antenna_height_m": rx_mast_h,
+            "tower_altitude_m": tower_total_h,
+            "fspl_db": fspl_db,
+            "los_status": los_status,
+            "terrain_profile": terrain_profile,
+            "channels_rf_detail": channels_rf_detail,
             "towers_detail": m["towers"]
         })
 

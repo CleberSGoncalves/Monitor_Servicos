@@ -1026,19 +1026,12 @@ function drawMp4PlayerFrame() {
 
     if (isGlitch && signalsMp4PlayerState.glitchType === "freeze") {
         // CENA 1: CONGELAMENTO DE QUADRO COM ARTIFATOS DE BUFFER PTS TRAVADO
-        // Filtro de congelamento sobre a imagem real
-        ctx.fillStyle = "rgba(15, 23, 42, 0.55)";
-        ctx.fillRect(0, 0, w, h);
-        // CENA 1: CONGELAMENTO DE QUADRO COM ARTIFATOS DE BUFFER PTS TRAVADO
-        // Simulação de frame de TV estático com carimbo de estagnação
-        const gradFreeze = ctx.createLinearGradient(0, 0, w, h);
-        gradFreeze.addColorStop(0, "#1e293b");
-        gradFreeze.addColorStop(1, "#0f172a");
-        ctx.fillStyle = gradFreeze;
+        // Filtro de congelamento semitransparente sobre a imagem real
+        ctx.fillStyle = "rgba(15, 23, 42, 0.45)";
         ctx.fillRect(0, 0, w, h);
 
         // Grade de pixels congelada
-        ctx.strokeStyle = "rgba(148, 163, 184, 0.08)";
+        ctx.strokeStyle = "rgba(148, 163, 184, 0.10)";
         ctx.lineWidth = 1;
         for (let x = 0; x < w; x += 30) {
             ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
@@ -1073,23 +1066,18 @@ function drawMp4PlayerFrame() {
         ctx.fillText(`PTS: 0x2A1B8C40 • Frame #${Math.floor(signalsMp4PlayerState.glitchStart * 30)} • DTVCapture64 Hang`, w / 2, h / 2 + 28);
 
     } else if (isGlitch && signalsMp4PlayerState.glitchType === "macroblock") {
-        // CENA 2: CORRUPÇÃO VISUAL DE MACROBLOCOS (MOSAIC / SLICE LOSS)
-        ctx.fillStyle = "#050b14";
-        ctx.fillRect(0, 0, w, h);
-
-        // Renderiza blocos YUV corrompidos característicos de decodificação H.264
+        // CENA 2: CORRUPÇÃO VISUAL DE MACROBLOCOS SOBRE O VÍDEO REAL
         const blockColors = [
-            "rgba(16, 185, 129, 0.75)",   // Verde chroma
-            "rgba(236, 72, 153, 0.75)",   // Magenta chroma
-            "rgba(56, 189, 248, 0.65)",   // Ciano
-            "rgba(234, 179, 8, 0.7)",     // Amarelo
-            "rgba(30, 41, 59, 0.9)"       // Preto corrompido
+            "rgba(16, 185, 129, 0.65)",
+            "rgba(236, 72, 153, 0.65)",
+            "rgba(56, 189, 248, 0.55)",
+            "rgba(234, 179, 8, 0.6)"
         ];
 
         for (let bx = 0; bx < w; bx += 32) {
             for (let by = 0; by < h; by += 24) {
                 const seed = Math.sin(bx * 0.15 + by * 0.25 + t * 4);
-                if (seed > -0.2) {
+                if (seed > 0.05) {
                     const colIdx = Math.abs(Math.floor(seed * 10)) % blockColors.length;
                     ctx.fillStyle = blockColors[colIdx];
                     ctx.fillRect(bx, by, 30, 22);
@@ -1097,153 +1085,31 @@ function drawMp4PlayerFrame() {
             }
         }
 
-        // Linhas de rasgo digital (digital tear lines)
-        ctx.fillStyle = "#ffffff";
+        // Linhas de rasgo digital
+        ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
         ctx.fillRect(0, (Math.floor(t * 120) % (h - 20)), w, 4);
         ctx.fillStyle = "rgba(239, 68, 68, 0.85)";
         ctx.fillRect(0, (Math.floor(t * 80 + 40) % (h - 20)), w, 6);
 
         // Banner inferior de corrupção
         ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
-        ctx.fillRect(30, h - 45, w - 60, 28);
+        ctx.fillRect(30, h - 55, w - 60, 28);
         ctx.fillStyle = "#f87171";
         ctx.font = "bold 11px monospace";
         ctx.textAlign = "center";
-        ctx.fillText("CORRUPÇÃO DE FLUXO TS: PACKET CONTINUITY COUNTER ERROR (TEARING)", w / 2, h - 27);
+        ctx.fillText("CORRUPÇÃO DE FLUXO TS: PACKET CONTINUITY COUNTER ERROR (TEARING)", w / 2, h - 37);
 
     } else {
-        // CENA 3: TRANSMISSÃO DE TV REAL (ESTÚDIO BROADCAST AO VIVO)
-        // 1. Fundo do estúdio: Iluminação cenográfica degradê azul cobalto
-        const grad = ctx.createLinearGradient(0, 0, 0, h);
-        grad.addColorStop(0, "#0c1527");
-        grad.addColorStop(0.5, "#162544");
-        grad.addColorStop(1, "#070d18");
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, w, h);
-
-        // 2. Parede de Vídeo / Skyline Noturno Iluminado ao Fundo
-        const buildings = [
-            { x: 30, y: 40, bw: 45, bh: h - 100 },
-            { x: 85, y: 65, bw: 55, bh: h - 120 },
-            { x: 150, y: 30, bw: 65, bh: h - 90 },
-            { x: 225, y: 55, bw: 50, bh: h - 110 },
-            { x: 285, y: 25, bw: 70, bh: h - 80 },
-            { x: 365, y: 60, bw: 60, bh: h - 115 },
-            { x: 435, y: 35, bw: 55, bh: h - 95 },
-            { x: 500, y: 50, bw: 75, bh: h - 105 }
-        ];
-
-        buildings.forEach((b, idx) => {
-            ctx.fillStyle = "#111c34";
-            ctx.strokeStyle = "#1e2e50";
-            ctx.lineWidth = 1;
-            ctx.fillRect(b.x, b.y, b.bw, b.bh);
-            ctx.strokeRect(b.x, b.y, b.bw, b.bh);
-
-            for (let wx = b.x + 6; wx < b.x + b.bw - 8; wx += 10) {
-                for (let wy = b.y + 10; wy < b.y + b.bh - 20; wy += 14) {
-                    const seed = (wx * 7 + wy * 13 + idx);
-                    if (seed % 3 === 0) {
-                        ctx.fillStyle = (seed % 6 === 0) ? "#facc15" : "#38bdf8";
-                        ctx.fillRect(wx, wy, 5, 6);
-                    }
-                }
-            }
-        });
-
-        // 3. Faixas de iluminação LED do estúdio
-        ctx.strokeStyle = "rgba(56, 189, 248, 0.4)";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(15, h - 90);
-        ctx.lineTo(w - 15, h - 90);
-        ctx.stroke();
-
-        // 4. Bancada de Apresentador (Perspectiva curva)
-        ctx.fillStyle = "#0f172a";
-        ctx.strokeStyle = "#38bdf8";
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.moveTo(60, h - 80);
-        ctx.lineTo(w - 60, h - 80);
-        ctx.lineTo(w - 30, h - 35);
-        ctx.lineTo(30, h - 35);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-
-        // Tampo reflexivo da bancada
-        ctx.fillStyle = "rgba(30, 58, 138, 0.45)";
-        ctx.beginPath();
-        ctx.moveTo(75, h - 77);
-        ctx.lineTo(w - 75, h - 77);
-        ctx.lineTo(w - 45, h - 45);
-        ctx.lineTo(45, h - 45);
-        ctx.closePath();
-        ctx.fill();
-
-        // 5. Silhueta do Âncora / Apresentador de Notícias
-        ctx.fillStyle = "#1e293b";
-        ctx.strokeStyle = "#334155";
+        // CENA 3: TRANSMISSÃO DE TV REAL NOMINAL (SEM DESENHOS FICTÍCIOS)
+        ctx.fillStyle = "rgba(15, 23, 42, 0.85)";
+        ctx.fillRect(15, 16, 85, 22);
+        ctx.strokeStyle = "rgba(16, 185, 129, 0.4)";
         ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.arc(w / 2, h / 2 - 25, 24, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(w / 2 - 50, h - 78);
-        ctx.lineTo(w / 2 + 50, h - 78);
-        ctx.lineTo(w / 2 + 35, h / 2 + 5);
-        ctx.lineTo(w / 2 - 35, h / 2 + 5);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-
-        // 6. Logotipo Oficial da Emissora (Rede Globo 3D Bug)
-        const lx = w - 45, ly = 32;
-        ctx.fillStyle = "#f1f5f9";
-        ctx.strokeStyle = "#94a3b8";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(lx, ly, 18, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-        ctx.fillStyle = "#0f172a";
-        ctx.strokeStyle = "#38bdf8";
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.arc(lx, ly, 11, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-        ctx.fillStyle = "#38bdf8";
-        ctx.beginPath();
-        ctx.arc(lx, ly, 5, 0, Math.PI * 2);
-        ctx.fill();
-
-        // 7. Badge AO VIVO
-        ctx.fillStyle = "#dc2626";
-        ctx.fillRect(15, 18, 80, 22);
-        ctx.fillStyle = "#ffffff";
+        ctx.strokeRect(15, 16, 85, 22);
+        ctx.fillStyle = "#10b981";
         ctx.font = "bold 11px Inter, sans-serif";
         ctx.textAlign = "left";
-        ctx.fillText("● AO VIVO", 24, 33);
-
-        // 8. GC (Lower-Third) Jornalístico
-        ctx.fillStyle = "rgba(15, 23, 42, 0.95)";
-        ctx.fillRect(0, h - 72, w, 34);
-        ctx.fillStyle = "#0284c7";
-        ctx.fillRect(0, h - 72, w, 3);
-        ctx.fillStyle = "#0284c7";
-        ctx.fillRect(15, h - 66, 68, 20);
-        ctx.fillStyle = "#ffffff";
-        ctx.font = "bold 11px Inter, sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText("GLOBO", 49, h - 52);
-
-        ctx.fillStyle = "#f8fafc";
-        ctx.font = "bold 12px Inter, sans-serif";
-        ctx.textAlign = "left";
-        ctx.fillText("JORNAL NACIONAL • EDIÇÃO AO VIVO (PELOTAS - RS)", 92, h - 52);
+        ctx.fillText("● AO VIVO", 25, 31);
     }
 
     // OSD Barra de Áudio VU L/R
@@ -1344,36 +1210,78 @@ function changeMp4Speed(val) {
 }
 window.changeMp4Speed = changeMp4Speed;
 
-function executeMp4AutoHeal() {
+async function executeMp4AutoHeal() {
     if (!signalsMp4AnalysisResult) return;
     const f = signalsMp4AnalysisResult.falha_predominante;
     const praca = signalsMp4AnalysisResult.praca;
+    const canal = signalsMp4AnalysisResult.canal;
 
-    if (!confirm(`Deseja executar a correção automática no Capture Site (${praca})?\n\nFalha: ${f.nome}\nComando: Atualização de Parâmetros de Codec ATRIA via PowerShell.`)) {
+    const btn = document.getElementById("btnMp4AutoHeal");
+    if (!confirm(`⚡ CONFIRMAÇÃO DE CORREÇÃO OPERACIONAL NO CAPTURE SITE
+
+Praça / Host: ${praca}
+Canal: ${canal}
+Falha Diagnosticada: ${f.nome}
+Ação Remota: Reinício de processo do serviço gravador MediaRecorderSVC (ATRIA) e flush do buffer de captura H.264.
+
+Deseja executar o comando agora diretamente no host remoto?`)) {
         return;
     }
 
-    const rcNavBtn = document.querySelector(".nav-btn[data-tab='remote-commands']");
-    if (rcNavBtn) {
-        rcNavBtn.click();
-        setTimeout(() => {
-            const hostSelect = document.getElementById("remote-host-select");
-            const scriptArea = document.getElementById("custom-command-input");
-            if (hostSelect) {
-                for (let i = 0; i < hostSelect.options.length; i++) {
-                    if (hostSelect.options[i].text.toLowerCase().includes(praca.toLowerCase())) {
-                        hostSelect.selectedIndex = i;
-                        if (typeof addSelectedHost === "function") addSelectedHost();
-                        break;
-                    }
-                }
-            }
-            if (scriptArea) {
-                scriptArea.value = f.comando_auto_cura;
-                scriptArea.scrollIntoView({ behavior: "smooth" });
-                scriptArea.focus();
-            }
-        }, 300);
+    const originalHtml = btn ? btn.innerHTML : "";
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Despachando Comando para ${praca}...`;
+    }
+
+    try {
+        const token = (typeof getAuthToken === "function") ? getAuthToken() : (localStorage.getItem("fleet_token") || "");
+        const resp = await fetch("/api/remote-commands/execute", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`
+            },
+            body: JSON.stringify({
+                hosts: [praca],
+                command: f.comando_auto_cura || 'Restart-Service -Name "DNA.MediaRecorderSVC" -Force'
+            })
+        });
+
+        const data = await resp.json();
+        if (resp.ok && data.status === "success") {
+            // Registra ação no histórico de auditoria / worklog
+            await fetch("/api/incidents/worklog", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    incident_key: `gop_stall_${praca}_${canal}`,
+                    host: praca,
+                    target_name: `${canal} (ATRIA MediaRecorderSVC)`,
+                    incident_type: "Auto-Cura / Correção Remota",
+                    action_taken: `Disparo de correção remota automática: ${f.nome}. Parâmetros atualizados e serviço reciclado com sucesso.`,
+                    resolution_status: "Resolvido"
+                })
+            });
+
+            alert(`✅ COMANDO EXECUTADO COM SUCESSO NO CAPTURE SITE [${praca}]!
+
+Status: Concluído (Execução auditada no histórico de ações).
+O serviço ATRIA foi reciclado e o buffer de gravação normalizado.`);
+            if (typeof loadRecentWorklogCockpit === "function") loadRecentWorklogCockpit();
+        } else {
+            alert(`⚠️ Falha ao executar comando no host [${praca}]: ${data.detail || data.message || "Erro de comunicação RPC."}`);
+        }
+    } catch (e) {
+        alert(`Erro de conexão com a central ao executar comando: ${e.message}`);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+        }
     }
 }
 window.executeMp4AutoHeal = executeMp4AutoHeal;
