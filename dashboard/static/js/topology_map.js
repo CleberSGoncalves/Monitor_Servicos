@@ -1,9 +1,43 @@
 // dashboard/static/js/topology_map.js
 // Topologia Geográfica de Capture Sites e Enlaces de RF (LATAM / Brasil)
-// Renderização de Geometria Real do Brasil, Perfil Topográfico de Relevo e Análise de Visada (LOS)
+// Arquitetura Anti-Amontoado: Rótulos com Deslocamento Inteligente, Leader Lines,
+// Canvas Ampliado e Modos de Foco Regional (Sul & Sudeste Expandido)
 
 let topologyMarketsData = [];
 let selectedMarket = null;
+let currentMapView = "brasil";
+let customZoomScale = 1.0;
+let customPanOffsetX = 0;
+let customPanOffsetY = 0;
+
+// Configurações Cartográficas Calibradas para Evitar Espaços Vazios e Sobreposição
+const MAP_BOUNDING_VIEWS = {
+    "brasil": { minLng: -74.5, maxLng: -34.0, minLat: -34.0, maxLat: 5.5, label: "Brasil (Nacional)" },
+    "sul_sudeste": { minLng: -55.5, maxLng: -41.0, minLat: -33.5, maxLat: -18.5, label: "Hub Sul & Sudeste (Alta Resolução)" },
+    "sudeste": { minLng: -52.5, maxLng: -41.0, minLat: -25.2, maxLat: -18.5, label: "Região Sudeste (SP / RJ / MG)" },
+    "sul": { minLng: -56.0, maxLng: -47.5, minLat: -33.5, maxLat: -24.5, label: "Região Sul (RS / SC / PR)" },
+    "nordeste": { minLng: -46.5, maxLng: -34.0, minLat: -15.5, maxLat: -2.5, label: "Região Nordeste" },
+    "centro_oeste": { minLng: -53.5, maxLng: -45.5, minLat: -19.0, maxLat: -13.5, label: "Região Centro-Oeste" }
+};
+
+// Sistema de Âncoras e Deslocamentos Anti-Colisão (Zero Sobreposição entre Cidades Vizinhas)
+const CITY_LABEL_CONFIG = {
+    "Pelotas": { dx: -18, dy: 16, anchor: "end", side: "bottom-left" },
+    "Caxias do Sul": { dx: -18, dy: -12, anchor: "end", side: "top-left" },
+    "Porto Alegre": { dx: 18, dy: 6, anchor: "start", side: "right" },
+    "Florianópolis": { dx: 18, dy: 4, anchor: "start", side: "right" },
+    "Curitiba": { dx: -18, dy: 4, anchor: "end", side: "left" },
+    "São Paulo": { dx: -18, dy: 18, anchor: "end", side: "bottom-left" },
+    "Campinas": { dx: -18, dy: -16, anchor: "end", side: "top-left" },
+    "São José dos Campos": { dx: 18, dy: -14, anchor: "start", side: "top-right" },
+    "Rio de Janeiro": { dx: 20, dy: 6, anchor: "start", side: "right" },
+    "Belo Horizonte": { dx: 18, dy: -10, anchor: "start", side: "top-right" },
+    "Goiânia": { dx: -18, dy: 4, anchor: "end", side: "left" },
+    "Brasília": { dx: 18, dy: -10, anchor: "start", side: "top-right" },
+    "Salvador": { dx: 18, dy: 4, anchor: "start", side: "right" },
+    "Recife": { dx: 18, dy: 4, anchor: "start", side: "right" },
+    "Fortaleza": { dx: 18, dy: -10, anchor: "start", side: "top-right" }
+};
 
 async function loadTopologyMapData() {
     try {
@@ -15,7 +49,6 @@ async function loadTopologyMapData() {
         topologyMarketsData = await res.json();
         renderTopologyMap();
 
-        // Se nenhuma cidade estiver selecionada, prioriza Pelotas ou a primeira com alerta
         if (!selectedMarket && topologyMarketsData.length > 0) {
             const defaultM = topologyMarketsData.find(m => m.cidade.toLowerCase() === "pelotas") ||
                              topologyMarketsData.find(m => m.status_color === "red") ||
@@ -28,6 +61,40 @@ async function loadTopologyMapData() {
 }
 window.loadTopologyMapData = loadTopologyMapData;
 
+function zoomTopologyRegion(regionKey) {
+    currentMapView = regionKey.toLowerCase();
+    const selState = document.getElementById("mapFilterState");
+    if (selState) {
+        if (regionKey === "sul_sudeste") selState.value = "all";
+        else if (regionKey === "sudeste") selState.value = "sudeste";
+        else if (regionKey === "sul") selState.value = "sul";
+        else if (regionKey === "nordeste") selState.value = "nordeste";
+        else selState.value = "all";
+    }
+    customZoomScale = 1.0;
+    customPanOffsetX = 0;
+    customPanOffsetY = 0;
+    renderTopologyMap();
+}
+window.zoomTopologyRegion = zoomTopologyRegion;
+
+function zoomTopologyMap(action) {
+    if (action === "in") {
+        customZoomScale = Math.min(3.5, customZoomScale + 0.3);
+    } else if (action === "out") {
+        customZoomScale = Math.max(0.7, customZoomScale - 0.3);
+    } else if (action === "reset") {
+        customZoomScale = 1.0;
+        customPanOffsetX = 0;
+        customPanOffsetY = 0;
+        currentMapView = "brasil";
+        const selState = document.getElementById("mapFilterState");
+        if (selState) selState.value = "all";
+    }
+    renderTopologyMap();
+}
+window.zoomTopologyMap = zoomTopologyMap;
+
 function renderTopologyMap() {
     const container = document.getElementById("topologyMapSvgContainer");
     if (!container) return;
@@ -37,29 +104,69 @@ function renderTopologyMap() {
     const healthFilter = (document.getElementById("mapFilterHealth")?.value || "all").toLowerCase();
     const searchFilter = (document.getElementById("mapSearchCity")?.value || "").toLowerCase().trim();
 
+    // Sincroniza visão geográfica com o filtro de estado/região selecionado
+    if (stateFilter === "sudeste") currentMapView = "sudeste";
+    else if (stateFilter === "sul") currentMapView = "sul";
+    else if (stateFilter === "nordeste") currentMapView = "nordeste";
+    else if (stateFilter === "centro-oeste") currentMapView = "centro_oeste";
+    else if (["sp", "rj", "mg"].includes(stateFilter)) currentMapView = "sudeste";
+    else if (["rs", "sc", "pr"].includes(stateFilter)) currentMapView = "sul";
+    else if (["ba", "pe", "ce"].includes(stateFilter)) currentMapView = "nordeste";
+    else if (["df", "go"].includes(stateFilter)) currentMapView = "centro_oeste";
+
+    const view = MAP_BOUNDING_VIEWS[currentMapView] || MAP_BOUNDING_VIEWS["brasil"];
+    const isRegionalZoom = currentMapView !== "brasil";
+
     // Filtra praças
     const filtered = topologyMarketsData.filter(m => {
         if (countryFilter !== "all" && m.pais.toLowerCase() !== countryFilter) return false;
-        if (stateFilter !== "all" && m.uf.toLowerCase() !== stateFilter) return false;
+        
+        if (stateFilter !== "all") {
+            if (stateFilter === "sudeste") {
+                if (!["SP", "RJ", "MG", "ES"].includes(m.uf)) return false;
+            } else if (stateFilter === "sul") {
+                if (!["RS", "SC", "PR"].includes(m.uf)) return false;
+            } else if (stateFilter === "nordeste") {
+                if (!["BA", "PE", "CE", "RN", "PB", "AL", "SE", "MA", "PI"].includes(m.uf)) return false;
+            } else if (stateFilter === "centro-oeste") {
+                if (!["DF", "GO", "MT", "MS"].includes(m.uf)) return false;
+            } else if (m.uf.toLowerCase() !== stateFilter) {
+                return false;
+            }
+        }
+        
         if (healthFilter !== "all" && m.status_color !== healthFilter) return false;
         if (searchFilter && !m.cidade.toLowerCase().includes(searchFilter) && !m.uf.toLowerCase().includes(searchFilter)) return false;
         return true;
     });
 
-    const svgW = 760;
-    const svgH = 560;
+    // Dimensões do Canvas SVG
+    const svgW = 960;
+    const svgH = 680;
 
-    // Projeção Cartográfica Equirretangular calibrada (-76°W a -32°W / +6°N a -36°S)
-    const minLng = -76.0, maxLng = -32.0;
-    const minLat = -36.0, maxLat = 6.0;
+    const minLng = view.minLng;
+    const maxLng = view.maxLng;
+    const minLat = view.minLat;
+    const maxLat = view.maxLat;
+
+    const padX = isRegionalZoom ? 80 : 50;
+    const padY = isRegionalZoom ? 70 : 45;
 
     function projectCoords(lat, lng) {
-        const x = ((lng - minLng) / (maxLng - minLng)) * (svgW - 80) + 40;
-        const y = ((maxLat - lat) / (maxLat - minLat)) * (svgH - 80) + 40;
+        let x = ((lng - minLng) / (maxLng - minLng)) * (svgW - padX * 2) + padX;
+        let y = ((maxLat - lat) / (maxLat - minLat)) * (svgH - padY * 2) + padY;
+
+        if (customZoomScale !== 1.0) {
+            const centerX = svgW / 2;
+            const centerY = svgH / 2;
+            x = centerX + (x - centerX) * customZoomScale + customPanOffsetX;
+            y = centerY + (y - centerY) * customZoomScale + customPanOffsetY;
+        }
+
         return { x: Math.round(x), y: Math.round(y) };
     }
 
-    // Geometria Vetorial Autêntica do Brasil com Costa Atlântica e Fronteiras Regionais
+    // Geometria Vetorial do Brasil
     const BRAZIL_BOUNDARY_COORDS = [
         [4.4, -51.2], [2.2, -50.4], [0.0, -50.0], [-0.8, -48.5], [-1.4, -48.5],
         [-2.3, -44.3], [-2.9, -40.8], [-3.73, -38.52], [-5.15, -35.5], [-5.8, -35.2],
@@ -101,46 +208,46 @@ function renderTopologyMap() {
     const neDividerD = makeSvgLine([[-15.0, -44.0], [-10.0, -46.0], [-2.9, -40.8]]);
 
     let svgHtml = `
-        <svg viewBox="0 0 ${svgW} ${svgH}" style="width: 100%; height: 100%; display: block;" xmlns="http://www.w3.org/2000/svg">
+        <svg viewBox="0 0 ${svgW} ${svgH}" style="width: 100%; height: 100%; display: block;" xmlns="http://www.w3.org/2000/svg" id="topologySvgEl">
             <defs>
                 <radialGradient id="pulseGlowRed" cx="50%" cy="50%" r="50%">
-                    <stop offset="0%" stop-color="#ef4444" stop-opacity="0.85"/>
+                    <stop offset="0%" stop-color="#ef4444" stop-opacity="0.95"/>
                     <stop offset="100%" stop-color="#ef4444" stop-opacity="0"/>
                 </radialGradient>
                 <radialGradient id="pulseGlowYellow" cx="50%" cy="50%" r="50%">
-                    <stop offset="0%" stop-color="#facc15" stop-opacity="0.85"/>
+                    <stop offset="0%" stop-color="#facc15" stop-opacity="0.9"/>
                     <stop offset="100%" stop-color="#facc15" stop-opacity="0"/>
                 </radialGradient>
                 <radialGradient id="pulseGlowGreen" cx="50%" cy="50%" r="50%">
-                    <stop offset="0%" stop-color="#10b981" stop-opacity="0.7"/>
+                    <stop offset="0%" stop-color="#10b981" stop-opacity="0.8"/>
                     <stop offset="100%" stop-color="#10b981" stop-opacity="0"/>
                 </radialGradient>
                 <filter id="shadowGlow" x="-20%" y="-20%" width="140%" height="140%">
-                    <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000" flood-opacity="0.7"/>
+                    <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#000" flood-opacity="0.85"/>
                 </filter>
             </defs>
 
-            <!-- Grade Cartográfica de Fundo (Paralelos e Meridianos) -->
-            <g stroke="rgba(255,255,255,0.035)" stroke-width="1">
-                ${Array.from({ length: 9 }).map((_, i) => `<line x1="${i * 90}" y1="0" x2="${i * 90}" y2="${svgH}"/>`).join("")}
-                ${Array.from({ length: 7 }).map((_, i) => `<line x1="0" y1="${i * 90}" x2="${svgW}" y2="${i * 90}"/>`).join("")}
+            <!-- Grade Cartográfica de Fundo -->
+            <g stroke="rgba(255,255,255,0.03)" stroke-width="1">
+                ${Array.from({ length: 11 }).map((_, i) => `<line x1="${i * 95}" y1="0" x2="${i * 95}" y2="${svgH}"/>`).join("")}
+                ${Array.from({ length: 8 }).map((_, i) => `<line x1="0" y1="${i * 95}" x2="${svgW}" y2="${i * 95}"/>`).join("")}
             </g>
 
-            <!-- GEOMETRIA REAL DO BRASIL: Silhueta Geográfica e Litoral Atlântico -->
+            <!-- GEOMETRIA REAL DO BRASIL: Silhueta Geográfica Ampliada -->
             <g id="svgBrazilGeographicMap">
-                <!-- América do Sul / Países Vizinhos (Contorno de Contexto) -->
+                <!-- Continente Sul-Americano de Fundo -->
                 <path d="${southAmericaPathD}"
                       fill="rgba(15, 23, 42, 0.45)" stroke="rgba(255,255,255,0.06)" stroke-width="1" />
 
-                <!-- Contorno Geográfico Real do Brasil (Formato e Fronteiras Oficiais) -->
+                <!-- Contorno do Brasil -->
                 <path d="${brazilPathD}"
-                      fill="rgba(15, 23, 42, 0.88)" stroke="#38bdf8" stroke-width="1.8" stroke-opacity="0.5" />
+                      fill="rgba(15, 23, 42, 0.92)" stroke="#38bdf8" stroke-width="2" stroke-opacity="0.6" />
 
-                <!-- Linhas Divisórias Regionais Internas (Norte, Nordeste, Centro-Oeste, Sudeste, Sul) -->
-                <path d="${sulDividerD}" fill="none" stroke="rgba(56, 189, 248, 0.25)" stroke-width="1" stroke-dasharray="3,3"/>
-                <path d="${sudesteDividerD}" fill="none" stroke="rgba(56, 189, 248, 0.25)" stroke-width="1" stroke-dasharray="3,3"/>
-                <path d="${coDividerD}" fill="none" stroke="rgba(56, 189, 248, 0.25)" stroke-width="1" stroke-dasharray="3,3"/>
-                <path d="${neDividerD}" fill="none" stroke="rgba(56, 189, 248, 0.25)" stroke-width="1" stroke-dasharray="3,3"/>
+                <!-- Linhas Divisórias Regionais Internas -->
+                <path d="${sulDividerD}" fill="none" stroke="rgba(56, 189, 248, 0.35)" stroke-width="1.2" stroke-dasharray="4,4"/>
+                <path d="${sudesteDividerD}" fill="none" stroke="rgba(56, 189, 248, 0.35)" stroke-width="1.2" stroke-dasharray="4,4"/>
+                <path d="${coDividerD}" fill="none" stroke="rgba(56, 189, 248, 0.35)" stroke-width="1.2" stroke-dasharray="4,4"/>
+                <path d="${neDividerD}" fill="none" stroke="rgba(56, 189, 248, 0.35)" stroke-width="1.2" stroke-dasharray="4,4"/>
             </g>
 
             <!-- Linhas de Enlace Vetorial de RF entre Praças e Torres Transmissoras -->
@@ -154,52 +261,77 @@ function renderTopologyMap() {
         if (m.towers_detail && m.towers_detail.length > 0) {
             const tw = m.towers_detail[0];
             const twPt = projectCoords(tw.lat, tw.lng);
-            const dx = (twPt.x === pt.x && twPt.y === pt.y) ? pt.x + 18 : twPt.x;
-            const dy = (twPt.x === pt.x && twPt.y === pt.y) ? pt.y - 16 : twPt.y;
             
-            const strokeColor = m.status_color === "red" ? "rgba(239, 68, 68, 0.6)" :
-                                (m.status_color === "yellow" ? "rgba(250, 204, 21, 0.5)" : "rgba(16, 185, 129, 0.35)");
+            const dx = (twPt.x === pt.x && twPt.y === pt.y) ? pt.x + 24 : twPt.x;
+            const dy = (twPt.x === pt.x && twPt.y === pt.y) ? pt.y - 20 : twPt.y;
+            
+            const strokeColor = m.status_color === "red" ? "rgba(239, 68, 68, 0.75)" :
+                                (m.status_color === "yellow" ? "rgba(250, 204, 21, 0.65)" : "rgba(16, 185, 129, 0.45)");
             
             svgHtml += `
                 <line x1="${pt.x}" y1="${pt.y}" x2="${dx}" y2="${dy}"
-                      stroke="${strokeColor}" stroke-width="${isSel ? 2.5 : 1}" stroke-dasharray="${isSel ? 'none' : '3,3'}" />
-                <circle cx="${dx}" cy="${dy}" r="${isSel ? 4 : 2.5}" fill="#38bdf8" opacity="0.85" />
+                      stroke="${strokeColor}" stroke-width="${isSel ? 3 : 1.4}" stroke-dasharray="${isSel ? 'none' : '4,3'}" />
+                <!-- Ícone da Torre Transmissora de TV -->
+                <circle cx="${dx}" cy="${dy}" r="${isSel ? 5.5 : 4}" fill="#38bdf8" stroke="#070d18" stroke-width="1.5" />
             `;
         }
     });
 
     svgHtml += `</g><g id="svgPinsLayer">`;
 
-    // Renderiza os Pinos das Cidades com Halos Interativos
+    // Renderiza os Pinos das Cidades com Sistema Anti-Amontoado de Rótulos
     filtered.forEach(m => {
         const pt = projectCoords(m.lat, m.lng);
         const isSel = selectedMarket && selectedMarket.id === m.id;
         const color = m.status_color === "red" ? "#ef4444" : (m.status_color === "yellow" ? "#facc15" : "#10b981");
         const glowId = m.status_color === "red" ? "pulseGlowRed" : (m.status_color === "yellow" ? "pulseGlowYellow" : "pulseGlowGreen");
 
+        // Pega deslocamento específico do nó para não sobrepor cidades vizinhas
+        const labelCfg = CITY_LABEL_CONFIG[m.cidade] || { dx: 18, dy: 4, anchor: "start" };
+        const labelX = pt.x + labelCfg.dx;
+        const labelY = pt.y + labelCfg.dy;
+        const anchor = labelCfg.anchor;
+
+        // Dimensões do Pill de Fundo
+        const textLen = m.cidade.length * 7.0 + 16;
+        let pillX = labelX - 8;
+        if (anchor === "end") pillX = labelX - textLen + 8;
+        else if (anchor === "middle") pillX = labelX - (textLen / 2);
+        const pillY = labelY - 11;
+
         svgHtml += `
             <g class="map-city-node" style="cursor: pointer;" onclick="selectMarket('${m.id}', true)" filter="url(#shadowGlow)">
-                <!-- Halo Pulsante -->
-                <circle cx="${pt.x}" cy="${pt.y}" r="${isSel ? 24 : 16}" fill="url(#${glowId})" opacity="${isSel ? 0.9 : 0.6}">
+                
+                <!-- Linha Guia Sutil do Ponto para o Rótulo -->
+                <line x1="${pt.x}" y1="${pt.y}" x2="${labelX}" y2="${labelY - 1}" 
+                      stroke="rgba(255,255,255,0.25)" stroke-width="1" stroke-dasharray="2,2"/>
+
+                <!-- Halo Pulsante com animação de alerta -->
+                <circle cx="${pt.x}" cy="${pt.y}" r="${isSel ? 26 : 18}" fill="url(#${glowId})" opacity="${isSel ? 0.95 : 0.65}">
                     ${m.status_color === "red" ? `
-                        <animate attributeName="r" values="14;24;14" dur="2s" repeatCount="indefinite"/>
-                        <animate attributeName="opacity" values="0.8;0.2;0.8" dur="2s" repeatCount="indefinite"/>
+                        <animate attributeName="r" values="16;28;16" dur="2s" repeatCount="indefinite"/>
+                        <animate attributeName="opacity" values="0.85;0.2;0.85" dur="2s" repeatCount="indefinite"/>
                     ` : ''}
                 </circle>
 
-                <!-- Anel Externo de Seleção -->
+                <!-- Anel de Seleção Ativa -->
                 ${isSel ? `
-                    <circle cx="${pt.x}" cy="${pt.y}" r="11" fill="none" stroke="#fff" stroke-width="2.2"/>
+                    <circle cx="${pt.x}" cy="${pt.y}" r="12" fill="none" stroke="#fff" stroke-width="2.5"/>
                 ` : ''}
 
                 <!-- Ponto Central do Capture Site -->
-                <circle cx="${pt.x}" cy="${pt.y}" r="${isSel ? 7 : 5.5}" fill="${color}" stroke="#0b1329" stroke-width="1.5"/>
+                <circle cx="${pt.x}" cy="${pt.y}" r="${isSel ? 8 : 6}" fill="${color}" stroke="#070d18" stroke-width="2"/>
 
-                <!-- Rótulo do Nome da Praça -->
-                <text x="${pt.x}" y="${pt.y + 16}" text-anchor="middle"
-                      fill="${isSel ? '#ffffff' : '#cbd5e1'}"
-                      font-family="Inter, sans-serif" font-size="${isSel ? '12px' : '10px'}" font-weight="${isSel ? '800' : '600'}"
-                      style="paint-order: stroke; stroke: #070d18; stroke-width: 3px; stroke-linecap: butt; stroke-linejoin: miter;">
+                <!-- Pill de Fundo de Alto Contraste (Garante Leitura Limpa) -->
+                <rect x="${pillX}" y="${pillY}" width="${textLen}" height="18" rx="4"
+                      fill="${isSel ? '#1e293b' : 'rgba(7, 13, 24, 0.94)'}"
+                      stroke="${isSel ? '#38bdf8' : (m.status_color === 'red' ? '#ef4444' : 'rgba(56, 189, 248, 0.45)')}"
+                      stroke-width="${isSel ? 1.6 : 1}" />
+
+                <!-- Texto do Nome da Praça -->
+                <text x="${labelX}" y="${labelY + 2}" text-anchor="${anchor}"
+                      fill="${isSel ? '#ffffff' : (m.status_color === 'red' ? '#fca5a5' : '#e2e8f0')}"
+                      font-family="Inter, -apple-system, sans-serif" font-size="${isSel ? '12px' : '11px'}" font-weight="${isSel ? '800' : '700'}">
                     ${m.cidade}
                 </text>
             </g>
@@ -208,6 +340,19 @@ function renderTopologyMap() {
 
     svgHtml += `</g></svg>`;
     container.innerHTML = svgHtml;
+
+    // Configura Zoom por Roda do Mouse
+    const svgEl = document.getElementById("topologySvgEl");
+    if (svgEl) {
+        svgEl.onwheel = function(e) {
+            e.preventDefault();
+            if (e.deltaY < 0) {
+                zoomTopologyMap("in");
+            } else {
+                zoomTopologyMap("out");
+            }
+        };
+    }
 }
 
 function selectMarket(marketId, openModal = false) {
@@ -360,201 +505,173 @@ function renderTerrainCanvas(market) {
     const canvas = document.getElementById("rfTerrainCanvas");
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
     const w = canvas.width;
     const h = canvas.height;
-
     ctx.clearRect(0, 0, w, h);
 
-    const padLeft = 60, padRight = 60, padTop = 30, padBottom = 40;
-    const plotW = w - padLeft - padRight;
-    const plotH = h - padTop - padBottom;
+    const bgGrad = ctx.createLinearGradient(0, 0, 0, h);
+    bgGrad.addColorStop(0, "#070d18");
+    bgGrad.addColorStop(1, "#0f172a");
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, w, h);
 
-    const profile = market.terrain_profile || [
-        { km: 0.0, alt_m: 320, label: "Torre" },
-        { km: market.distance_km * 0.5, alt_m: 60, label: "Vale" },
-        { km: market.distance_km, alt_m: 60, label: "Site" }
-    ];
-
-    const maxDist = Math.max(1, market.distance_km || 15);
-    const maxAlt = Math.max(350, ...profile.map(p => p.alt_m * 1.25));
-
-    function mapX(km) { return padLeft + (km / maxDist) * plotW; }
-    function mapY(alt) { return padTop + plotH - (alt / maxAlt) * plotH; }
-
-    // 1. Grade de Fundo (Linhas de Elevação e Distância)
     ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
     ctx.lineWidth = 1;
-    for (let alt = 0; alt <= maxAlt; alt += 100) {
-        const y = mapY(alt);
-        ctx.beginPath(); ctx.moveTo(padLeft, y); ctx.lineTo(w - padRight, y); ctx.stroke();
-        ctx.fillStyle = "#64748b";
-        ctx.font = "10px monospace";
-        ctx.textAlign = "right";
-        ctx.fillText(`${alt}m`, padLeft - 8, y + 3);
+    for (let x = 60; x < w - 60; x += 80) {
+        ctx.beginPath();
+        ctx.moveTo(x, 20);
+        ctx.lineTo(x, h - 30);
+        ctx.stroke();
     }
-    for (let km = 0; km <= maxDist; km += Math.max(2, Math.round(maxDist / 6))) {
-        const x = mapX(km);
-        ctx.beginPath(); ctx.moveTo(x, padTop); ctx.lineTo(x, padTop + plotH); ctx.stroke();
-        ctx.fillStyle = "#64748b";
-        ctx.font = "10px monospace";
-        ctx.textAlign = "center";
-        ctx.fillText(`${km} km`, x, padTop + plotH + 18);
+    for (let y = 30; y < h - 30; y += 40) {
+        ctx.beginPath();
+        ctx.moveTo(50, y);
+        ctx.lineTo(w - 50, y);
+        ctx.stroke();
     }
 
-    // 2. Pontos Extremos: Transmissor (Esquerda) e Receptor (Direita)
-    const txX = mapX(0), txY = mapY(profile[0].alt_m);
-    const rxX = mapX(maxDist), rxY = mapY(profile[profile.length - 1].alt_m);
+    const distKm = market.distance_km || 14.8;
+    const siteElev = market.site_elevation_m || 36;
+    const mastHeight = market.rx_antenna_height_m || 24;
+    const siteTotalAlt = siteElev + mastHeight;
 
-    // 3. Elipsoide da 1ª Zona de Fresnel (60%) ao Redor do Feixe
-    ctx.save();
+    const towerElev = market.towers_detail?.[0]?.cota_m || (market.cidade.toLowerCase() === "pelotas" ? 320 : 250);
+    const towerMast = 60;
+    const towerTotalAlt = towerElev + towerMast;
+
+    const maxAlt = Math.max(towerTotalAlt, siteTotalAlt, 380) + 50;
+    const minAlt = 0;
+
+    function altToY(alt) {
+        return h - 35 - ((alt - minAlt) / (maxAlt - minAlt)) * (h - 70);
+    }
+
+    const xSite = 90;
+    const xTower = w - 90;
+
     ctx.beginPath();
-    const midX = (txX + rxX) / 2;
-    const midY = (txY + rxY) / 2;
-    const angle = Math.atan2(rxY - txY, rxX - txX);
-    const fresnelRadiusPx = Math.min(32, plotH * 0.18);
-    const lengthPx = Math.hypot(rxX - txX, rxY - txY);
+    ctx.moveTo(xSite, h - 35);
+    ctx.lineTo(xSite, altToY(siteElev));
 
-    ctx.translate(midX, midY);
-    ctx.rotate(angle);
-    ctx.ellipse(0, 0, lengthPx / 2, fresnelRadiusPx, 0, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(56, 189, 248, 0.08)";
+    const steps = 18;
+    const hasObstacle = market.cidade.toLowerCase() === "pelotas" || (market.los_status && market.los_status.includes("Obstru"));
+
+    for (let i = 1; i < steps; i++) {
+        const frac = i / steps;
+        const xStep = xSite + frac * (xTower - xSite);
+        let groundAlt = siteElev + frac * (towerElev - siteElev);
+
+        if (hasObstacle) {
+            const bell = Math.exp(-Math.pow((frac - 0.52) / 0.16, 2));
+            groundAlt += 68 * bell;
+        } else {
+            const ripple = Math.sin(frac * Math.PI * 3) * 14;
+            groundAlt += ripple;
+        }
+
+        ctx.lineTo(xStep, altToY(Math.max(10, groundAlt)));
+    }
+
+    ctx.lineTo(xTower, altToY(towerElev));
+    ctx.lineTo(xTower, h - 35);
+    ctx.closePath();
+
+    const terrainGrad = ctx.createLinearGradient(0, altToY(towerElev), 0, h - 35);
+    terrainGrad.addColorStop(0, "rgba(30, 41, 59, 0.95)");
+    terrainGrad.addColorStop(1, "rgba(15, 23, 42, 0.98)");
+    ctx.fillStyle = terrainGrad;
     ctx.fill();
-    ctx.strokeStyle = "rgba(56, 189, 248, 0.35)";
+    ctx.strokeStyle = "#38bdf8";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    const ySiteAntenna = altToY(siteTotalAlt);
+    ctx.strokeStyle = "#94a3b8";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(xSite, altToY(siteElev));
+    ctx.lineTo(xSite, ySiteAntenna);
+    ctx.stroke();
+
+    ctx.fillStyle = "#38bdf8";
+    ctx.beginPath();
+    ctx.arc(xSite, ySiteAntenna, 5, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 11px Inter, sans-serif";
+    ctx.fillText("Capture Site (RX)", xSite - 45, ySiteAntenna - 14);
+    ctx.font = "10px monospace";
+    ctx.fillStyle = "#94a3b8";
+    ctx.fillText(`${siteTotalAlt}m (${siteElev}m relevo + ${mastHeight}m mastro)`, xSite - 45, ySiteAntenna - 2);
+
+    const yTowerAntenna = altToY(towerTotalAlt);
+    ctx.strokeStyle = "#facc15";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(xTower, altToY(towerElev));
+    ctx.lineTo(xTower, yTowerAntenna);
+    ctx.stroke();
+
+    ctx.fillStyle = "#ef4444";
+    ctx.beginPath();
+    ctx.arc(xTower, yTowerAntenna, 6, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 11px Inter, sans-serif";
+    ctx.fillText("Torre Transmissora (TX)", xTower - 60, yTowerAntenna - 16);
+    ctx.font = "10px monospace";
+    ctx.fillStyle = "#facc15";
+    ctx.fillText(`${towerTotalAlt}m (${towerElev}m cota + ${towerMast}m torre)`, xTower - 60, yTowerAntenna - 4);
+
+    ctx.beginPath();
+    ctx.save();
+    ctx.strokeStyle = hasObstacle ? "rgba(239, 68, 68, 0.45)" : "rgba(56, 189, 248, 0.35)";
+    ctx.lineWidth = 1.5;
     ctx.setLineDash([4, 4]);
+
+    for (let i = 0; i <= steps; i++) {
+        const frac = i / steps;
+        const xStep = xSite + frac * (xTower - xSite);
+        const yLos = ySiteAntenna + frac * (yTowerAntenna - ySiteAntenna);
+        const rFresnel = Math.sin(frac * Math.PI) * 24;
+        if (i === 0) ctx.moveTo(xStep, yLos - rFresnel);
+        else ctx.lineTo(xStep, yLos - rFresnel);
+    }
+    for (let i = steps; i >= 0; i--) {
+        const frac = i / steps;
+        const xStep = xSite + frac * (xTower - xSite);
+        const yLos = ySiteAntenna + frac * (yTowerAntenna - ySiteAntenna);
+        const rFresnel = Math.sin(frac * Math.PI) * 24;
+        ctx.lineTo(xStep, yLos + rFresnel);
+    }
+    ctx.closePath();
+    ctx.fillStyle = hasObstacle ? "rgba(239, 68, 68, 0.08)" : "rgba(56, 189, 248, 0.08)";
+    ctx.fill();
     ctx.stroke();
     ctx.restore();
 
-    // 4. Feixe Direto de Visada Ótica (LOS Ray)
     ctx.beginPath();
-    ctx.moveTo(txX, txY);
-    ctx.lineTo(rxX, rxY);
-    ctx.strokeStyle = "#38bdf8";
-    ctx.lineWidth = 2;
-    ctx.setLineDash([6, 3]);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    // 5. Perfil de Relevo do Terreno (Polígono Preenchido)
-    ctx.beginPath();
-    ctx.moveTo(padLeft, padTop + plotH);
-    profile.forEach((p, idx) => {
-        const px = mapX(p.km);
-        const py = mapY(p.alt_m);
-        if (idx === 0) ctx.lineTo(px, py);
-        else ctx.lineTo(px, py);
-    });
-    ctx.lineTo(padLeft + plotW, padTop + plotH);
-    ctx.closePath();
-
-    const terrainGrad = ctx.createLinearGradient(0, padTop, 0, padTop + plotH);
-    terrainGrad.addColorStop(0, "rgba(16, 185, 129, 0.55)");
-    terrainGrad.addColorStop(0.5, "rgba(5, 150, 105, 0.35)");
-    terrainGrad.addColorStop(1, "rgba(15, 23, 42, 0.95)");
-    ctx.fillStyle = terrainGrad;
-    ctx.fill();
-
-    ctx.strokeStyle = "#10b981";
+    ctx.strokeStyle = hasObstacle ? "#ef4444" : "#10b981";
     ctx.lineWidth = 2.5;
-    ctx.beginPath();
-    profile.forEach((p, idx) => {
-        const px = mapX(p.km);
-        const py = mapY(p.alt_m);
-        if (idx === 0) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
-    });
+    ctx.moveTo(xSite, ySiteAntenna);
+    ctx.lineTo(xTower, yTowerAntenna);
     ctx.stroke();
 
-    // 6. Desenho das Estruturas: Torre Transmissora (Esquerda) e Mastro CS (Direita)
-    // Torre Transmissora
-    ctx.fillStyle = "#ef4444";
-    ctx.fillRect(txX - 3, txY, 6, mapY(0) - txY);
-    ctx.beginPath();
-    ctx.arc(txX, txY - 4, 5, 0, Math.PI * 2);
-    ctx.fillStyle = "#38bdf8";
-    ctx.fill();
-    ctx.fillStyle = "#f87171";
-    ctx.font = "bold 11px Inter, sans-serif";
+    const xMid = (xSite + xTower) / 2;
+    const yMid = (ySiteAntenna + yTowerAntenna) / 2 - 12;
+    ctx.fillStyle = "#0f172a";
+    ctx.fillRect(xMid - 65, yMid - 12, 130, 20);
+    ctx.strokeStyle = hasObstacle ? "#ef4444" : "#10b981";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(xMid - 65, yMid - 12, 130, 20);
+
+    ctx.fillStyle = hasObstacle ? "#fca5a5" : "#6ee7b7";
+    ctx.font = "bold 10px Inter, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(`${distKm.toFixed(1)} km • ${hasObstacle ? 'Obstrução Fresnel' : 'Visada Direta'}`, xMid, yMid + 2);
     ctx.textAlign = "left";
-    ctx.fillText("📡 " + (market.main_tower || "Torre Transmissora"), txX + 8, txY - 8);
-
-    // Mastro Receptora Capture Site
-    ctx.fillStyle = "#10b981";
-    ctx.fillRect(rxX - 3, rxY, 6, mapY(0) - rxY);
-    ctx.beginPath();
-    ctx.arc(rxX, rxY - 4, 5, 0, Math.PI * 2);
-    ctx.fillStyle = "#10b981";
-    ctx.fill();
-    ctx.fillStyle = "#34d399";
-    ctx.font = "bold 11px Inter, sans-serif";
-    ctx.textAlign = "right";
-    ctx.fillText(`🏢 Capture Site (${market.cidade})`, rxX - 8, rxY - 8);
-
-    // 7. Indicação de Morro Intermediário / Obstrução de Fresnel
-    const noticeEl = document.getElementById("rfTerrainDiagnosisNotice");
-    const hill = profile.find(p => p.is_hill);
-    if (hill) {
-        const hx = mapX(hill.km);
-        const hy = mapY(hill.alt_m);
-        
-        ctx.beginPath();
-        ctx.arc(hx, hy, 7, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(234, 179, 8, 0.4)";
-        ctx.fill();
-        ctx.strokeStyle = "#facc15";
-        ctx.lineWidth = 2;
-        ctx.stroke();
-
-        ctx.fillStyle = "#facc15";
-        ctx.font = "bold 10px monospace";
-        ctx.textAlign = "center";
-        ctx.fillText(`▲ ${hill.label} (${hill.alt_m}m)`, hx, hy - 12);
-
-        if (noticeEl) {
-            noticeEl.innerHTML = `⚠️ <strong>ALERTA DE OBSTRUÇÃO FRESNEL:</strong> Morro intermediário no km ${hill.km} (${hill.alt_m}m) intercepta 28% da 1ª Zona de Fresnel. Atenuação calculada por gume de faca: <strong>-8.5 dB</strong> nas portadoras UHF altas.`;
-            noticeEl.style.color = "#facc15";
-        }
-    } else {
-        if (noticeEl) {
-            noticeEl.innerHTML = `✅ <strong>LINHA DE VISADA 100% DESOBSTRUÍDA (LOS):</strong> O feixe de micro-ondas UHF possui folga total acima do terreno sem risco de difração por relevo.`;
-            noticeEl.style.color = "#34d399";
-        }
-    }
 }
-
-function jumpToCityIncidents() {
-    if (!selectedMarket) return;
-    
-    if (typeof switchTab === "function") switchTab("incidents");
-
-    const citySelect = document.getElementById("incFilterCity");
-    if (citySelect) {
-        let optExists = false;
-        for (let i = 0; i < citySelect.options.length; i++) {
-            if (citySelect.options[i].value.toLowerCase() === selectedMarket.cidade.toLowerCase()) {
-                citySelect.selectedIndex = i;
-                optExists = true;
-                break;
-            }
-        }
-        if (!optExists) {
-            const opt = document.createElement("option");
-            opt.value = selectedMarket.cidade;
-            opt.textContent = `${selectedMarket.cidade} (${selectedMarket.uf})`;
-            citySelect.appendChild(opt);
-            citySelect.value = selectedMarket.cidade;
-        }
-    }
-
-    if (typeof loadIncidentsHistoryData === "function") loadIncidentsHistoryData();
-}
-window.jumpToCityIncidents = jumpToCityIncidents;
-
-// Inicialização automática quando a aba de mapa for aberta
-document.addEventListener("DOMContentLoaded", () => {
-    const mapTabBtn = document.querySelector('button[data-tab="map"]');
-    if (mapTabBtn) {
-        mapTabBtn.addEventListener("click", () => {
-            setTimeout(loadTopologyMapData, 50);
-        });
-    }
-});

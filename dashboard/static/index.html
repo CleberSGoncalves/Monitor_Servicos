@@ -3622,7 +3622,11 @@
           <div>
             <label style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;">Região / Estado</label>
             <select id="mapFilterState" class="form-input" style="width: 100%;" onchange="renderTopologyMap()">
-              <option value="all">Todos os Estados / Regiões</option>
+              <option value="all">Todos os Estados / Regiões (Visão Completa)</option>
+              <option value="sudeste">🏙️ Região Sudeste (SP, RJ, MG)</option>
+              <option value="sul">🌾 Região Sul (RS, SC, PR)</option>
+              <option value="nordeste">🏖️ Região Nordeste (BA, PE, CE)</option>
+              <option value="centro-oeste">🏛️ Região Centro-Oeste (DF, GO)</option>
               <option value="RS">Rio Grande do Sul (RS)</option>
               <option value="SP">São Paulo (SP)</option>
               <option value="RJ">Rio de Janeiro (RJ)</option>
@@ -3655,11 +3659,23 @@
       <!-- Container do Mapa Interativo & Painel de Detalhes da Praça -->
       <div style="display: grid; grid-template-columns: 1fr 340px; gap: 20px; align-items: start;">
         <!-- Canvas / SVG do Mapa -->
-        <div class="panel-card" style="position: relative; overflow: hidden; padding: 12px; background: #070d18; border: 1px solid rgba(56, 189, 248, 0.2); min-height: 560px; display: flex; flex-direction: column;">
+        <div class="panel-card" style="position: relative; overflow: hidden; padding: 12px; background: #070d18; border: 1px solid rgba(56, 189, 248, 0.2); min-height: 680px; display: flex; flex-direction: column;">
           <div style="position: absolute; top: 16px; left: 16px; z-index: 10; font-size: 11px; font-family: monospace; color: #94a3b8; background: rgba(15, 23, 42, 0.85); padding: 4px 10px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.08);">
-            PROJEÇÃO: LATAM EPSG:4326 • CLIQUE NO NÓ PARA DETALHES DE RF
+            <i class="fas fa-satellite-dish text-blue"></i> TOPOLOGIA RF • CLIQUE NO NÓ PARA DETALHES
           </div>
-          <div id="topologyMapSvgContainer" style="width: 100%; min-height: 560px; height: 560px; position: relative;">
+
+          <!-- Botões Flutuantes de Zoom e Atalhos Regionais -->
+          <div style="position: absolute; top: 16px; right: 16px; z-index: 10; display: flex; gap: 6px; align-items: center; background: rgba(15, 23, 42, 0.9); padding: 4px 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1);">
+            <button type="button" class="btn-secondary" style="font-size: 11px; padding: 4px 8px; font-weight: 700;" onclick="zoomTopologyMap('in')" title="Aproximar Zoom"><i class="fas fa-plus"></i></button>
+            <button type="button" class="btn-secondary" style="font-size: 11px; padding: 4px 8px; font-weight: 700;" onclick="zoomTopologyMap('out')" title="Afastar Zoom"><i class="fas fa-minus"></i></button>
+            <button type="button" class="btn-secondary" style="font-size: 11px; padding: 4px 10px; font-weight: 700;" onclick="zoomTopologyMap('reset')" title="Visão Geral Brasil"><i class="fas fa-globe-americas"></i> Brasil</button>
+            <button type="button" class="btn-secondary" style="font-size: 11px; padding: 4px 10px; font-weight: 700; background: rgba(56, 189, 248, 0.15); border-color: rgba(56, 189, 248, 0.4);" onclick="zoomTopologyRegion('sul_sudeste')" title="Foco Sul e Sudeste">🏙️ Sul & Sudeste</button>
+            <button type="button" class="btn-secondary" style="font-size: 11px; padding: 4px 10px; font-weight: 700; background: rgba(56, 189, 248, 0.15); border-color: rgba(56, 189, 248, 0.4);" onclick="zoomTopologyRegion('sudeste')" title="Zoom Sudeste">🏙️ Sudeste</button>
+            <button type="button" class="btn-secondary" style="font-size: 11px; padding: 4px 10px; font-weight: 700; background: rgba(16, 185, 129, 0.15); border-color: rgba(16, 185, 129, 0.4);" onclick="zoomTopologyRegion('sul')" title="Zoom Sul">🌾 Sul</button>
+            <button type="button" class="btn-secondary" style="font-size: 11px; padding: 4px 10px; font-weight: 700; background: rgba(250, 204, 21, 0.15); border-color: rgba(250, 204, 21, 0.4);" onclick="zoomTopologyRegion('nordeste')" title="Zoom Nordeste">🏖️ Nordeste</button>
+          </div>
+
+          <div id="topologyMapSvgContainer" style="width: 100%; min-height: 680px; height: 680px; position: relative;">
             <!-- Renderizado dinamicamente via topology_map.js -->
           </div>
         </div>
@@ -6832,14 +6848,14 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=3.9.15"></script>
-  <script src="/static/js/ai_insights.js?v=3.9.15"></script>
-  <script src="/static/js/fleet_ops.js?v=3.9.15"></script>
-  <script src="/static/js/remote_commands.js?v=3.9.15"></script>
-  <script src="/static/js/signals_analysis.js?v=3.9.15"></script>
-  <script src="/static/js/mosaic_wall.js?v=3.9.15"></script>
-  <script src="/static/js/topology_map.js?v=3.9.15"></script>
-  <script src="/static/js/network_link.js?v=3.9.15"></script>
+  <script src="/static/js/app.js?v=3.9.16"></script>
+  <script src="/static/js/ai_insights.js?v=3.9.16"></script>
+  <script src="/static/js/fleet_ops.js?v=3.9.16"></script>
+  <script src="/static/js/remote_commands.js?v=3.9.16"></script>
+  <script src="/static/js/signals_analysis.js?v=3.9.16"></script>
+  <script src="/static/js/mosaic_wall.js?v=3.9.16"></script>
+  <script src="/static/js/topology_map.js?v=3.9.16"></script>
+  <script src="/static/js/network_link.js?v=3.9.16"></script>
 
 
 
