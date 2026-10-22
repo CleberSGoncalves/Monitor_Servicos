@@ -101,6 +101,7 @@ function setupTabNavigation() {
 
             if (tabName === "ai") {
                 loadAiSuggestions();
+                if (typeof loadHomologationCountBadge === "function") loadHomologationCountBadge();
             } else if (tabName === "configs") {
                 loadThresholds();
                 loadUsersList();

@@ -84,6 +84,17 @@ def init_thresholds():
     """Popula os limiares padrão se ainda não existirem."""
     with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
         cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS alert_thresholds (
+                key TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                category TEXT NOT NULL,
+                value REAL NOT NULL,
+                unit TEXT NOT NULL,
+                is_enabled INTEGER DEFAULT 1,
+                description TEXT
+            )
+        """)
         for t in DEFAULT_THRESHOLDS:
             cursor.execute("""
                 INSERT OR IGNORE INTO alert_thresholds (key, name, category, value, unit, is_enabled, description)
@@ -113,6 +124,26 @@ def update_threshold(key: str, value: float, is_enabled: bool) -> bool:
         """, (value, 1 if is_enabled else 0, key))
         conn.commit()
         return cursor.rowcount > 0
+
+
+def add_or_register_threshold(key: str, name: str, category: str, value: float, unit: str, is_enabled: bool = True, description: str = "") -> bool:
+    """Cadastra ou atualiza um novo limiar de monitoramento no banco (usado pela homologação de IA)."""
+    init_thresholds()
+    with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO alert_thresholds (key, name, category, value, unit, is_enabled, description)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(key) DO UPDATE SET
+                name = excluded.name,
+                category = excluded.category,
+                value = excluded.value,
+                unit = excluded.unit,
+                is_enabled = excluded.is_enabled,
+                description = excluded.description
+        """, (key, name, category, value, unit, 1 if is_enabled else 0, description))
+        conn.commit()
+        return True
 
 
 init_thresholds()

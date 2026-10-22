@@ -1,3 +1,10 @@
+from ai_homologation import (
+    get_homologation_items, approve_suggestion_for_homologation,
+    run_pilot_validation_tests, deploy_feature_to_fleet
+)
+from mp4_analyzer import (
+    analyze_channel_mp4_samples, register_mp4_threshold_from_diagnosis
+)
 from signals_analysis import (
     get_channel_telemetry_history, diagnose_channel_with_ai, get_all_chronic_issues
 )
@@ -371,6 +378,65 @@ async def decide_suggestion(req: AiDecisionRequest, user: dict = Depends(get_cur
     if not ok:
         raise HTTPException(status_code=400, detail="Sugestão não encontrada")
     return {"success": True, "status": "aprovada" if req.approve else "recusada"}
+
+
+# ==========================================
+# Esteira de Homologação e Validação de IA
+# ==========================================
+class HomologationApproveRequest(BaseModel):
+    suggestion_id: str
+    pilot_host: str = "São Paulo - CS 1"
+
+class HomologationActionRequest(BaseModel):
+    homologation_id: str
+
+class Mp4AnalyzeRequest(BaseModel):
+    praca: str
+    canal: str
+    interval_days: int = 3
+    anomaly_type: str = "all"
+
+class Mp4RegisterThresholdRequest(BaseModel):
+    threshold_data: Dict[str, Any]
+
+@app.get("/api/ai/homologation")
+async def list_homologation_items(user: dict = Depends(get_current_user)):
+    return get_homologation_items()
+
+@app.post("/api/ai/homologation/approve")
+async def approve_for_homologation(req: HomologationApproveRequest, user: dict = Depends(get_current_user)):
+    res = approve_suggestion_for_homologation(req.suggestion_id, req.pilot_host)
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("error", "Erro ao homologar"))
+    return res
+
+@app.post("/api/ai/homologation/test")
+async def test_homologation(req: HomologationActionRequest, user: dict = Depends(get_current_user)):
+    res = run_pilot_validation_tests(req.homologation_id)
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("error", "Erro ao executar testes"))
+    return res
+
+@app.post("/api/ai/homologation/deploy")
+async def deploy_homologation(req: HomologationActionRequest, user: dict = Depends(get_current_user)):
+    res = deploy_feature_to_fleet(req.homologation_id)
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("error", "Erro ao implantar"))
+    return res
+
+# ==========================================
+# Análise de Gravações MP4 ATRIA com Player
+# ==========================================
+@app.post("/api/ai/mp4/analyze")
+async def analyze_mp4(req: Mp4AnalyzeRequest, user: dict = Depends(get_current_user)):
+    return analyze_channel_mp4_samples(req.praca, req.canal, req.interval_days, req.anomaly_type)
+
+@app.post("/api/ai/mp4/register-threshold")
+async def register_mp4_threshold(req: Mp4RegisterThresholdRequest, user: dict = Depends(get_current_user)):
+    res = register_mp4_threshold_from_diagnosis(req.threshold_data)
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("error", "Erro ao cadastrar limiar"))
+    return res
 
 
 # ==========================================

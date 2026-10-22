@@ -654,21 +654,218 @@
       </div>
     </section>
 
-    <!-- TAB 4: INTELIGÊNCIA IA PROATIVA -->
+    <!-- TAB 4: INTELIGÊNCIA IA PROATIVA, HOMOLOGAÇÃO & AUDITORIA DE MP4 -->
     <section class="content-section" id="tab-ai">
-      <div class="panel-card">
-        <div class="panel-header">
-          <div>
-            <div class="panel-title"><span>🧠</span> Motor de Inteligência Artificial Proativa</div>
-            <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Analisa correlações de telemetria, desgaste de tuners e padrões de queda para sugerir novas automações</div>
+      <!-- Sub-navegação interna da Inteligência Artificial -->
+      <div class="rc-subtabs-nav" style="margin-bottom: 20px;">
+        <button class="rc-subtab-btn active" id="btn-ai-subtab-suggestions" onclick="switchAiSubtab('suggestions')">
+          <i class="fas fa-brain"></i> 🧠 Sugestões Proativas da Frota
+        </button>
+        <button class="rc-subtab-btn" id="btn-ai-subtab-homologation" onclick="switchAiSubtab('homologation')">
+          <i class="fas fa-flask"></i> 🧪 Esteira de Homologação & Validação no Agente <span class="badge" id="ai-homolog-count-badge" style="background: rgba(37, 99, 235, 0.3); font-size: 10px; margin-left: 4px;">0</span>
+        </button>
+        <button class="rc-subtab-btn" id="btn-ai-subtab-mp4" onclick="switchAiSubtab('mp4')">
+          <i class="fas fa-film"></i> 🎬 Análise de Amostras MP4 & Diagnóstico de Falhas
+        </button>
+      </div>
+
+      <!-- SUBTAB 1: SUGESTÕES PROATIVAS DA FROTA -->
+      <div id="ai-content-suggestions">
+        <div class="panel-card">
+          <div class="panel-header">
+            <div>
+              <div class="panel-title"><span>🧠</span> Motor de Inteligência Artificial Proativa</div>
+              <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Analisa correlações de telemetria, desgaste de tuners, saturação de I/O e padrões de queda para sugerir novas automações</div>
+            </div>
+            <button class="btn-primary" id="btnTriggerAi" onclick="triggerAiAnalysis()">
+              <span>✨</span> Analisar Todo o Sistema com IA
+            </button>
           </div>
-          <button class="btn-primary" id="btnTriggerAi" onclick="triggerAiAnalysis()">
-            <span>✨</span> Analisar Todo o Sistema com IA
-          </button>
+
+          <div class="ai-cards-grid" id="aiCardsGrid">
+            <!-- Cards dinâmicos gerados pela IA com botão 'Aprovar para Homologação' -->
+          </div>
+        </div>
+      </div>
+
+      <!-- SUBTAB 2: ESTEIRA DE HOMOLOGAÇÃO & VALIDAÇÃO NO AGENTE -->
+      <div id="ai-content-homologation" style="display: none;">
+        <div class="panel-card" style="margin-bottom: 20px;">
+          <div class="panel-header">
+            <div>
+              <div class="panel-title"><span>🧪</span> Governança de Homologação de Novas Funcionalidades no Agente</div>
+              <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+                Toda nova monitoração aprovada pela IA é primeiramente validada em praça piloto (Canary), passa por auditoria de estabilidade e, ao ser promovida, cadastra automaticamente os limiares na aba Configurações.
+              </div>
+            </div>
+            <button class="btn-secondary" onclick="loadHomologationPipeline()"><i class="fas fa-sync-alt"></i> Atualizar Esteira</button>
+          </div>
         </div>
 
-        <div class="ai-cards-grid" id="aiCardsGrid">
-          <!-- Cards dinâmicos gerados pela IA -->
+        <div id="ai-homologation-container" style="display: flex; flex-direction: column; gap: 16px;">
+          <!-- Cards de Homologação renderizados dinamicamente -->
+        </div>
+      </div>
+
+      <!-- SUBTAB 3: ANÁLISE DE AMOSTRAS MP4 ATRIA & PLAYER DE FALHAS -->
+      <div id="ai-content-mp4" style="display: none;">
+        <!-- Seletor e Barra de Controles -->
+        <div class="panel-card" style="margin-bottom: 20px; padding: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
+            <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+              <div>
+                <label style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;">Praça / Host</label>
+                <select id="mp4FilterPraca" class="form-input" style="min-width: 200px;" onchange="onMp4PracaChanged()">
+                  <option value="">Carregando praças...</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;">Canal Gravado (ATRIA)</label>
+                <select id="mp4FilterCanal" class="form-input" style="min-width: 200px;">
+                  <option value="">Selecione a praça primeiro</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;">Janela de Amostragem</label>
+                <select id="mp4FilterDays" class="form-input" style="min-width: 160px;">
+                  <option value="1">Últimas 24 Horas</option>
+                  <option value="3" selected>Últimos 3 Dias</option>
+                  <option value="7">Últimos 7 Dias</option>
+                  <option value="15">Últimos 15 Dias</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;">Tipo de Inspeção</label>
+                <select id="mp4FilterType" class="form-input" style="min-width: 180px;">
+                  <option value="all">Todos os Padrões de Falha</option>
+                  <option value="freeze">Congelamento / I-Frame</option>
+                  <option value="macroblock">Macroblocos / Slice Loss</option>
+                  <option value="audio_drop">Drop de Áudio AAC / Silêncio</option>
+                </select>
+              </div>
+            </div>
+
+            <div style="display: flex; gap: 10px; align-items: flex-end;">
+              <button class="btn-primary" id="btnStartMp4Analysis" onclick="startMp4SampleAnalysis()" style="background: linear-gradient(135deg, #2563eb, #9333ea); border: none; font-weight: 700; padding: 10px 18px;">
+                <i class="fas fa-microscope"></i> 🔍 Extrair Amostras e Analisar com IA
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Barra de Progresso Realista e Detalhada -->
+        <div id="mp4ProgressBarContainer" style="display: none; margin-bottom: 20px;" class="panel-card">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <div style="font-weight: 600; font-size: 13px; color: #fff;" id="mp4ProgressStageTitle">
+              <i class="fas fa-circle-notch fa-spin text-blue"></i> Analisando Amostras MP4 no Capture Site...
+            </div>
+            <div style="font-size: 12px; font-weight: 700; color: #38bdf8;" id="mp4ProgressPercent">0%</div>
+          </div>
+          <div style="width: 100%; height: 8px; background: rgba(255,255,255,0.08); border-radius: 4px; overflow: hidden; margin-bottom: 10px;">
+            <div id="mp4ProgressBarFill" style="width: 0%; height: 100%; background: linear-gradient(90deg, #2563eb, #38bdf8, #10b981); transition: width 0.4s ease;"></div>
+          </div>
+          <div id="mp4ProgressDetailText" style="font-size: 11px; color: var(--text-muted); font-family: monospace;">Iniciando protocolo de inspeção...</div>
+        </div>
+
+        <!-- Painel de Resultados com Player de Vídeo e Cards de Soluções -->
+        <div id="mp4ResultsContainer" style="display: none;">
+          <!-- 2 Colunas: Player de Vídeo à Esquerda e Diagnóstico/Cards à Direita -->
+          <div style="display: grid; grid-template-columns: minmax(420px, 1.2fr) 1fr; gap: 20px; margin-bottom: 20px;">
+            
+            <!-- Coluna 1: Player Interativo de Amostra de Vídeo -->
+            <div class="panel-card" style="display: flex; flex-direction: column;">
+              <div class="panel-header" style="margin-bottom: 10px;">
+                <div>
+                  <div class="panel-title" style="font-size: 14px;"><i class="fas fa-play-circle text-blue"></i> Amostra Forense da Falha mais Recorrente</div>
+                  <div id="mp4PlayerMetadata" style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">RedeGlobo_20261021_143000_sample.mp4 (1080i H.264 / AAC)</div>
+                </div>
+                <span class="badge" id="mp4PlayerRecurrenceBadge" style="background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid #ef4444; font-size: 11px;">
+                  14x no período
+                </span>
+              </div>
+
+              <!-- Tela do Player (Canvas Container) -->
+              <div style="position: relative; width: 100%; height: 280px; background: #000; border-radius: var(--radius-sm); border: 1px solid var(--border-color); overflow: hidden; display: flex; align-items: center; justify-content: center;" id="mp4PlayerScreen">
+                <canvas id="mp4SimulationCanvas" width="640" height="360" style="width: 100%; height: 100%; display: block;"></canvas>
+                <!-- OSD (On Screen Display) Overlay -->
+                <div style="position: absolute; top: 10px; left: 12px; font-family: monospace; font-size: 11px; color: rgba(255,255,255,0.85); background: rgba(0,0,0,0.6); padding: 3px 8px; border-radius: 4px; pointer-events: none;">
+                  <span id="mp4OsdChannel">CANAL</span> • <span id="mp4OsdTimecode">00:00:00.00</span> • GOP: <span id="mp4OsdGop">IDR</span>
+                </div>
+                <!-- Banner de Alerta no Momento do Glitch -->
+                <div id="mp4GlitchOverlayBanner" style="display: none; position: absolute; bottom: 45px; left: 50%; transform: translateX(-50%); background: rgba(220, 38, 38, 0.85); color: #fff; padding: 4px 12px; border-radius: 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.5px;">
+                  ⚠️ FALHA DETECTADA: CONGELAMENTO DE QUADRO / PTS STALL
+                </div>
+              </div>
+
+              <!-- Controles do Player -->
+              <div style="margin-top: 10px; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+                  <span style="font-size: 11px; font-family: monospace; color: var(--text-muted);" id="mp4CurrentTime">00:00</span>
+                  <input type="range" id="mp4Scrubber" min="0" max="16" step="0.1" value="0" style="flex: 1; cursor: pointer;" oninput="onMp4ScrubberChange(this.value)">
+                  <span style="font-size: 11px; font-family: monospace; color: var(--text-muted);" id="mp4TotalDuration">00:16</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                  <div style="display: flex; gap: 8px;">
+                    <button class="btn-secondary" style="padding: 4px 10px; font-size: 12px;" id="btnMp4PlayPause" onclick="toggleMp4PlayPause()">
+                      <i class="fas fa-play" id="mp4PlayIcon"></i> Reproduzir
+                    </button>
+                    <button class="btn-secondary" style="padding: 4px 10px; font-size: 12px;" onclick="restartMp4Player()">
+                      <i class="fas fa-undo"></i> Reiniciar
+                    </button>
+                    <button class="btn-secondary" style="padding: 4px 10px; font-size: 12px;" onclick="stepMp4Frame()">
+                      <i class="fas fa-step-forward"></i> +1 Qdr
+                    </button>
+                  </div>
+                  <div style="font-size: 11px; color: var(--text-muted);">
+                    Velocidade: 
+                    <select id="mp4SpeedSelect" class="form-input" style="padding: 2px 6px; font-size: 11px; display: inline-block; width: auto;" onchange="changeMp4Speed(this.value)">
+                      <option value="1">1x (Normal)</option>
+                      <option value="0.5">0.5x (Lenta)</option>
+                      <option value="0.25">0.25x (Forense)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Coluna 2: Diagnóstico de Engenharia & Cards de Solução -->
+            <div style="display: flex; flex-direction: column; gap: 14px;">
+              <div class="panel-card" style="border: 1px solid rgba(59, 130, 246, 0.4);">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+                  <div>
+                    <span class="badge badge-yellow" id="mp4DiagSeverityBadge">SEVERIDADE: ALTA</span>
+                    <h4 style="margin-top: 6px; font-size: 15px; color: #fff;" id="mp4DiagTitle">Título da Falha</h4>
+                  </div>
+                </div>
+                <div style="font-size: 12px; color: #cbd5e1; line-height: 1.5; margin-bottom: 12px;" id="mp4DiagSymptom">Sintoma detalhado...</div>
+
+                <div style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px; margin-bottom: 12px;">
+                  <div style="font-size: 11px; font-weight: 700; color: #f87171; text-transform: uppercase; margin-bottom: 4px;">
+                    <i class="fas fa-microchip"></i> Causa Raiz Comprovada (ATRIA / SO):
+                  </div>
+                  <div style="font-size: 12px; color: #fff; line-height: 1.5;" id="mp4DiagRootCause">Causa raiz...</div>
+                </div>
+
+                <div style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px; margin-bottom: 14px;">
+                  <div style="font-size: 11px; font-weight: 700; color: #38bdf8; text-transform: uppercase; margin-bottom: 6px;">
+                    <i class="fas fa-wrench"></i> Procedimentos Técnicos de Solução:
+                  </div>
+                  <ul style="margin: 0; padding-left: 18px; font-size: 12px; color: #cbd5e1;" id="mp4DiagSolutionsList"></ul>
+                </div>
+
+                <!-- Botões de Ação Imediata -->
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                  <button class="btn-primary" style="flex: 1; font-size: 12px; padding: 8px; background: #2563eb;" id="btnMp4AutoHeal" onclick="executeMp4AutoHeal()">
+                    <i class="fas fa-bolt"></i> ⚡ Executar Correção no Capture Site
+                  </button>
+                  <button class="btn-secondary" style="flex: 1; font-size: 12px; padding: 8px;" id="btnMp4RegisterThreshold" onclick="registerMp4ThresholdToConfigs()">
+                    <i class="fas fa-sliders-h"></i> 🎛️ Cadastrar Limiar em Configurações
+                  </button>
+                </div>
+              </div>
+            </div>
+
+          </div>
         </div>
       </div>
     </section>
@@ -1109,10 +1306,10 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=3.4.0"></script>
-  <script src="/static/js/ai_insights.js?v=3.4.0"></script>
+  <script src="/static/js/app.js?v=3.5.0"></script>
+  <script src="/static/js/ai_insights.js?v=3.5.0"></script>
   <script src="/static/js/fleet_ops.js?v=3.4.0"></script>
   <script src="/static/js/remote_commands.js?v=3.4.0"></script>
-  <script src="/static/js/signals_analysis.js?v=3.4.0"></script>
+  <script src="/static/js/signals_analysis.js?v=3.5.0"></script>
 </body>
 </html>
