@@ -13,9 +13,10 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Configurações de Rede e Servidor
-PORT = 8096
+PORT = 8090
 HOST = "0.0.0.0"
-DOMAIN_NAME = "monitoracaoCS.kinomuse.com.br"
+DOMAIN_NAME = "localhost:8090"
+LOCAL_IP = "192.168.15.17"
 
 # Credenciais Padrão do Administrador
 DEFAULT_ADMIN_USER = "suportesmme"

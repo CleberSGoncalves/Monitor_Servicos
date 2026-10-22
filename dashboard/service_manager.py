@@ -36,6 +36,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 PID_FILE = DATA_DIR / "service.pid"
 LOG_FILE = DATA_DIR / "dashboard.log"
 TASK_NAME = "MonitorServicos_FleetDashboard"
+WATCHDOG_TASK_NAME = "MonitorServicos_FleetDashboard_Watchdog"
 
 SUBPROCESS_FLAGS = 0
 if sys.platform == "win32":
@@ -251,39 +252,46 @@ def restart_service():
 
 
 def install_windows_task():
-    """Instala tarefa agendada nativa do Windows para auto-iniciar no boot e no logon."""
+    """Instala tarefa agendada nativa do Windows para auto-iniciar no boot/logon e watchdog de 5 min."""
     pythonw = find_pythonw()
     start_script = str(ROOT_DIR / "start_service.py")
+    watchdog_script = str(ROOT_DIR / "watchdog.py")
     
-    cmd = (
+    cmd1 = (
         f'schtasks /Create /TN "{TASK_NAME}" '
         f'/TR "\"{pythonw}\" \"{start_script}\"" '
         f'/SC ONLOGON /RL HIGHEST /F'
     )
-    res = subprocess.run(cmd, shell=True, capture_output=True, text=True, creationflags=SUBPROCESS_FLAGS)
-    if res.returncode == 0:
-        print(f"[OK] Tarefa Agendada '{TASK_NAME}' registrada com sucesso no Windows.")
+    res1 = subprocess.run(cmd1, shell=True, capture_output=True, text=True, creationflags=SUBPROCESS_FLAGS)
+
+    cmd2 = (
+        f'schtasks /Create /TN "{WATCHDOG_TASK_NAME}" '
+        f'/TR "\"{pythonw}\" \"{watchdog_script}\"" '
+        f'/SC MINUTE /MO 5 /RL HIGHEST /F'
+    )
+    res2 = subprocess.run(cmd2, shell=True, capture_output=True, text=True, creationflags=SUBPROCESS_FLAGS)
+
+    if res1.returncode == 0:
+        print(f"[OK] Tarefa de Inicialização '{TASK_NAME}' registrada com sucesso no Windows.")
+        if res2.returncode == 0:
+            print(f"[OK] Tarefa Watchdog 24x7 '{WATCHDOG_TASK_NAME}' (cada 5 min) registrada.")
         return True
     else:
-        print(f"[AVISO] Nao foi possivel registrar tarefa agendada (pode exigir privilégios de Admin): {res.stderr}")
+        print(f"[AVISO] Não foi possível registrar tarefa agendada: {res1.stderr}")
         return False
 
 
 def uninstall_windows_task():
-    """Remove a tarefa agendada do Windows."""
-    cmd = f'schtasks /Delete /TN "{TASK_NAME}" /F'
-    res = subprocess.run(cmd, shell=True, capture_output=True, text=True, creationflags=SUBPROCESS_FLAGS)
-    if res.returncode == 0:
-        print(f"[OK] Tarefa Agendada '{TASK_NAME}' removida com sucesso.")
-        return True
-    else:
-        print(f"[INFO] Tarefa '{TASK_NAME}' nao encontrada ou ja removida.")
-        return False
+    """Remove as tarefas agendadas do Windows."""
+    subprocess.run(f'schtasks /Delete /TN "{TASK_NAME}" /F', shell=True, capture_output=True, text=True, creationflags=SUBPROCESS_FLAGS)
+    subprocess.run(f'schtasks /Delete /TN "{WATCHDOG_TASK_NAME}" /F', shell=True, capture_output=True, text=True, creationflags=SUBPROCESS_FLAGS)
+    print(f"[OK] Tarefas agendadas '{TASK_NAME}' e '{WATCHDOG_TASK_NAME}' removidas.")
+    return True
 
 
 def print_status_formatted(st: Dict[str, Any]):
     print("==================================================================")
-    print(" CENTRAL DE MONITORACAO CS FLEET - STATUS DO SERVICO")
+    print(" CENTRAL DE MONITORACAO CS FLEET - STATUS DO SERVICO (24x7 LOCAL)")
     print("==================================================================")
     status_icon = "🟢" if st["status"] == "ONLINE" else "🔴"
     print(f" Estado Atual      : {status_icon} {st['status']}")
@@ -291,8 +299,9 @@ def print_status_formatted(st: Dict[str, Any]):
     print(f" Porta Local       : {st['port']} ({'ESCUTANDO' if st['is_port_listening'] else 'LIVRE'})")
     print(f" HealthCheck Local : {'OK (200)' if st.get('api_online') else 'FALHA / INATIVO'}")
     print(f" Memoria RAM       : {st['memory_mb']} MB")
-    print(f" URL do Servico    : {st['tunnel_url']}")
-    print(f" Status do Tunel   : {'ONLINE' if st['tunnel_online'] else 'AGUARDANDO / DESCONHECIDO'}")
+    print(f" Acesso Local      : http://localhost:{st['port']}")
+    print(f" Acesso Rede (LAN) : http://192.168.15.17:{st['port']}")
+    print(f" Modo Operacional  : 🔒 Local / Rede Corporativa (Isolado do Cloudflare)")
     print(f" Tarefa Windows    : {'INSTALADA' if st['windows_task_installed'] else 'NAO INSTALADA'}")
     print(f" Arquivo de Log    : {st['log_file']}")
     print("==================================================================")
