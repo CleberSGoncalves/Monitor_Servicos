@@ -3,7 +3,7 @@ from ai_homologation import (
     run_pilot_validation_tests, deploy_feature_to_fleet
 )
 from feature_flags import get_all_feature_flags, set_feature_flag
-from mosaic_manager import get_channel_live_snapshots
+from mosaic_manager import get_channel_live_snapshots, get_mosaic_analytical_problems
 from mp4_analyzer import (
     analyze_channel_mp4_samples, register_mp4_threshold_from_diagnosis
 )
@@ -467,6 +467,10 @@ async def get_channels_mosaic(country: Optional[str] = None, city: Optional[str]
     data = get_cached_data()
     channels = data.get("channels", [])
     return get_channel_live_snapshots(channels, country, city)
+
+@app.get("/api/fleet/image-monitoring/analytical-problems")
+async def get_analytical_problems(category: Optional[str] = None, user: dict = Depends(get_current_user)):
+    return get_mosaic_analytical_problems(category)
 
 
 # ==========================================

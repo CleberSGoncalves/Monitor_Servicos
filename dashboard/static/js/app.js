@@ -99,7 +99,9 @@ function setupTabNavigation() {
             currentTab = tabName;
             document.getElementById(`tab-${tabName}`).classList.add("active");
 
-            if (tabName === "ai") {
+            if (tabName === "mosaic") {
+                if (typeof initMosaicTab === "function") initMosaicTab();
+            } else if (tabName === "ai") {
                 loadAiSuggestions();
                 if (typeof loadHomologationCountBadge === "function") loadHomologationCountBadge();
             } else if (tabName === "configs") {
