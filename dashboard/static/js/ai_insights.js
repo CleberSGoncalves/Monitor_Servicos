@@ -1,12 +1,25 @@
 // static/js/ai_insights.js - Motor de Inteligência Artificial Proativa
 
+function getAiToken() {
+    try {
+        if (typeof getAuthToken === "function") {
+            const t = getAuthToken();
+            if (t) return t;
+        }
+    } catch (e) {}
+    if (typeof authToken !== "undefined" && authToken) return authToken;
+    return localStorage.getItem("fleet_token") || "";
+}
+
 async function loadAiSuggestions() {
     const container = document.getElementById("aiCardsGrid");
-    container.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 30px; color: var(--text-muted);">Carregando sugestões ativas da IA...</div>`;
+    if (!container) return;
+    container.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 30px; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Carregando sugestões ativas da IA...</div>`;
 
     try {
+        const token = getAiToken();
         const resp = await fetch("/api/ai/suggestions", {
-            headers: { "Authorization": `Bearer ${authToken}` }
+            headers: token ? { "Authorization": `Bearer ${token}` } : {}
         });
         if (!resp.ok) return;
         const suggestions = await resp.json();
@@ -20,14 +33,19 @@ async function triggerAiAnalysis() {
     const btn = document.getElementById("btnTriggerAi");
     const container = document.getElementById("aiCardsGrid");
     
-    btn.disabled = true;
-    btn.innerHTML = `<span>⏳</span> Analisando Métricas e Sinais da Frota...`;
-    container.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--text-highlight);"><span style="font-size: 24px;">🧠</span><br><br>A Inteligência Artificial está correlacionando eventos de telemetria, histórico de quedas, saúde dos tuners e padrões de esgotamento de disco...</div>`;
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<span>⏳</span> Analisando Métricas e Sinais da Frota...`;
+    }
+    if (container) {
+        container.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--text-highlight);"><span style="font-size: 28px;">🧠</span><br><br><strong>A Inteligência Artificial está correlacionando métricas operacionais do Windows, desgaste de memória do kernel, latência de disco D:, saturação de TCP e padrões em todas as 22 praças...</strong></div>`;
+    }
 
     try {
+        const token = getAiToken();
         const resp = await fetch("/api/ai/analyze", {
             method: "POST",
-            headers: { "Authorization": `Bearer ${authToken}` }
+            headers: token ? { "Authorization": `Bearer ${token}` } : {}
         });
         if (resp.ok) {
             const data = await resp.json();
@@ -38,18 +56,22 @@ async function triggerAiAnalysis() {
     } catch {
         alert("Falha de comunicação com o motor de IA.");
     } finally {
-        btn.disabled = false;
-        btn.innerHTML = `<span>✨</span> Analisar Todo o Sistema com IA`;
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<span>✨</span> Analisar Todo o Sistema com IA`;
+        }
     }
 }
 
 function renderAiCards(suggestions) {
     const container = document.getElementById("aiCardsGrid");
+    if (!container) return;
+
     if (!suggestions || suggestions.length === 0) {
         container.innerHTML = `
             <div style="grid-column: 1/-1; text-align: center; padding: 50px 20px; background: rgba(0,0,0,0.2); border-radius: var(--radius-lg); border: 1px dashed var(--border-color);">
                 <span style="font-size: 32px;">🎯</span>
-                <h3 style="margin-top: 10px; font-size: 16px;">Tudo Calibrado e Otimizado</h3>
+                <h3 style="margin-top: 10px; font-size: 16px;">Tudo Calibrado e Otimizado no Escopo Global</h3>
                 <p style="color: var(--text-muted); font-size: 13px; margin-top: 6px;">Nenhuma anomalia oculta detectada. Clique no botão acima para rodar uma nova auditoria com IA a qualquer momento.</p>
             </div>
         `;
@@ -64,10 +86,12 @@ function renderAiCards(suggestions) {
                 <div>
                     <div class="ai-card-header">
                         <span class="badge ${badgeColor}">${s.category.toUpperCase()} • ${s.severity.toUpperCase()}</span>
-                        <span style="font-size: 11px; color: var(--text-muted);">${s.id}</span>
+                        <span style="font-size: 11px; font-weight: 600; color: #38bdf8; background: rgba(56, 189, 248, 0.15); padding: 3px 8px; border-radius: 4px; border: 1px solid rgba(56, 189, 248, 0.3);">
+                            <i class="fas fa-globe"></i> Escopo Global (Todas as Praças)
+                        </span>
                     </div>
-                    <h4 class="ai-card-title">${s.title}</h4>
-                    <p class="ai-card-desc">${s.description}</p>
+                    <h4 class="ai-card-title">${escapeHtml(s.title)}</h4>
+                    <p class="ai-card-desc">${escapeHtml(s.description)}</p>
                 </div>
                 <div class="ai-card-actions">
                     <button class="btn-primary" style="flex: 1; font-size: 12px; padding: 8px;" onclick="decideAiSuggestion('${s.id}', true)">
@@ -90,11 +114,12 @@ async function decideAiSuggestion(id, approve) {
     }
 
     try {
+        const token = getAiToken();
         const resp = await fetch("/api/ai/decision", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "Authorization": `Bearer ${authToken}`
+                "Authorization": `Bearer ${token}`
             },
             body: JSON.stringify({ suggestion_id: id, approve: approve })
         });
@@ -102,9 +127,9 @@ async function decideAiSuggestion(id, approve) {
         if (resp.ok) {
             if (card) card.remove();
             if (approve) {
-                alert("🎉 Sugestão aprovada! A regra foi integrada e aplicada automaticamente ao sistema de monitoração.");
+                alert("🎉 Sugestão sistêmica aprovada! A regra foi integrada e aplicada automaticamente ao sistema de monitoração em toda a frota.");
             } else {
-                alert("Sugestão recusada. O motor de IA aprendeu a sua preferência e não sugerirá este mesmo padrão novamente.");
+                alert("Sugestão recusada. O motor de IA aprendeu a sua preferência e apresentará novas alternativas sistêmicas na próxima análise.");
             }
             loadAiSuggestions();
         }
@@ -116,3 +141,12 @@ async function decideAiSuggestion(id, approve) {
         }
     }
 }
+
+function escapeHtml(text) {
+    if (!text) return "";
+    return text.toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+window.loadAiSuggestions = loadAiSuggestions;
+window.triggerAiAnalysis = triggerAiAnalysis;
+window.decideAiSuggestion = decideAiSuggestion;
