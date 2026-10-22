@@ -112,8 +112,8 @@ function safeToast(msg, type = "info") {
 
 // Alternância de Subabas no Remote Command
 window.switchRemoteTab = function(targetId, btn) {
-    document.querySelectorAll(".rc-subtab-btn").forEach(b => b.classList.remove("active"));
-    document.querySelectorAll(".rc-subtab-content").forEach(c => {
+    document.querySelectorAll("#tab-remote-commands .rc-subtab-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll("#tab-remote-commands .rc-subtab-content").forEach(c => {
         c.classList.remove("active");
         c.style.display = "none";
     });
@@ -121,7 +121,7 @@ window.switchRemoteTab = function(targetId, btn) {
     if (btn) {
         btn.classList.add("active");
     } else {
-        const matchingBtn = document.querySelector(`.rc-subtab-btn[data-target="${targetId}"]`);
+        const matchingBtn = document.querySelector(`#tab-remote-commands .rc-subtab-btn[data-target="${targetId}"]`);
         if (matchingBtn) matchingBtn.classList.add("active");
     }
 
@@ -412,7 +412,7 @@ function setupRemoteCommandEvents() {
     });
 
     // Subabas de Remote Command
-    document.querySelectorAll(".rc-subtab-btn").forEach(btn => {
+    document.querySelectorAll("#tab-remote-commands .rc-subtab-btn").forEach(btn => {
         btn.onclick = () => {
             const targetId = btn.getAttribute("data-target");
             switchRemoteTab(targetId, btn);

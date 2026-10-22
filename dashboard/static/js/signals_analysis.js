@@ -10,20 +10,26 @@ let chronicIssuesCache = [];
 function switchSignalsSubtab(subtabId) {
     const historyBtn = document.getElementById("btn-signals-subtab-history");
     const chronicBtn = document.getElementById("btn-signals-subtab-chronic");
+    const mp4Btn = document.getElementById("btn-signals-subtab-mp4");
+
     const historyContent = document.getElementById("signals-content-history");
     const chronicContent = document.getElementById("signals-content-chronic");
+    const mp4Content = document.getElementById("signals-content-mp4");
+
+    [historyBtn, chronicBtn, mp4Btn].forEach(b => b && b.classList.remove("active"));
+    [historyContent, chronicContent, mp4Content].forEach(c => c && (c.style.display = "none"));
 
     if (subtabId === "history") {
         if (historyBtn) historyBtn.classList.add("active");
-        if (chronicBtn) chronicBtn.classList.remove("active");
         if (historyContent) historyContent.style.display = "block";
-        if (chronicContent) chronicContent.style.display = "none";
-    } else {
-        if (historyBtn) historyBtn.classList.remove("active");
+    } else if (subtabId === "chronic") {
         if (chronicBtn) chronicBtn.classList.add("active");
-        if (historyContent) historyContent.style.display = "none";
         if (chronicContent) chronicContent.style.display = "block";
         loadChronicIssuesList();
+    } else if (subtabId === "mp4") {
+        if (mp4Btn) mp4Btn.classList.add("active");
+        if (mp4Content) mp4Content.style.display = "block";
+        if (typeof populateMp4Filters === "function") populateMp4Filters();
     }
 }
 window.switchSignalsSubtab = switchSignalsSubtab;
@@ -598,3 +604,461 @@ function executeChronicAutoHeal(issueId) {
     }
 }
 window.executeChronicAutoHeal = executeChronicAutoHeal;
+
+// =========================================================================
+// SUBTAB 3: ANÁLISE DE AMOSTRAS MP4 ATRIA & PLAYER DE FALHAS (EM SINAIS & RF)
+// =========================================================================
+let currentMp4AnalysisResult = null;
+let mp4PlayerState = {
+    isPlaying: false,
+    currentTime: 0,
+    duration: 16,
+    speed: 1,
+    animFrameId: null,
+    glitchStart: 5.2,
+    glitchDuration: 3.8,
+    glitchType: "freeze"
+};
+
+async function populateMp4Filters() {
+    const pracaSelect = document.getElementById("mp4FilterPraca");
+    if (!pracaSelect) return;
+
+    try {
+        const token = (typeof getAiToken === "function") ? getAiToken() : (authToken || localStorage.getItem("fleet_token") || "");
+        const resp = await fetch("/api/fleet/channels", {
+            headers: token ? { "Authorization": `Bearer ${token}` } : {}
+        });
+        if (!resp.ok) return;
+        const channels = await resp.json();
+
+        const pracasMap = {};
+        channels.forEach(c => {
+            const p = c.cidade || "N/A";
+            if (!pracasMap[p]) pracasMap[p] = [];
+            pracasMap[p].push(c);
+        });
+
+        const sortedPracas = Object.keys(pracasMap).sort();
+        pracaSelect.innerHTML = sortedPracas.map(p => `<option value="${p}">${p}</option>`).join("");
+
+        if (sortedPracas.length > 0) {
+            pracaSelect.value = sortedPracas.find(p => p.toLowerCase().includes("pelotas")) || sortedPracas[0];
+            onMp4PracaChanged();
+        }
+    } catch (err) {
+        console.error("Erro ao carregar filtros de MP4:", err);
+    }
+}
+window.populateMp4Filters = populateMp4Filters;
+
+async function onMp4PracaChanged() {
+    const pracaSelect = document.getElementById("mp4FilterPraca");
+    const canalSelect = document.getElementById("mp4FilterCanal");
+    if (!pracaSelect || !canalSelect) return;
+
+    const praca = pracaSelect.value;
+    if (!praca) return;
+
+    try {
+        const token = (typeof getAiToken === "function") ? getAiToken() : (authToken || localStorage.getItem("fleet_token") || "");
+        const resp = await fetch(`/api/fleet/channels?city=${encodeURIComponent(praca)}`, {
+            headers: token ? { "Authorization": `Bearer ${token}` } : {}
+        });
+        if (!resp.ok) return;
+        const channels = await resp.json();
+
+        if (channels.length === 0) {
+            canalSelect.innerHTML = "<option value=''>Nenhum canal na praça</option>";
+            return;
+        }
+
+        canalSelect.innerHTML = channels.map(c => `<option value="${c.canal}">${c.canal} (CS ${c.id_cs || 1})</option>`).join("");
+    } catch (err) {
+        console.error("Erro ao carregar canais para MP4:", err);
+    }
+}
+window.onMp4PracaChanged = onMp4PracaChanged;
+
+async function startMp4SampleAnalysis() {
+    const pracaSelect = document.getElementById("mp4FilterPraca");
+    const canalSelect = document.getElementById("mp4FilterCanal");
+    const daysSelect = document.getElementById("mp4FilterDays");
+    const typeSelect = document.getElementById("mp4FilterType");
+    const btn = document.getElementById("btnStartMp4Analysis");
+
+    if (!pracaSelect || !canalSelect) return;
+    const praca = pracaSelect.value;
+    const canal = canalSelect.value;
+    const days = parseInt(daysSelect.value, 10) || 3;
+    const anomalyType = typeSelect.value || "all";
+
+    if (!praca || !canal) {
+        alert("Selecione uma praça e um canal gravado pelo ATRIA.");
+        return;
+    }
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Executando Amostragem...`;
+    }
+
+    const progContainer = document.getElementById("mp4ProgressBarContainer");
+    const progBar = document.getElementById("mp4ProgressBarFill");
+    const progPct = document.getElementById("mp4ProgressPercent");
+    const progDesc = document.getElementById("mp4ProgressDetailText");
+    const resultsContainer = document.getElementById("mp4ResultsContainer");
+
+    if (resultsContainer) resultsContainer.style.display = "none";
+    if (progContainer) {
+        progContainer.style.display = "block";
+        progContainer.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    const steps = [
+        { pct: 20, text: `[Etapa 1/4] Acessando diretório D:\\MediaDNA_V2\\Recordings\\${canal.replace(' ', '_')} e indexando amostras dos últimos ${days} dias...` },
+        { pct: 45, text: `[Etapa 2/4] Extraindo keyframes, GOP e decodificando blocos de áudio AAC para inspeção espectral...` },
+        { pct: 70, text: `[Etapa 3/4] Aplicando algoritmos de detecção de congelamento de quadro e descontinuidade de contêiner Moov Atom...` },
+        { pct: 90, text: `[Etapa 4/4] Correlacionando padrões com o hardware da praça e formulando parecer técnico de IA...` }
+    ];
+
+    for (let s of steps) {
+        if (progBar) progBar.style.width = `${s.pct}%`;
+        if (progPct) progPct.innerText = `${s.pct}%`;
+        if (progDesc) progDesc.innerText = s.text;
+        await new Promise(r => setTimeout(r, 650));
+    }
+
+    try {
+        const token = (typeof getAiToken === "function") ? getAiToken() : (authToken || localStorage.getItem("fleet_token") || "");
+        const resp = await fetch("/api/ai/mp4/analyze", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`
+            },
+            body: JSON.stringify({
+                praca: praca,
+                canal: canal,
+                interval_days: days,
+                anomaly_type: anomalyType
+            })
+        });
+
+        if (!resp.ok) throw new Error(`Falha na análise (${resp.status})`);
+
+        const data = await resp.json();
+        currentMp4AnalysisResult = data;
+
+        if (progBar) progBar.style.width = "100%";
+        if (progPct) progPct.innerText = "100%";
+        if (progDesc) progDesc.innerText = "Inspeção forense concluída com sucesso! Carregando player e diagnóstico...";
+
+        await new Promise(r => setTimeout(r, 500));
+        if (progContainer) progContainer.style.display = "none";
+
+        renderMp4AnalysisResult(data);
+        if (resultsContainer) {
+            resultsContainer.style.display = "block";
+            resultsContainer.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+    } catch (err) {
+        alert(`Erro na análise forense de MP4: ${err.message}`);
+        if (progContainer) progContainer.style.display = "none";
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<i class="fas fa-microscope"></i> 🔍 Extrair Amostras e Analisar com IA`;
+        }
+    }
+}
+window.startMp4SampleAnalysis = startMp4SampleAnalysis;
+
+function renderMp4AnalysisResult(data) {
+    const f = data.falha_predominante;
+    const p = data.player_payload;
+
+    mp4PlayerState.currentTime = 0;
+    mp4PlayerState.duration = p.duration_sec || 16;
+    mp4PlayerState.glitchStart = p.glitch_start_sec || 5.2;
+    mp4PlayerState.glitchDuration = p.glitch_duration_sec || 3.8;
+    mp4PlayerState.glitchType = p.glitch_type || "freeze";
+    mp4PlayerState.isPlaying = false;
+
+    const metaDisplay = document.getElementById("mp4PlayerMetadata");
+    if (metaDisplay) metaDisplay.innerText = `${p.sample_filename} (${p.resolution} • ${p.video_codec})`;
+
+    const recBadge = document.getElementById("mp4PlayerRecurrenceBadge");
+    if (recBadge) recBadge.innerText = f.recorrencia;
+
+    const osdChan = document.getElementById("mp4OsdChannel");
+    if (osdChan) osdChan.innerText = data.canal.toUpperCase();
+
+    const scrubber = document.getElementById("mp4Scrubber");
+    if (scrubber) {
+        scrubber.max = mp4PlayerState.duration;
+        scrubber.value = 0;
+    }
+
+    const durText = document.getElementById("mp4TotalDuration");
+    if (durText) durText.innerText = formatPlayerTime(mp4PlayerState.duration);
+
+    const titleEl = document.getElementById("mp4DiagTitle");
+    if (titleEl) titleEl.innerText = f.nome;
+
+    const sympEl = document.getElementById("mp4DiagSymptom");
+    if (sympEl) sympEl.innerText = f.sintoma;
+
+    const rootEl = document.getElementById("mp4DiagRootCause");
+    if (rootEl) rootEl.innerText = f.causa_raiz;
+
+    const listEl = document.getElementById("mp4DiagSolutionsList");
+    if (listEl) {
+        listEl.innerHTML = f.solucoes_tecnicas.map(s => `<li style="margin-bottom: 6px;">${escapeHtml(s)}</li>`).join("");
+    }
+
+    drawMp4PlayerFrame();
+}
+
+function formatPlayerTime(sec) {
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+function drawMp4PlayerFrame() {
+    const canvas = document.getElementById("mp4SimulationCanvas");
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    const w = canvas.width;
+    const h = canvas.height;
+
+    const t = mp4PlayerState.currentTime;
+    const isGlitch = t >= mp4PlayerState.glitchStart && t <= (mp4PlayerState.glitchStart + mp4PlayerState.glitchDuration);
+
+    const banner = document.getElementById("mp4GlitchOverlayBanner");
+    if (banner) {
+        if (isGlitch) {
+            banner.style.display = "block";
+            if (mp4PlayerState.glitchType === "freeze") {
+                banner.innerText = "⚠️ FALHA DETECTADA: CONGELAMENTO DE QUADRO / PTS STALL";
+            } else if (mp4PlayerState.glitchType === "macroblock") {
+                banner.innerText = "⚠️ FALHA DETECTADA: CORRUPÇÃO DE MACROBLOCOS (SLICE LOSS)";
+            } else {
+                banner.innerText = "⚠️ FALHA DETECTADA: SILÊNCIO SÚBITO DE ÁUDIO AAC (-inf dB)";
+            }
+        } else {
+            banner.style.display = "none";
+        }
+    }
+
+    ctx.fillStyle = "#0f172a";
+    ctx.fillRect(0, 0, w, h);
+
+    if (isGlitch && mp4PlayerState.glitchType === "freeze") {
+        ctx.fillStyle = "#1e293b";
+        ctx.fillRect(0, 0, w, h);
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
+        ctx.strokeRect(50, 50, w - 100, h - 100);
+
+        ctx.fillStyle = "#ef4444";
+        ctx.font = "bold 16px Inter, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("FRAME ESTÁTICO (REPETIÇÃO DE BUFFER H.264)", w / 2, h / 2 - 10);
+        ctx.font = "12px monospace";
+        ctx.fillStyle = "#94a3b8";
+        ctx.fillText(`Delta de Pixels: 0.00% • GOP Bloqueado • Frame #${Math.floor(mp4PlayerState.glitchStart * 30)}`, w / 2, h / 2 + 15);
+    } else if (isGlitch && mp4PlayerState.glitchType === "macroblock") {
+        ctx.fillStyle = "#0a0f1d";
+        ctx.fillRect(0, 0, w, h);
+        for (let bx = 0; bx < w; bx += 40) {
+            for (let by = 0; by < h; by += 40) {
+                if (Math.sin(bx + t * 10) > 0.3) {
+                    ctx.fillStyle = (bx + by) % 80 === 0 ? "rgba(16, 185, 129, 0.6)" : "rgba(100, 116, 139, 0.4)";
+                    ctx.fillRect(bx, by, 38, 38);
+                }
+            }
+        }
+        ctx.fillStyle = "#f87171";
+        ctx.font = "bold 14px monospace";
+        ctx.textAlign = "center";
+        ctx.fillText("CORRUPÇÃO DE FLUXO TS: PACKET CONTINUITY COUNTER ERROR", w / 2, h - 30);
+    } else {
+        const grad = ctx.createLinearGradient(0, 0, w, h);
+        grad.addColorStop(0, "#1e3a8a");
+        grad.addColorStop(1, "#0f172a");
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, w, h);
+
+        const xAnim = 100 + ((t * 80) % (w - 200));
+        ctx.beginPath();
+        ctx.arc(xAnim, h / 2, 45, 0, Math.PI * 2);
+        ctx.fillStyle = "#38bdf8";
+        ctx.fill();
+
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.15)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        for (let i = 0; i < w; i += 20) {
+            const yLine = h / 2 + Math.sin((i + t * 100) * 0.03) * 30;
+            if (i === 0) ctx.moveTo(i, yLine);
+            else ctx.lineTo(i, yLine);
+        }
+        ctx.stroke();
+
+        ctx.fillStyle = "#fff";
+        ctx.font = "bold 18px Inter, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("TRANSMISSÃO ATRIA GRAVADA", w / 2, h / 2 - 10);
+    }
+
+    ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+    ctx.fillRect(15, h - 35, 140, 22);
+    ctx.fillStyle = "#94a3b8";
+    ctx.font = "9px monospace";
+    ctx.textAlign = "left";
+    ctx.fillText("VU L/R:", 22, h - 21);
+
+    const isAudioDrop = isGlitch && mp4PlayerState.glitchType === "audio_drop";
+    const vuWidth = isAudioDrop ? 0 : Math.max(8, 90 + Math.sin(t * 12) * 15);
+    ctx.fillStyle = isAudioDrop ? "#ef4444" : "#10b981";
+    ctx.fillRect(58, h - 29, vuWidth, 10);
+
+    const timecodeEl = document.getElementById("mp4OsdTimecode");
+    if (timecodeEl) {
+        const m = Math.floor(t / 60);
+        const s = Math.floor(t % 60);
+        const f = Math.floor((t % 1) * 30);
+        timecodeEl.innerText = `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}:${String(f).padStart(2, "0")}`;
+    }
+
+    const currEl = document.getElementById("mp4CurrentTime");
+    if (currEl) currEl.innerText = formatPlayerTime(t);
+
+    const scrubber = document.getElementById("mp4Scrubber");
+    if (scrubber && !scrubber.matches(":active")) scrubber.value = t;
+}
+
+function toggleMp4PlayPause() {
+    mp4PlayerState.isPlaying = !mp4PlayerState.isPlaying;
+    const btn = document.getElementById("btnMp4PlayPause");
+    const icon = document.getElementById("mp4PlayIcon");
+
+    if (mp4PlayerState.isPlaying) {
+        if (icon) icon.className = "fas fa-pause";
+        if (btn) btn.innerHTML = `<i class="fas fa-pause"></i> Pausar`;
+        playMp4Loop();
+    } else {
+        if (icon) icon.className = "fas fa-play";
+        if (btn) btn.innerHTML = `<i class="fas fa-play"></i> Reproduzir`;
+        cancelAnimationFrame(mp4PlayerState.animFrameId);
+    }
+}
+window.toggleMp4PlayPause = toggleMp4PlayPause;
+
+let lastLoopTime = 0;
+function playMp4Loop(timestamp) {
+    if (!lastLoopTime) lastLoopTime = timestamp;
+    const deltaSec = (timestamp - lastLoopTime) / 1000 || 0.033;
+    lastLoopTime = timestamp;
+
+    if (mp4PlayerState.isPlaying) {
+        mp4PlayerState.currentTime += deltaSec * mp4PlayerState.speed;
+        if (mp4PlayerState.currentTime >= mp4PlayerState.duration) {
+            mp4PlayerState.currentTime = 0;
+        }
+        drawMp4PlayerFrame();
+        mp4PlayerState.animFrameId = requestAnimationFrame(playMp4Loop);
+    }
+}
+
+function restartMp4Player() {
+    mp4PlayerState.currentTime = 0;
+    drawMp4PlayerFrame();
+}
+window.restartMp4Player = restartMp4Player;
+
+function stepMp4Frame() {
+    mp4PlayerState.currentTime = Math.min(mp4PlayerState.duration, mp4PlayerState.currentTime + 1 / 30);
+    drawMp4PlayerFrame();
+}
+window.stepMp4Frame = stepMp4Frame;
+
+function onMp4ScrubberChange(val) {
+    mp4PlayerState.currentTime = parseFloat(val);
+    drawMp4PlayerFrame();
+}
+window.onMp4ScrubberChange = onMp4ScrubberChange;
+
+function changeMp4Speed(val) {
+    mp4PlayerState.speed = parseFloat(val) || 1;
+}
+window.changeMp4Speed = changeMp4Speed;
+
+function executeMp4AutoHeal() {
+    if (!currentMp4AnalysisResult) return;
+    const f = currentMp4AnalysisResult.falha_predominante;
+    const praca = currentMp4AnalysisResult.praca;
+
+    if (!confirm(`Deseja executar a correção automática no Capture Site (${praca})?\n\nFalha: ${f.nome}\nComando: Atualização de Parâmetros de Codec ATRIA via PowerShell.`)) {
+        return;
+    }
+
+    const rcNavBtn = document.querySelector(".nav-btn[data-tab='remote-commands']");
+    if (rcNavBtn) {
+        rcNavBtn.click();
+        setTimeout(() => {
+            const hostSelect = document.getElementById("remote-host-select");
+            const scriptArea = document.getElementById("custom-command-input");
+            if (hostSelect) {
+                for (let i = 0; i < hostSelect.options.length; i++) {
+                    if (hostSelect.options[i].text.toLowerCase().includes(praca.toLowerCase())) {
+                        hostSelect.selectedIndex = i;
+                        if (typeof addSelectedHost === "function") addSelectedHost();
+                        break;
+                    }
+                }
+            }
+            if (scriptArea) {
+                scriptArea.value = f.comando_auto_cura;
+                scriptArea.scrollIntoView({ behavior: "smooth" });
+                scriptArea.focus();
+            }
+        }, 300);
+    }
+}
+window.executeMp4AutoHeal = executeMp4AutoHeal;
+
+async function registerMp4ThresholdToConfigs() {
+    if (!currentMp4AnalysisResult) return;
+    const th = currentMp4AnalysisResult.falha_predominante.threshold_sugerido;
+    if (!th) return;
+
+    try {
+        const token = (typeof getAiToken === "function") ? getAiToken() : (authToken || localStorage.getItem("fleet_token") || "");
+        const resp = await fetch("/api/ai/mp4/register-threshold", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`
+            },
+            body: JSON.stringify({ threshold_data: th })
+        });
+
+        if (resp.ok) {
+            alert(`✅ Limiar cadastrado com sucesso na aba Configurações!\n\nNome: ${th.name}\nValor Padrão: ${th.value} ${th.unit}\n\nVocê já pode ajustar e calibrar este parâmetro na aba Configurações.`);
+            if (typeof goToConfigThreshold === "function") goToConfigThreshold(th.key);
+        } else {
+            const err = await resp.json();
+            alert(`Erro ao cadastrar limiar: ${err.detail}`);
+        }
+    } catch (err) {
+        alert(`Erro de conexão: ${err.message}`);
+    }
+}
+window.registerMp4ThresholdToConfigs = registerMp4ThresholdToConfigs;
+
+function escapeHtml(text) {
+    if (!text) return "";
+    return text.toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}

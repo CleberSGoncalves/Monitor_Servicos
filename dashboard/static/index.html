@@ -519,6 +519,9 @@
         <button class="rc-subtab-btn" id="btn-signals-subtab-chronic" onclick="switchSignalsSubtab('chronic')">
           <i class="fas fa-exclamation-triangle"></i> ⚠️ Problemáticas Crônicas Mapeadas & Soluções Estipuladas
         </button>
+        <button class="rc-subtab-btn" id="btn-signals-subtab-mp4" onclick="switchSignalsSubtab('mp4')">
+          <i class="fas fa-film"></i> 🎬 Análise de Amostras MP4 & Diagnóstico de Falhas (ATRIA)
+        </button>
       </div>
 
       <!-- SUBTAB 1: HISTÓRICO & DIAGNÓSTICO TEMPORAL -->
@@ -624,91 +627,9 @@
           <!-- Cards de casos crônicos renderizados dinamicamente -->
         </div>
       </div>
-    </section>
 
-    <!-- TAB 3: CENTRAL DE INCIDENTES & WORKLOG -->
-    <section class="content-section" id="tab-incidents">
-      <div class="panel-card">
-        <div class="panel-header">
-          <div class="panel-title"><span>📝</span> Caderno de Incidentes e Ações Manuais (Worklog de Operações)</div>
-          <span style="font-size: 12px; color: var(--text-muted);">Rastreabilidade e trilha de auditoria de quem tratou e resolveu cada incidente</span>
-        </div>
-        <div class="table-responsive">
-          <table>
-            <thead>
-              <tr>
-                <th>Data / Hora</th>
-                <th>Host</th>
-                <th>Alvo (Serviço/Canal)</th>
-                <th>Tipo de Incidente</th>
-                <th>Operador</th>
-                <th>Ação Manual Executada</th>
-                <th>Status de Resolução</th>
-              </tr>
-            </thead>
-            <tbody id="incidentHistoryTableBody">
-              <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">Carregando histórico...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </section>
-
-    <!-- TAB 4: INTELIGÊNCIA IA PROATIVA, HOMOLOGAÇÃO & AUDITORIA DE MP4 -->
-    <section class="content-section" id="tab-ai">
-      <!-- Sub-navegação interna da Inteligência Artificial -->
-      <div class="rc-subtabs-nav" style="margin-bottom: 20px;">
-        <button class="rc-subtab-btn active" id="btn-ai-subtab-suggestions" onclick="switchAiSubtab('suggestions')">
-          <i class="fas fa-brain"></i> 🧠 Sugestões Proativas da Frota
-        </button>
-        <button class="rc-subtab-btn" id="btn-ai-subtab-homologation" onclick="switchAiSubtab('homologation')">
-          <i class="fas fa-flask"></i> 🧪 Esteira de Homologação & Validação no Agente <span class="badge" id="ai-homolog-count-badge" style="background: rgba(37, 99, 235, 0.3); font-size: 10px; margin-left: 4px;">0</span>
-        </button>
-        <button class="rc-subtab-btn" id="btn-ai-subtab-mp4" onclick="switchAiSubtab('mp4')">
-          <i class="fas fa-film"></i> 🎬 Análise de Amostras MP4 & Diagnóstico de Falhas
-        </button>
-      </div>
-
-      <!-- SUBTAB 1: SUGESTÕES PROATIVAS DA FROTA -->
-      <div id="ai-content-suggestions">
-        <div class="panel-card">
-          <div class="panel-header">
-            <div>
-              <div class="panel-title"><span>🧠</span> Motor de Inteligência Artificial Proativa</div>
-              <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Analisa correlações de telemetria, desgaste de tuners, saturação de I/O e padrões de queda para sugerir novas automações</div>
-            </div>
-            <button class="btn-primary" id="btnTriggerAi" onclick="triggerAiAnalysis()">
-              <span>✨</span> Analisar Todo o Sistema com IA
-            </button>
-          </div>
-
-          <div class="ai-cards-grid" id="aiCardsGrid">
-            <!-- Cards dinâmicos gerados pela IA com botão 'Aprovar para Homologação' -->
-          </div>
-        </div>
-      </div>
-
-      <!-- SUBTAB 2: ESTEIRA DE HOMOLOGAÇÃO & VALIDAÇÃO NO AGENTE -->
-      <div id="ai-content-homologation" style="display: none;">
-        <div class="panel-card" style="margin-bottom: 20px;">
-          <div class="panel-header">
-            <div>
-              <div class="panel-title"><span>🧪</span> Governança de Homologação de Novas Funcionalidades no Agente</div>
-              <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
-                Toda nova monitoração aprovada pela IA é primeiramente validada em praça piloto (Canary), passa por auditoria de estabilidade e, ao ser promovida, cadastra automaticamente os limiares na aba Configurações.
-              </div>
-            </div>
-            <button class="btn-secondary" onclick="loadHomologationPipeline()"><i class="fas fa-sync-alt"></i> Atualizar Esteira</button>
-          </div>
-        </div>
-
-        <div id="ai-homologation-container" style="display: flex; flex-direction: column; gap: 16px;">
-          <!-- Cards de Homologação renderizados dinamicamente -->
-        </div>
-      </div>
-
-      <!-- SUBTAB 3: ANÁLISE DE AMOSTRAS MP4 ATRIA & PLAYER DE FALHAS -->
-      <div id="ai-content-mp4" style="display: none;">
+      <!-- SUBTAB 3: ANÁLISE DE AMOSTRAS MP4 ATRIA & DIAGNÓSTICO DE FALHAS -->
+      <div id="signals-content-mp4" style="display: none;">
         <!-- Seletor e Barra de Controles -->
         <div class="panel-card" style="margin-bottom: 20px; padding: 16px;">
           <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
@@ -867,6 +788,88 @@
 
           </div>
         </div>
+    </section>
+
+    <!-- TAB 3: CENTRAL DE INCIDENTES & WORKLOG -->
+    <section class="content-section" id="tab-incidents">
+      <div class="panel-card">
+        <div class="panel-header">
+          <div class="panel-title"><span>📝</span> Caderno de Incidentes e Ações Manuais (Worklog de Operações)</div>
+          <span style="font-size: 12px; color: var(--text-muted);">Rastreabilidade e trilha de auditoria de quem tratou e resolveu cada incidente</span>
+        </div>
+        <div class="table-responsive">
+          <table>
+            <thead>
+              <tr>
+                <th>Data / Hora</th>
+                <th>Host</th>
+                <th>Alvo (Serviço/Canal)</th>
+                <th>Tipo de Incidente</th>
+                <th>Operador</th>
+                <th>Ação Manual Executada</th>
+                <th>Status de Resolução</th>
+              </tr>
+            </thead>
+            <tbody id="incidentHistoryTableBody">
+              <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">Carregando histórico...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 4: INTELIGÊNCIA IA PROATIVA, HOMOLOGAÇÃO & AUDITORIA DE MP4 -->
+    <section class="content-section" id="tab-ai">
+      <!-- Sub-navegação interna da Inteligência Artificial -->
+      <div class="rc-subtabs-nav" style="margin-bottom: 20px;">
+        <button class="rc-subtab-btn active" id="btn-ai-subtab-suggestions" onclick="switchAiSubtab('suggestions')">
+          <i class="fas fa-brain"></i> 🧠 Sugestões Proativas da Frota
+        </button>
+        <button class="rc-subtab-btn" id="btn-ai-subtab-homologation" onclick="switchAiSubtab('homologation')">
+          <i class="fas fa-flask"></i> 🧪 Esteira de Homologação & Validação no Agente <span class="badge" id="ai-homolog-count-badge" style="background: rgba(37, 99, 235, 0.3); font-size: 10px; margin-left: 4px;">0</span>
+        </button>
+
+      </div>
+
+      <!-- SUBTAB 1: SUGESTÕES PROATIVAS DA FROTA -->
+      <div id="ai-content-suggestions">
+        <div class="panel-card">
+          <div class="panel-header">
+            <div>
+              <div class="panel-title"><span>🧠</span> Motor de Inteligência Artificial Proativa</div>
+              <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Analisa correlações de telemetria, desgaste de tuners, saturação de I/O e padrões de queda para sugerir novas automações</div>
+            </div>
+            <button class="btn-primary" id="btnTriggerAi" onclick="triggerAiAnalysis()">
+              <span>✨</span> Analisar Todo o Sistema com IA
+            </button>
+          </div>
+
+          <div class="ai-cards-grid" id="aiCardsGrid">
+            <!-- Cards dinâmicos gerados pela IA com botão 'Aprovar para Homologação' -->
+          </div>
+        </div>
+      </div>
+
+      <!-- SUBTAB 2: ESTEIRA DE HOMOLOGAÇÃO & VALIDAÇÃO NO AGENTE -->
+      <div id="ai-content-homologation" style="display: none;">
+        <div class="panel-card" style="margin-bottom: 20px;">
+          <div class="panel-header">
+            <div>
+              <div class="panel-title"><span>🧪</span> Governança de Homologação de Novas Funcionalidades no Agente</div>
+              <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+                Toda nova monitoração aprovada pela IA é primeiramente validada em praça piloto (Canary), passa por auditoria de estabilidade e, ao ser promovida, cadastra automaticamente os limiares na aba Configurações.
+              </div>
+            </div>
+            <button class="btn-secondary" onclick="loadHomologationPipeline()"><i class="fas fa-sync-alt"></i> Atualizar Esteira</button>
+          </div>
+        </div>
+
+        <div id="ai-homologation-container" style="display: flex; flex-direction: column; gap: 16px;">
+          <!-- Cards de Homologação renderizados dinamicamente -->
+        </div>
+      </div>
+
+      
       </div>
     </section>
 
@@ -1306,10 +1309,10 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=3.5.0"></script>
-  <script src="/static/js/ai_insights.js?v=3.5.0"></script>
+  <script src="/static/js/app.js?v=3.6.0"></script>
+  <script src="/static/js/ai_insights.js?v=3.6.0"></script>
   <script src="/static/js/fleet_ops.js?v=3.4.0"></script>
-  <script src="/static/js/remote_commands.js?v=3.4.0"></script>
-  <script src="/static/js/signals_analysis.js?v=3.5.0"></script>
+  <script src="/static/js/remote_commands.js?v=3.6.0"></script>
+  <script src="/static/js/signals_analysis.js?v=3.6.0"></script>
 </body>
 </html>

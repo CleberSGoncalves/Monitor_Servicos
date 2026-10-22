@@ -30,15 +30,13 @@ function getAiToken() {
 function switchAiSubtab(subtabId) {
     const btnSugg = document.getElementById("btn-ai-subtab-suggestions");
     const btnHomolog = document.getElementById("btn-ai-subtab-homologation");
-    const btnMp4 = document.getElementById("btn-ai-subtab-mp4");
-
     const contentSugg = document.getElementById("ai-content-suggestions");
     const contentHomolog = document.getElementById("ai-content-homologation");
-    const contentMp4 = document.getElementById("ai-content-mp4");
 
-    // Remove active classes
-    [btnSugg, btnHomolog, btnMp4].forEach(b => b && b.classList.remove("active"));
-    [contentSugg, contentHomolog, contentMp4].forEach(c => c && (c.style.display = "none"));
+    if (btnSugg) btnSugg.classList.remove("active");
+    if (btnHomolog) btnHomolog.classList.remove("active");
+    if (contentSugg) contentSugg.style.display = "none";
+    if (contentHomolog) contentHomolog.style.display = "none";
 
     if (subtabId === "suggestions") {
         if (btnSugg) btnSugg.classList.add("active");
@@ -48,10 +46,6 @@ function switchAiSubtab(subtabId) {
         if (btnHomolog) btnHomolog.classList.add("active");
         if (contentHomolog) contentHomolog.style.display = "block";
         loadHomologationPipeline();
-    } else if (subtabId === "mp4") {
-        if (btnMp4) btnMp4.classList.add("active");
-        if (contentMp4) contentMp4.style.display = "block";
-        populateMp4Filters();
     }
 }
 window.switchAiSubtab = switchAiSubtab;
