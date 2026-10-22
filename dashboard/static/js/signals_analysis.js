@@ -20,6 +20,7 @@ let signalsHistoryDataCache = null;
 let chronicIssuesCache = [];
 
 function switchSignalsSubtab(subtabId) {
+    console.log("[SignalsAnalysis] Trocando para subaba:", subtabId);
     const historyBtn = document.getElementById("btn-signals-subtab-history");
     const chronicBtn = document.getElementById("btn-signals-subtab-chronic");
     const mp4Btn = document.getElementById("btn-signals-subtab-mp4");
@@ -28,28 +29,66 @@ function switchSignalsSubtab(subtabId) {
     const chronicContent = document.getElementById("signals-content-chronic");
     const mp4Content = document.getElementById("signals-content-mp4");
 
-    [historyBtn, chronicBtn, mp4Btn].forEach(b => b && b.classList.remove("active"));
-    [historyContent, chronicContent, mp4Content].forEach(c => c && (c.style.display = "none"));
+    [historyBtn, chronicBtn, mp4Btn].forEach(b => {
+        if (b) {
+            b.classList.remove("active");
+            b.style.background = "transparent";
+            b.style.color = "var(--text-muted, #94a3b8)";
+        }
+    });
+    [historyContent, chronicContent, mp4Content].forEach(c => {
+        if (c) c.style.display = "none";
+    });
 
     if (subtabId === "history") {
-        if (historyBtn) historyBtn.classList.add("active");
+        if (historyBtn) {
+            historyBtn.classList.add("active");
+            historyBtn.style.background = "#2563eb";
+            historyBtn.style.color = "#ffffff";
+        }
         if (historyContent) historyContent.style.display = "block";
+        
+        const pracaSelect = document.getElementById("signalsFilterPraca");
+        if (pracaSelect && pracaSelect.options.length <= 1) {
+            populateSignalsPracaFilter();
+        }
         setTimeout(() => {
             if (signalsHistoryDataCache && signalsHistoryDataCache.history_points) {
                 renderSignalsCanvasChart(signalsHistoryDataCache.history_points);
             }
         }, 50);
     } else if (subtabId === "chronic") {
-        if (chronicBtn) chronicBtn.classList.add("active");
+        if (chronicBtn) {
+            chronicBtn.classList.add("active");
+            chronicBtn.style.background = "#2563eb";
+            chronicBtn.style.color = "#ffffff";
+        }
         if (chronicContent) chronicContent.style.display = "block";
         loadChronicIssuesList();
     } else if (subtabId === "mp4") {
-        if (mp4Btn) mp4Btn.classList.add("active");
+        if (mp4Btn) {
+            mp4Btn.classList.add("active");
+            mp4Btn.style.background = "#2563eb";
+            mp4Btn.style.color = "#ffffff";
+        }
         if (mp4Content) mp4Content.style.display = "block";
-        if (typeof populateMp4Filters === "function") populateMp4Filters();
+        if (typeof populateMp4Filters === "function") {
+            populateMp4Filters();
+        }
     }
 }
 window.switchSignalsSubtab = switchSignalsSubtab;
+
+function setupSignalsSubtabsListeners() {
+    const historyBtn = document.getElementById("btn-signals-subtab-history");
+    const chronicBtn = document.getElementById("btn-signals-subtab-chronic");
+    const mp4Btn = document.getElementById("btn-signals-subtab-mp4");
+
+    if (historyBtn) historyBtn.onclick = (e) => { if (e) e.preventDefault(); switchSignalsSubtab("history"); };
+    if (chronicBtn) chronicBtn.onclick = (e) => { if (e) e.preventDefault(); switchSignalsSubtab("chronic"); };
+    if (mp4Btn) mp4Btn.onclick = (e) => { if (e) e.preventDefault(); switchSignalsSubtab("mp4"); };
+}
+window.setupSignalsSubtabsListeners = setupSignalsSubtabsListeners;
 
 function setSignalsPeriod(period) {
     currentSignalsPeriod = period;
@@ -1092,3 +1131,15 @@ window.addEventListener("resize", () => {
         renderSignalsCanvasChart(signalsHistoryDataCache.history_points);
     }
 });
+
+// Inicialização segura ao carregar o DOM
+document.addEventListener("DOMContentLoaded", () => {
+    setupSignalsSubtabsListeners();
+    setTimeout(() => {
+        const pracaSelect = document.getElementById("signalsFilterPraca");
+        if (pracaSelect && pracaSelect.options.length <= 1) {
+            populateSignalsPracaFilter();
+        }
+    }, 400);
+});
+
