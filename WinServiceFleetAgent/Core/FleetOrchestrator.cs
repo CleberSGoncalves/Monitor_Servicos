@@ -20,7 +20,7 @@ namespace WinServiceFleetAgent.Core
         private readonly string _hostname;
         private readonly AutoUpdateConfig _autoUpdateConfig;
         private DateTime _lastAutoUpdateCheck = DateTime.MinValue;
-        private static bool _isSelfUpdateTriggered = false;
+        private static DateTime _selfUpdateTriggeredTime = DateTime.MinValue;
 
         public FleetOrchestrator(
             string? hostnameOverride,
@@ -506,13 +506,21 @@ namespace WinServiceFleetAgent.Core
 
             if (isSelfUpdate)
             {
-                if (_isSelfUpdateTriggered)
+                if (_selfUpdateTriggeredTime != DateTime.MinValue)
                 {
-                    FileLogger.Log($"[FleetOrchestrator] Auto-atualização já foi disparada. Aguardando...");
-                    return;
+                    if ((DateTime.UtcNow - _selfUpdateTriggeredTime).TotalMinutes < 3)
+                    {
+                        FileLogger.Log($"[FleetOrchestrator] Auto-atualização já foi disparada há menos de 3 minutos. Aguardando reinício...");
+                        return;
+                    }
+                    else
+                    {
+                        FileLogger.Log($"[FleetOrchestrator] ⚠️ Auto-atualização anterior não concluiu após 3 minutos. Resetando para nova tentativa...");
+                        _selfUpdateTriggeredTime = DateTime.MinValue;
+                    }
                 }
 
-                _isSelfUpdateTriggered = true;
+                _selfUpdateTriggeredTime = DateTime.UtcNow;
                 await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Em Progresso", versaoDesejada: targetVersion);
                 FileLogger.Log($"[FleetOrchestrator] 🚀 Iniciando auto-atualização atômica do agente para versão '{targetVersion}'...", writeToEventLog: true, eventId: 1100);
 
@@ -527,7 +535,7 @@ namespace WinServiceFleetAgent.Core
                 var stageResult = await AgentAutoUpdater.DownloadAndStageUpdateAsync(_autoUpdateConfig, checkResult, _tempStagingDir, _githubToken);
                 if (!stageResult.Success)
                 {
-                    _isSelfUpdateTriggered = false;
+                    _selfUpdateTriggeredTime = DateTime.MinValue;
                     FileLogger.LogError($"[FleetOrchestrator] ❌ Falha na validação de integridade/staging para auto-atualização: {stageResult.ErrorMessage}", writeToEventLog: true, eventId: 3100);
                     await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Erro na Atualização");
                     return;
@@ -550,7 +558,7 @@ namespace WinServiceFleetAgent.Core
 
                 if (!scheduled)
                 {
-                    _isSelfUpdateTriggered = false;
+                    _selfUpdateTriggeredTime = DateTime.MinValue;
                     await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Erro na Atualização");
                 }
                 return;

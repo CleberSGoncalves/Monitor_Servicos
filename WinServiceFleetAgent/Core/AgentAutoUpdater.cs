@@ -279,35 +279,32 @@ namespace WinServiceFleetAgent.Core
             {
                 FileLogger.Log($"[AgentAutoUpdater] 🚀 Programando substituição atômica e silenciosa dos binários...", writeToEventLog: true, eventId: 1103);
 
-                // Localiza o script Apply-AgentUpdate.ps1
-                string scriptPath = Path.Combine(installDir, "Scripts", "Apply-AgentUpdate.ps1");
-                if (!File.Exists(scriptPath))
-                {
-                    scriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Scripts", "Apply-AgentUpdate.ps1");
-                }
-                if (!File.Exists(scriptPath))
-                {
-                    scriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Apply-AgentUpdate.ps1");
-                }
-
-                // Se o script não estiver presente na pasta local, copia o script embutido para %TEMP%
-                if (!File.Exists(scriptPath))
-                {
-                    string tempScript = Path.Combine(Path.GetTempPath(), "Apply-AgentUpdate.ps1");
-                    scriptPath = tempScript;
-                }
-
+                // 1. Gera script BAT/CMD nativo diretamente no stagingDir para máxima resiliência (sem dependência de ps1 ou quoting)
+                string runnerBat = Path.Combine(stagingDir, "apply_update_runner.bat");
                 string logPath = Path.Combine(installDir, "logs", "updater.log");
 
-                // Monta comando do PowerShell
-                string taskName = "WinServiceFleetAgent_AutoUpdate";
-                string psArgs = $"-ExecutionPolicy Bypass -NonInteractive -WindowStyle Hidden -File \"{scriptPath}\" " +
-                                $"-ServiceName \"{serviceName}\" -InstallDir \"{installDir}\" -StagingDir \"{stagingDir}\" " +
-                                $"-BackupBaseDir \"{backupBaseDir}\" -CurrentVersion \"{currentVer}\" -TargetVersion \"{targetVer}\" -LogPath \"{logPath}\"";
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine("@echo off");
+                sb.AppendLine("timeout /t 5 /nobreak >nul");
+                sb.AppendLine($"net stop {serviceName} >nul 2>&1");
+                sb.AppendLine("timeout /t 3 /nobreak >nul");
+                sb.AppendLine("taskkill /f /im WinServiceFleetAgent.exe >nul 2>&1");
+                sb.AppendLine("timeout /t 2 /nobreak >nul");
+                sb.AppendLine($"robocopy \"{stagingDir}\" \"{installDir}\" /E /R:3 /W:1 /NP >nul");
+                sb.AppendLine($"net start {serviceName}");
+                sb.AppendLine("timeout /t 3 /nobreak >nul");
+                sb.AppendLine($"if exist \"{installDir}\\WinServiceFleetAgent.exe\" (");
+                sb.AppendLine($"    if not exist \"{installDir}\\logs\" mkdir \"{installDir}\\logs\"");
+                sb.AppendLine($"    echo {{\"PreviousVersion\":\"{currentVer}\",\"NewVersion\":\"{targetVer}\",\"UpdatedAt\":\"%date% %time%\"}} > \"{installDir}\\logs\\update_success.json\"");
+                sb.AppendLine(")");
+                sb.AppendLine("exit /b 0");
 
-                // Registra e dispara via Task Scheduler como SYSTEM (isolado do processo do serviço)
+                File.WriteAllText(runnerBat, sb.ToString(), System.Text.Encoding.Default);
+
+                // 2. Registra e dispara via Task Scheduler como SYSTEM (isolado do processo do serviço)
+                string taskName = "WinServiceFleetAgent_AutoUpdate";
                 string schDelete = $"/delete /tn \"{taskName}\" /f";
-                string schCreate = $"/create /tn \"{taskName}\" /tr \"powershell.exe {psArgs}\" /sc once /st 00:00 /ru SYSTEM /f /rl HIGHEST";
+                string schCreate = $"/create /tn \"{taskName}\" /tr \"cmd.exe /c \\\"{runnerBat}\\\"\" /sc once /st 00:00 /ru SYSTEM /f /rl HIGHEST";
                 string schRun = $"/run /tn \"{taskName}\"";
 
                 Process.Start(new ProcessStartInfo("schtasks.exe", schDelete) { UseShellExecute = false, CreateNoWindow = true })?.WaitForExit(3000);
