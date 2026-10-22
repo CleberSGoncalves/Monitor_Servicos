@@ -14,6 +14,17 @@ _ai_cmd_rotation_index = 0
 # Catálogo Mestre de Comandos Recomendados pela IA (Consultas e Correções do SO/Frota)
 SYSTEMIC_AI_COMMANDS_POOL = [
     {
+        "id": "ai_cmd_fix_atria_eventlog",
+        "title": "🛠️ Correção de Erro 500 AtriaAPI / EventLog (Pelotas DTO1)",
+        "category": "correcao",
+        "shell_type": "powershell",
+        "command": "$sources = @('AtriaAPI', 'DTV.Capture', 'Atria.Monitoring', 'MuxesController'); foreach ($src in $sources) { if (-not [System.Diagnostics.EventLog]::SourceExists($src)) { New-EventLog -LogName Application -Source $src -ErrorAction SilentlyContinue; Write-Host ('Fonte criada: ' + $src); } }; Get-Service -Name *Atria*, *Capture* -ErrorAction SilentlyContinue | Restart-Service -Force; Start-Sleep -Seconds 3; try { $res = Invoke-RestMethod -Uri 'http://localhost:9000/api/v1/Muxes' -TimeoutSec 5; Write-Host 'API 9000 restabelecida com sucesso!'; } catch { Write-Host ('Erro na API: ' + $_.Exception.Message); }",
+        "reason": "Resolve a SecurityException ('Logs inacessiveis: Security, State') no controller MuxesController da porta 9000 registrando as fontes de evento no Application Log.",
+        "action_label": "Corrigir AtriaAPI 9000",
+        "risk_level": "alto",
+        "risk_warning": "Reinicia o serviço de captura Atria para recarregar o MuxesController e restabelecer a telemetria na porta 9000."
+    },
+    {
         "id": "ai_cmd_audit_binary",
         "title": "🔍 Auditoria de Versão Binária do Agente",
         "category": "consulta",

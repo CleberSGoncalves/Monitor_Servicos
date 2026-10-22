@@ -452,6 +452,7 @@
               <tr>
                 <th>Servidor / Host</th>
                 <th>Praça</th>
+                <th style="text-align: center; width: 75px;">CS</th>
                 <th>Serviço</th>
                 <th>Versão Instalada</th>
                 <th>Versão Desejada</th>
@@ -464,7 +465,7 @@
               </tr>
             </thead>
             <tbody id="servicesTableBody">
-              <tr><td colspan="11" style="text-align: center; color: var(--text-muted);">Carregando inventário...</td></tr>
+              <tr><td colspan="12" style="text-align: center; color: var(--text-muted);">Carregando inventário...</td></tr>
             </tbody>
           </table>
         </div>
@@ -663,6 +664,16 @@
         <div class="host-chips-container" id="selected-hosts-chips">
           <!-- Chips de hosts selecionados adicionados dinamicamente -->
         </div>
+
+        <!-- Barra de Seleção Rápida por Região e País -->
+        <div class="rc-region-pills-bar" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; padding-top: 10px; border-top: 1px dashed rgba(255,255,255,0.08);">
+          <span style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;"><i class="fas fa-layer-group"></i> Seleção Rápida por Região:</span>
+          <button type="button" class="btn btn-sm btn-secondary" onclick="selectGroup('Brasil')" style="font-size: 11px; padding: 3px 10px; border-radius: 12px;">🇧🇷 Brasil (Todas 22)</button>
+          <button type="button" class="btn btn-sm btn-secondary" onclick="selectGroup('Sul')" style="font-size: 11px; padding: 3px 10px; border-radius: 12px;">📍 Região Sul (<span id="pill-count-sul">5</span>)</button>
+          <button type="button" class="btn btn-sm btn-secondary" onclick="selectGroup('Sudeste')" style="font-size: 11px; padding: 3px 10px; border-radius: 12px;">📍 Região Sudeste (<span id="pill-count-sudeste">15</span>)</button>
+          <button type="button" class="btn btn-sm btn-secondary" onclick="selectGroup('Nordeste')" style="font-size: 11px; padding: 3px 10px; border-radius: 12px;">📍 Região Nordeste (<span id="pill-count-nordeste">1</span>)</button>
+          <button type="button" class="btn btn-sm btn-secondary" onclick="selectGroup('Centro-Oeste')" style="font-size: 11px; padding: 3px 10px; border-radius: 12px;">📍 Centro-Oeste (<span id="pill-count-co">1</span>)</button>
+        </div>
       </div>
 
       <!-- Sub-tabs Navigation -->
@@ -675,6 +686,9 @@
         </button>
         <button class="rc-subtab-btn" data-target="rc-tab-ai" onclick="switchRemoteTab('rc-tab-ai', this)">
           <i class="fas fa-brain text-purple"></i> Sugestões da IA de Diagnóstico
+        </button>
+        <button class="rc-subtab-btn" data-target="rc-tab-groups" onclick="switchRemoteTab('rc-tab-groups', this)">
+          <i class="fas fa-layer-group text-blue"></i> 📍 Grupos por Região & País
         </button>
       </div>
 

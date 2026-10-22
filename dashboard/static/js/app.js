@@ -174,15 +174,18 @@ function renderOutageBanner(outages) {
         return;
     }
 
-    container.innerHTML = outages.map(o => `
+    container.innerHTML = outages.map(o => {
+        const csNum = o.cs || o.id_cs || 1;
+        return `
         <div style="background: rgba(239, 68, 68, 0.1); border-left: 4px solid var(--accent-red); padding: 10px 14px; border-radius: 4px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
             <div>
-                <strong>🚨 ${o.canal} (${o.praca})</strong>: <span style="color: #fca5a5;">${o.motivo}</span>
+                <strong>🚨 ${o.canal} <span style="color: #38bdf8; font-weight: 700;">[${o.praca} • CS ${csNum}]</span></strong>: <span style="color: #fca5a5; font-weight: 600;">${o.motivo}</span>
                 <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">${o.detalhe}</div>
             </div>
-            <button class="btn-secondary" style="font-size: 11px; padding: 4px 10px;" onclick="openIncidentActionModal('canal_${o.canal}', '${o.praca}', '${o.canal}', 'queda_canal')">Tratar Incidente</button>
+            <button class="btn-secondary" style="font-size: 11px; padding: 4px 10px;" onclick="openIncidentActionModal('canal_${o.canal}', '${o.praca} (CS ${csNum})', '${o.canal}', 'queda_canal')">Tratar Incidente</button>
         </div>
-    `).join("");
+    `;
+    }).join("");
 }
 
 // 2. Tabela de Serviços
@@ -212,7 +215,8 @@ async function loadServicesTable() {
         return `
             <tr>
                 <td><strong>${s.hostname}</strong></td>
-                <td>${s.praca} <span style="font-size: 10px; color: var(--text-muted);">(CS ${s.cs})</span></td>
+                <td>${s.praca}</td>
+                <td style="text-align: center;"><span class="badge" style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); color: #93c5fd; font-weight: 700; font-size: 11px;">CS ${s.cs || 1}</span></td>
                 <td><code>${s.nome_servico}</code></td>
                 <td><span style="font-family: monospace;">${s.versao_instalada}</span></td>
                 <td><span style="font-family: monospace; color: var(--text-highlight);">${s.versao_desejada}</span></td>
@@ -260,7 +264,7 @@ async function loadChannelsTable() {
         return `
             <tr>
                 <td><strong>${c.canal}</strong></td>
-                <td>${c.cidade}</td>
+                <td>${c.cidade} <span class="badge" style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); color: #93c5fd; font-weight: 700; font-size: 10px; margin-left: 4px;">CS ${c.id_cs || 1}</span></td>
                 <td><span style="font-size: 11px; color: var(--text-muted);">${c.meio}</span></td>
                 <td>Tuner #${c.tuner_id >= 0 ? c.tuner_id : 'N/A'}</td>
                 <td>${tunerBadge}</td>

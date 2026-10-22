@@ -106,9 +106,40 @@ def sync_fleet_data():
             tuner_stat = f.get("StatusTuner", "N/A")
             rec_mp4 = f.get("GravandoMP4", "Não")
             
-            # Detecção de Queda
-            has_outage = is_frozen or is_mute or (sig_q == 0 and sig_s == 0 and "digital" in str(f.get("MeiodeTransmiss_x00e3_o", "")).lower()) or "falha" in str(tuner_stat).lower()
-            
+            # Meio de Transmissão e CS
+            meio_str = str(f.get("MeiodeTransmiss_x00e3_o", "Digital Terrestre"))
+            is_rtsp = "rtsp" in meio_str.lower() or "udp" in meio_str.lower() or "ip" in meio_str.lower()
+            is_digital = "digital" in meio_str.lower() or "terrestre" in meio_str.lower()
+            id_cs = f.get("IDCS", 1)
+
+            # Classificação Preditiva de Falha e Queda
+            has_outage = False
+            motivo = "Estável"
+
+            if is_frozen:
+                has_outage = True
+                motivo = "Vídeo Congelado"
+            elif is_mute:
+                has_outage = True
+                motivo = "Áudio Mudo"
+            elif "falha" in str(tuner_stat).lower() or "security" in str(tuner_stat).lower() or "500" in str(tuner_stat).lower() or "api" in str(tuner_stat).lower():
+                has_outage = True
+                motivo = "Falha API Atria (Porta 9000)" if ("api" in str(tuner_stat).lower() or "500" in str(tuner_stat).lower() or "security" in str(tuner_stat).lower()) else "Falha no Sintonizador TBS"
+            elif is_rtsp:
+                # Streams IP / RTSP: sinal vem nil="true", saúde é medida por status e gravação
+                t_lower = str(tuner_stat).lower()
+                if t_lower not in ["connected_working", "working", "connected", "lock", "n/a", ""] or "⚠️" in rec_mp4:
+                    has_outage = True
+                    motivo = f"Stream RTSP Interrompido ({tuner_stat})"
+            elif is_digital:
+                # Sinal Digital Terrestre
+                if (sig_q == 0 or sig_q is None) and (sig_s == 0 or sig_s is None):
+                    has_outage = True
+                    motivo = "Sinal RF Zerado"
+                elif sig_q is not None and 0 < sig_q < 45:
+                    has_outage = True
+                    motivo = f"Sinal RF Degradado / Instável ({sig_q}%) - Risco de Perda de Lock"
+
             ch_item = {
                 "id": it.get("id"),
                 "canal": ch_name,
@@ -116,8 +147,9 @@ def sync_fleet_data():
                 "pais": f.get("Pais", "Brasil"),
                 "cidade": praca,
                 "id_host": f.get("IDHost", 1),
-                "id_cs": f.get("IDCS", 1),
-                "meio": f.get("MeiodeTransmiss_x00e3_o", "Digital Terrestre"),
+                "id_cs": id_cs,
+                "cs": id_cs,
+                "meio": meio_str,
                 "frequencia": f.get("Frequencia", "N/A"),
                 "tuner_id": f.get("TunerID", -1),
                 "status_tuner": tuner_stat,
@@ -140,9 +172,11 @@ def sync_fleet_data():
                 outages.append({
                     "canal": ch_name,
                     "praca": praca,
+                    "id_cs": id_cs,
+                    "cs": id_cs,
                     "tuner_id": ch_item["tuner_id"],
-                    "motivo": "Vídeo Congelado" if is_frozen else ("Áudio Mudo" if is_mute else ("Falha Tuner" if "falha" in tuner_stat.lower() else "Sinal Zerado")),
-                    "detalhe": f"Status: {tuner_stat} | Qualidade: {ch_item['qualidade_sinal']}% | Força: {ch_item['forca_sinal']}%",
+                    "motivo": motivo,
+                    "detalhe": f"Meio: {meio_str} | Status: {tuner_stat} | Qualidade: {ch_item['qualidade_sinal']}% | Força: {ch_item['forca_sinal']}%",
                     "atualizacao": ch_item["atualizacao"]
                 })
 

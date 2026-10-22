@@ -1,3 +1,60 @@
+let allFleetHostsData = []; // [{ hostname, praca, regiao, pais }]
+
+const REGION_MAPPING = {
+    // Sul
+    "Pelotas": { regiao: "Sul", uf: "RS", pais: "Brasil" },
+    "Caxias do Sul": { regiao: "Sul", uf: "RS", pais: "Brasil" },
+    "Florianópolis": { regiao: "Sul", uf: "SC", pais: "Brasil" },
+    "Florianopolis": { regiao: "Sul", uf: "SC", pais: "Brasil" },
+    "Porto Alegre": { regiao: "Sul", uf: "RS", pais: "Brasil" },
+    "Curitiba": { regiao: "Sul", uf: "PR", pais: "Brasil" },
+
+    // Sudeste
+    "São Paulo": { regiao: "Sudeste", uf: "SP", pais: "Brasil" },
+    "Campinas": { regiao: "Sudeste", uf: "SP", pais: "Brasil" },
+    "Santos": { regiao: "Sudeste", uf: "SP", pais: "Brasil" },
+    "SJ dos Campos": { regiao: "Sudeste", uf: "SP", pais: "Brasil" },
+    "S.J dos Campos": { regiao: "Sudeste", uf: "SP", pais: "Brasil" },
+    "São José dos Campos": { regiao: "Sudeste", uf: "SP", pais: "Brasil" },
+    "Ribeirão Preto": { regiao: "Sudeste", uf: "SP", pais: "Brasil" },
+    "Rio de Janeiro": { regiao: "Sudeste", uf: "RJ", pais: "Brasil" },
+    "Juiz de Fora": { regiao: "Sudeste", uf: "MG", pais: "Brasil" },
+    "Uberlândia": { regiao: "Sudeste", uf: "MG", pais: "Brasil" },
+    "Vitória": { regiao: "Sudeste", uf: "ES", pais: "Brasil" },
+    "Belo Horizonte": { regiao: "Sudeste", uf: "MG", pais: "Brasil" },
+
+    // Nordeste
+    "Aracaju": { regiao: "Nordeste", uf: "SE", pais: "Brasil" },
+    "Salvador": { regiao: "Nordeste", uf: "BA", pais: "Brasil" },
+    "Recife": { regiao: "Nordeste", uf: "PE", pais: "Brasil" },
+    "Fortaleza": { regiao: "Nordeste", uf: "CE", pais: "Brasil" },
+
+    // Centro-Oeste / Nacional
+    "Brasília": { regiao: "Centro-Oeste", uf: "DF", pais: "Brasil" },
+    "Brasilia": { regiao: "Centro-Oeste", uf: "DF", pais: "Brasil" },
+    "Nacional": { regiao: "Centro-Oeste", uf: "BR", pais: "Brasil" }
+};
+
+function getHostRegionAndCountry(hostname, praca) {
+    if (praca && REGION_MAPPING[praca]) {
+        return REGION_MAPPING[praca];
+    }
+    const h = (hostname || "").toUpperCase();
+    if (h.startsWith("BRRS") || h.startsWith("BRSC") || h.startsWith("BRPR") || h.includes("FNS")) {
+        return { regiao: "Sul", uf: "RS/SC", pais: "Brasil" };
+    }
+    if (h.startsWith("BRSP") || h.startsWith("BRRJ") || h.startsWith("BRMG") || h.startsWith("BRES") || h.includes("VIT")) {
+        return { regiao: "Sudeste", uf: "SP/RJ/MG/ES", pais: "Brasil" };
+    }
+    if (h.startsWith("BRSE") || h.startsWith("BRBA") || h.startsWith("BRPE") || h.startsWith("BRCE")) {
+        return { regiao: "Nordeste", uf: "SE/BA/PE", pais: "Brasil" };
+    }
+    if (h.startsWith("BRDF") || h.startsWith("BRGO") || h.startsWith("BRMT") || h.startsWith("BRMS") || h.includes("REPUCOM")) {
+        return { regiao: "Centro-Oeste", uf: "DF/GO", pais: "Brasil" };
+    }
+    return { regiao: "Sudeste", uf: "BR", pais: "Brasil" };
+}
+
 // dashboard/static/js/remote_commands.js
 /**
  * Orquestrador de Comandos Remotos (Remote Command Console)
@@ -108,7 +165,7 @@ window.initRemoteCommands = function() {
     setupRemoteCommandEvents();
 };
 
-// Carrega os hosts da frota disponíveis para seleção
+// Carrega os hosts da frota e mapeia por Regiões e Países
 async function loadRemoteCommandHosts() {
     const hostSelect = document.getElementById("remote-host-select");
     if (!hostSelect) return;
@@ -125,33 +182,77 @@ async function loadRemoteCommandHosts() {
             services = await r.json();
         }
 
-        const uniqueHosts = new Map();
+        const uniqueHostsMap = new Map();
         if (Array.isArray(services) && services.length > 0) {
             services.forEach(s => {
-                if (s.hostname && s.hostname !== "N/A" && !uniqueHosts.has(s.hostname)) {
-                    uniqueHosts.set(s.hostname, s.praca || "CS");
+                if (s.hostname && s.hostname !== "N/A" && !uniqueHostsMap.has(s.hostname)) {
+                    const meta = getHostRegionAndCountry(s.hostname, s.praca);
+                    uniqueHostsMap.set(s.hostname, {
+                        hostname: s.hostname,
+                        praca: s.praca || "CS",
+                        regiao: meta.regiao,
+                        uf: meta.uf,
+                        pais: meta.pais
+                    });
                 }
             });
         }
 
+        allFleetHostsData = Array.from(uniqueHostsMap.values());
+
         hostSelect.innerHTML = "";
-        if (uniqueHosts.size === 0) {
+        if (allFleetHostsData.length === 0) {
             hostSelect.innerHTML = '<option value="">Nenhuma praça encontrada</option>';
             return;
         }
 
-        // Ordena alfabeticamente por hostname
-        const sorted = Array.from(uniqueHosts.entries()).sort((a, b) => a[0].localeCompare(b[0]));
-        sorted.forEach(([hostname, praca]) => {
-            const opt = document.createElement("option");
-            opt.value = hostname;
-            opt.textContent = `${hostname} (${praca})`;
-            hostSelect.appendChild(opt);
+        // Agrupamento por Regiões
+        const regions = ["Sul", "Sudeste", "Nordeste", "Centro-Oeste"];
+        const grouped = {};
+        regions.forEach(reg => grouped[reg] = []);
+
+        allFleetHostsData.forEach(h => {
+            if (!grouped[h.regiao]) grouped[h.regiao] = [];
+            grouped[h.regiao].push(h);
         });
 
+        // Atualiza contadores nas pills do topo
+        const countSul = (grouped["Sul"] || []).length;
+        const countSudeste = (grouped["Sudeste"] || []).length;
+        const countNordeste = (grouped["Nordeste"] || []).length;
+        const countCO = (grouped["Centro-Oeste"] || []).length;
+
+        const elSul = document.getElementById("pill-count-sul");
+        if (elSul) elSul.textContent = countSul;
+        const elSud = document.getElementById("pill-count-sudeste");
+        if (elSud) elSud.textContent = countSudeste;
+        const elNe = document.getElementById("pill-count-nordeste");
+        if (elNe) elNe.textContent = countNordeste;
+        const elCo = document.getElementById("pill-count-co");
+        if (elCo) elCo.textContent = countCO;
+
+        // Popula dropdown com <optgroup> por região
+        regions.forEach(reg => {
+            const hostsInReg = grouped[reg] || [];
+            if (hostsInReg.length > 0) {
+                const optGroup = document.createElement("optgroup");
+                optGroup.label = `📍 Região ${reg} (${hostsInReg.length} praças)`;
+                hostsInReg.sort((a, b) => a.hostname.localeCompare(b.hostname)).forEach(h => {
+                    const opt = document.createElement("option");
+                    opt.value = h.hostname;
+                    opt.textContent = `${h.hostname} (${h.praca})`;
+                    optGroup.appendChild(opt);
+                });
+                hostSelect.appendChild(optGroup);
+            }
+        });
+
+        // Renderiza os cards da subaba de Grupos & Regiões
+        renderGroupsSubtab(grouped);
+
         // Se houver hosts e nenhum selecionado, seleciona o primeiro por padrão
-        if (selectedRemoteHosts.length === 0 && sorted.length > 0) {
-            selectedRemoteHosts = [sorted[0][0]];
+        if (selectedRemoteHosts.length === 0 && allFleetHostsData.length > 0) {
+            selectedRemoteHosts = [allFleetHostsData[0].hostname];
             updateSelectedHostsUI();
         }
     } catch (err) {
@@ -159,6 +260,93 @@ async function loadRemoteCommandHosts() {
         hostSelect.innerHTML = '<option value="">Erro ao carregar praças</option>';
     }
 }
+
+// Renderiza a tela de gestão da subaba Grupos & Regiões
+function renderGroupsSubtab(grouped) {
+    const container = document.getElementById("rc-groups-grid-container");
+    if (!container) return;
+
+    container.innerHTML = "";
+
+    // 1. Card País: Brasil (Todas)
+    const totalHosts = allFleetHostsData.length;
+    const brazilCard = document.createElement("div");
+    brazilCard.className = "ai-cmd-card";
+    brazilCard.style.borderColor = "rgba(59, 130, 246, 0.4)";
+    brazilCard.innerHTML = `
+        <div class="ai-cmd-header">
+            <h4>🇧🇷 País: Brasil (Frota Nacional Completa)</h4>
+            <span class="badge" style="background: rgba(59, 130, 246, 0.2); color: #93c5fd; border: 1px solid rgba(59, 130, 246, 0.4); font-size: 11px;">${totalHosts} PRAÇAS ATIVAS</span>
+        </div>
+        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 14px;">
+            Seleciona todas as ${totalHosts} praças do Brasil de uma só vez para execuções globais de scripts em lote.
+        </p>
+        <div style="display: flex; gap: 8px;">
+            <button class="btn btn-sm btn-primary" onclick="selectGroup('Brasil')" style="flex: 1;"><i class="fas fa-check-double"></i> Selecionar Todo o Brasil</button>
+            <button class="btn btn-sm btn-secondary" onclick="selectGroupAndGoToConsole('Brasil')" style="flex: 1;"><i class="fas fa-terminal"></i> Selecionar e Ir ao Console</button>
+        </div>
+    `;
+    container.appendChild(brazilCard);
+
+    // 2. Cards por Região
+    const regionInfo = {
+        "Sul": { icon: "📍", desc: "Rio Grande do Sul (Pelotas, Caxias do Sul), Santa Catarina (Florianópolis)", color: "#10b981" },
+        "Sudeste": { icon: "📍", desc: "São Paulo, Campinas, Santos, SJ dos Campos, Ribeirão Preto, Rio de Janeiro, Juiz de Fora, Uberlândia, Vitória", color: "#3b82f6" },
+        "Nordeste": { icon: "📍", desc: "Sergipe (Aracaju) e praças em homologação no Nordeste", color: "#f59e0b" },
+        "Centro-Oeste": { icon: "📍", desc: "Distrito Federal (Brasília) e CS Nacional Recom", color: "#8b5cf6" }
+    };
+
+    Object.keys(regionInfo).forEach(reg => {
+        const hosts = grouped[reg] || [];
+        const info = regionInfo[reg];
+        const card = document.createElement("div");
+        card.className = "ai-cmd-card";
+        card.innerHTML = `
+            <div class="ai-cmd-header">
+                <h4>${info.icon} Região ${reg} (${hosts.length} praças)</h4>
+                <span class="badge" style="background: rgba(255,255,255,0.08); color: #fff; font-size: 10px;">BRASIL • ${reg.toUpperCase()}</span>
+            </div>
+            <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;">${info.desc}</p>
+            <div style="background: rgba(0,0,0,0.3); padding: 8px; border-radius: 6px; max-height: 80px; overflow-y: auto; margin-bottom: 12px; font-size: 11px;">
+                ${hosts.map(h => `<span class="host-chip" style="font-size: 10px; padding: 2px 6px; margin: 2px;">${h.hostname} (${h.praca})</span>`).join("")}
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <button class="btn btn-sm btn-secondary" onclick="selectGroup('${reg}')" style="flex: 1;"><i class="fas fa-plus"></i> Selecionar ${reg}</button>
+                <button class="btn btn-sm btn-primary" onclick="selectGroupAndGoToConsole('${reg}')" style="flex: 1;"><i class="fas fa-terminal"></i> Selecionar e Executar</button>
+            </div>
+        `;
+        container.appendChild(card);
+    });
+}
+
+// Seleção em lote por Grupo (País ou Região)
+window.selectGroup = function(groupName) {
+    if (!allFleetHostsData || allFleetHostsData.length === 0) {
+        safeToast("Carregando praças, aguarde...", "warning");
+        return;
+    }
+
+    if (groupName === "Brasil" || groupName === "Todos") {
+        selectedRemoteHosts = allFleetHostsData.map(h => h.hostname);
+        updateSelectedHostsUI();
+        safeToast(`Todas as ${selectedRemoteHosts.length} praças do Brasil selecionadas!`, "success");
+        return;
+    }
+
+    const filtered = allFleetHostsData.filter(h => h.regiao === groupName || h.pais === groupName);
+    if (filtered.length > 0) {
+        selectedRemoteHosts = filtered.map(h => h.hostname);
+        updateSelectedHostsUI();
+        safeToast(`${selectedRemoteHosts.length} praças da Região ${groupName} selecionadas!`, "success");
+    } else {
+        safeToast(`Nenhuma praça encontrada para o grupo ${groupName}`, "warning");
+    }
+};
+
+window.selectGroupAndGoToConsole = function(groupName) {
+    selectGroup(groupName);
+    switchRemoteTab("rc-tab-console");
+};
 
 // Atualiza a visualização dos chips de hosts selecionados
 function updateSelectedHostsUI() {
