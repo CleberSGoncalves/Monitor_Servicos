@@ -11,6 +11,7 @@ document.addEventListener("DOMContentLoaded", () => {
     setupTabNavigation();
     setupFilters();
     setupModals();
+    checkSystemUpdate(false);
 });
 
 function initAuth() {
@@ -600,3 +601,187 @@ function showToast(message, type = "info") {
         setTimeout(() => toast.remove(), 300);
     }, 3500);
 }
+
+
+// ==============================================================================
+// GESTÃO DE ATUALIZAÇÃO DO SISTEMA CENTRAL CS FLEET (GITHUB AUTO-UPDATER)
+// ==============================================================================
+let latestUpdateInfo = null;
+
+async function checkSystemUpdate(manual = false) {
+    const icon = document.getElementById("iconSystemUpdate");
+    const label = document.getElementById("labelSystemVersion");
+    const statusBox = document.getElementById("sys-update-status-box");
+    const statusIcon = document.getElementById("sys-update-status-icon");
+    const statusTitle = document.getElementById("sys-update-status-title");
+    const statusDesc = document.getElementById("sys-update-status-desc");
+    const localVer = document.getElementById("sys-update-local-version");
+    const localSha = document.getElementById("sys-update-local-sha");
+    const remoteVer = document.getElementById("sys-update-remote-version");
+    const remoteSha = document.getElementById("sys-update-remote-sha");
+    const commitMsg = document.getElementById("sys-update-commit-msg");
+    const btnApply = document.getElementById("btnApplySysUpdate");
+
+    if (icon) icon.classList.add("fa-spin");
+
+    try {
+        const token = getAuthToken();
+        const res = await fetch("/api/system/version", {
+            headers: { "Authorization": `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const data = await res.json();
+        latestUpdateInfo = data;
+
+        if (label && data.current_version) {
+            label.textContent = `${data.current_version} (${data.local_commit || 'git'})`;
+        }
+        if (localVer) localVer.textContent = `${data.current_version}`;
+        if (localSha) localSha.textContent = data.local_commit || "...";
+        if (remoteVer) remoteVer.textContent = `Commit ${data.remote_commit || '...'}`;
+        if (remoteSha) remoteSha.textContent = data.remote_commit || "...";
+        if (commitMsg) commitMsg.textContent = data.commit_message || "(Sem detalhes disponíveis)";
+
+        if (data.has_update) {
+            if (statusBox) {
+                statusBox.style.background = "rgba(245, 158, 11, 0.15)";
+                statusBox.style.borderColor = "rgba(245, 158, 11, 0.4)";
+            }
+            if (statusIcon) {
+                statusIcon.className = "fas fa-arrow-circle-up";
+                statusIcon.style.color = "#f59e0b";
+            }
+            if (statusTitle) {
+                statusTitle.textContent = "⚡ Nova Atualização Disponível no GitHub!";
+                statusTitle.style.color = "#fbbf24";
+            }
+            if (statusDesc) {
+                statusDesc.textContent = `Novo commit ${data.remote_commit} pronto para instalação.`;
+            }
+            if (btnApply) {
+                btnApply.disabled = false;
+                btnApply.style.opacity = "1";
+                btnApply.style.background = "linear-gradient(135deg, #10b981, #059669)";
+                btnApply.innerHTML = '<i class="fas fa-download"></i> Atualizar para Nova Versão';
+            }
+            const updateBtn = document.getElementById("btnSystemUpdate");
+            if (updateBtn) {
+                updateBtn.style.borderColor = "#f59e0b";
+                updateBtn.style.color = "#f59e0b";
+                updateBtn.title = "Nova versão disponível! Clique para atualizar";
+            }
+            if (manual) showToast("Nova atualização disponível no GitHub!", "warning");
+        } else {
+            if (statusBox) {
+                statusBox.style.background = "rgba(16, 185, 129, 0.1)";
+                statusBox.style.borderColor = "rgba(16, 185, 129, 0.3)";
+            }
+            if (statusIcon) {
+                statusIcon.className = "fas fa-check-circle";
+                statusIcon.style.color = "#10b981";
+            }
+            if (statusTitle) {
+                statusTitle.textContent = "✅ Sistema 100% Atualizado";
+                statusTitle.style.color = "#10b981";
+            }
+            if (statusDesc) {
+                statusDesc.textContent = "O sistema está rodando o commit mais recente do branch main.";
+            }
+            if (btnApply) {
+                btnApply.disabled = false;
+                btnApply.style.opacity = "0.8";
+                btnApply.style.background = "linear-gradient(135deg, #2563eb, #1d4ed8)";
+                btnApply.innerHTML = '<i class="fas fa-redo"></i> Forçar Re-sincronização';
+            }
+            if (manual) showToast("O sistema já está na versão mais recente!", "success");
+        }
+    } catch (err) {
+        console.warn("Falha ao checar atualizações:", err);
+        if (statusTitle) statusTitle.textContent = "Aviso ao consultar atualizações";
+        if (statusDesc) statusDesc.textContent = "Não foi possível conectar ao GitHub ou endpoint local.";
+        if (manual) showToast("Não foi possível verificar atualizações no momento", "warning");
+    } finally {
+        if (icon) icon.classList.remove("fa-spin");
+    }
+}
+
+function openSystemUpdateModal() {
+    const modal = document.getElementById("systemUpdateModal");
+    if (modal) {
+        modal.style.display = "flex";
+        checkSystemUpdate(false);
+    }
+}
+
+function closeSystemUpdateModal() {
+    const modal = document.getElementById("systemUpdateModal");
+    if (modal) modal.style.display = "none";
+}
+
+async function applySystemUpdateNow() {
+    const btnApply = document.getElementById("btnApplySysUpdate");
+    const progress = document.getElementById("sys-update-progress-container");
+    const progressLabel = document.getElementById("sys-update-progress-label");
+    const progressPct = document.getElementById("sys-update-progress-pct");
+    const statusBox = document.getElementById("sys-update-status-box");
+    const statusTitle = document.getElementById("sys-update-status-title");
+    const statusDesc = document.getElementById("sys-update-status-desc");
+
+    if (btnApply) btnApply.disabled = true;
+    if (progress) progress.style.display = "block";
+    if (progressLabel) progressLabel.textContent = "Sincronizando arquivos com o GitHub...";
+    if (progressPct) progressPct.textContent = "Baixando...";
+
+    try {
+        const token = getAuthToken();
+        const res = await fetch("/api/system/update?restart_service=true", {
+            method: "POST",
+            headers: {
+                "Authorization": `Bearer ${token}`,
+                "Content-Type": "application/json"
+            }
+        });
+        const data = await res.json();
+
+        if (data.status === "success") {
+            if (progressLabel) progressLabel.textContent = "Atualização concluída com sucesso!";
+            if (progressPct) progressPct.textContent = "100%";
+            if (statusTitle) statusTitle.textContent = "🎉 Sistema Atualizado!";
+            if (statusDesc) statusDesc.textContent = data.message || "Reiniciando serviço Windows...";
+            showToast("Atualização aplicada! Reiniciando serviço...", "success");
+
+            // Aguarda 4 segundos e tenta reconectar
+            setTimeout(() => {
+                if (progressLabel) progressLabel.textContent = "Reconectando ao Dashboard após reinício...";
+                let attempts = 0;
+                const pollInterval = setInterval(async () => {
+                    attempts++;
+                    try {
+                        const ping = await fetch("/api/health");
+                        if (ping.ok) {
+                            clearInterval(pollInterval);
+                            showToast("Dashboard online com a nova versão!", "success");
+                            setTimeout(() => { window.location.reload(); }, 1000);
+                        }
+                    } catch (e) {
+                        if (attempts > 15) {
+                            clearInterval(pollInterval);
+                            window.location.reload();
+                        }
+                    }
+                }, 1500);
+            }, 3000);
+        } else {
+            throw new Error(data.error || "Erro desconhecido na atualização.");
+        }
+    } catch (err) {
+        console.error("Erro ao aplicar atualização:", err);
+        if (progressLabel) progressLabel.textContent = "Falha durante o update.";
+        if (progressPct) progressPct.textContent = "Erro";
+        if (statusTitle) statusTitle.textContent = "Erro na Atualização";
+        if (statusDesc) statusDesc.textContent = err.message;
+        showToast("Erro na atualização: " + err.message, "danger");
+        if (btnApply) btnApply.disabled = false;
+    }
+}
+

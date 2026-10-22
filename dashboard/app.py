@@ -3,6 +3,7 @@ from ai_homologation import (
     run_pilot_validation_tests, deploy_feature_to_fleet
 )
 from feature_flags import get_all_feature_flags, set_feature_flag
+from updater import check_for_updates, apply_update, trigger_service_restart_async
 from mosaic_manager import get_channel_live_snapshots, get_mosaic_analytical_problems
 from mp4_analyzer import (
     analyze_channel_mp4_samples, register_mp4_threshold_from_diagnosis
@@ -564,3 +565,31 @@ async def export_execution(exec_id: str, format: str = Query("txt", regex="^(txt
 async def get_remote_cmd_ai_suggestions(refresh: bool = False, user: dict = Depends(get_current_user)):
     data = get_cached_data()
     return get_ai_command_recommendations(fleet_data=data, refresh=refresh)
+
+
+# ==============================================================================
+# ATUALIZACAO AUTOMATICA DO SISTEMA VIA GITHUB
+# ==============================================================================
+@app.get('/api/system/version')
+async def get_system_version_endpoint(user: dict = Depends(get_current_user)):
+    """Retorna versao atual, commit local e checa novas versoes no GitHub."""
+    return check_for_updates()
+
+
+@app.post('/api/system/update')
+async def apply_system_update_endpoint(restart_service: bool = True, user: dict = Depends(get_current_user)):
+    """Aplica a atualizacao do branch main e reinicia o servico Windows se solicitado."""
+    res = apply_update()
+    if res.get('status') == 'success' and restart_service:
+        import threading
+        def delayed_restart():
+            import time
+            time.sleep(2)
+            trigger_service_restart_async()
+
+        t = threading.Thread(target=delayed_restart, daemon=True)
+        t.start()
+        res['restarting'] = True
+        res['message'] += ' O servico do Dashboard esta sendo reiniciado automaticamente agora.'
+    return res
+

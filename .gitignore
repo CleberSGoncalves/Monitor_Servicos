@@ -27,3 +27,6 @@ publish/*.zip.sha256
 Thumbs.db
 .idea/
 .vscode/
+
+pacote_instalacao_dashboard_24x7/
+
