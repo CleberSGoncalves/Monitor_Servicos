@@ -4349,7 +4349,12 @@
 
 
 
-          <button class="btn-secondary" onclick="document.getElementById('newUserModal').classList.add('active')">➕ Novo Usuário Local</button>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn-primary" onclick="openLdapConfigModal()" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; font-size: 12px; background: linear-gradient(135deg, #1e40af, #2563eb); border: 1px solid #3b82f6; font-weight: 700;">
+              <i class="fas fa-network-wired"></i> ⚙️ Configurar Servidor LDAP
+            </button>
+            <button class="btn-secondary" onclick="document.getElementById('newUserModal').classList.add('active')">➕ Novo Usuário Local</button>
+          </div>
 
 
 
@@ -4361,10 +4366,20 @@
 
 
 
+        <!-- Barra de Status da Integração LDAP -->
+        <div id="ldap-status-badge-bar" style="background: rgba(37,99,235,0.12); border: 1px solid rgba(59,130,246,0.3); border-radius: 6px; padding: 10px 14px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; font-size: 12px;">
+          <div>
+            <i class="fas fa-check-circle" style="color: #10b981; margin-right: 6px;"></i>
+            <span>Domínio Ativo: <strong style="color: #fff;" id="ldap-status-name">grupoibope.corp</strong> (Servidor: <span id="ldap-status-server">10.1.0.1:389</span>)</span>
+            <span style="color: var(--text-muted); margin-left: 12px;">Base DN: <code style="color: #93c5fd; font-size: 11px;" id="ldap-status-dn">OU=Users Accounts,OU=KIM Users,DC=grupoibope,DC=corp</code></span>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn-secondary" onclick="openLdapConfigModal()" style="padding: 3px 10px; font-size: 11px;"><i class="fas fa-cog"></i> Configurar Conexão</button>
+            <button class="btn-secondary" onclick="testLdapConfigDirect()" style="padding: 3px 10px; font-size: 11px; border-color: rgba(16,185,129,0.4); color: #6ee7b7;"><i class="fas fa-plug"></i> Testar Ping LDAP</button>
+          </div>
+        </div>
+
         <!-- Busca no Domínio LDAP -->
-
-
-
         <div style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); padding: 16px; border-radius: var(--radius-sm); margin-bottom: 20px;">
 
 
@@ -5645,6 +5660,107 @@
 
 
 
+    <!-- Modal de Configuração de Autenticação LDAP / Active Directory -->
+  <div class="modal-overlay" id="ldapConfigModal">
+    <div class="modal-content" style="max-width: 680px; width: 95%;">
+      <div class="modal-header" style="border-bottom: 1px solid var(--border-color); padding-bottom: 12px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <i class="fas fa-network-wired" style="color: #38bdf8; font-size: 18px;"></i>
+          <h4 style="margin: 0; font-size: 16px;">Modos de autenticação » grupoibope.corp</h4>
+        </div>
+        <button class="btn-secondary close-modal-btn" onclick="closeLdapConfigModal()" style="padding: 4px 8px;">✕</button>
+      </div>
+
+      <form onsubmit="saveLdapConfig(event)" style="margin-top: 16px;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
+          <div class="form-group" style="grid-column: span 2;">
+            <label class="form-label" style="font-size: 12px; font-weight: 700;">Nome do Domínio <span style="color: #ef4444;">*</span></label>
+            <input type="text" class="form-input" id="ldap_cfg_name" value="grupoibope.corp" required>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" style="font-size: 12px; font-weight: 700;">Servidor (IP / Hostname) <span style="color: #ef4444;">*</span></label>
+            <input type="text" class="form-input" id="ldap_cfg_server" value="10.1.0.1" required>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" style="font-size: 12px; font-weight: 700;">Porta <span style="color: #ef4444;">*</span></label>
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <input type="number" class="form-input" id="ldap_cfg_port" value="389" style="width: 100px;" required>
+              <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #fff; cursor: pointer;">
+                <input type="checkbox" id="ldap_cfg_ssl" onchange="document.getElementById('ldap_cfg_port').value = this.checked ? '636' : '389'"> LDAPS (SSL)
+              </label>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" style="font-size: 12px; font-weight: 700;">Conta de Serviço (Bind User) <span style="color: #ef4444;">*</span></label>
+            <input type="text" class="form-input" id="ldap_cfg_bind_user" value="usr.media.dna@grupoibope" placeholder="usuario@dominio" required>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" style="font-size: 12px; font-weight: 700;">Palavra-chave (Senha do Bind)</label>
+            <input type="password" class="form-input" id="ldap_cfg_bind_password" placeholder="Digite a senha para alterar...">
+          </div>
+
+          <div class="form-group" style="grid-column: span 2;">
+            <label class="form-label" style="font-size: 12px; font-weight: 700;">Base DN <span style="color: #ef4444;">*</span></label>
+            <input type="text" class="form-input" id="ldap_cfg_base_dn" value="OU=Users Accounts,OU=KIM Users,DC=grupoibope,DC=corp" required>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" style="font-size: 12px; font-weight: 700;">Filtro LDAP (Opcional)</label>
+            <input type="text" class="form-input" id="ldap_cfg_filter" placeholder="(&(objectClass=user)(...))">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" style="font-size: 12px; font-weight: 700;">Tempo limite (em segundos)</label>
+            <input type="number" class="form-input" id="ldap_cfg_timeout" value="5" min="1" max="30">
+          </div>
+        </div>
+
+        <!-- Bloco de Atributos Active Directory -->
+        <div style="border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 12px; margin-bottom: 16px; background: rgba(0,0,0,0.25);">
+          <div style="font-size: 11px; font-weight: 700; color: #38bdf8; text-transform: uppercase; margin-bottom: 10px;">
+            <i class="fas fa-tags"></i> Mapeamento de Atributos do Diretório
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div>
+              <label class="form-label" style="font-size: 11px;">Atributo utilizador <span style="color: #ef4444;">*</span></label>
+              <input type="text" class="form-input" id="ldap_cfg_attr_user" value="sAMAccountName" required style="font-size: 12px;">
+            </div>
+            <div>
+              <label class="form-label" style="font-size: 11px;">Atributo do nome próprio</label>
+              <input type="text" class="form-input" id="ldap_cfg_attr_first" value="givenName" style="font-size: 12px;">
+            </div>
+            <div>
+              <label class="form-label" style="font-size: 11px;">Atributo do último nome</label>
+              <input type="text" class="form-input" id="ldap_cfg_attr_last" value="sn" style="font-size: 12px;">
+            </div>
+            <div>
+              <label class="form-label" style="font-size: 11px;">Atributo e-mail</label>
+              <input type="text" class="form-input" id="ldap_cfg_attr_email" value="mail" style="font-size: 12px;">
+            </div>
+          </div>
+        </div>
+
+        <!-- Feedback de Teste -->
+        <div id="ldap-test-feedback" style="display: none; padding: 10px 14px; border-radius: 6px; font-size: 12px; margin-bottom: 16px;"></div>
+
+        <!-- Ações do Modal -->
+        <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-color); padding-top: 14px;">
+          <button type="button" class="btn-secondary" onclick="testLdapConfigInModal()" id="btnTestLdapConn" style="padding: 8px 14px; border-color: rgba(16,185,129,0.5); color: #6ee7b7;">
+            <i class="fas fa-plug"></i> Testar Conexão LDAP
+          </button>
+          <div style="display: flex; gap: 8px;">
+            <button type="button" class="btn-secondary" onclick="closeLdapConfigModal()" style="padding: 8px 14px;">Cancelar</button>
+            <button type="submit" class="btn-primary" style="padding: 8px 18px; font-weight: 700; background: #2563eb;">Guardar / Salvar</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="newUserModal">
 
 
@@ -6040,27 +6156,27 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=3.9.9"></script>
+  <script src="/static/js/app.js?v=3.9.10"></script>
 
 
 
-  <script src="/static/js/ai_insights.js?v=3.9.9"></script>
+  <script src="/static/js/ai_insights.js?v=3.9.10"></script>
 
 
 
-  <script src="/static/js/fleet_ops.js?v=3.9.9"></script>
+  <script src="/static/js/fleet_ops.js?v=3.9.10"></script>
 
 
 
-  <script src="/static/js/remote_commands.js?v=3.9.9"></script>
+  <script src="/static/js/remote_commands.js?v=3.9.10"></script>
 
 
 
-  <script src="/static/js/signals_analysis.js?v=3.9.9"></script>
+  <script src="/static/js/signals_analysis.js?v=3.9.10"></script>
 
 
 
-  <script src="/static/js/mosaic_wall.js?v=3.9.9"></script>
+  <script src="/static/js/mosaic_wall.js?v=3.9.10"></script>
 
 
 

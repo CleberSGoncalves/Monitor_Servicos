@@ -161,56 +161,27 @@ def authenticate_user(username: str, password: str) -> Optional[Dict[str, Any]]:
 
 
 def authenticate_ldap(username: str, password: str) -> Optional[Dict[str, Any]]:
-    """
-    Integração de autenticação com Active Directory / OpenLDAP.
-    Possui fallback resiliente simulado caso o servidor de domínio corporativo
-    esteja inacessível fora da VPN, garantindo continuidade operacional.
-    """
-    if not password:
-        return None
-        
+    """Autentica o operador contra o Active Directory corporativo usando as configuracoes salvas."""
     try:
-        # Se a biblioteca ldap3 estiver instalada, tenta conexão real com o domínio
-        import ldap3
-        # Exemplo de configuração de AD corporativo
-        ad_server = "ldap://dc1.empresa.local"
-        ad_domain = "empresa.local"
-        user_principal = f"{username}@{ad_domain}" if "@" not in username else username
-        
-        server = ldap3.Server(ad_server, get_info=ldap3.ALL, connect_timeout=3)
-        conn = ldap3.Connection(server, user=user_principal, password=password, auto_bind=True)
-        if conn.bound:
-            return {
-                "username": username,
-                "full_name": username.title(),
-                "email": f"{username}@{ad_domain}"
-            }
+        from ldap_manager import authenticate_ldap_user
+        return authenticate_ldap_user(username, password)
     except Exception:
-        pass
-    
-    # Validação segura de contingência para usuários cadastrados como LDAP
-    return None
+        return None
 
 
 def search_ldap_users(query: str) -> List[Dict[str, str]]:
-    """Busca usuários do domínio corporativo para pré-cadastro no sistema."""
-    q = query.strip().lower()
-    results = []
-    
-    # Lista de usuários do domínio empresarial simulados / mapeados para seleção
-    domain_users = [
-        {"username": "carlos.silva", "full_name": "Carlos Silva - NOC Engenharia", "email": "carlos.silva@kinomuse.com.br", "department": "Transmissão CS"},
-        {"username": "mariana.costa", "full_name": "Mariana Costa - Operações Praças", "email": "mariana.costa@kinomuse.com.br", "department": "Monitoração"},
-        {"username": "rodrigo.santos", "full_name": "Rodrigo Santos - Infraestrutura TI", "email": "rodrigo.santos@kinomuse.com.br", "department": "Infraestrutura"},
-        {"username": "lucas.oliveira", "full_name": "Lucas Oliveira - Suporte CS Sul", "email": "lucas.oliveira@kinomuse.com.br", "department": "Suporte Técnico"},
-        {"username": "camila.pereira", "full_name": "Camila Pereira - Gestão de Frotas", "email": "camila.pereira@kinomuse.com.br", "department": "Governança"}
-    ]
-    
-    for u in domain_users:
-        if q in u["username"] or q in u["full_name"].lower() or q in u["email"].lower():
-            results.append(u)
-            
-    return results
+    """Busca usuarios no Active Directory corporativo (grupoibope.corp) ou permite pre-cadastro assistido."""
+    try:
+        from ldap_manager import search_ldap_directory
+        return search_ldap_directory(query)
+    except Exception as e:
+        q_clean = query.strip().lower()
+        return [{
+            "username": q_clean,
+            "full_name": q_clean.replace(".", " ").title(),
+            "email": f"{q_clean}@ibope.com",
+            "department": "Domínio grupoibope.corp"
+        }]
 
 
 def create_session(username: str, role: str) -> str:

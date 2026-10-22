@@ -25,7 +25,7 @@ function initAuth() {
 async function fetchCurrentUser() {
     try {
         const resp = await fetch("/api/auth/me", {
-            headers: { "Authorization": `Bearer ${authToken}` }
+            headers: getAuthToken() ? { "Authorization": `Bearer ${getAuthToken()}` } : {}
         });
         if (resp.ok) {
             currentUser = await resp.json();
@@ -204,7 +204,7 @@ async function loadAllData(isSilent = false) {
 // 1. Resumo e KPIs
 async function loadSummaryKPIs() {
     const resp = await fetch("/api/fleet/summary", {
-        headers: { "Authorization": `Bearer ${authToken}` }
+        headers: getAuthToken() ? { "Authorization": `Bearer ${getAuthToken()}` } : {}
     });
     if (!resp.ok) return;
     const data = await resp.json();
@@ -257,7 +257,7 @@ async function loadServicesTable() {
     if (city) url += `city=${encodeURIComponent(city)}&`;
     if (status) url += `status_filter=${encodeURIComponent(status)}&`;
 
-    const resp = await fetch(url, { headers: { "Authorization": `Bearer ${authToken}` } });
+    const resp = await fetch(url, { headers: getAuthToken() ? { "Authorization": `Bearer ${getAuthToken()}` } : {} });
     if (!resp.ok) return;
     const services = await resp.json();
 
@@ -300,7 +300,7 @@ async function loadChannelsTable() {
     let url = `/api/fleet/channels?`;
     if (city) url += `city=${encodeURIComponent(city)}&`;
 
-    const resp = await fetch(url, { headers: { "Authorization": `Bearer ${authToken}` } });
+    const resp = await fetch(url, { headers: getAuthToken() ? { "Authorization": `Bearer ${getAuthToken()}` } : {} });
     if (!resp.ok) return;
     const channels = await resp.json();
 
@@ -435,7 +435,7 @@ async function saveIncidentWorklog(e) {
 
 async function loadIncidentHistory() {
     const resp = await fetch("/api/incidents/history", {
-        headers: { "Authorization": `Bearer ${authToken}` }
+        headers: getAuthToken() ? { "Authorization": `Bearer ${getAuthToken()}` } : {}
     });
     if (!resp.ok) return;
     const history = await resp.json();
@@ -457,7 +457,7 @@ async function loadIncidentHistory() {
 // 5. Limiares de Alerta
 async function loadThresholds() {
     const resp = await fetch("/api/thresholds", {
-        headers: { "Authorization": `Bearer ${authToken}` }
+        headers: getAuthToken() ? { "Authorization": `Bearer ${getAuthToken()}` } : {}
     });
     if (!resp.ok) return;
     const thresholds = await resp.json();
@@ -500,8 +500,9 @@ async function saveSingleThreshold(key) {
 
 // 6. Gestão de Usuários e LDAP
 async function loadUsersList() {
+    if (typeof loadLdapStatus === "function") loadLdapStatus();
     const resp = await fetch("/api/users", {
-        headers: { "Authorization": `Bearer ${authToken}` }
+        headers: getAuthToken() ? { "Authorization": `Bearer ${getAuthToken()}` } : {}
     });
     if (!resp.ok) return;
     const users = await resp.json();
@@ -523,8 +524,9 @@ async function searchLdapDirectory() {
     const q = document.getElementById("ldapSearchInput").value;
     if (!q || q.length < 2) return;
 
+    const token = getAuthToken();
     const resp = await fetch(`/api/users/ldap-search?q=${encodeURIComponent(q)}`, {
-        headers: { "Authorization": `Bearer ${authToken}` }
+        headers: token ? { "Authorization": `Bearer ${token}` } : {}
     });
     if (!resp.ok) return;
     const results = await resp.json();
@@ -785,3 +787,182 @@ async function applySystemUpdateNow() {
     }
 }
 
+
+
+// ==========================================
+// Gestão de Configurações LDAP / Active Directory
+// ==========================================
+async function loadLdapStatus() {
+    try {
+        const resp = await fetch("/api/ldap/config", {
+            headers: getAuthToken() ? { "Authorization": `Bearer ${getAuthToken()}` } : {}
+        });
+        if (resp.ok) {
+            const cfg = await resp.json();
+            const nameEl = document.getElementById("ldap-status-name");
+            const srvEl = document.getElementById("ldap-status-server");
+            const dnEl = document.getElementById("ldap-status-dn");
+            if (nameEl) nameEl.textContent = cfg.name || "grupoibope.corp";
+            if (srvEl) srvEl.textContent = `${cfg.server || "10.1.0.1"}:${cfg.port || 389}${cfg.use_ssl ? " (SSL)" : ""}`;
+            if (dnEl) dnEl.textContent = cfg.base_dn || "OU=Users Accounts,OU=KIM Users,DC=grupoibope,DC=corp";
+        }
+    } catch (e) {
+        console.warn("[LDAP] Falha ao carregar status do LDAP:", e);
+    }
+}
+window.loadLdapStatus = loadLdapStatus;
+
+async function openLdapConfigModal() {
+    const modal = document.getElementById("ldapConfigModal");
+    const fb = document.getElementById("ldap-test-feedback");
+    if (fb) fb.style.display = "none";
+
+    try {
+        const resp = await fetch("/api/ldap/config", {
+            headers: getAuthToken() ? { "Authorization": `Bearer ${getAuthToken()}` } : {}
+        });
+        if (resp.ok) {
+            const cfg = await resp.json();
+            if (document.getElementById("ldap_cfg_name")) document.getElementById("ldap_cfg_name").value = cfg.name || "grupoibope.corp";
+            if (document.getElementById("ldap_cfg_server")) document.getElementById("ldap_cfg_server").value = cfg.server || "10.1.0.1";
+            if (document.getElementById("ldap_cfg_port")) document.getElementById("ldap_cfg_port").value = cfg.port || 389;
+            if (document.getElementById("ldap_cfg_ssl")) document.getElementById("ldap_cfg_ssl").checked = Boolean(cfg.use_ssl);
+            if (document.getElementById("ldap_cfg_bind_user")) document.getElementById("ldap_cfg_bind_user").value = cfg.bind_user || "usr.media.dna@grupoibope";
+            if (document.getElementById("ldap_cfg_bind_password")) document.getElementById("ldap_cfg_bind_password").value = "";
+            if (document.getElementById("ldap_cfg_base_dn")) document.getElementById("ldap_cfg_base_dn").value = cfg.base_dn || "OU=Users Accounts,OU=KIM Users,DC=grupoibope,DC=corp";
+            if (document.getElementById("ldap_cfg_filter")) document.getElementById("ldap_cfg_filter").value = cfg.search_filter || "";
+            if (document.getElementById("ldap_cfg_timeout")) document.getElementById("ldap_cfg_timeout").value = cfg.timeout_sec || 5;
+            if (document.getElementById("ldap_cfg_attr_user")) document.getElementById("ldap_cfg_attr_user").value = cfg.user_attr || "sAMAccountName";
+            if (document.getElementById("ldap_cfg_attr_first")) document.getElementById("ldap_cfg_attr_first").value = cfg.first_name_attr || "givenName";
+            if (document.getElementById("ldap_cfg_attr_last")) document.getElementById("ldap_cfg_attr_last").value = cfg.last_name_attr || "sn";
+            if (document.getElementById("ldap_cfg_attr_email")) document.getElementById("ldap_cfg_attr_email").value = cfg.email_attr || "mail";
+        }
+    } catch (e) {
+        console.error("Erro ao carregar dados do LDAP:", e);
+    }
+
+    if (modal) modal.classList.add("active");
+}
+window.openLdapConfigModal = openLdapConfigModal;
+
+function closeLdapConfigModal() {
+    const modal = document.getElementById("ldapConfigModal");
+    if (modal) modal.classList.remove("active");
+}
+window.closeLdapConfigModal = closeLdapConfigModal;
+
+function getLdapModalPayload() {
+    return {
+        name: document.getElementById("ldap_cfg_name").value.trim(),
+        server: document.getElementById("ldap_cfg_server").value.trim(),
+        port: parseInt(document.getElementById("ldap_cfg_port").value) || 389,
+        use_ssl: document.getElementById("ldap_cfg_ssl").checked,
+        bind_user: document.getElementById("ldap_cfg_bind_user").value.trim(),
+        bind_password: document.getElementById("ldap_cfg_bind_password").value,
+        base_dn: document.getElementById("ldap_cfg_base_dn").value.trim(),
+        search_filter: document.getElementById("ldap_cfg_filter").value.trim(),
+        timeout_sec: parseInt(document.getElementById("ldap_cfg_timeout").value) || 5,
+        user_attr: document.getElementById("ldap_cfg_attr_user").value.trim() || "sAMAccountName",
+        first_name_attr: document.getElementById("ldap_cfg_attr_first").value.trim() || "givenName",
+        last_name_attr: document.getElementById("ldap_cfg_attr_last").value.trim() || "sn",
+        email_attr: document.getElementById("ldap_cfg_attr_email").value.trim() || "mail",
+        is_active: true
+    };
+}
+
+async function testLdapConfigInModal() {
+    const fb = document.getElementById("ldap-test-feedback");
+    const btn = document.getElementById("btnTestLdapConn");
+    if (!fb) return;
+
+    fb.style.display = "block";
+    fb.style.background = "rgba(59, 130, 246, 0.15)";
+    fb.style.border = "1px solid rgba(59, 130, 246, 0.4)";
+    fb.style.color = "#93c5fd";
+    fb.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Testando conectividade e bind com o servidor Active Directory...`;
+
+    if (btn) btn.disabled = true;
+
+    try {
+        const payload = getLdapModalPayload();
+        const resp = await fetch("/api/ldap/test", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${authToken}`
+            },
+            body: JSON.stringify(payload)
+        });
+        const res = await resp.json();
+
+        if (res.success) {
+            fb.style.background = "rgba(16, 185, 129, 0.15)";
+            fb.style.border = "1px solid rgba(16, 185, 129, 0.5)";
+            fb.style.color = "#6ee7b7";
+            fb.innerHTML = `<i class="fas fa-check-circle" style="color: #10b981;"></i> <strong>Sucesso:</strong> ${res.message}`;
+        } else {
+            fb.style.background = "rgba(239, 68, 68, 0.15)";
+            fb.style.border = "1px solid rgba(239, 68, 68, 0.5)";
+            fb.style.color = "#fca5a5";
+            fb.innerHTML = `<i class="fas fa-exclamation-triangle" style="color: #ef4444;"></i> <strong>Aviso de Conexão:</strong> ${res.error}`;
+        }
+    } catch (e) {
+        fb.style.background = "rgba(239, 68, 68, 0.15)";
+        fb.style.border = "1px solid rgba(239, 68, 68, 0.5)";
+        fb.style.color = "#fca5a5";
+        fb.innerHTML = `<i class="fas fa-times-circle"></i> Erro de requisição: ${e.message}`;
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+window.testLdapConfigInModal = testLdapConfigInModal;
+
+async function testLdapConfigDirect() {
+    safeToast("Testando conexão com servidor LDAP...", "info");
+    try {
+        const resp = await fetch("/api/ldap/test", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${authToken}`
+            },
+            body: JSON.stringify({})
+        });
+        const res = await resp.json();
+        if (res.success) {
+            alert(`✅ ${res.message}`);
+        } else {
+            alert(`⚠️ ${res.error}`);
+        }
+    } catch (e) {
+        alert("Erro ao testar LDAP: " + e.message);
+    }
+}
+window.testLdapConfigDirect = testLdapConfigDirect;
+
+async function saveLdapConfig(e) {
+    if (e) e.preventDefault();
+    const payload = getLdapModalPayload();
+
+    try {
+        const resp = await fetch("/api/ldap/config", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${authToken}`
+            },
+            body: JSON.stringify(payload)
+        });
+        const res = await resp.json();
+        if (res.success) {
+            alert("✅ Configurações do Active Directory / LDAP salvas com sucesso!");
+            closeLdapConfigModal();
+            loadLdapStatus();
+        } else {
+            alert("Erro ao salvar LDAP: " + (res.detail || "Falha"));
+        }
+    } catch (err) {
+        alert("Erro de comunicação: " + err.message);
+    }
+}
+window.saveLdapConfig = saveLdapConfig;

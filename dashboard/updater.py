@@ -23,7 +23,7 @@ GITHUB_REPO = "CleberSGoncalves/Monitor_Servicos"
 GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/commits/main"
 GITHUB_ZIPBALL_URL = f"https://api.github.com/repos/{GITHUB_REPO}/zipball/main"
 
-DEFAULT_VERSION = "v3.9.9"
+DEFAULT_VERSION = "v3.9.10"
 
 SUBPROCESS_FLAGS = 0
 if sys.platform == "win32":

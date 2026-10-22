@@ -175,6 +175,40 @@ async def get_me(user: dict = Depends(get_current_user)):
     return user
 
 
+class LdapConfigUpdateRequest(BaseModel):
+    name: str = "grupoibope.corp"
+    server: str = "10.1.0.1"
+    port: int = 389
+    use_ssl: bool = False
+    bind_user: str = "usr.media.dna@grupoibope"
+    bind_password: Optional[str] = ""
+    base_dn: str = "OU=Users Accounts,OU=KIM Users,DC=grupoibope,DC=corp"
+    search_filter: Optional[str] = ""
+    timeout_sec: int = 5
+    user_attr: str = "sAMAccountName"
+    first_name_attr: str = "givenName"
+    last_name_attr: str = "sn"
+    email_attr: str = "mail"
+    auto_create_users: bool = True
+    is_active: bool = True
+
+@app.get("/api/ldap/config")
+async def get_ldap_settings(user: dict = Depends(get_current_user)):
+    from ldap_manager import get_ldap_config
+    return get_ldap_config(mask_password=True)
+
+@app.post("/api/ldap/config")
+async def save_ldap_settings(req: LdapConfigUpdateRequest, user: dict = Depends(get_current_user)):
+    from ldap_manager import save_ldap_config
+    ok = save_ldap_config(req.model_dump())
+    return {"success": ok}
+
+@app.post("/api/ldap/test")
+async def test_ldap_settings(req: LdapConfigUpdateRequest, user: dict = Depends(get_current_user)):
+    from ldap_manager import test_ldap_connection
+    res = test_ldap_connection(req.model_dump())
+    return res
+
 @app.get("/api/users/ldap-search")
 async def search_ldap(q: str = "", user: dict = Depends(get_current_user)):
     return search_ldap_users(q)
