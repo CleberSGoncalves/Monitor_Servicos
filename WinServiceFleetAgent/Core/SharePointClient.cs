@@ -563,6 +563,11 @@ namespace WinServiceFleetAgent.Core
                     {
                         statusAtualizacao = "Atualizado";
                     }
+                    else if (existingStatusAtualizacao.Equals("Necessário Update Manual", StringComparison.OrdinalIgnoreCase) ||
+                             existingStatusAtualizacao.Equals("Necessario Update Manual", StringComparison.OrdinalIgnoreCase))
+                    {
+                        statusAtualizacao = "Necessário Update Manual";
+                    }
                     else if (isStuckInProgress)
                     {
                         statusAtualizacao = "Em Progresso";
