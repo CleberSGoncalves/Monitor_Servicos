@@ -404,7 +404,8 @@ namespace WinServiceFleetAgent.Core
             string? versaoDesejada,
             string statusServico,
             string urlComunicacao,
-            PerformanceMetrics metrics)
+            PerformanceMetrics metrics,
+            string? exeName = null)
         {
             string nowIso = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ");
             string cleanHost = (hostname ?? "").Trim();
@@ -605,14 +606,25 @@ namespace WinServiceFleetAgent.Core
                         fieldsPayload["Status_WCF"] = metrics.StatusWcf;
                     }
 
+                    // Telemetria rica por processo individual (Item 4)
+                    var (procRam, procCpu) = SystemPerformance.GetProcessTelemetry(!string.IsNullOrWhiteSpace(exeName) ? exeName : cleanSrv);
+
                     if (isMonitorService)
                     {
                         fieldsPayload["Cpu_Uso"] = metrics.CpuUso;
-                        fieldsPayload["Ram_Uso"] = metrics.RamUso;
+                        fieldsPayload["Ram_Uso"] = (procRam != "N/A" && procRam != "Inativo") ? $"{metrics.RamUso} ({procRam})" : metrics.RamUso;
                         fieldsPayload["Disco_D_Livre_GB"] = metrics.DiscoDLivreGB;
                         fieldsPayload["Uptime_Dias"] = metrics.UptimeDias;
 
                         await UploadLogAttachmentAsync(cleanHost, cleanSrv, FileLogger.GetLastLogLines(1000));
+                    }
+                    else
+                    {
+                        if (procRam != "N/A" && procRam != "Inativo")
+                        {
+                            fieldsPayload["Ram_Uso"] = procRam;
+                            fieldsPayload["Cpu_Uso"] = procCpu;
+                        }
                     }
 
                     if (isConfigMonitor && !string.IsNullOrWhiteSpace(existingUrlComunicacaoDesejavel) && string.Equals(safeUrlComunicacao, existingUrlComunicacaoDesejavel, StringComparison.OrdinalIgnoreCase))

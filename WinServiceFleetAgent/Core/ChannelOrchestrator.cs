@@ -18,6 +18,11 @@ namespace WinServiceFleetAgent.Core
         private readonly string _configXmlPath;
         private readonly bool _enabled;
 
+        // Rastreamento de tempo de indisponibilidade contínua de canais (Downtime Tracker)
+        private static readonly Dictionary<string, DateTime> _channelOutageStart = new(StringComparer.OrdinalIgnoreCase);
+        // Controle de frequência de tentativas de auto-recuperação de streams IP
+        private static readonly Dictionary<string, DateTime> _lastIpRecoveryAttempt = new(StringComparer.OrdinalIgnoreCase);
+
         public ChannelOrchestrator(
             SharePointClient spClient,
             string? multiplexesXmlPath = null,
@@ -442,6 +447,47 @@ namespace WinServiceFleetAgent.Core
 
                     FileLogger.Log($"[ChannelOrchestrator] Canal detectado: '{progName}' (Code: '{chCode}') -> Nome no SharePoint: '{canalDisplayName}' | Meio: {meio}" + (isAnalog ? $" | Source: {sourceAnalog}" : ""));
 
+                    // Rastreamento inteligente de Downtime (Item 4)
+                    string chaveCanal = $"{metadata.Praca}_{progName}".ToLowerInvariant();
+                    bool hasSignalIssue = isFrozen || isMute || (qVal == 0 && sVal == 0 && mCfg.BaseFreq > 0);
+                    double outageMins = 0;
+
+                    if (hasSignalIssue)
+                    {
+                        if (!_channelOutageStart.ContainsKey(chaveCanal))
+                        {
+                            _channelOutageStart[chaveCanal] = DateTime.UtcNow;
+                        }
+                        outageMins = (DateTime.UtcNow - _channelOutageStart[chaveCanal]).TotalMinutes;
+                    }
+                    else
+                    {
+                        _channelOutageStart.Remove(chaveCanal);
+                    }
+
+                    string frozenDisplay = isFrozen ? (outageMins >= 1.0 ? $"Sim ({outageMins:F0}m fora)" : "Sim") : "Não";
+                    string muteDisplay = isMute ? (outageMins >= 1.0 ? $"Sim ({outageMins:F0}m fora)" : "Sim") : "Não";
+
+                    // Auto-Recuperação de Sinais IP / RTSP Travados via API local (Item 5)
+                    if ((isRTSP || isUDP) && (isFrozen || isMute) && outageMins >= 3.0 && !string.IsNullOrEmpty(idMux))
+                    {
+                        if (!_lastIpRecoveryAttempt.TryGetValue(chaveCanal, out var lastAttempt) || (DateTime.UtcNow - lastAttempt).TotalMinutes >= 10.0)
+                        {
+                            _lastIpRecoveryAttempt[chaveCanal] = DateTime.UtcNow;
+                            _ = Task.Run(async () =>
+                            {
+                                try
+                                {
+                                    using var recClient = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
+                                    string recUrl = $"http://127.0.0.1:9000/api/v1/Muxes/{idMux}/restart";
+                                    FileLogger.Log($"[ChannelOrchestrator] 🔄 Auto-Recuperação: Stream IP '{progName}' (MUX {idMux}) travado há {outageMins:F0} min. Solicitando re-sintonia na API local porta 9000...");
+                                    await recClient.PostAsync(recUrl, null);
+                                }
+                                catch { }
+                            });
+                        }
+                    }
+
                     var item = new ChannelStatusItem
                     {
                         Title = canalDisplayName,
@@ -455,8 +501,8 @@ namespace WinServiceFleetAgent.Core
                         Frequencia = freqStr,
                         TunerID = mStat.TunerID >= 0 ? mStat.TunerID : -1,
                         StatusTuner = mStat.Status,
-                        VideoCongelado = isFrozen ? "Sim" : "Não",
-                        AudioMudo = isMute ? "Sim" : "Não",
+                        VideoCongelado = frozenDisplay,
+                        AudioMudo = muteDisplay,
                         GravandoMP4 = rec.Mp4Rec ? "Sim" : "Não",
                         GravandoMP3 = rec.Mp3Rec ? "Sim" : "Não",
                         PastaGravacaoMP4 = !string.IsNullOrWhiteSpace(rec.Mp4Path) ? rec.Mp4Path : "N/A",
@@ -525,6 +571,48 @@ namespace WinServiceFleetAgent.Core
                     channelsList.Add(item);
                     processedMuxes.Add(idM);
                     FileLogger.Log($"[ChannelOrchestrator] Canal Analógico detectado (via Multiplex): '{rawName}' -> SharePoint: '{canalDisplayName}' | Dispositivo: '{sourceAnalog}'");
+                }
+
+                // 1. Diagnóstico de Saúde Física dos Tuners (Item 3)
+                var tunerGroups = channelsList.Where(c => c.TunerID >= 0).GroupBy(c => c.TunerID);
+                bool anyTunerWithSignal = channelsList.Any(c => c.TunerID >= 0 && ((c.QualidadeSinal.HasValue && c.QualidadeSinal > 0) || (c.ForcaSinal.HasValue && c.ForcaSinal > 0)));
+
+                foreach (var group in tunerGroups)
+                {
+                    int tId = group.Key;
+                    bool allDownInGroup = group.All(c => (!c.QualidadeSinal.HasValue || c.QualidadeSinal == 0) && (!c.ForcaSinal.HasValue || c.ForcaSinal == 0));
+                    if (allDownInGroup && anyTunerWithSignal && group.Count() > 1)
+                    {
+                        foreach (var ch in group)
+                        {
+                            ch.StatusTuner = $"⚠️ Falha Tuner #{tId}";
+                        }
+                    }
+                }
+
+                // 2. Alerta Preditivo de Esgotamento de Disco (Item 1)
+                int activeMp4Count = channelsList.Count(c => c.GravandoMP4.StartsWith("Sim", StringComparison.OrdinalIgnoreCase));
+                string targetDrive = Directory.Exists(@"D:\") ? @"D:\" : @"C:\";
+                double freeGB = 0;
+                try
+                {
+                    var dInfo = new DriveInfo(targetDrive);
+                    freeGB = (double)dInfo.AvailableFreeSpace / (1024.0 * 1024.0 * 1024.0);
+                }
+                catch { }
+
+                double gbPerHour = Math.Max(0.5, activeMp4Count * 1.2);
+                double hoursRemaining = freeGB > 0 ? (freeGB / gbPerHour) : 999;
+                string diskAutonomy = hoursRemaining < 8.0 
+                    ? $"Sim (⚠️ {hoursRemaining:F0}h rest | {freeGB:F0}GB)" 
+                    : $"Sim (~{hoursRemaining:F0}h rest)";
+
+                foreach (var ch in channelsList)
+                {
+                    if (ch.GravandoMP4.StartsWith("Sim", StringComparison.OrdinalIgnoreCase))
+                    {
+                        ch.GravandoMP4 = diskAutonomy;
+                    }
                 }
 
                 FileLogger.Log($"[ChannelOrchestrator] Encontrados {channelsList.Count} canais em execução. Sincronizando com o SharePoint...");

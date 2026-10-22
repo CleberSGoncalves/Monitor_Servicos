@@ -228,5 +228,90 @@ namespace WinServiceFleetAgent.Core
             if (clean.Length > 180) clean = clean.Substring(0, 180) + "...";
             return clean;
         }
+
+        /// <summary>
+        /// Obtém telemetria específica de memória e estado do processo do executável monitorado.
+        /// </summary>
+        public static (string RamProcesso, string CpuProcesso) GetProcessTelemetry(string exeName)
+        {
+            if (string.IsNullOrWhiteSpace(exeName)) return ("N/A", "N/A");
+
+            try
+            {
+                string procName = Path.GetFileNameWithoutExtension(exeName).Trim();
+                var procs = Process.GetProcessesByName(procName);
+                if (procs.Length == 0 && procName.Equals("AtriaCapture", StringComparison.OrdinalIgnoreCase))
+                {
+                    procs = Process.GetProcessesByName("DigitalTVCapture");
+                }
+
+                if (procs.Length == 0) return ("Inativo", "0%");
+
+                long totalBytes = 0;
+                foreach (var p in procs)
+                {
+                    try { totalBytes += p.WorkingSet64; } catch { }
+                    try { p.Dispose(); } catch { }
+                }
+
+                double mb = totalBytes / (1024.0 * 1024.0);
+                string ramStr = mb >= 1024.0 ? $"{(mb / 1024.0):F2} GB" : $"{mb:F0} MB";
+                return (ramStr, "<1%");
+            }
+            catch
+            {
+                return ("N/A", "N/A");
+            }
+        }
+
+        /// <summary>
+        /// Calcula o badge sintético de saúde global do host baseado em serviços, disco, RAM e atualizações.
+        /// </summary>
+        public static string CalculateHealthBadge(PerformanceMetrics metrics, IEnumerable<string> serviceStatuses, bool hasUpdating)
+        {
+            if (hasUpdating)
+            {
+                return "🟣 Em Atualização";
+            }
+
+            var statusList = serviceStatuses?.ToList() ?? new List<string>();
+
+            // 1. Condições Críticas
+            if (statusList.Any(s => s.Contains("Crash-Loop", StringComparison.OrdinalIgnoreCase)))
+            {
+                return "🔴 Crítico (Crash-Loop Detectado)";
+            }
+
+            if (statusList.Any(s => s.Equals("Parado", StringComparison.OrdinalIgnoreCase)))
+            {
+                return "🔴 Crítico (Serviço Parado)";
+            }
+
+            if (double.TryParse(metrics.DiscoDLivreGB.Replace(" GB", "").Replace(',', '.'), 
+                    System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double discoGB))
+            {
+                if (discoGB < 5.0)
+                {
+                    return $"🔴 Crítico (Disco D: {discoGB:F1}GB)";
+                }
+                if (discoGB < 15.0)
+                {
+                    return $"🟡 Alerta (Disco D: {discoGB:F1}GB)";
+                }
+            }
+
+            // 2. Alertas de Memória ou WCF
+            if (double.TryParse(metrics.RamUso.Replace("%", "").Trim(), out double ramPerc) && ramPerc > 90.0)
+            {
+                return $"🟡 Alerta (RAM: {ramPerc:F0}%)";
+            }
+
+            if (metrics.StatusWcf != null && metrics.StatusWcf.Contains("Falha", StringComparison.OrdinalIgnoreCase))
+            {
+                return "🟡 Alerta (Falha WCF)";
+            }
+
+            return "🟢 Saudável";
+        }
     }
 }

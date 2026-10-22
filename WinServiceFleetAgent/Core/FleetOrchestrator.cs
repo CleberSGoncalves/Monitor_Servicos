@@ -21,6 +21,22 @@ namespace WinServiceFleetAgent.Core
         private readonly AutoUpdateConfig _autoUpdateConfig;
         private DateTime _lastAutoUpdateCheck = DateTime.MinValue;
         private static DateTime _selfUpdateTriggeredTime = DateTime.MinValue;
+        // Rastreamento de flapping para prevenção de crash-loop (Item 1)
+        private static readonly Dictionary<string, List<DateTime>> _serviceRestartHistory = new(StringComparer.OrdinalIgnoreCase);
+
+        private void SaveAuditTrailRecord(string hostname, string serviceName, string action, string status, double durationSeconds)
+        {
+            try
+            {
+                string logDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs");
+                if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
+                string auditFile = Path.Combine(logDir, "audit_trail.log");
+                string entry = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] Host='{hostname}' Service='{serviceName}' Action='{action}' Status='{status}' Duration='{durationSeconds:F2}s'";
+                File.AppendAllText(auditFile, entry + Environment.NewLine, System.Text.Encoding.UTF8);
+                FileLogger.Log($"[FleetOrchestrator] 📜 Auditoria registrada: {entry}");
+            }
+            catch { }
+        }
 
         public FleetOrchestrator(
             string? hostnameOverride,
@@ -120,12 +136,10 @@ namespace WinServiceFleetAgent.Core
 
             var metrics = SystemPerformance.GetMetrics(metadata.UrlComunicacao);
 
-            // Mapeamento do País (Título do SharePoint)
-            string paisTitle = "Brasil";
-            if (!string.IsNullOrWhiteSpace(metadata.UrlComunicacao) && metadata.UrlComunicacao.Contains("mediadna.ibope.com"))
-            {
-                paisTitle = "Brasil";
-            }
+            // 1. Indicador Sintético de Saúde Global do Host (Item 2)
+            var initialStatuses = _services.Select(s => WinController.GetServiceStatus(s.ServiceName)).ToList();
+            string healthBadge = SystemPerformance.CalculateHealthBadge(metrics, initialStatuses, hasUpdating: false);
+            string paisTitle = $"Brasil [{healthBadge}]";
 
             // Passo 2: Inventário, auto-recuperação (AutoRestart) e sincronização
             foreach (var srv in _services)
@@ -247,7 +261,8 @@ namespace WinServiceFleetAgent.Core
                     versaoDesejada: githubLatestVer,
                     statusServico: statusServico,
                     urlComunicacao: metadata.UrlComunicacao,
-                    metrics: metrics
+                    metrics: metrics,
+                    exeName: srv.ExeName
                 );
 
                 if (statusServico.Equals("Parado", StringComparison.OrdinalIgnoreCase))
@@ -257,33 +272,51 @@ namespace WinServiceFleetAgent.Core
 
                     if (isAutoRestartEnabled)
                     {
-                        FileLogger.Log($"[FleetOrchestrator] ⚠️ {(isStandaloneApp ? "Aplicação" : "Serviço")} '{srv.ServiceName}' detectado como PARADO. AutoRestart='Sim' no SharePoint. Executando auto-recuperação...");
-                        try
+                        // Verificação de Flapping / Prevenção de Crash-Loop (Item 1)
+                        if (!_serviceRestartHistory.TryGetValue(srv.ServiceName, out var restartList))
                         {
-                            bool restarted = false;
-                            if (isStandaloneApp)
-                            {
-                                AtriaInstaller.StartAtriaApplication(srv.InstallPath, srv.ExeName);
-                                await Task.Delay(2000);
-                                restarted = Process.GetProcessesByName("DigitalTVCapture").Length > 0 ||
-                                            Process.GetProcessesByName("AtriaCapture").Length > 0 ||
-                                            Process.GetProcessesByName("Atria").Length > 0;
-                            }
-                            else
-                            {
-                                restarted = WinController.StartService(srv.ServiceName);
-                            }
-
-                            if (restarted)
-                            {
-                                statusServico = "Em Execução";
-                                FileLogger.Log($"[FleetOrchestrator] 🩹 AutoRestart ativado: '{srv.ServiceName}' reiniciado com sucesso!");
-                                await _spClient.UpdateServiceStatusAsync(_hostname, srv.ServiceName, "Em Execução");
-                            }
+                            restartList = new List<DateTime>();
+                            _serviceRestartHistory[srv.ServiceName] = restartList;
                         }
-                        catch (Exception ex)
+                        restartList.RemoveAll(t => (DateTime.UtcNow - t).TotalMinutes > 15);
+
+                        if (restartList.Count >= 3)
                         {
-                            FileLogger.LogError($"[FleetOrchestrator] Falha no AutoRestart para '{srv.ServiceName}'", ex);
+                            FileLogger.Log($"[FleetOrchestrator] 🚨 CRASH-LOOP DETECTADO para '{srv.ServiceName}'. O serviço reiniciou {restartList.Count} vezes nos últimos 15 min. AutoRestart pausado para proteger o host!", writeToEventLog: true, eventId: 3001);
+                            await _spClient.UpdateServiceStatusAsync(_hostname, srv.ServiceName, "Crash-Loop Detectado");
+                            await _spClient.UpdateActionStatusByServiceAsync(_hostname, srv.ServiceName, "Crash-Loop / Requer Intervenção");
+                        }
+                        else
+                        {
+                            FileLogger.Log($"[FleetOrchestrator] ⚠️ {(isStandaloneApp ? "Aplicação" : "Serviço")} '{srv.ServiceName}' detectado como PARADO. AutoRestart='Sim' no SharePoint. Executando auto-recuperação (Tentativa {restartList.Count + 1}/3)...");
+                            try
+                            {
+                                bool restarted = false;
+                                if (isStandaloneApp)
+                                {
+                                    AtriaInstaller.StartAtriaApplication(srv.InstallPath, srv.ExeName);
+                                    await Task.Delay(2000);
+                                    restarted = Process.GetProcessesByName("DigitalTVCapture").Length > 0 ||
+                                                Process.GetProcessesByName("AtriaCapture").Length > 0 ||
+                                                Process.GetProcessesByName("Atria").Length > 0;
+                                }
+                                else
+                                {
+                                    restarted = WinController.StartService(srv.ServiceName);
+                                }
+
+                                if (restarted)
+                                {
+                                    restartList.Add(DateTime.UtcNow);
+                                    statusServico = "Em Execução";
+                                    FileLogger.Log($"[FleetOrchestrator] 🩹 AutoRestart ativado: '{srv.ServiceName}' reiniciado com sucesso!");
+                                    await _spClient.UpdateServiceStatusAsync(_hostname, srv.ServiceName, "Em Execução");
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                FileLogger.LogError($"[FleetOrchestrator] Falha no AutoRestart para '{srv.ServiceName}'", ex);
+                            }
                         }
                     }
                     else
@@ -388,6 +421,7 @@ namespace WinServiceFleetAgent.Core
                 }
 
                 FileLogger.Log($"[FleetOrchestrator] Executando Ação '{action.AcaoSolicitada}' para [{_hostname}_{action.NomeServico}]...");
+                var actionStopwatch = System.Diagnostics.Stopwatch.StartNew();
 
                 try
                 {
@@ -395,13 +429,19 @@ namespace WinServiceFleetAgent.Core
                     {
                         await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Em Progresso");
                         bool ok = WinController.RestartService(srvConfig.ServiceName);
+                        actionStopwatch.Stop();
+                        double sec = actionStopwatch.Elapsed.TotalSeconds;
+
                         if (ok)
                         {
-                            await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Em Execução", acaoSolicitada: "Nenhuma");
-                            FileLogger.Log($"[FleetOrchestrator] ✅ Serviço '{srvConfig.ServiceName}' reiniciado com sucesso!");
+                            string stamp = $"Reiniciado [{DateTime.Now:HH:mm} | {sec:F1}s]";
+                            await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, stamp, acaoSolicitada: "Nenhuma");
+                            SaveAuditTrailRecord(_hostname, action.NomeServico, "Reiniciar", "Sucesso", sec);
+                            FileLogger.Log($"[FleetOrchestrator] ✅ Serviço '{srvConfig.ServiceName}' reiniciado com sucesso em {sec:F1}s!");
                         }
                         else
                         {
+                            SaveAuditTrailRecord(_hostname, action.NomeServico, "Reiniciar", "Falha", sec);
                             await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Erro na Atualização");
                         }
                     }
@@ -409,13 +449,19 @@ namespace WinServiceFleetAgent.Core
                     {
                         await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Em Progresso");
                         bool stopped = WinController.StopService(srvConfig.ServiceName);
+                        actionStopwatch.Stop();
+                        double sec = actionStopwatch.Elapsed.TotalSeconds;
+
                         if (stopped)
                         {
-                            await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Parado", acaoSolicitada: "Nenhuma");
-                            FileLogger.Log($"[FleetOrchestrator] ✅ Serviço '{srvConfig.ServiceName}' parado com sucesso!");
+                            string stamp = $"Parado [{DateTime.Now:HH:mm} | {sec:F1}s]";
+                            await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, stamp, acaoSolicitada: "Nenhuma");
+                            SaveAuditTrailRecord(_hostname, action.NomeServico, "Parar", "Sucesso", sec);
+                            FileLogger.Log($"[FleetOrchestrator] ✅ Serviço '{srvConfig.ServiceName}' parado com sucesso em {sec:F1}s!");
                         }
                         else
                         {
+                            SaveAuditTrailRecord(_hostname, action.NomeServico, "Parar", "Falha", sec);
                             await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Erro na Atualização");
                         }
                     }
@@ -566,6 +612,7 @@ namespace WinServiceFleetAgent.Core
 
             await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Em Progresso", versaoDesejada: targetVersion);
             FileLogger.Log($"[FleetOrchestrator] Iniciando atualização de '{srvConfig.ServiceName}' para versão '{targetVersion}' (Forçar={forceUpdate})...");
+            var updateSw = System.Diagnostics.Stopwatch.StartNew();
 
             string backupFolder = Path.Combine(_backupBaseDir, $"{srvConfig.ServiceName}_{DateTime.Now:yyyyMMdd_HHmmss}");
             string stagingFolder = Path.Combine(_tempStagingDir, $"{srvConfig.ServiceName}_staging");
@@ -630,11 +677,18 @@ namespace WinServiceFleetAgent.Core
                 string newExePath = Path.Combine(srvConfig.InstallPath, srvConfig.ExeName);
                 string newVer = VersionInspector.GetExecutableVersion(newExePath);
 
-                await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Atualizado", acaoSolicitada: "Nenhuma", versaoInstalada: newVer, versaoDesejada: newVer);
-                FileLogger.Log($"[FleetOrchestrator] 🎉 Atualização concluída com sucesso! Nova Versão Instalada: {newVer}");
+                updateSw.Stop();
+                double updateSec = updateSw.Elapsed.TotalSeconds;
+                string updateStamp = $"Atualizado [{DateTime.Now:HH:mm} | {updateSec:F1}s]";
+
+                await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, updateStamp, acaoSolicitada: "Nenhuma", versaoInstalada: newVer, versaoDesejada: newVer);
+                SaveAuditTrailRecord(_hostname, action.NomeServico, "Atualizar", $"Sucesso ({newVer})", updateSec);
+                FileLogger.Log($"[FleetOrchestrator] 🎉 Atualização concluída com sucesso em {updateSec:F1}s! Nova Versão Instalada: {newVer}");
             }
             catch (Exception ex)
             {
+                updateSw.Stop();
+                SaveAuditTrailRecord(_hostname, action.NomeServico, "Atualizar", $"Falha ({ex.Message})", updateSw.Elapsed.TotalSeconds);
                 FileLogger.LogError($"Falha durante a atualização de '{srvConfig.ServiceName}'. Iniciando Rollback automático!", ex);
                 await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Erro na Atualização");
 

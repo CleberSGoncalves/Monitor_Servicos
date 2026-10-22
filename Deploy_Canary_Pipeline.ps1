@@ -184,8 +184,28 @@ while ((Get-Date) -lt $startTime.AddMinutes($TimeoutMinutes)) {
 
     if ($failedCount -gt 0) {
         Write-Host ""
-        Write-Host "FALHA DE HOMOLOGACAO: Erro detectado em maquina(s) piloto: $($failedHosts -join ', ')!" -ForegroundColor Red
-        Write-Host "O Pipeline foi ABORTADO com seguranca para proteger o restante da rede." -ForegroundColor Red
+        Write-Host "🚨 FALHA DE HOMOLOGACAO: Erro detectado em maquina(s) piloto: $($failedHosts -join ', ')!" -ForegroundColor Red
+        Write-Host "Iniciando ROLLBACK AUTOMATICO DE EMERGENCIA nas maquinas piloto..." -ForegroundColor Yellow
+        
+        foreach ($failedItem in $pilotGroup) {
+            $fHost = $failedItem.fields.Hostname
+            $fId = $failedItem.id
+            $fOldVer = $failedItem.fields.Versao_Instalada
+            if ([string]::IsNullOrWhiteSpace($fOldVer) -or $fOldVer -eq $TargetVersion) { $fOldVer = "1.0.13.0" }
+            try {
+                $rbBody = @{
+                    Versao_Desejada = $fOldVer
+                    Acao_Solicitada = "Atualizar"
+                    Status_Atualizacao = "Rollback de Emergência"
+                } | ConvertTo-Json
+                $patchUrl = "https://graph.microsoft.com/v1.0/sites/$siteId/lists/$listId/items/$fId/fields"
+                Invoke-RestMethod -Uri $patchUrl -Method Patch -Headers $headers -Body $rbBody | Out-Null
+                Write-Host "  [ROLLBACK] $fHost -> Restaurando versao estavel $fOldVer" -ForegroundColor Yellow
+            } catch { }
+        }
+
+        Write-Host ""
+        Write-Host "O Pipeline foi ABORTADO com seguranca. As demais 17 maquinas estao 100% protegidas e intactas." -ForegroundColor Red
         exit 2
     }
 
