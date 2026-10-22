@@ -209,22 +209,29 @@ function renderMosaicCardHtml(s) {
                     </span>
                 </div>
 
-                <!-- Simulação Visual do Frame OSD (320x240) -->
+                <!-- Frame de Transmissão / JPEG Real (320x240) -->
                 <div style="position: relative; width: 100%; height: 135px; background: #000; border-radius: 4px; overflow: hidden; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,0.08);">
+                    <img src="${s.jpeg_url || ('/api/fleet/channels/jpeg?canal=' + encodeURIComponent(s.canal) + '&praca=' + encodeURIComponent(s.praca))}"
+                         alt="${escapeHtml(s.canal)}"
+                         style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1;"
+                         loading="lazy"
+                         onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';" />
+                    <div style="display: none; position: absolute; inset: 0; align-items: center; justify-content: center; z-index: 2; background: rgba(10, 15, 29, 0.95);">
                     ${hasIncident ? `
-                        <div style="text-align: center; padding: 10px; z-index: 2;">
+                        <div style="text-align: center; padding: 10px;">
                             <i class="fas fa-exclamation-triangle" style="font-size: 24px; color: ${borderCol}; margin-bottom: 6px;"></i>
                             <div style="font-size: 11px; font-weight: 700; color: #fff; letter-spacing: 0.5px;">${s.status}</div>
                             <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">${escapeHtml(s.falha_desc)}</div>
                         </div>
                     ` : `
-                        <div style="text-align: center; z-index: 2;">
+                        <div style="text-align: center;">
                             <div style="font-weight: 800; font-size: 16px; color: rgba(255, 255, 255, 0.85); letter-spacing: 1px;">${escapeHtml(s.canal)}</div>
                             <div style="font-size: 9px; color: #38bdf8; text-transform: uppercase; margin-top: 2px;">TRANSMISSÃO AO VIVO • ${escapeHtml(s.tipo_sinal)}</div>
                         </div>
                     `}
+                    </div>
                     <!-- OSD Inferior -->
-                    <div style="position: absolute; bottom: 4px; left: 8px; right: 8px; display: flex; justify-content: space-between; font-size: 10px; font-family: monospace; color: rgba(255,255,255,0.7); pointer-events: none; z-index: 3;">
+                    <div style="position: absolute; bottom: 4px; left: 8px; right: 8px; display: flex; justify-content: space-between; font-size: 10px; font-family: monospace; color: rgba(255,255,255,0.85); text-shadow: 0 1px 3px rgba(0,0,0,0.9); pointer-events: none; z-index: 3;">
                         <span>${s.last_frame_time} • 320x240</span>
                         <span>${s.meio}</span>
                     </div>

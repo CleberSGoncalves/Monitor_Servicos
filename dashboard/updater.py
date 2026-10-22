@@ -216,9 +216,12 @@ def apply_update() -> Dict[str, Any]:
             if src_path.is_dir():
                 target_path.mkdir(parents=True, exist_ok=True)
             else:
-                target_path.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(src_path, target_path)
-                updated_count += 1
+                try:
+                    target_path.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(src_path, target_path)
+                    updated_count += 1
+                except Exception as c_err:
+                    print(f'[Updater] Aviso: Nao foi possivel sobrescrever {target_path}: {c_err}')
 
         # Limpeza
         if temp_zip.exists():

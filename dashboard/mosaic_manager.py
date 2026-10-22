@@ -159,6 +159,7 @@ def get_channel_live_snapshots(channels: List[Dict[str, Any]], country: Optional
             "falha_desc": falha_desc,
             "last_frame_time": now_str,
             "resolution": "320x240",
+            "jpeg_url": f"/api/fleet/channels/jpeg?canal={canal_nome}&praca={praca_nome}",
             "is_enabled": enabled,
             "has_outage": (tipo_falha not in ["none", "paused"]),
             "storyboard": storyboard
