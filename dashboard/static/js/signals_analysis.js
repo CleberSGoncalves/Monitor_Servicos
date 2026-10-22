@@ -34,6 +34,11 @@ function switchSignalsSubtab(subtabId) {
     if (subtabId === "history") {
         if (historyBtn) historyBtn.classList.add("active");
         if (historyContent) historyContent.style.display = "block";
+        setTimeout(() => {
+            if (signalsHistoryDataCache && signalsHistoryDataCache.history_points) {
+                renderSignalsCanvasChart(signalsHistoryDataCache.history_points);
+            }
+        }, 50);
     } else if (subtabId === "chronic") {
         if (chronicBtn) chronicBtn.classList.add("active");
         if (chronicContent) chronicContent.style.display = "block";
@@ -71,10 +76,15 @@ async function populateSignalsPracaFilter() {
     if (!pracaSelect) return;
 
     try {
+        const token = getSignalsAuthToken();
         const resp = await fetch("/api/fleet/channels", {
-            headers: { "Authorization": `Bearer ${getSignalsAuthToken()}` }
+            headers: token ? { "Authorization": `Bearer ${token}` } : {}
         });
-        if (!resp.ok) return;
+        if (!resp.ok) {
+            console.warn("[SignalsAnalysis] /api/fleet/channels retornou status", resp.status);
+            pracaSelect.innerHTML = "<option value=''>Erro ao carregar praças (HTTP " + resp.status + ")</option>";
+            return;
+        }
         const channels = await resp.json();
 
         // Extrai cidades únicas
@@ -1074,3 +1084,11 @@ function escapeHtml(text) {
     if (!text) return "";
     return text.toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
+
+
+window.addEventListener("resize", () => {
+    const historyContent = document.getElementById("signals-content-history");
+    if (historyContent && historyContent.style.display !== "none" && signalsHistoryDataCache && signalsHistoryDataCache.history_points) {
+        renderSignalsCanvasChart(signalsHistoryDataCache.history_points);
+    }
+});

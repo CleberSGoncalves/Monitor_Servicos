@@ -503,7 +503,7 @@ namespace WinServiceFleetAgent.Core
                         StatusTuner = mStat.Status,
                         VideoCongelado = frozenDisplay,
                         AudioMudo = muteDisplay,
-                        GravandoMP4 = rec.Mp4Rec ? "Sim" : "Não",
+                        GravandoMP4 = AuditMp4RecordingHealth(rec.Mp4Path, rec.Mp4Rec),
                         GravandoMP3 = rec.Mp3Rec ? "Sim" : "Não",
                         PastaGravacaoMP4 = !string.IsNullOrWhiteSpace(rec.Mp4Path) ? rec.Mp4Path : "N/A",
                         PastaGravacaoMP3 = !string.IsNullOrWhiteSpace(rec.Mp3Path) ? rec.Mp3Path : "N/A",
@@ -556,7 +556,7 @@ namespace WinServiceFleetAgent.Core
                         StatusTuner = mStat.Status,
                         VideoCongelado = "Não",
                         AudioMudo = "Não",
-                        GravandoMP4 = rec.Mp4Rec ? "Sim" : "Não",
+                        GravandoMP4 = AuditMp4RecordingHealth(rec.Mp4Path, rec.Mp4Rec),
                         GravandoMP3 = rec.Mp3Rec ? "Sim" : "Não",
                         PastaGravacaoMP4 = !string.IsNullOrWhiteSpace(rec.Mp4Path) ? rec.Mp4Path : "N/A",
                         PastaGravacaoMP3 = !string.IsNullOrWhiteSpace(rec.Mp3Path) ? rec.Mp3Path : "N/A",
@@ -609,7 +609,7 @@ namespace WinServiceFleetAgent.Core
 
                 foreach (var ch in channelsList)
                 {
-                    if (ch.GravandoMP4.StartsWith("Sim", StringComparison.OrdinalIgnoreCase))
+                    if (ch.GravandoMP4.Equals("Sim", StringComparison.OrdinalIgnoreCase))
                     {
                         ch.GravandoMP4 = diskAutonomy;
                     }
@@ -623,5 +623,59 @@ namespace WinServiceFleetAgent.Core
                 FileLogger.LogError($"[ChannelOrchestrator] Falha ao processar monitoramento de canais: {ex.Message}", ex);
             }
         }
-    }
+    
+        /// <summary>
+        /// Auditoria ultraleve de gravação MP4 nos Capture Sites (Zero-Overhead).
+        /// Inspeciona metadados NTFS na pasta base e subpasta 'registered' sem carregar vídeo em RAM.
+        /// Detecta arquivos de 0 bytes, falta de novos chunks e paradas silenciosas do ATRIA.
+        /// </summary>
+        public static string AuditMp4RecordingHealth(string basePath, bool isRecordingConfigured)
+        {
+            if (!isRecordingConfigured) return "Não";
+            if (string.IsNullOrWhiteSpace(basePath) || basePath.Trim() == "N/A") return "Sim";
+
+            try
+            {
+                string targetDir = basePath.Trim();
+                string registeredDir = Path.Combine(targetDir, "registered");
+                if (Directory.Exists(registeredDir))
+                {
+                    targetDir = registeredDir;
+                }
+                else if (!Directory.Exists(targetDir))
+                {
+                    return "⚠️ Pasta Não Encontrada";
+                }
+
+                var dir = new DirectoryInfo(targetDir);
+                var latestFile = dir.EnumerateFiles("*.mp4")
+                    .OrderByDescending(f => f.LastWriteTimeUtc)
+                    .FirstOrDefault();
+
+                if (latestFile == null)
+                {
+                    return "⚠️ Sem Arquivos MP4";
+                }
+
+                if (latestFile.Length == 0)
+                {
+                    return "⚠️ Arquivo 0 Bytes";
+                }
+
+                var minutesSinceLastFile = (DateTime.UtcNow - latestFile.LastWriteTimeUtc).TotalMinutes;
+                if (minutesSinceLastFile > 15)
+                {
+                    return $"⚠️ Travado ({minutesSinceLastFile:F0}m sem MP4)";
+                }
+
+                return "Sim";
+            }
+            catch (Exception ex)
+            {
+                FileLogger.Log($"[ChannelOrchestrator] Aviso na auditoria MP4 '{basePath}': {ex.Message}");
+                return "Sim";
+            }
+        }
+
+}
 }

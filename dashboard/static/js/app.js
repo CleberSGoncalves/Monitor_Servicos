@@ -113,6 +113,11 @@ function setupTabNavigation() {
                 initRemoteCommands();
             } else if (tabName === "signals") {
                 if (typeof initSignalsAnalysisTab === "function") initSignalsAnalysisTab();
+                setTimeout(() => {
+                    if (typeof signalsHistoryDataCache !== "undefined" && signalsHistoryDataCache && signalsHistoryDataCache.history_points) {
+                        if (typeof renderSignalsCanvasChart === "function") renderSignalsCanvasChart(signalsHistoryDataCache.history_points);
+                    }
+                }, 80);
             }
         });
     });

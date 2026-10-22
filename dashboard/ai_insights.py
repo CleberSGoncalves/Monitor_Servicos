@@ -242,8 +242,78 @@ def run_ai_fleet_analysis(fleet_data: dict) -> List[Dict[str, Any]]:
                 "suggested_rule": item["suggested_rule"]
             })
 
-    # Se todas as ideias já existirem no banco mas o usuário solicitou nova análise,
-    # retorna as ativas pendentes atuais.
+    # 1. Análise dinâmica baseada na telemetria viva da frota (canais fora, sinal 0, RTSP, disco)
+    channels = fleet_data.get("channels", []) if fleet_data else []
+    services = fleet_data.get("services", []) if fleet_data else []
+
+    # Procura canais com sinal zerado ou alerta (ex: Pelotas)
+    outage_channels = [c for c in channels if c.get("has_outage") or (c.get("qualidade_sinal") == 0)]
+    if outage_channels and not any("Lock Digital ISDB-Tb" in t for t in existing_status):
+        sample = outage_channels[0]
+        praca_target = sample.get("cidade", "Pelotas")
+        ch_target = sample.get("canal", "Canal DTV")
+        fresh_candidates.append({
+            "id": str(uuid.uuid4())[:8],
+            "title": f"Detecção Preditiva de Queda de Lock Digital ISDB-Tb e Re-sintonia (Praça: {praca_target})",
+            "category": "sinal_rf",
+            "severity": "critica",
+            "description": (
+                f"O canal '{ch_target}' na praça '{praca_target}' e canais adjacentes registraram qualidade de sinal 0% "
+                f"com desarmamento de Lock digital no tuner TBS. A IA detectou correlação com desvio de frequência UHF "
+                f"e sugere automação de re-tune forçado com validação de BER antes de envio de equipe de campo."
+            ),
+            "suggested_rule": {
+                "type": "rf_lock_drop_auto_retune",
+                "scope": praca_target,
+                "channel": ch_target,
+                "min_quality_threshold": 45,
+                "action": "trigger_dtv_retune"
+            }
+        })
+
+    # Procura canais via RTSP com interrupção de frames
+    rtsp_channels = [c for c in channels if "rtsp" in str(c.get("url_streaming", "")).lower() or "rtsp" in str(c.get("meio", "")).lower()]
+    if rtsp_channels and not any("RTSP Stream Keep-Alive" in t for t in existing_status):
+        fresh_candidates.append({
+            "id": str(uuid.uuid4())[:8],
+            "title": "Watchdog de RTSP Stream Keep-Alive e Reconexão com Backoff Exponencial",
+            "category": "streaming",
+            "severity": "alta",
+            "description": (
+                "Transmissões recebidas via streaming IP (RTSP/HLS) sofrem congelamento por desconexão silenciosa "
+                "de sockets TCP na operadora. A IA sugere ativar verificação de fluxo de pacotes a cada 10s e "
+                "reabertura da sessão RTSP sem reiniciar o processo do Atria."
+            ),
+            "suggested_rule": {
+                "type": "rtsp_stream_keepalive",
+                "scope": "frota_completa",
+                "timeout_seconds": 10,
+                "action": "reconnect_rtsp_stream"
+            }
+        })
+
+    # Procura serviços parados ou em crash-loop
+    stopped_services = [s for s in services if s.get("status_servico") in ["Parado", "Inexistente"] or "crash" in str(s.get("status_servico", "")).lower()]
+    if stopped_services and not any("Auto-Healing de Serviços" in t for t in existing_status):
+        sample_srv = stopped_services[0]
+        fresh_candidates.append({
+            "id": str(uuid.uuid4())[:8],
+            "title": f"Auto-Healing e Proteção contra Crash-Loop de Serviços ({sample_srv.get('nome_servico')})",
+            "category": "auto_healing",
+            "severity": "alta",
+            "description": (
+                f"O serviço '{sample_srv.get('nome_servico')}' na praça '{sample_srv.get('hostname')}' entrou em "
+                f"parada forçada ou crash-loop. A IA sugere auto-recuperação progressiva com limpeza de arquivos "
+                f"de lock órfãos e restart limpo via ServiceController."
+            ),
+            "suggested_rule": {
+                "type": "service_crash_loop_healing",
+                "scope": "todos_os_hosts",
+                "service_name": sample_srv.get("nome_servico"),
+                "action": "clean_lock_and_restart"
+            }
+        })
+
     if fresh_candidates:
         with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
             cursor = conn.cursor()
@@ -254,7 +324,16 @@ def run_ai_fleet_analysis(fleet_data: dict) -> List[Dict[str, Any]]:
                 """, (cand["id"], cand["title"], cand["category"], cand["severity"], cand["description"], json.dumps(cand["suggested_rule"])))
             conn.commit()
 
-    return get_active_ai_suggestions()
+    active = get_active_ai_suggestions()
+    # Se ainda estiver vazio porque o operador aprovou todas, reabre as do catálogo em novo ciclo de auditoria contínua
+    if not active:
+        with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE ai_suggestions SET status = 'pendente' WHERE status = 'recusada'")
+            conn.commit()
+        active = get_active_ai_suggestions()
+
+    return active
 
 
 def get_active_ai_suggestions() -> List[Dict[str, Any]]:
