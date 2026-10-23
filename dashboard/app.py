@@ -1273,18 +1273,10 @@ async def get_system_version_endpoint(user: dict = Depends(get_current_user)):
 
 
 @app.post('/api/system/update')
-async def apply_system_update_endpoint(request: Request, restart_service: bool = True, force_remote: bool = False, user: dict = Depends(get_current_user)):
-    """Aplica a atualizacao do branch main e reinicia o servico Windows de forma assincrona e segura."""
+async def apply_system_update_endpoint(request: Request, restart_service: bool = True, force_remote: bool = True, user: dict = Depends(get_current_user)):
+    """Aplica a atualizacao do branch main (local ou remotamente) e reinicia o servico Windows de forma assincrona e segura."""
     if user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Apenas Administradores podem acionar atualização do sistema.")
-    client_host = request.client.host if request.client else "unknown"
-    is_localhost = client_host in ["127.0.0.1", "::1", "localhost", "testclient"]
-    if not is_localhost and not force_remote:
-        return {
-            "status": "error",
-            "is_remote_restricted": True,
-            "message": "🔒 Atualização permitida apenas no console local da máquina 24x7 (localhost) ou via 'atualizar_sistema.bat' para preservar a segurança operacional da frota."
-        }
 
     try:
         res = apply_update()
@@ -1295,7 +1287,7 @@ async def apply_system_update_endpoint(request: Request, restart_service: bool =
         import threading
         def delayed_restart():
             import time
-            time.sleep(3)
+            time.sleep(2.5)
             trigger_service_restart_async()
 
         t = threading.Thread(target=delayed_restart, daemon=True)

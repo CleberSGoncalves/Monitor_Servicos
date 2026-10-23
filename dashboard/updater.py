@@ -23,7 +23,7 @@ GITHUB_REPO = "CleberSGoncalves/Monitor_Servicos"
 GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/commits/main"
 GITHUB_ZIPBALL_URL = f"https://api.github.com/repos/{GITHUB_REPO}/zipball/main"
 
-DEFAULT_VERSION = "v3.9.38"
+DEFAULT_VERSION = "v3.9.39"
 
 SUBPROCESS_FLAGS = 0
 if sys.platform == "win32":
@@ -53,35 +53,59 @@ def get_auth_headers() -> Dict[str, str]:
 
 
 def get_local_version_info() -> Dict[str, Any]:
-    """Retorna versão local e commit atual."""
-    if VERSION_FILE.exists():
-        try:
-            return json.loads(VERSION_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            pass
-
+    """Retorna versão local e commit atual resolvendo SHA real do Git quando disponível."""
     git_sha = ""
     try:
         git_sha = subprocess.check_output(
             ["git", "rev-parse", "--short", "HEAD"],
             cwd=str(ROOT_DIR),
             stderr=subprocess.DEVNULL,
-            text=True
+            text=True,
+            creationflags=SUBPROCESS_FLAGS
         ).strip()
     except Exception:
         pass
 
+    if VERSION_FILE.exists():
+        try:
+            info = json.loads(VERSION_FILE.read_text(encoding="utf-8"))
+            ver = info.get("version") or DEFAULT_VERSION
+            if ver == "v3.9.14":
+                ver = DEFAULT_VERSION
+            sha = info.get("commit_sha", "")
+            if (not sha or sha == "auto") and git_sha:
+                sha = git_sha
+            info["version"] = ver
+            info["commit_sha"] = sha or git_sha or "local"
+            return info
+        except Exception:
+            pass
+
     return {
         "version": DEFAULT_VERSION,
-        "commit_sha": git_sha or "d471807",
+        "agent_version": "1.0.16.0",
+        "commit_sha": git_sha or "local",
         "updated_at": datetime.now().isoformat()
     }
 
 
-def save_local_version_info(commit_sha: str, version: str = DEFAULT_VERSION):
+def save_local_version_info(commit_sha: str, version: Optional[str] = None):
+    disk_ver = DEFAULT_VERSION
+    agent_ver = "1.0.16.0"
+    if VERSION_FILE.exists():
+        try:
+            existing = json.loads(VERSION_FILE.read_text(encoding="utf-8"))
+            if existing.get("version") and existing.get("version") != "v3.9.14":
+                disk_ver = existing["version"]
+            if existing.get("agent_version"):
+                agent_ver = existing["agent_version"]
+        except Exception:
+            pass
+    final_version = version if (version and version != "v3.9.14") else disk_ver
     data = {
-        "version": version,
-        "commit_sha": commit_sha[:7],
+        "version": final_version,
+        "agent_version": agent_ver,
+        "commit_sha": commit_sha[:7] if commit_sha else "auto",
         "updated_at": datetime.now().isoformat()
     }
     try:
@@ -142,30 +166,34 @@ def apply_update() -> Dict[str, Any]:
     # 1. Tentativa via Git se repositório .git existir
     if git_bin and (ROOT_DIR / ".git").exists():
         try:
-            subprocess.run(["git", "checkout", "--", "version.json"], cwd=str(ROOT_DIR), capture_output=True)
+            subprocess.run(["git", "fetch", "origin", "main"], cwd=str(ROOT_DIR), capture_output=True, timeout=45, creationflags=SUBPROCESS_FLAGS)
             res = subprocess.run(
-                ["git", "pull", "origin", "main"],
+                ["git", "reset", "--hard", "origin/main"],
                 cwd=str(ROOT_DIR),
                 capture_output=True,
                 text=True,
-                timeout=60
+                timeout=45,
+                creationflags=SUBPROCESS_FLAGS
             )
             if res.returncode == 0:
                 new_sha = subprocess.check_output(
                     ["git", "rev-parse", "--short", "HEAD"],
                     cwd=str(ROOT_DIR),
-                    text=True
+                    text=True,
+                    creationflags=SUBPROCESS_FLAGS
                 ).strip()
                 save_local_version_info(new_sha)
+                updated_info = get_local_version_info()
                 return {
                     "status": "success",
                     "method": "git",
-                    "message": f"Atualizado com sucesso via Git! Novo commit: {new_sha}",
+                    "version": updated_info.get("version", DEFAULT_VERSION),
+                    "message": f"Atualizado com sucesso via Git para {updated_info.get('version', DEFAULT_VERSION)} (Commit: {new_sha})!",
                     "details": res.stdout,
                     "commit_sha": new_sha
                 }
         except Exception as git_err:
-            print(f"[Updater] git pull falhou: {git_err}. Prosseguindo com fallback universal zip.")
+            print(f"[Updater] git update falhou: {git_err}. Prosseguindo com fallback universal zip.")
 
     # 2. Fallback universal via ZIP GitHub
     temp_zip = ROOT_DIR / "temp_update.zip"
@@ -250,8 +278,22 @@ def apply_update() -> Dict[str, Any]:
 
 
 def trigger_service_restart_async():
-    """Aciona reinicialização assíncrona do serviço sem travar o worker HTTP."""
+    """Aciona reinicialização assíncrona do serviço sem travar o worker HTTP e sem matar a própria árvore."""
     script_path = ROOT_DIR / "dashboard" / "service_manager.py"
-    cmd = [sys.executable, str(script_path), "restart"]
+    py_exe = Path(sys.executable).parent / "python.exe"
+    exe_str = str(py_exe) if py_exe.exists() else sys.executable
+    cmd = [exe_str, str(script_path), "restart"]
     DETACHED_PROCESS = 0x00000008
-    subprocess.Popen(cmd, creationflags=DETACHED_PROCESS | SUBPROCESS_FLAGS, close_fds=True)
+    CREATE_NEW_PROCESS_GROUP = 0x00000200
+    log_path = ROOT_DIR / "dashboard" / "data" / "updater_restart.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_f = open(log_path, "a", encoding="utf-8")
+    subprocess.Popen(
+        cmd,
+        cwd=str(ROOT_DIR / "dashboard"),
+        creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | SUBPROCESS_FLAGS,
+        stdout=log_f,
+        stderr=log_f,
+        stdin=subprocess.DEVNULL,
+        close_fds=True
+    )

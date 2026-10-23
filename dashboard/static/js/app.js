@@ -1221,12 +1221,17 @@ function openSystemUpdateModal() {
         const btnApply = document.getElementById("btnApplySysUpdate");
         const isLocal = isLocalhostAccess();
 
-        if (notice) notice.style.display = isLocal ? "none" : "block";
-        if (btnApply && !isLocal) {
-            btnApply.disabled = true;
-            btnApply.style.opacity = "0.4";
-            btnApply.style.cursor = "not-allowed";
-            btnApply.title = "Disparo permitido apenas no console local da máquina 24x7 (localhost)";
+        if (notice) {
+            notice.style.display = isLocal ? "none" : "block";
+            notice.style.background = "rgba(56, 189, 248, 0.12)";
+            notice.style.borderColor = "rgba(56, 189, 248, 0.35)";
+            notice.style.color = "#bae6fd";
+            notice.innerHTML = "🌐 <strong>Atualização Remota Habilitada:</strong> O comando atualizará diretamente o servidor 24x7 a partir do GitHub (<code>branch main</code>) e reiniciará o serviço Windows automaticamente em segundo plano.";
+        }
+        if (btnApply) {
+            btnApply.disabled = false;
+            btnApply.style.opacity = "1";
+            btnApply.style.cursor = "pointer";
         }
 
         checkSystemUpdate(false);
@@ -1238,12 +1243,39 @@ function closeSystemUpdateModal() {
     if (modal) modal.style.display = "none";
 }
 
-async function applySystemUpdateNow() {
-    if (!isLocalhostAccess()) {
-        alert("🔒 Acesso Remoto: Para garantir a segurança operacional da frota 24x7, atualizações de sistema só podem ser aplicadas no console local da máquina 24x7 (http://localhost:8092) ou via terminal (atualizar_sistema.bat).");
-        return;
+function startUpdateReconnectPolling(progressLabel, progressPct, statusTitle, statusDesc) {
+    if (progressLabel) progressLabel.textContent = "Reiniciando serviço Windows no servidor 24x7 e reconectando...";
+    if (progressPct) progressPct.textContent = "Reiniciando...";
+    if (statusTitle) {
+        statusTitle.textContent = "🔄 Reiniciando Serviço do Dashboard...";
+        statusTitle.style.color = "#38bdf8";
     }
+    if (statusDesc) statusDesc.textContent = "Aguardando o serviço voltar online com a nova versão...";
 
+    setTimeout(() => {
+        let attempts = 0;
+        const pollInterval = setInterval(async () => {
+            attempts++;
+            try {
+                const ping = await fetch(`/api/health?_t=${Date.now()}`, { cache: "no-store" });
+                if (ping.ok) {
+                    clearInterval(pollInterval);
+                    if (progressLabel) progressLabel.textContent = "Servidor online! Recarregando interface...";
+                    if (progressPct) progressPct.textContent = "100%";
+                    showToast("Dashboard online com a nova versão!", "success");
+                    setTimeout(() => { window.location.reload(); }, 800);
+                }
+            } catch (e) {
+                if (attempts > 25) {
+                    clearInterval(pollInterval);
+                    window.location.reload();
+                }
+            }
+        }, 1500);
+    }, 3000);
+}
+
+async function applySystemUpdateNow() {
     const btnApply = document.getElementById("btnApplySysUpdate");
     const progress = document.getElementById("sys-update-progress-container");
     const progressLabel = document.getElementById("sys-update-progress-label");
@@ -1254,12 +1286,12 @@ async function applySystemUpdateNow() {
 
     if (btnApply) btnApply.disabled = true;
     if (progress) progress.style.display = "block";
-    if (progressLabel) progressLabel.textContent = "Sincronizando arquivos com o GitHub...";
+    if (progressLabel) progressLabel.textContent = "Sincronizando arquivos com o GitHub no servidor 24x7...";
     if (progressPct) progressPct.textContent = "Baixando...";
 
     try {
         const token = getAuthToken();
-        const res = await fetch("/api/system/update?restart_service=true", {
+        const res = await fetch("/api/system/update?restart_service=true&force_remote=true", {
             method: "POST",
             headers: {
                 "Authorization": `Bearer ${token}`,
@@ -1275,38 +1307,25 @@ async function applySystemUpdateNow() {
             if (statusTitle) statusTitle.textContent = "🎉 Sistema Atualizado!";
             if (statusDesc) statusDesc.textContent = data.message || "Reiniciando serviço Windows...";
             showToast("Atualização aplicada! Reiniciando serviço...", "success");
-
-            // Aguarda 4 segundos e tenta reconectar
-            setTimeout(() => {
-                if (progressLabel) progressLabel.textContent = "Reconectando ao Dashboard após reinício...";
-                let attempts = 0;
-                const pollInterval = setInterval(async () => {
-                    attempts++;
-                    try {
-                        const ping = await fetch("/api/health");
-                        if (ping.ok) {
-                            clearInterval(pollInterval);
-                            showToast("Dashboard online com a nova versão!", "success");
-                            setTimeout(() => { window.location.reload(); }, 1000);
-                        }
-                    } catch (e) {
-                        if (attempts > 15) {
-                            clearInterval(pollInterval);
-                            window.location.reload();
-                        }
-                    }
-                }, 1500);
-            }, 3000);
+            startUpdateReconnectPolling(progressLabel, progressPct, statusTitle, statusDesc);
         } else {
-            throw new Error(data.error || "Erro desconhecido na atualização.");
+            throw new Error(data.error || data.message || "Erro desconhecido na atualização.");
         }
     } catch (err) {
+        const msg = String(err && err.message ? err.message : err);
+        // Se a conexão caiu com "Failed to fetch" ou "NetworkError", o servidor 24x7 já aplicou o update e iniciou o restart do serviço!
+        if (msg.includes("Failed to fetch") || msg.includes("NetworkError") || msg.includes("Load failed")) {
+            console.info("Conexão reiniciada pelo servidor durante o update; iniciando polling de reconexão...");
+            showToast("Servidor reiniciando para aplicar a atualização... Reconectando!", "info");
+            startUpdateReconnectPolling(progressLabel, progressPct, statusTitle, statusDesc);
+            return;
+        }
         console.error("Erro ao aplicar atualização:", err);
         if (progressLabel) progressLabel.textContent = "Falha durante o update.";
         if (progressPct) progressPct.textContent = "Erro";
         if (statusTitle) statusTitle.textContent = "Erro na Atualização";
-        if (statusDesc) statusDesc.textContent = err.message;
-        showToast("Erro na atualização: " + err.message, "danger");
+        if (statusDesc) statusDesc.textContent = msg;
+        showToast("Erro na atualização: " + msg, "danger");
         if (btnApply) btnApply.disabled = false;
     }
 }

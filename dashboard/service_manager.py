@@ -227,7 +227,7 @@ def stop_service():
 
     print(f"[*] Encerrando processo PID {pid}...")
     try:
-        subprocess.run(f"taskkill /PID {pid} /T /F", shell=True, capture_output=True, text=True, creationflags=SUBPROCESS_FLAGS)
+        subprocess.run(f"taskkill /PID {pid} /F", shell=True, capture_output=True, text=True, creationflags=SUBPROCESS_FLAGS)
     except Exception as e:
         print(f"[!] Erro ao encerrar processo: {e}")
 
