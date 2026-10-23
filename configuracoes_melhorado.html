@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="pt-pt">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Configurações de Engenharia & Governança do Sistema</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: #0b101b;
+      color: #f1f5f9;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* Navegação dos Separadores */
+    .tab-bar {
+      display: flex;
+      gap: 6px;
+      border-bottom: 1px solid #1e293b;
+      padding-bottom: 8px;
+      flex-wrap: wrap;
+    }
+    .tab-btn {
+      background-color: #111726;
+      border: 1px solid #1e293b;
+      color: #94a3b8;
+      padding: 7px 14px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .tab-btn.active {
+      background-color: #0284c7;
+      color: #ffffff;
+      border-color: #0284c7;
+    }
+
+    .container {
+      background-color: #111726;
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    /* Grelha de Limiares em 2 Colunas */
+    .threshold-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+      gap: 14px;
+    }
+    .category-card {
+      background-color: #161f33;
+      border: 1px solid #1e293b;
+      border-radius: 6px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .cat-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #38bdf8;
+      border-bottom: 1px solid #1e293b;
+      padding-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .param-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+    }
+    .param-info { max-width: 65%; }
+    .param-desc { font-size: 10px; color: #64748b; margin-top: 2px; line-height: 1.2; }
+    .param-control { display: flex; align-items: center; gap: 6px; }
+    
+    input[type="number"], select {
+      background: #070b12;
+      border: 1px solid #334155;
+      color: #f1f5f9;
+      padding: 4px 6px;
+      border-radius: 4px;
+      font-size: 12px;
+      width: 65px;
+      font-family: monospace;
+      text-align: right;
+    }
+
+    /* Kill-Switches */
+    .switch-card {
+      background-color: #161f33;
+      border: 1px solid #1e293b;
+      border-radius: 6px;
+      padding: 12px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+    .switch-card.active { border-left: 4px solid #10b981; }
+    .switch-card.killed { border-left: 4px solid #f43f5e; background-color: #22121c; }
+
+    /* Interruptor Toggle */
+    .toggle {
+      position: relative;
+      display: inline-block;
+      width: 40px;
+      height: 22px;
+    }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: #334155;
+      transition: .2s;
+      border-radius: 22px;
+    }
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 16px;
+      width: 16px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: .2s;
+      border-radius: 50%;
+    }
+    input:checked + .slider { background-color: #10b981; }
+    input:checked + .slider:before { transform: translateX(18px); }
+
+    /* Barra Flutuante de Gravação */
+    .save-bar {
+      position: sticky;
+      bottom: 12px;
+      background-color: #131b2e;
+      border: 1px solid #0284c7;
+      border-radius: 8px;
+      padding: 10px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+      z-index: 50;
+    }
+
+    .btn {
+      padding: 6px 14px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      border: none;
+    }
+    .btn-save { background: #0284c7; color: white; }
+    .btn-apply-ia { background: #059669; color: white; }
+  </style>
+</head>
+<body>
+
+  <!-- SELETOR DE MÓDULOS DE CONFIGURAÇÃO -->
+  <nav class="tab-bar">
+    <button class="tab-btn active" onclick="switchTab('limiares')">⚙️ Calibração de Limiares</button>
+    <button class="tab-btn" onclick="switchTab('killswitch')">🛑 Kill-Switch & Feature Flags</button>
+    <button class="tab-btn" onclick="switchTab('auditoria')">🎯 Prevenção de Falsos Alarmes (IA)</button>
+  </nav>
+
+  <!-- MÓDULO 1: LIMIARES COMPACTOS POR DOMÍNIO TÉCNICO -->
+  <section id="tab-limiares" class="container">
+    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #1e293b; padding-bottom:8px;">
+      <div>
+        <h2 style="font-size:13px; font-weight:bold;">Calibração dos Limiares de Alerta (SLA & Tolerâncias)</h2>
+        <p style="font-size:11px; color:#64748b;">Ajuste global com propagação síncrona para todos os daemons locais</p>
+      </div>
+      <div style="font-size:11px; color:#94a3b8;">
+        Intervalo de Polling: 
+        <select style="width:130px; font-size:11px; padding:3px 6px;">
+          <option>A cada 15s (Padrão)</option>
+          <option>A cada 30s</option>
+          <option>A cada 60s</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="threshold-grid">
+
+      <!-- Grupo 1: Armazenamento e Fila -->
+      <div class="category-card">
+        <div class="cat-title">💾 Armazenamento & Ingestão</div>
+        
+        <div class="param-row">
+          <div class="param-info">
+            <strong>Autonomia Mínima de Gravação</strong>
+            <div class="param-desc">Tempo preditivo antes do esgotamento da partição D:.</div>
+          </div>
+          <div class="param-control">
+            <input type="number" value="8">
+            <span style="font-size:11px; color:#94a3b8;">horas</span>
+          </div>
+        </div>
+
+        <div class="param-row">
+          <div class="param-info">
+            <strong>Espaço Livre Absoluto (Disco D:)</strong>
+            <div class="param-desc">Disparo imediato de limpeza preventiva.</div>
+          </div>
+          <div class="param-control">
+            <input type="number" value="10">
+            <span style="font-size:11px; color:#94a3b8;">GB</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Grupo 2: Qualidade e Sintonia RF -->
+      <div class="category-card">
+        <div class="cat-title">📡 Nível e Sintonia Digital RF</div>
+
+        <div class="param-row">
+          <div class="param-info">
+            <strong>Força Mínima de Sinal (RSSI)</strong>
+            <div class="param-desc">Limiar de corte para os sintonizadores TBS DTV.</div>
+          </div>
+          <div class="param-control">
+            <input type="number" value="45">
+            <span style="font-size:11px; color:#94a3b8;">%</span>
+          </div>
+        </div>
+
+        <div class="param-row">
+          <div class="param-info">
+            <strong>Qualidade Mínima da Portadora</strong>
+            <div class="param-desc">Ponderação prévia ao desarmamento de lock.</div>
+          </div>
+          <div class="param-control">
+            <input type="number" value="45">
+            <span style="font-size:11px; color:#94a3b8;">%</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Grupo 3: Análise de Fluxo e Vídeo -->
+      <div class="category-card">
+        <div class="cat-title">📺 Integridade de Vídeo & Streaming</div>
+
+        <div class="param-row">
+          <div class="param-info">
+            <strong>Tolerância de Quadro Congelado (GOP)</strong>
+            <div class="param-desc">Tempo contínuo de frame idêntico até gerar alerta.</div>
+          </div>
+          <div class="param-control">
+            <input type="number" value="10">
+            <span style="font-size:11px; color:#94a3b8;">seg</span>
+          </div>
+        </div>
+
+        <div class="param-row">
+          <div class="param-info">
+            <strong>Persistência de Falha para Abertura</strong>
+            <div class="param-desc">Janela de atenuação rápida antes de abrir incidente.</div>
+          </div>
+          <div class="param-control">
+            <input type="number" value="3">
+            <span style="font-size:11px; color:#94a3b8;">min</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Grupo 4: Heurísticas IA & Anti-Flapping -->
+      <div class="category-card">
+        <div class="cat-title">🤖 Heurísticas & Auto-Cura</div>
+
+        <div class="param-row">
+          <div class="param-info">
+            <strong>Teto de Reinícios (Anti-Flapping)</strong>
+            <div class="param-desc">Máximo de auto-restarts em 15m antes de bloquear.</div>
+          </div>
+          <div class="param-control">
+            <input type="number" value="3">
+            <span style="font-size:11px; color:#94a3b8;">restarts</span>
+          </div>
+        </div>
+
+        <div class="param-row">
+          <div class="param-info">
+            <strong>Alerta de Memória Pool Non-Paged</strong>
+            <div class="param-desc">Proteção contra fugas de memória de drivers TBS.</div>
+          </div>
+          <div class="param-control">
+            <input type="number" value="500">
+            <span style="font-size:11px; color:#94a3b8;">MB</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Barra Unificada de Ação -->
+    <div class="save-bar">
+      <span style="font-size:12px; color:#38bdf8;">✓ Nenhuma alteração pendente de gravação</span>
+      <div style="display:flex; gap:8px;">
+        <button class="btn" style="background:#1e293b; color:#cbd5e1; border:1px solid #334155;">Restaurar Padrões de Fábrica</button>
+        <button class="btn btn-save">Guardar Todos os Limiares</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- MÓDULO 2: KILL-SWITCHES COM ESCOPO GRANULAR -->
+  <section id="tab-killswitch" class="container" style="display:none;">
+    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #1e293b; padding-bottom:8px;">
+      <div>
+        <h2 style="font-size:13px; font-weight:bold;">Chaves de Desativação Granular de Emergência (Kill-Switch)</h2>
+        <p style="font-size:11px; color:#64748b;">Suspenda rotinas pesadas em caso de sobrecarga de CPU sem reiniciar processos de gravação</p>
+      </div>
+      <button class="btn" style="background:#1e293b; border:1px solid #334155; color:#cbd5e1;">Atualizar Estados</button>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:10px;">
+      
+      <div class="switch-card active">
+        <div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <strong>Auditoria Analítica de Amostras MP4 (ATRIA)</strong>
+            <span style="font-size:10px; background:#064e3b; color:#a7f3d0; padding:2px 6px; border-radius:3px;">ATIVO</span>
+          </div>
+          <p style="font-size:11px; color:#94a3b8; margin-top:2px;">Inspeção profunda de integridade dos arquivos gravados localmente.</p>
+        </div>
+        <div style="display:flex; align-items:center; gap:12px;">
+          <select style="width:170px;">
+            <option>Escopo: Global (24 Nós)</option>
+            <option>Apenas Pelotas (CS 1)</option>
+            <option>Apenas Caxias do Sul</option>
+          </select>
+          <label class="toggle">
+            <input type="checkbox" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="switch-card active">
+        <div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <strong>Deteção de Vídeo Congelado via Frame Hash (pHash)</strong>
+            <span style="font-size:10px; background:#064e3b; color:#a7f3d0; padding:2px 6px; border-radius:3px;">ATIVO</span>
+          </div>
+          <p style="font-size:11px; color:#94a3b8; margin-top:2px;">Comparação perceptual de quadros consecutivos para alertar travamentos.</p>
+        </div>
+        <div style="display:flex; align-items:center; gap:12px;">
+          <select style="width:170px;">
+            <option>Escopo: Global (24 Nós)</option>
+            <option>Apenas Pelotas (CS 1)</option>
+            <option>Apenas Caxias do Sul</option>
+          </select>
+          <label class="toggle">
+            <input type="checkbox" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="switch-card killed">
+        <div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <strong>Coleta Contínua de JPEGs para Mosaico Visual</strong>
+            <span style="font-size:10px; background:#4c0519; color:#fca5a5; padding:2px 6px; border-radius:3px;">DESATIVADO DE EMERGÊNCIA</span>
+          </div>
+          <p style="font-size:11px; color:#94a3b8; margin-top:2px;">Envio leve de frames para a matriz do NOC (Pausado para economizar upload).</p>
+        </div>
+        <div style="display:flex; align-items:center; gap:12px;">
+          <select style="width:170px;">
+            <option>Região Sul (Atenuação de Link)</option>
+            <option>Escopo: Global (24 Nós)</option>
+          </select>
+          <label class="toggle">
+            <input type="checkbox">
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- MÓDULO 3: AUDITORIA IA COM HISTÓRICO DE APROVAÇÃO -->
+  <section id="tab-auditoria" class="container" style="display:none;">
+    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #1e293b; padding-bottom:8px;">
+      <div>
+        <h2 style="font-size:13px; font-weight:bold;">Propostas Calibradas da IA para Supressão de Ruído Operacional</h2>
+        <p style="font-size:11px; color:#64748b;">Ajustes sugeridos com base em micro-desvanecimentos dos últimos 30 dias</p>
+      </div>
+      <button class="btn" style="background:#4f46e5; color:white;">Reanalisar Parque com IA</button>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:10px;">
+      
+      <div style="background:#161f33; border:1px solid #1e293b; border-radius:6px; padding:12px; display:flex; justify-content:space-between; align-items:center;">
+        <div style="max-width:70%;">
+          <div style="display:flex; gap:6px; align-items:center; margin-bottom:4px;">
+            <strong>Tolerância de Desarmamento de Lock TBS (ISDB-Tb)</strong>
+            <span style="font-size:10px; background:#1e1b4b; color:#c7d2fe; padding:2px 6px; border-radius:3px;">-28% Ruído de Campo</span>
+          </div>
+          <p style="font-size:11px; color:#94a3b8;">
+            Micro-desvanecimentos térmicos e reflexões multipath em praças montanhosas (Juiz de Fora e Caxias) duram entre 4s e 8s sem corromper o arquivo gravado.
+          </p>
+          <div style="font-size:11px; margin-top:6px; color:#cbd5e1; font-family:monospace;">
+            Valor Atual: <span style="color:#f43f5e;">5 segundos</span> ➔ Proposta IA: <span style="color:#34d399; font-weight:bold;">12 segundos</span>
+          </div>
+        </div>
+        <button class="btn btn-apply-ia">Aprovar Proposta no Parque</button>
+      </div>
+
+      <div style="background:#161f33; border:1px solid #1e293b; border-radius:6px; padding:12px; display:flex; justify-content:space-between; align-items:center;">
+        <div style="max-width:70%;">
+          <div style="display:flex; gap:6px; align-items:center; margin-bottom:4px;">
+            <strong>Timeout de Socket e Reconexão RTSP/IP</strong>
+            <span style="font-size:10px; background:#1e1b4b; color:#c7d2fe; padding:2px 6px; border-radius:3px;">-42% Quedas Falsas de Stream</span>
+          </div>
+          <p style="font-size:11px; color:#94a3b8;">
+            Oscilações da rota em links de operadoras duram cerca de 20s. Aumentar o timeout evita reiniciar desnecessariamente o daemon de gravação.
+          </p>
+          <div style="font-size:11px; margin-top:6px; color:#cbd5e1; font-family:monospace;">
+            Valor Atual: <span style="color:#f43f5e;">15 segundos</span> ➔ Proposta IA: <span style="color:#34d399; font-weight:bold;">30 segundos</span>
+          </div>
+        </div>
+        <button class="btn btn-apply-ia">Aprovar Proposta no Parque</button>
+      </div>
+
+    </div>
+  </section>
+
+  <script>
+    function switchTab(tab) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      event.currentTarget.classList.add('active');
+
+      document.getElementById('tab-limiares').style.display = (tab === 'limiares') ? 'flex' : 'none';
+      document.getElementById('tab-killswitch').style.display = (tab === 'killswitch') ? 'flex' : 'none';
+      document.getElementById('tab-auditoria').style.display = (tab === 'auditoria') ? 'flex' : 'none';
+    }
+  </script>
+
+</body>
+</html>

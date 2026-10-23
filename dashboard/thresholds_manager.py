@@ -126,6 +126,37 @@ def update_threshold(key: str, value: float, is_enabled: bool) -> bool:
         return cursor.rowcount > 0
 
 
+def update_thresholds_batch(items: List[Dict[str, Any]]) -> bool:
+    """Atualiza múltiplos limiares em uma única transação atômica."""
+    with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
+        cursor = conn.cursor()
+        for item in items:
+            key = item.get("key")
+            val = float(item.get("value", 0.0))
+            is_en = 1 if item.get("is_enabled", True) else 0
+            cursor.execute("""
+                UPDATE alert_thresholds 
+                SET value = ?, is_enabled = ?
+                WHERE key = ?
+            """, (val, is_en, key))
+        conn.commit()
+        return True
+
+
+def reset_thresholds_to_defaults() -> bool:
+    """Restaura todos os limiares para os valores de fábrica (DEFAULT_THRESHOLDS)."""
+    with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
+        cursor = conn.cursor()
+        for t in DEFAULT_THRESHOLDS:
+            cursor.execute("""
+                UPDATE alert_thresholds 
+                SET value = ?, is_enabled = ?, description = ?
+                WHERE key = ?
+            """, (t["value"], t["is_enabled"], t["description"], t["key"]))
+        conn.commit()
+        return True
+
+
 def add_or_register_threshold(key: str, name: str, category: str, value: float, unit: str, is_enabled: bool = True, description: str = "") -> bool:
     """Cadastra ou atualiza um novo limiar de monitoramento no banco (usado pela homologação de IA)."""
     init_thresholds()

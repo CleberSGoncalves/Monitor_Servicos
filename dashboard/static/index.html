@@ -4527,172 +4527,57 @@
 
 
       <!-- SUBTAB 1: LIMIARES & ATUALIZAÇÃO -->
-
-
-
       <div id="configs-content-thresholds">
 
-
-
-        <!-- Frequência de Atualização Automática (Polling) -->
-
-
-
-      <div class="panel-card">
-
-
-
-        <div class="panel-header">
-
-
-
-          <div class="panel-title"><span>⏱️</span> Frequência de Atualização do Dashboard (Auto-Refresh)</div>
-
-
-
-          <span style="font-size: 12px; color: var(--text-muted);">Defina o intervalo seguro de atualização periódica dos dados de telemetria</span>
-
-
-
-        </div>
-
-
-
-        <div style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); padding: 16px; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;">
-
-
-
-          <div>
-
-
-
-            <div style="font-weight: 600; color: #fff; margin-bottom: 4px;">Intervalo de Polling da Telemetria e Incidentes:</div>
-
-
-
-            <div style="font-size: 12px; color: var(--text-muted);">Mínimo seguro: 10 segundos para preservar os links e não sobrecarregar as praças.</div>
-
-
-
+        <!-- Top Bar: Header & Polling Interval -->
+        <div class="panel-card" style="margin-bottom: 20px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
+            <div>
+              <div class="panel-title" style="font-size: 15px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px;">
+                <span>🎛️</span> Calibração dos Limiares de Alerta (SLA & Tolerâncias Técnicas)
+              </div>
+              <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+                Ajuste global com propagação síncrona para todos os daemons e agentes locais da frota
+              </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <span style="font-size: 12px; color: var(--text-muted);">Intervalo de Polling:</span>
+              <select id="autoRefreshIntervalSelect" class="form-input" style="width: 200px; font-size: 12px;" onchange="changeAutoRefreshInterval(this.value)">
+                <option value="10">A cada 10s (Rápido)</option>
+                <option value="15" selected>A cada 15s (Padrão Recomendado)</option>
+                <option value="30">A cada 30s (Moderado)</option>
+                <option value="60">A cada 1 min (Econômico)</option>
+                <option value="120">A cada 2 min (Baixo tráfego)</option>
+                <option value="0">Desativar Polling</option>
+              </select>
+              <span id="refreshTimerStatus" class="badge" style="background: rgba(37, 99, 235, 0.2); color: #60a5fa; border: 1px solid #2563eb; padding: 5px 10px; font-weight: 600; font-size: 11px;">
+                ⏱️ 15s ativo
+              </span>
+            </div>
           </div>
+        </div>
 
+        <!-- Thematic 2-Column Grid Container -->
+        <div id="thresholdsListContainer" class="threshold-grid">
+          <!-- Renderizado dinamicamente via loadThresholds() -->
+        </div>
 
-
-          <div style="display: flex; align-items: center; gap: 12px;">
-
-
-
-            <select id="autoRefreshIntervalSelect" class="form-input" style="width: 220px;" onchange="changeAutoRefreshInterval(this.value)">
-
-
-
-              <option value="10">A cada 10 segundos (Rápido)</option>
-
-
-
-              <option value="15" selected>A cada 15 segundos (Padrão)</option>
-
-
-
-              <option value="30">A cada 30 segundos (Moderado)</option>
-
-
-
-              <option value="60">A cada 1 minuto (Econômico)</option>
-
-
-
-              <option value="120">A cada 2 minutos (Baixo tráfego)</option>
-
-
-
-              <option value="0">Desativar atualização automática</option>
-
-
-
-            </select>
-
-
-
-            <span id="refreshTimerStatus" class="badge" style="background: rgba(37, 99, 235, 0.2); color: #60a5fa; border: 1px solid #2563eb; padding: 6px 12px; font-weight: 600;">
-
-
-
-              ⏱️ 15s ativo
-
-
-
-            </span>
-
-
-
+        <!-- Floating Action Save Bar -->
+        <div class="save-bar" id="thresholds-save-bar">
+          <span style="font-size: 12px; color: #38bdf8;" id="thresholds-save-bar-status">
+            <i class="fas fa-check-circle" style="color: #10b981;"></i> Nenhuma alteração pendente de gravação
+          </span>
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <button class="btn btn-secondary" style="font-size: 12px; padding: 7px 14px; font-weight: 600;" onclick="restoreThresholdDefaults()">
+              <i class="fas fa-undo"></i> Restaurar Padrões de Fábrica
+            </button>
+            <button class="btn btn-primary btn-save" style="font-size: 12px; padding: 7px 16px; font-weight: 700; background: linear-gradient(135deg, #0284c7, #2563eb);" onclick="saveAllThresholdsBatch()">
+              <i class="fas fa-save"></i> Guardar Todos os Limiares
+            </button>
           </div>
-
-
-
         </div>
-
-
-
-      </div>
-
-
-
-
-
-
-
-      <!-- Limiares de Alerta -->
-
-
-
-      <div class="panel-card">
-
-
-
-        <div class="panel-header">
-
-
-
-          <div class="panel-title"><span>🎛️</span> Calibração de Limiares de Alerta (Thresholds)</div>
-
-
-
-          <span style="font-size: 12px; color: var(--text-muted);">Aumente, diminua ou ative/desative os parâmetros de sensibilidade dos alarmes</span>
-
-
-
-        </div>
-
-
-
-        <div id="thresholdsListContainer">
-
-
-
-          <!-- Renderizado dinamicamente via thresholds_manager -->
-
-
-
-        </div>
-
-
-
-      </div>
-
-
-
-
-
-
 
       </div><!-- Fecha configs-content-thresholds -->
-
-
-
-
-
-
 
       <!-- SUBTAB 2: FEATURE FLAGS & KILL-SWITCH OPERACIONAL -->
 
@@ -5113,6 +4998,28 @@
         </div>
 
         <!-- Tabela de Auditoria e Consumo de IA em Tempo Real -->
+        <!-- Gráfico Compacto de Evolução de Consumo de Tokens (Leitura de Picos) -->
+        <div class="panel-card" style="background: rgba(15, 23, 42, 0.65); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 18px; margin-bottom: 22px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
+            <div>
+              <div style="font-size: 13px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px;">
+                <i class="fas fa-chart-area text-blue"></i>
+                <span>Evolução de Consumo de Tokens & Detecção de Picos</span>
+              </div>
+              <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+                Distribuição temporal das transações para identificação imediata de anomalias de processamento e volume
+              </div>
+            </div>
+            <div style="display: flex; gap: 10px; align-items: center;">
+              <span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-size: 11px;" id="aiTokenPeakBadge">Pico: 0 tokens</span>
+              <span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #34d399; font-size: 11px;" id="aiTokenAvgBadge">Média: 0 tokens/req</span>
+            </div>
+          </div>
+          <div id="aiTokenSparklineChart" style="width: 100%; height: 110px; background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center;">
+            <!-- SVG dinâmico -->
+          </div>
+        </div>
+
         <div class="panel-card" style="background: rgba(15, 23, 42, 0.65); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 20px;">
           <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 10px;">
             <div>

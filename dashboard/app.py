@@ -38,7 +38,7 @@ from auth import (
 )
 from sharepoint_sync import get_cached_data, start_background_syncer, sync_fleet_data
 from incident_manager import register_incident_action, get_incident_history, diagnose_incident_with_ai
-from thresholds_manager import get_all_thresholds, update_threshold, get_active_threshold_breaches
+from thresholds_manager import get_all_thresholds, update_threshold, get_active_threshold_breaches, update_thresholds_batch, reset_thresholds_to_defaults
 from geo_topology import get_markets_map_data
 from gemini_service import (
     get_ai_settings, update_ai_settings, test_gemini_connection,
@@ -642,6 +642,10 @@ async def ai_diagnose_logs_endpoint(req: LogAiDiagnoseRequest, user: dict = Depe
     return diagnose_logs_with_ai(req.source, req.host, req.logs, operator_name)
 
 
+class ThresholdBatchUpdateRequest(BaseModel):
+    thresholds: List[ThresholdUpdateRequest]
+
+
 @app.post("/api/thresholds")
 async def save_threshold(req: ThresholdUpdateRequest, user: dict = Depends(get_current_user)):
     if user.get("role") != "admin":
@@ -650,6 +654,23 @@ async def save_threshold(req: ThresholdUpdateRequest, user: dict = Depends(get_c
     if not ok:
         raise HTTPException(status_code=400, detail="Limiar não encontrado")
     return {"success": True}
+
+
+@app.post("/api/thresholds/batch")
+async def save_thresholds_batch(req: ThresholdBatchUpdateRequest, user: dict = Depends(get_current_user)):
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Apenas Administradores podem calibrar limiares operacionais.")
+    items = [t.model_dump() if hasattr(t, "model_dump") else t.dict() for t in req.thresholds]
+    update_thresholds_batch(items)
+    return {"success": True, "count": len(items), "message": f"{len(items)} limiares atualizados com sucesso!"}
+
+
+@app.post("/api/thresholds/reset-defaults")
+async def reset_thresholds_endpoint(user: dict = Depends(get_current_user)):
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Apenas Administradores podem restaurar padrões.")
+    reset_thresholds_to_defaults()
+    return {"success": True, "message": "Limiares restaurados para os padrões de fábrica com sucesso!"}
 
 
 # Inteligência Artificial Proativa

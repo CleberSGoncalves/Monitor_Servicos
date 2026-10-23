@@ -815,32 +815,52 @@ function renderFeatureFlags(flags) {
     if (!container) return;
 
     if (!flags || flags.length === 0) {
-        container.innerHTML = `<div style="text-align: center; padding: 20px; color: var(--text-muted);">Nenhuma chave encontrada neste escopo.</div>`;
+        container.innerHTML = `<div style="text-align: center; padding: 24px; color: var(--text-muted);">Nenhuma chave operacional encontrada no escopo.</div>`;
         return;
     }
 
+    const scopeOptions = [
+        { label: "Escopo: Global (24 Nós)", type: "global", val: "*" },
+        { label: "Apenas Pelotas (CS 1)", type: "city", val: "Pelotas" },
+        { label: "Apenas Caxias do Sul (CS 2)", type: "city", val: "Caxias do Sul" },
+        { label: "Apenas Juiz de Fora", type: "city", val: "Juiz de Fora" },
+        { label: "Região Sul (Link Atenuado)", type: "region", val: "Sul" },
+        { label: "Região Sudeste", type: "region", val: "Sudeste" }
+    ];
+
     container.innerHTML = flags.map(f => {
         const isEn = Boolean(f.is_enabled);
-        const statusColor = isEn ? "#10b981" : "#ef4444";
-        const statusText = isEn ? "🟢 ATIVO (Em Execução)" : "🔴 DESATIVADO (Kill-Switch)";
+        const cardClass = isEn ? "switch-card active" : "switch-card killed";
+        const statusBadge = isEn
+            ? `<span style="font-size: 10px; background: #064e3b; color: #a7f3d0; border: 1px solid rgba(16, 185, 129, 0.4); padding: 2px 7px; border-radius: 4px; font-weight: 700;"><i class="fas fa-play-circle"></i> ATIVO</span>`
+            : `<span style="font-size: 10px; background: #4c0519; color: #fca5a5; border: 1px solid rgba(244, 63, 94, 0.4); padding: 2px 7px; border-radius: 4px; font-weight: 700;"><i class="fas fa-power-off"></i> DESATIVADO DE EMERGÊNCIA</span>`;
+
+        const curValCombined = `${f.scope_type}:${f.scope_value}`;
 
         return `
-            <div style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 6px; padding: 14px 18px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
+            <div class="${cardClass}">
                 <div style="flex: 1; min-width: 280px;">
                     <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
-                        <span class="badge" style="background: rgba(255,255,255,0.06); font-size: 10px; color: #38bdf8;">
-                            ESCOPO: ${f.scope_type.toUpperCase()} (${f.scope_value})
-                        </span>
-                        <strong style="color: #fff; font-size: 14px;">${escapeHtml(f.name)}</strong>
+                        <strong style="color: #fff; font-size: 13px;">${escapeHtml(f.name)}</strong>
+                        ${statusBadge}
                     </div>
-                    <div style="font-size: 12px; color: var(--text-muted); line-height: 1.4;">${escapeHtml(f.description || "")}</div>
-                    <div style="font-size: 11px; color: ${statusColor}; font-weight: 700; margin-top: 6px;">${statusText}</div>
+                    <p style="font-size: 11px; color: #94a3b8; margin: 0; line-height: 1.4;">${escapeHtml(f.description || "")}</p>
                 </div>
 
-                <div style="display: flex; align-items: center; gap: 12px;">
-                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; background: rgba(255,255,255,0.05); padding: 8px 14px; border-radius: 4px; border: 1px solid var(--border-color);">
-                        <input type="checkbox" id="flag_${f.scope_type}_${f.flag_key}" ${isEn ? "checked" : ""} onchange="handleFlagToggle('${f.scope_type}', '${f.scope_value}', '${f.flag_key}', this.checked)">
-                        <span style="font-size: 12px; font-weight: 600; color: #fff;">Ativar</span>
+                <div style="display: flex; align-items: center; gap: 14px; flex-shrink: 0;">
+                    <select class="form-input" style="width: 190px; font-size: 11px; padding: 4px 8px; background: #070b12;" 
+                        onchange="handleFlagScopeChange('${f.flag_key}', this.value, ${isEn})">
+                        ${scopeOptions.map(opt => {
+                            const valStr = `${opt.type}:${opt.val}`;
+                            const isSel = (opt.type === f.scope_type && opt.val === f.scope_value) || (f.scope_type === opt.type && opt.type === 'global');
+                            return `<option value="${valStr}" ${isSel ? 'selected' : ''}>${opt.label}</option>`;
+                        }).join("")}
+                    </select>
+
+                    <label class="toggle" title="${isEn ? 'Clique para desativar (Kill-Switch)' : 'Clique para ativar a rotina'}">
+                        <input type="checkbox" id="flag_${f.scope_type}_${f.flag_key}" ${isEn ? "checked" : ""} 
+                            onchange="handleFlagToggle('${f.scope_type}', '${f.scope_value}', '${f.flag_key}', this.checked)">
+                        <span class="slider"></span>
                     </label>
                 </div>
             </div>
@@ -866,17 +886,26 @@ async function handleFlagToggle(scopeType, scopeValue, flagKey, isChecked) {
         });
 
         if (resp.ok) {
-            const statusDesc = isChecked ? "ATIVADA" : "DESATIVADA (Kill-Switch aplicado)";
-            alert(`Chave '${flagKey}' agora está ${statusDesc} para o escopo ${scopeType} (${scopeValue}).`);
+            const statusDesc = isChecked ? "ATIVADA" : "SUSPENSA (Kill-Switch de Emergência)";
+            if (typeof safeToast === "function") {
+                safeToast(`Chave '${flagKey}' agora está ${statusDesc} no escopo ${scopeType} (${scopeValue})!`, isChecked ? "success" : "warning");
+            }
             loadFeatureFlagsUI();
         } else {
-            alert("Erro ao alterar chave.");
+            if (typeof safeToast === "function") safeToast("Erro ao alterar chave operacional.", "danger");
         }
     } catch (err) {
-        alert("Erro de conexão: " + err.message);
+        if (typeof safeToast === "function") safeToast("Erro de rede: " + err.message, "danger");
     }
 }
 window.handleFlagToggle = handleFlagToggle;
+
+window.handleFlagScopeChange = async function(flagKey, combinedScope, isEnabled) {
+    const parts = combinedScope.split(":");
+    const scopeType = parts[0];
+    const scopeValue = parts[1];
+    await handleFlagToggle(scopeType, scopeValue, flagKey, isEnabled);
+};
 
 function escapeHtml(text) {
     if (!text) return "";

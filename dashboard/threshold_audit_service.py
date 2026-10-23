@@ -213,7 +213,16 @@ def apply_threshold_audit_proposal(proposal_id: str, operator_name: str = "supor
     key_to_apply = prop["key"]
     
     try:
-        update_threshold(key_to_apply, val_to_apply, f"Auditoria IA: {prop['name']}")
+        from thresholds_manager import add_or_register_threshold
+        add_or_register_threshold(
+            key=key_to_apply,
+            name=prop["name"],
+            category=prop.get("category", "Heurística IA"),
+            value=float(val_to_apply),
+            unit="seg" if "sec" in key_to_apply else ("min" if "min" in key_to_apply else "%"),
+            is_enabled=True,
+            description=f"Calibrado por IA: {prop['reason'][:100]}"
+        )
     except Exception as e:
         logger.warning(f"Erro ao persistir no thresholds_manager: {e}")
 
@@ -227,7 +236,7 @@ def apply_threshold_audit_proposal(proposal_id: str, operator_name: str = "supor
         """, (proposal_id, key_to_apply, prop["current_value"], prop["proposed_value"], operator_name))
         
         cursor.execute("""
-            INSERT INTO incident_worklog (incident_code, host, target_name, incident_type, action_taken, operator_name, operator_username, resolution_status, created_at)
+            INSERT INTO incident_worklog (incident_key, host, target_name, incident_type, action_taken, operator_name, operator_username, resolution_status, created_at)
             VALUES (?, 'CS-FLEET-GLOBAL', ?, 'calibracao_limiares', ?, ?, ?, 'Concluído', ?)
         """, (
             f"AUD-{proposal_id[:8].upper()}",

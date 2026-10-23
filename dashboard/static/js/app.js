@@ -759,49 +759,188 @@ async function loadIncidentHistory() {
     `).join("");
 }
 
-// 5. Limiares de Alerta
+// 5. Limiares de Alerta (Calibração Ergonômica em Grelha Temática de 2 Colunas)
+let cachedThresholdsList = [];
+let pendingThresholdChanges = new Set();
+
 async function loadThresholds() {
-    const resp = await fetch("/api/thresholds", {
-        headers: getAuthToken() ? { "Authorization": `Bearer ${getAuthToken()}` } : {}
-    });
-    if (!resp.ok) return;
-    const thresholds = await resp.json();
-
     const container = document.getElementById("thresholdsListContainer");
-    container.innerHTML = thresholds.map(t => `
-        <div style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); padding: 14px; border-radius: var(--radius-sm); margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
-            <div>
-                <strong>${t.name}</strong> <span style="font-size: 11px; color: var(--text-muted);">(${t.category})</span>
-                <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">${t.description}</div>
-            </div>
-            <div style="display: flex; align-items: center; gap: 12px;">
-                <input type="number" id="th_val_${t.key}" value="${t.value}" step="0.5" style="width: 80px; padding: 6px; background: rgba(0,0,0,0.4); border: 1px solid var(--border-color); color: #fff; border-radius: 4px; text-align: center;">
-                <span style="font-size: 12px; color: var(--text-muted);">${t.unit}</span>
-                <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer;">
-                    <input type="checkbox" id="th_en_${t.key}" ${t.is_enabled ? "checked" : ""}> Ativo
-                </label>
-                <button class="btn-secondary" style="padding: 6px 12px;" onclick="saveSingleThreshold('${t.key}')">Salvar</button>
-            </div>
-        </div>
-    `).join("");
-}
+    if (!container) return;
 
-async function saveSingleThreshold(key) {
-    const val = parseFloat(document.getElementById(`th_val_${key}`).value);
-    const en = document.getElementById(`th_en_${key}`).checked;
+    try {
+        const resp = await fetch("/api/thresholds", {
+            headers: getAuthToken() ? { "Authorization": `Bearer ${getAuthToken()}` } : {}
+        });
+        if (!resp.ok) return;
+        const thresholds = await resp.json();
+        cachedThresholdsList = thresholds;
+        pendingThresholdChanges.clear();
+        updateThresholdSaveBarStatus();
 
-    const resp = await fetch("/api/thresholds", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${authToken}`
-        },
-        body: JSON.stringify({ key: key, value: val, is_enabled: en })
-    });
-    if (resp.ok) {
-        alert("Limiar atualizado com sucesso!");
+        // Agrupamento por Domínio Técnico
+        const groups = {
+            storage: {
+                title: "💾 Armazenamento & Ingestão",
+                icon: "fa-database",
+                keys: ["disk_autonomy_min_hours", "disk_d_min_gb", "disk_alert_threshold_pct"],
+                items: []
+            },
+            rf: {
+                title: "📡 Nível e Sintonia Digital RF",
+                icon: "fa-broadcast-tower",
+                keys: ["rf_signal_strength_min", "rf_signal_quality_min", "tbs_lock_timeout_sec", "tbs_recycle_grace_min"],
+                items: []
+            },
+            video: {
+                title: "📺 Integridade de Vídeo & Streaming",
+                icon: "fa-tv",
+                keys: ["downtime_min_alert_minutes", "rtsp_socket_timeout_sec", "wan_jitter_buffer_sec"],
+                items: []
+            },
+            heuristics: {
+                title: "🤖 Heurísticas IA & Anti-Flapping",
+                icon: "fa-brain",
+                keys: ["flapping_max_restarts", "flapping_window_minutes", "cpu_max_percent", "ram_max_percent"],
+                items: []
+            }
+        };
+
+        // Distribui os itens pelos grupos
+        thresholds.forEach(t => {
+            const k = t.key.toLowerCase();
+            const cat = (t.category || "").toLowerCase();
+            if (groups.storage.keys.includes(t.key) || cat.includes("armazenamento") || k.includes("disk")) {
+                groups.storage.items.push(t);
+            } else if (groups.rf.keys.includes(t.key) || cat.includes("sinal") || cat.includes("rf") || cat.includes("tbs") || k.includes("rf_") || k.includes("tbs_")) {
+                groups.rf.items.push(t);
+            } else if (groups.video.keys.includes(t.key) || cat.includes("video") || cat.includes("stream") || k.includes("downtime") || k.includes("rtsp") || k.includes("wan")) {
+                groups.video.items.push(t);
+            } else {
+                groups.heuristics.items.push(t);
+            }
+        });
+
+        // Renderiza grelha de cartões temáticos
+        container.innerHTML = Object.values(groups).map(grp => `
+            <div class="category-card">
+                <div class="cat-title">
+                    <i class="fas ${grp.icon}"></i> ${grp.title}
+                </div>
+                ${grp.items.length === 0 ? '<div style="color: var(--text-muted); font-size: 11px;">Nenhum parâmetro neste grupo.</div>' : grp.items.map(t => `
+                    <div class="param-row">
+                        <div class="param-info">
+                            <strong>${escapeHtml(t.name)}</strong>
+                            <div class="param-desc">${escapeHtml(t.description || "")}</div>
+                        </div>
+                        <div class="param-control">
+                            <input type="number" id="th_val_${t.key}" value="${t.value}" step="0.5" 
+                                data-original="${t.value}"
+                                oninput="onThresholdParamChange('${t.key}')" 
+                                onchange="onThresholdParamChange('${t.key}')">
+                            <span class="param-unit">${escapeHtml(t.unit || "")}</span>
+                            <label class="toggle" style="margin-left: 4px;" title="Ativar ou desativar este limiar">
+                                <input type="checkbox" id="th_en_${t.key}" ${t.is_enabled ? "checked" : ""} 
+                                    data-original="${t.is_enabled ? '1' : '0'}"
+                                    onchange="onThresholdParamChange('${t.key}')">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                `).join("")}
+            </div>
+        `).join("");
+
+    } catch (err) {
+        console.error("Erro ao carregar limiares:", err);
     }
 }
+window.loadThresholds = loadThresholds;
+
+window.onThresholdParamChange = function(key) {
+    const valInput = document.getElementById(`th_val_${key}`);
+    const enInput = document.getElementById(`th_en_${key}`);
+    if (!valInput || !enInput) return;
+
+    const currentVal = parseFloat(valInput.value);
+    const origVal = parseFloat(valInput.getAttribute("data-original"));
+    const currentEn = enInput.checked ? "1" : "0";
+    const origEn = enInput.getAttribute("data-original");
+
+    if (currentVal !== origVal || currentEn !== origEn) {
+        pendingThresholdChanges.add(key);
+    } else {
+        pendingThresholdChanges.delete(key);
+    }
+    updateThresholdSaveBarStatus();
+};
+
+function updateThresholdSaveBarStatus() {
+    const statusEl = document.getElementById("thresholds-save-bar-status");
+    if (!statusEl) return;
+    const count = pendingThresholdChanges.size;
+    if (count > 0) {
+        statusEl.innerHTML = `<span style="color: #fbbf24; font-weight: 700;"><i class="fas fa-exclamation-circle"></i> ⚠️ ${count} alteração(ões) pendente(s) de gravação no parque</span>`;
+    } else {
+        statusEl.innerHTML = `<span style="color: #38bdf8;"><i class="fas fa-check-circle" style="color: #10b981;"></i> ✓ Nenhuma alteração pendente de gravação</span>`;
+    }
+}
+
+window.saveAllThresholdsBatch = async function() {
+    if (!cachedThresholdsList || cachedThresholdsList.length === 0) return;
+
+    const payload = cachedThresholdsList.map(t => {
+        const valInput = document.getElementById(`th_val_${t.key}`);
+        const enInput = document.getElementById(`th_en_${t.key}`);
+        return {
+            key: t.key,
+            value: valInput ? parseFloat(valInput.value) : t.value,
+            is_enabled: enInput ? enInput.checked : Boolean(t.is_enabled)
+        };
+    });
+
+    try {
+        const token = (typeof getAuthToken === "function") ? getAuthToken() : (localStorage.getItem("fleet_token") || "");
+        const resp = await fetch("/api/thresholds/batch", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...(token ? { "Authorization": `Bearer ${token}` } : {})
+            },
+            body: JSON.stringify({ thresholds: payload })
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+            safeToast(data.message || "Todos os limiares foram salvos e propagados com sucesso!", "success");
+            await loadThresholds();
+        } else {
+            safeToast(data.detail || "Erro ao salvar limiares.", "danger");
+        }
+    } catch (e) {
+        safeToast("Falha de conexão: " + e.message, "danger");
+    }
+};
+
+window.restoreThresholdDefaults = async function() {
+    if (!confirm("Deseja realmente restaurar todos os limiares para os padrões de fábrica do sistema?")) return;
+    try {
+        const token = (typeof getAuthToken === "function") ? getAuthToken() : (localStorage.getItem("fleet_token") || "");
+        const resp = await fetch("/api/thresholds/reset-defaults", {
+            method: "POST",
+            headers: {
+                ...(token ? { "Authorization": `Bearer ${token}` } : {})
+            }
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+            safeToast(data.message || "Limiares restaurados para os padrões com sucesso!", "success");
+            await loadThresholds();
+        } else {
+            safeToast(data.detail || "Erro ao restaurar padrões.", "danger");
+        }
+    } catch (e) {
+        safeToast("Falha de conexão: " + e.message, "danger");
+    }
+};
 
 // 6. Gestão de Usuários e LDAP (RBAC)
 async function loadUsersList() {
@@ -818,14 +957,23 @@ async function loadUsersList() {
     const isAdmin = currentUser && currentUser.role === "admin";
     tbody.innerHTML = users.map(u => {
         const roleNorm = (u.role || "n1").toLowerCase();
+        const hasNeverLoggedIn = !u.last_login || u.last_login === "Nunca" || u.last_login === "None";
+        const loginBadge = hasNeverLoggedIn
+            ? `<span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); font-size: 11px;"><i class="fas fa-clock"></i> Pendente 1º Acesso</span>`
+            : `<span style="color: #6ee7b7; font-weight: 600; font-size: 11px; font-family: monospace;"><i class="fas fa-check-circle" style="font-size: 10px; color: #10b981;"></i> ${escapeHtml(u.last_login)}</span>`;
+
+        const statusBadge = u.is_active
+            ? `<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.3); font-size: 11px;"><i class="fas fa-user-check"></i> Conta Ativa</span>`
+            : `<span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.3); font-size: 11px;"><i class="fas fa-user-slash"></i> Inativo</span>`;
+
         return `
         <tr>
-            <td><strong>${u.username}</strong></td>
-            <td>${u.full_name}</td>
-            <td>${u.email || '-'}</td>
+            <td><strong>${escapeHtml(u.username)}</strong></td>
+            <td>${escapeHtml(u.full_name)}</td>
+            <td style="font-family: monospace; color: #94a3b8;">${escapeHtml(u.email || '-')}</td>
             <td>
                 ${isAdmin ? `
-                <select class="form-input" style="padding: 3px 8px; font-size: 11px; font-weight: 600; width: 180px;" onchange="changeUserRole(${u.id}, this.value)">
+                <select class="form-input" style="padding: 4px 8px; font-size: 11px; font-weight: 600; width: 180px;" onchange="changeUserRole(${u.id}, this.value)">
                     <option value="admin" ${roleNorm === 'admin' ? 'selected' : ''}>👑 Administrador (Tudo)</option>
                     <option value="n2" ${roleNorm === 'n2' ? 'selected' : ''}>⚡ Perfil N2 (Operador)</option>
                     <option value="n1" ${roleNorm === 'n1' ? 'selected' : ''}>👁️ Perfil N1 (Triagem)</option>
@@ -834,13 +982,9 @@ async function loadUsersList() {
                 <span class="badge ${roleNorm === 'admin' ? 'badge-purple' : (roleNorm === 'n2' ? 'badge-blue' : 'badge-green')}">${roleNorm.toUpperCase()}</span>
                 `}
             </td>
-            <td><span class="badge ${u.auth_type === 'ldap' ? 'badge-purple' : 'badge-green'}">${(u.auth_type || 'local').toUpperCase()}</span></td>
-            <td>${u.last_login || 'Nunca'}</td>
-            <td>
-                <span style="font-size: 11px; color: ${u.is_active ? 'var(--accent-green)' : 'var(--accent-red)'}; font-weight: 600;">
-                    ${u.is_active ? '● Ativo' : '○ Inativo'}
-                </span>
-            </td>
+            <td><span class="badge ${u.auth_type === 'ldap' ? 'badge-purple' : 'badge-green'}"><i class="fas ${u.auth_type === 'ldap' ? 'fa-network-wired' : 'fa-laptop'}"></i> ${(u.auth_type || 'local').toUpperCase()}</span></td>
+            <td>${loginBadge}</td>
+            <td>${statusBadge}</td>
         </tr>
     `}).join("");
 }
@@ -1889,12 +2033,14 @@ function renderAiMetricsAndHistory(data) {
     if (elProj && proj.economic_mode) {
         elProj.innerText = `~$${proj.economic_mode.cost_usd.toFixed(2)} / mês`;
     }
+    const history = data.history || [];
+
+    // Renderiza o gráfico compacto de área de evolução de tokens
+    renderAiTokenSparkline(history);
 
     // Tabela de Auditoria
     const tbody = document.getElementById("aiUsageAuditTableBody");
     if (!tbody) return;
-
-    const history = data.history || [];
     if (history.length === 0) {
         tbody.innerHTML = `<tr><td colspan="10" style="text-align: center; color: var(--text-muted); padding: 18px;">Nenhuma requisição de IA registrada ainda.</td></tr>`;
         return;
@@ -1934,6 +2080,61 @@ function renderAiMetricsAndHistory(data) {
             </tr>
         `;
     }).join("");
+}
+
+
+function renderAiTokenSparkline(history) {
+    const container = document.getElementById("aiTokenSparklineChart");
+    if (!container) return;
+
+    if (!history || history.length === 0) {
+        container.innerHTML = '<div style="color: var(--text-muted); font-size: 11px;">Sem dados de consumo para gerar a curva de tokens.</div>';
+        return;
+    }
+
+    const chrono = [...history].reverse();
+    const tokenVals = chrono.map(h => h.total_tokens || 100);
+    const maxVal = Math.max(...tokenVals, 500);
+    const avgVal = Math.round(tokenVals.reduce((a, b) => a + b, 0) / tokenVals.length);
+
+    const peakBadge = document.getElementById("aiTokenPeakBadge");
+    if (peakBadge) peakBadge.textContent = `Pico: ${maxVal.toLocaleString("pt-BR")} tokens`;
+    const avgBadge = document.getElementById("aiTokenAvgBadge");
+    if (avgBadge) avgBadge.textContent = `Média: ${avgVal.toLocaleString("pt-BR")} tokens/req`;
+
+    const width = 1000;
+    const height = 100;
+    const padding = 15;
+    const n = chrono.length;
+
+    const points = chrono.map((item, idx) => {
+        const x = padding + (idx / Math.max(1, n - 1)) * (width - 2 * padding);
+        const y = height - padding - ((item.total_tokens || 100) / maxVal) * (height - 2 * padding);
+        return { x, y, item };
+    });
+
+    const pathD = points.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
+    const areaD = `${pathD} L ${points[points.length - 1].x.toFixed(1)} ${height} L ${points[0].x.toFixed(1)} ${height} Z`;
+
+    const dots = points.map(p => `
+        <circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3.5" fill="#38bdf8" stroke="#0f172a" stroke-width="1.5">
+            <title>${p.item.module || 'IA'}: ${p.item.total_tokens || 0} tokens (${p.item.latency_ms || 0}ms)</title>
+        </circle>
+    `).join("");
+
+    container.innerHTML = `
+        <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" style="width: 100%; height: 100%;">
+            <defs>
+                <linearGradient id="aiTokenGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.35"/>
+                    <stop offset="100%" stop-color="#38bdf8" stop-opacity="0.0"/>
+                </linearGradient>
+            </defs>
+            <path d="${areaD}" fill="url(#aiTokenGrad)"/>
+            <path d="${pathD}" fill="none" stroke="#38bdf8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            ${dots}
+        </svg>
+    `;
 }
 
 async function saveAiGovernanceConfig() {
@@ -2331,17 +2532,32 @@ function renderThresholdAuditProposals(auditData) {
         </div>`;
 
         html += applied.map(p => `
-        <div style="background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 8px; padding: 14px 18px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px; opacity: 0.95;">
+        <div style="background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.35); border-left: 5px solid #10b981; border-radius: 8px; padding: 16px 20px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
             <div style="flex: 1; min-width: 320px;">
-                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
-                    <strong style="color: #94a3b8; font-size: 14px;">✅ ${escapeHtml(p.name)}</strong>
-                    <span class="badge badge-green" style="font-size: 10px;">CALIBRADO: ${escapeHtml(p.proposed_value)}</span>
-                    <span style="font-size: 11px; color: var(--text-muted); font-family: monospace;">Aplicado por: ${escapeHtml(p.applied_info?.applied_by || 'suportesmme')} (${p.applied_info?.applied_at || 'recente'})</span>
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap;">
+                    <strong style="color: #fff; font-size: 14px;">✅ ${escapeHtml(p.name)}</strong>
+                    <span class="badge" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid #10b981; font-size: 10px; font-weight: 700;">
+                        <i class="fas fa-check-double"></i> REGRA ADOTADA & ATIVA NO PARQUE
+                    </span>
+                    <span class="badge badge-purple" style="font-size: 10px;">${escapeHtml(p.impact_metric || '-')}</span>
                 </div>
-                <div style="font-size: 11px; color: #94a3b8; line-height: 1.4;">${escapeHtml(p.reason)}</div>
+                <div style="font-size: 12px; color: #cbd5e1; line-height: 1.4; margin-bottom: 8px;">${escapeHtml(p.reason)}</div>
+                <div style="display: flex; gap: 16px; align-items: center; font-size: 11px; flex-wrap: wrap;">
+                    <span style="color: #93c5fd; font-weight: 600;">
+                        <i class="fas fa-user-check"></i> Autorizado por: <strong>${escapeHtml(p.applied_info?.applied_by || 'suportesmme')}</strong>
+                    </span>
+                    <span style="color: var(--text-muted); font-family: monospace;">
+                        <i class="fas fa-clock"></i> Adotado em: ${escapeHtml(p.applied_info?.applied_at || 'Recente')}
+                    </span>
+                    <span style="color: #86efac; font-family: monospace;">
+                        Calibração: <s>${escapeHtml(p.current_value)}</s> ➔ <strong>${escapeHtml(p.proposed_value)}</strong>
+                    </span>
+                </div>
             </div>
-            <div>
-                <span class="badge badge-green" style="font-size: 11px; padding: 6px 12px;"><i class="fas fa-shield-alt"></i> Limiar Ativo no Sistema</span>
+            <div style="flex-shrink: 0;">
+                <div class="badge" style="background: rgba(16, 185, 129, 0.15); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.3); font-size: 11px; padding: 6px 14px; font-weight: 700;">
+                    <i class="fas fa-shield-alt"></i> Calibração Ativa
+                </div>
             </div>
         </div>`).join("");
     }
