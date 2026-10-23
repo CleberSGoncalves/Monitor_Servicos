@@ -5948,6 +5948,94 @@
           <span style="font-size: 11px; color: var(--text-muted);">Inspeciona D:\MediaDNA_V2\Applications\DTVCapture64\Logs, Serviços Windows e EventViewer</span>
         </div>
 
+        <!-- Painel de Diagnostico Forense DTVCapture (Atria Broadcast Engine) -->
+        <div id="atriaForensicCard" style="background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.95)); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 8px; padding: 16px; margin-bottom: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 10px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="font-size: 20px;">🔬</span>
+              <div>
+                <strong style="font-size: 14px; color: #38bdf8;">Diagnostico Forense de Baixo Nivel (DTVCaptureLog • Atria Engine)</strong>
+                <div style="font-size: 11px; color: var(--text-muted);">Auditoria profunda de DirectShow BDA, MP4 Chunks Anomalos, FrozenScreen Continuo e KCollect Telemetry</div>
+              </div>
+            </div>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <button type="button" class="btn-primary" style="padding: 6px 14px; font-size: 11px; background: linear-gradient(135deg, #0284c7, #0369a1); font-weight: 700;" onclick="loadDtvCaptureDeepAnalysis()">
+                <i class="fas fa-microscope"></i> Executar Auditoria DTVCapture
+              </button>
+              <button type="button" class="btn-primary" style="padding: 6px 14px; font-size: 11px; background: linear-gradient(135deg, #8b5cf6, #7c3aed); font-weight: 700;" onclick="diagnoseDtvCaptureWithAi()">
+                <i class="fas fa-brain"></i> IA Causa-Raiz (Gemini)
+              </button>
+              <button type="button" class="btn-primary" style="padding: 6px 14px; font-size: 11px; background: linear-gradient(135deg, #10b981, #059669); font-weight: 700;" onclick="triggerAtriaAutoHeal()">
+                <i class="fas fa-wrench"></i> Auto-Cura DirectShow
+              </button>
+              <button type="button" class="btn-secondary" style="padding: 6px 14px; font-size: 11px; border: 1px solid rgba(245, 158, 11, 0.4); color: #fbbf24;" onclick="triggerAtriaEnableKCollect()">
+                <i class="fas fa-key"></i> Ativar KCollect Telemetry
+              </button>
+            </div>
+          </div>
+
+          <!-- Metricas Chave do Log -->
+          <div id="atriaForensicMetricsGrid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 14px;">
+            <div style="background: rgba(0,0,0,0.3); padding: 10px 14px; border-radius: 6px; border-left: 3px solid #ef4444;">
+              <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Alertas FrozenScreen Continuos</div>
+              <div id="atriaMetricFrozenCount" style="font-size: 20px; font-weight: 800; color: #f87171; margin-top: 2px;">1.640 disparos</div>
+              <div id="atriaMetricDuration" style="font-size: 10px; color: #cbd5e1; margin-top: 2px;">Duracao: 9.1 horas (00:00:17 as 09:07:22)</div>
+            </div>
+
+            <div style="background: rgba(0,0,0,0.3); padding: 10px 14px; border-radius: 6px; border-left: 3px solid #f59e0b;">
+              <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Fatiamento MP4 Zumbi vs Nominal</div>
+              <div id="atriaMetricChunkCompare" style="font-size: 17px; font-weight: 800; color: #fbbf24; margin-top: 2px;">20 Zumbis (~12.4 MB) / 29 Normais (~39.4 MB)</div>
+              <div style="font-size: 10px; color: #cbd5e1; margin-top: 2px;">Audio gravado, video estagnado no decoder</div>
+            </div>
+
+            <div style="background: rgba(0,0,0,0.3); padding: 10px 14px; border-radius: 6px; border-left: 3px solid #a855f7;">
+              <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Flapping de Configuracao</div>
+              <div id="atriaMetricConfigFlapping" style="font-size: 20px; font-weight: 800; color: #c084fc; margin-top: 2px;">50 Recargas XML</div>
+              <div style="font-size: 10px; color: #cbd5e1; margin-top: 2px;">Touch horario (LastWriteTime) a cada 60min</div>
+            </div>
+
+            <div style="background: rgba(0,0,0,0.3); padding: 10px 14px; border-radius: 6px; border-left: 3px solid #10b981;">
+              <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Restauracao de Sinal TBS 6205se</div>
+              <div id="atriaMetricRecoveryStatus" style="font-size: 17px; font-weight: 800; color: #34d399; margin-top: 2px;">Quality: 88% | Strength: 38%</div>
+              <div id="atriaMetricRecoveryTs" style="font-size: 10px; color: #cbd5e1; margin-top: 2px;">Recuperado as 09:08:56 via BDA Graph Rebuild</div>
+            </div>
+          </div>
+
+          <!-- Timeline e Tabela Comparativa de Fatiamento -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 14px;">
+            <!-- Timeline de Eventos Criticos -->
+            <div style="background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.06); border-radius: 6px; padding: 12px;">
+              <div style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between;">
+                <span><i class="fas fa-history"></i> Linha do Tempo do Incidente</span>
+                <span id="atriaFileBadge" class="badge badge-gray" style="font-size: 10px;">DTVCaptureLog_20251112.txt</span>
+              </div>
+              <div id="atriaMilestonesContainer" style="max-height: 220px; overflow-y: auto; padding-right: 6px; font-size: 11px;">
+                <div style="color: var(--text-muted); text-align: center; padding: 20px;">Clique em "Executar Auditoria DTVCapture" para carregar os marcos temporais.</div>
+              </div>
+            </div>
+
+            <!-- Tabela Comparativa de Arquivos MP4 -->
+            <div style="background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.06); border-radius: 6px; padding: 12px;">
+              <div style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between;">
+                <span><i class="fas fa-file-video"></i> Amostragem de Fatiamento MP4 (Zumbi vs Nominal)</span>
+                <span style="font-size: 10px; color: var(--text-muted);">Blocos de 30min</span>
+              </div>
+              <div id="atriaMp4TableContainer" style="max-height: 220px; overflow-y: auto; padding-right: 6px; font-size: 11px;">
+                <div style="color: var(--text-muted); text-align: center; padding: 20px;">Clique em "Executar Auditoria DTVCapture" para listar os blocos analisados.</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Drawer de Diagnostico com IA Forense -->
+          <div id="atriaAiDiagnosisBox" style="display: none; margin-top: 14px; background: rgba(15, 23, 42, 0.98); border: 1px solid #a855f7; border-radius: 6px; padding: 14px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <strong style="color: #c084fc; font-size: 13px;"><i class="fas fa-brain"></i> Diagnostico de Engenharia Forense (Gemini Pro)</strong>
+              <button type="button" class="btn-secondary" style="font-size: 10px; padding: 2px 8px;" onclick="document.getElementById('atriaAiDiagnosisBox').style.display='none'">Fechar</button>
+            </div>
+            <div id="atriaAiDiagnosisText" style="font-size: 12px; color: #cbd5e1; line-height: 1.6;"></div>
+          </div>
+        </div>
+
         <!-- Barra de Filtros e Busca dos Logs -->
         <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; background: rgba(0,0,0,0.25); padding: 12px 14px; border-radius: 6px;">
           <div>

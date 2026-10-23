@@ -190,6 +190,28 @@ SYSTEMIC_AI_COMMANDS_POOL = [
         "risk_warning": ""
     },
     {
+        "id": "ai_cmd_recycle_frozenscreen_directshow",
+        "title": "📺 Auto-Cura de DirectShow Zombie (FrozenScreen > 10x)",
+        "category": "correcao",
+        "shell_type": "powershell",
+        "command": "Restart-Service -Name AtriaCaptureService, *DigitalTVReceiver* -Force -ErrorAction SilentlyContinue; Write-Host 'Grafo DirectShow BDA reciclado com sucesso!'",
+        "reason": "Recicla o processo do decodificador DirectShow e sintonizador TBS sem interromper a transmissão de rede, restaurando imediatamente a geração nominal de blocos MP4 de 40MB.",
+        "action_label": "Reciclar Grafo DirectShow",
+        "risk_level": "medio",
+        "risk_warning": "Reinicia o AtriaCaptureService. A gravação do canal será reinicializada em aproximadamente 3 a 5 segundos."
+    },
+    {
+        "id": "ai_cmd_enable_kcollect_telemetry",
+        "title": "🔓 Desbloquear Telemetria Oculta de Banda (KCollect)",
+        "category": "correcao",
+        "shell_type": "powershell",
+        "command": "$p = 'D:\\MediaDNA_V2\\Applications\\DTVCapture64\\DTVReceiver\\KCollectBandwidth.txt'; if (-not (Test-Path $p)) { New-Item -Path $p -ItemType File -Force; Write-Host 'Flag KCollectBandwidth.txt criada com sucesso!'; } else { Write-Host 'Arquivo ja existe.'; }",
+        "reason": "Habilita a coleta de estatísticas de vazão de banda do Kantar Media SubtitleExtractor nos logs do Atria sem alterar código.",
+        "action_label": "Ativar Telemetria KCollect",
+        "risk_level": "baixo",
+        "risk_warning": ""
+    },
+    {
         "id": "ai_cmd_reload_tbs_device",
         "title": "🔌 Reinicialização do Driver da Placa TBS (PnP Reload)",
         "category": "correcao",

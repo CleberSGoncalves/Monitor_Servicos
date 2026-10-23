@@ -3387,3 +3387,187 @@ function showHandoverCopyFeedback() {
         }, 4000);
     }
 }
+
+
+// =========================================================================
+// 16. CLIENTE FORENSE DTVCAPTURE (ATRIA BROADCAST LOG AUDITOR)
+// =========================================================================
+let cachedDtvForensicData = null;
+
+async function loadDtvCaptureDeepAnalysis() {
+    const milestonesEl = document.getElementById("atriaMilestonesContainer");
+    const mp4TableEl = document.getElementById("atriaMp4TableContainer");
+    if (milestonesEl) milestonesEl.innerHTML = `<div style="text-align: center; color: #38bdf8; padding: 20px;"><i class="fas fa-spinner fa-spin"></i> Processando log do Atria sob demanda...</div>`;
+    if (mp4TableEl) mp4TableEl.innerHTML = `<div style="text-align: center; color: #38bdf8; padding: 20px;"><i class="fas fa-spinner fa-spin"></i> Auditando blocos MP4...</div>`;
+
+    try {
+        const token = (typeof getAuthToken === "function") ? getAuthToken() : (localStorage.getItem("fleet_token") || "");
+        const resp = await fetch("/api/fleet/logs/atria/deep-analysis", {
+            headers: token ? { "Authorization": `Bearer ${token}` } : {}
+        });
+        if (!resp.ok) throw new Error("Falha ao consultar auditoria forense do Atria");
+        const data = await resp.json();
+        cachedDtvForensicData = data;
+
+        const summary = data.summary || {};
+        const countEl = document.getElementById("atriaMetricFrozenCount");
+        if (countEl) countEl.innerText = `${(summary.frozenscreen_count || 0).toLocaleString()} disparos`;
+
+        const durEl = document.getElementById("atriaMetricDuration");
+        if (durEl) durEl.innerText = `Duração: ${summary.incident_duration_hours || 0}h (${summary.incident_period || ''})`;
+
+        const chunkEl = document.getElementById("atriaMetricChunkCompare");
+        if (chunkEl) chunkEl.innerText = `${summary.zombie_chunks_count || 0} Zumbis (~${summary.zombie_avg_size_mb || 0} MB) / ${summary.nominal_chunks_count || 0} Normais (~${summary.nominal_avg_size_mb || 0} MB)`;
+
+        const flapEl = document.getElementById("atriaMetricConfigFlapping");
+        if (flapEl) flapEl.innerText = `${summary.config_flapping_count || 0} Recargas XML`;
+
+        const badgeEl = document.getElementById("atriaFileBadge");
+        if (badgeEl) badgeEl.innerText = data.file_name || 'DTVCaptureLog.txt';
+
+        // Renderiza Milestones
+        if (milestonesEl) {
+            const list = data.milestones || [];
+            if (list.length === 0) {
+                milestonesEl.innerHTML = `<div style="color: var(--text-muted); text-align: center; padding: 15px;">Nenhum evento anômalo registrado.</div>`;
+            } else {
+                milestonesEl.innerHTML = list.map(m => {
+                    const badgeColor = m.severity === 'critica' ? '#f87171' : (m.severity === 'sucesso' ? '#34d399' : '#38bdf8');
+                    const badgeBg = m.severity === 'critica' ? 'rgba(239, 68, 68, 0.15)' : (m.severity === 'sucesso' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(56, 189, 248, 0.15)');
+                    return `
+                    <div style="margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                            <strong style="color: #f1f5f9;">${escapeHtml(m.title)}</strong>
+                            <span style="font-size: 10px; color: ${badgeColor}; background: ${badgeBg}; padding: 1px 6px; border-radius: 3px; font-weight: 700;">${escapeHtml(m.ts)}</span>
+                        </div>
+                        <div style="color: #94a3b8; font-size: 10px; line-height: 1.4;">${escapeHtml(m.desc)}</div>
+                    </div>`;
+                }).join("");
+            }
+        }
+
+        // Renderiza Tabela de MP4s
+        if (mp4TableEl) {
+            const samples = data.mp4_samples || [];
+            if (samples.length === 0) {
+                mp4TableEl.innerHTML = `<div style="color: var(--text-muted); text-align: center; padding: 15px;">Nenhum bloco MP4 encontrado.</div>`;
+            } else {
+                mp4TableEl.innerHTML = `
+                <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
+                    <thead>
+                        <tr style="color: #64748b; border-bottom: 1px solid rgba(255,255,255,0.1); text-align: left;">
+                            <th style="padding: 4px;">Horário</th>
+                            <th style="padding: 4px;">Arquivo</th>
+                            <th style="padding: 4px;">Tamanho</th>
+                            <th style="padding: 4px;">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${samples.map(s => {
+                            const isZombie = s.status === 'ANOMALO_ZUMBI';
+                            const col = isZombie ? '#f87171' : '#34d399';
+                            const badge = isZombie ? 'ZUMBI (12MB)' : 'NOMINAL (40MB)';
+                            const bg = isZombie ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)';
+                            return `
+                            <tr style="border-bottom: 1px solid rgba(255,255,255,0.03);">
+                                <td style="padding: 4px; color: #94a3b8;">${escapeHtml(s.ts.split(' ')[1] || s.ts)}</td>
+                                <td style="padding: 4px; color: #cbd5e1; font-family: monospace;">${escapeHtml(s.filename.substring(0, 18))}...</td>
+                                <td style="padding: 4px; font-weight: 700; color: ${col};">${s.size_mb} MB</td>
+                                <td style="padding: 4px;"><span style="color: ${col}; background: ${bg}; padding: 1px 4px; border-radius: 3px; font-weight: 700; font-size: 9px;">${badge}</span></td>
+                            </tr>`;
+                        }).join("")}
+                    </tbody>
+                </table>`;
+            }
+        }
+
+        if (typeof safeToast === 'function') safeToast("Auditoria forense DTVCapture concluída!", "success");
+    } catch (e) {
+        if (milestonesEl) milestonesEl.innerHTML = `<div style="color: #f87171; padding: 15px;">Erro: ${escapeHtml(e.message)}</div>`;
+        if (mp4TableEl) mp4TableEl.innerHTML = `<div style="color: #f87171; padding: 15px;">Erro ao carregar blocos MP4.</div>`;
+    }
+}
+window.loadDtvCaptureDeepAnalysis = loadDtvCaptureDeepAnalysis;
+
+async function diagnoseDtvCaptureWithAi() {
+    const box = document.getElementById("atriaAiDiagnosisBox");
+    const textEl = document.getElementById("atriaAiDiagnosisText");
+    if (!box || !textEl) return;
+
+    box.style.display = "block";
+    textEl.innerHTML = `<div style="color: #c084fc; text-align: center; padding: 15px;"><i class="fas fa-spinner fa-spin"></i> O Gemini Pro está avaliando as telemetrias de decodificador DirectShow e fatiamento MP4...</div>`;
+
+    try {
+        const token = (typeof getAuthToken === "function") ? getAuthToken() : (localStorage.getItem("fleet_token") || "");
+        const resp = await fetch("/api/fleet/logs/atria/ai-diagnose", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...(token ? { "Authorization": `Bearer ${token}` } : {})
+            }
+        });
+        if (!resp.ok) throw new Error("Falha no diagnóstico com IA");
+        const data = await resp.json();
+
+        textEl.innerHTML = `
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin-bottom: 12px;">
+            <div style="background: rgba(0,0,0,0.3); padding: 10px; border-radius: 4px; border-left: 3px solid #c084fc;">
+                <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Diagnóstico Executivo:</div>
+                <div style="color: #fff; margin-top: 4px;">${escapeHtml(data.diagnostico_executivo || '')}</div>
+            </div>
+            <div style="background: rgba(0,0,0,0.3); padding: 10px; border-radius: 4px; border-left: 3px solid #f87171;">
+                <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Risco ao Negócio & Auditoria:</div>
+                <div style="color: #fca5a5; margin-top: 4px;">${escapeHtml(data.risco_negocio || '')}</div>
+            </div>
+        </div>
+        <div style="background: rgba(0,0,0,0.4); padding: 10px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+            <div style="font-size: 11px; color: #93c5fd;">
+                <strong>Gatilho de Auto-Cura:</strong> ${escapeHtml(data.gatilho_auto_cura_recomendado || '')}
+            </div>
+            <button class="btn-primary" style="background: linear-gradient(135deg, #10b981, #059669); font-weight: 700; font-size: 11px; padding: 4px 12px;" onclick="executeRemoteScript('${escapeHtml(data.comando_powershell || 'Restart-Service AtriaCaptureService -Force').replace(/'/g, "\'")}', 'powershell', 'Auto-Cura DirectShow')">
+                <i class="fas fa-play"></i> Despachar Auto-Cura
+            </button>
+        </div>`;
+    } catch (e) {
+        textEl.innerHTML = `<div style="color: #f87171; padding: 10px;">Falha no parecer de IA: ${escapeHtml(e.message)}</div>`;
+    }
+}
+window.diagnoseDtvCaptureWithAi = diagnoseDtvCaptureWithAi;
+
+async function triggerAtriaAutoHeal() {
+    if (!confirm("Deseja despachar o comando de Auto-Cura DirectShow para reciclar o AtriaCaptureService e reconstruir o grafo BDA?")) return;
+    try {
+        const token = (typeof getAuthToken === "function") ? getAuthToken() : (localStorage.getItem("fleet_token") || "");
+        const resp = await fetch("/api/fleet/logs/atria/heal-frozenscreen", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...(token ? { "Authorization": `Bearer ${token}` } : {})
+            }
+        });
+        const res = await resp.json();
+        if (typeof safeToast === 'function') safeToast(res.message || "Auto-Cura executada com sucesso!", "success");
+        setTimeout(loadDtvCaptureDeepAnalysis, 1500);
+    } catch (e) {
+        if (typeof safeToast === 'function') safeToast("Falha ao despachar auto-cura: " + e.message, "error");
+    }
+}
+window.triggerAtriaAutoHeal = triggerAtriaAutoHeal;
+
+async function triggerAtriaEnableKCollect() {
+    try {
+        const token = (typeof getAuthToken === "function") ? getAuthToken() : (localStorage.getItem("fleet_token") || "");
+        const resp = await fetch("/api/fleet/logs/atria/enable-kcollect", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...(token ? { "Authorization": `Bearer ${token}` } : {})
+            }
+        });
+        const res = await resp.json();
+        if (typeof safeToast === 'function') safeToast(res.message || "Flag KCollectBandwidth criada com sucesso!", "success");
+    } catch (e) {
+        if (typeof safeToast === 'function') safeToast("Falha ao ativar flag: " + e.message, "error");
+    }
+}
+window.triggerAtriaEnableKCollect = triggerAtriaEnableKCollect;

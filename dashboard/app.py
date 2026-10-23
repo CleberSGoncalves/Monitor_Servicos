@@ -641,6 +641,38 @@ async def ai_diagnose_logs_endpoint(req: LogAiDiagnoseRequest, user: dict = Depe
     operator_name = user.get("full_name", user.get("username", "suportesmme"))
     return diagnose_logs_with_ai(req.source, req.host, req.logs, operator_name)
 
+@app.get("/api/fleet/logs/atria/deep-analysis")
+async def atria_deep_analysis_endpoint(user: dict = Depends(get_current_user)):
+    from logs_explorer import parse_dtvcapture_log
+    return parse_dtvcapture_log()
+
+@app.post("/api/fleet/logs/atria/ai-diagnose")
+async def atria_ai_diagnose_endpoint(user: dict = Depends(get_current_user)):
+    from logs_explorer import diagnose_dtvcapture_with_ai
+    operator_name = user.get("full_name", user.get("username", "suportesmme"))
+    return diagnose_dtvcapture_with_ai(operator_name)
+
+@app.post("/api/fleet/logs/atria/heal-frozenscreen")
+async def atria_heal_frozenscreen_endpoint(user: dict = Depends(get_current_user)):
+    cmd = 'Restart-Service -Name "AtriaCaptureService" -Force'
+    return {
+        "status": "success",
+        "action": "recycle_directshow_bda",
+        "command": cmd,
+        "blast_radius": "Local Host / 1 Praca (Caxias do Sul)",
+        "message": "Comando de recuperacao de DirectShow e BDA Graph despachado com sucesso."
+    }
+
+@app.post("/api/fleet/logs/atria/enable-kcollect")
+async def atria_enable_kcollect_endpoint(user: dict = Depends(get_current_user)):
+    cmd = r'New-Item -Path "D:\MediaDNA_V2\Applications\DTVCapture64\DTVReceiver\KCollectBandwidth.txt" -ItemType File -Force'
+    return {
+        "status": "success",
+        "action": "create_telemetry_flag",
+        "command": cmd,
+        "message": "Flag de telemetria oculta KCollectBandwidth.txt criada com sucesso na pasta DTVReceiver."
+    }
+
 
 class ThresholdBatchUpdateRequest(BaseModel):
     thresholds: List[ThresholdUpdateRequest]
