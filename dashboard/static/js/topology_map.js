@@ -360,6 +360,7 @@ function selectMarket(marketId, openModal = false) {
     if (!market) return;
 
     selectedMarket = market;
+    window.selectedMarket = market;
     renderTopologyMap();
 
     // Atualiza Painel Lateral de Detalhes
@@ -410,10 +411,11 @@ window.selectMarket = selectMarket;
 // MODAL DE GEOLOCALIZAÇÃO PRECISA, RELEVO TOPOGRÁFICO & CANAIS DIGITAIS TERRESTRES
 // ==============================================================================
 function openMarketRfModal(marketId) {
-    const market = topologyMarketsData.find(m => m.id === marketId) || selectedMarket;
+    const market = (marketId ? topologyMarketsData.find(m => m.id === marketId) : null) || selectedMarket || window.selectedMarket || (topologyMarketsData && topologyMarketsData[0]);
     if (!market) return;
 
     selectedMarket = market;
+    window.selectedMarket = market;
     const modal = document.getElementById("rfTopographyModal");
     if (!modal) return;
 
@@ -1066,3 +1068,52 @@ window.loadTopologyMapData = async function() {
     if (origLoadTopology) await origLoadTopology();
     setupTopologyInteractions();
 };
+
+
+// ==============================================================================
+// NAVEGAÇÃO RÁPIDA: FILTRAR PRAÇA SELECIONADA E ABRIR INCIDENTES N1 (NOC COCKPIT)
+// ==============================================================================
+function jumpToCityIncidents() {
+    const market = window.selectedMarket || selectedMarket;
+    const cityName = market ? (market.cidade || "") : "";
+
+    // 1. Sincroniza seletor global do header
+    const filterCity = document.getElementById("filterCity");
+    if (filterCity && cityName) {
+        let matched = false;
+        for (let i = 0; i < filterCity.options.length; i++) {
+            if (filterCity.options[i].text.toLowerCase().includes(cityName.toLowerCase()) || 
+                filterCity.options[i].value.toLowerCase().includes(cityName.toLowerCase())) {
+                filterCity.selectedIndex = i;
+                matched = true;
+                break;
+            }
+        }
+        if (!matched) {
+            const opt = new Option(cityName, cityName, true, true);
+            filterCity.add(opt);
+        }
+        filterCity.dispatchEvent(new Event("change"));
+    }
+
+    // 2. Sincroniza seletor da Central de Logs caso o operador queira
+    const logHost = document.getElementById("logFilterHost");
+    if (logHost && cityName) {
+        for (let i = 0; i < logHost.options.length; i++) {
+            if (logHost.options[i].value.toLowerCase().includes(cityName.toLowerCase()) ||
+                logHost.options[i].text.toLowerCase().includes(cityName.toLowerCase())) {
+                logHost.selectedIndex = i;
+                break;
+            }
+        }
+    }
+
+    // 3. Fecha modal de relevo se estiver aberto e abre aba de incidentes
+    if (typeof closeMarketRfModal === "function") {
+        closeMarketRfModal();
+    }
+    if (typeof switchTab === "function") {
+        switchTab("overview");
+    }
+}
+window.jumpToCityIncidents = jumpToCityIncidents;

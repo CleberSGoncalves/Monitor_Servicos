@@ -1264,7 +1264,7 @@
 
     <div class="nav-user">
       <button type="button" class="btn-secondary" id="btnHandoverReport" onclick="openHandoverReportModal()" style="display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; font-size: 11px; background: rgba(99,102,241,0.18); border: 1px solid rgba(99,102,241,0.45); color: #a5b4fc; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; white-space: nowrap;" title="Gerar Relatório Executivo de Passagem de Turno (Handover)"><i class="fas fa-clipboard-list"></i> <span>Turno</span></button>
-      <button type="button" class="btn-secondary" id="btnSystemUpdate" onclick="openSystemUpdateModal()" style="display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; font-size: 11px; background: rgba(37,99,235,0.15); border: 1px solid rgba(37,99,235,0.4); color: #38bdf8; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; white-space: nowrap;" title="Verificar atualizações do sistema"><i class="fas fa-sync-alt" id="iconSystemUpdate"></i> <span id="labelSystemVersion">v3.9.32</span></button>
+      <button type="button" class="btn-secondary" id="btnSystemUpdate" onclick="openSystemUpdateModal()" style="display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; font-size: 11px; background: rgba(37,99,235,0.15); border: 1px solid rgba(37,99,235,0.4); color: #38bdf8; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; white-space: nowrap;" title="Verificar atualizações do sistema"><i class="fas fa-sync-alt" id="iconSystemUpdate"></i> <span id="labelSystemVersion">v3.9.33</span></button>
       <div class="user-badge" style="padding: 4px 10px; font-size: 11px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;">
         <div class="status-dot"></div>
         <span id="navUserDisplay">Usuário</span>
@@ -3752,7 +3752,7 @@
           </div>
 
           <!-- Botão de Ação: Abrir Modal de Relevo, Visada e Torres Transmissoras -->
-          <button type="button" class="btn-secondary" id="btnOpenRfTopographyModal" style="width: 100%; padding: 10px; font-weight: 700; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 8px; border-color: rgba(56,189,248,0.4); color: #38bdf8; background: rgba(56,189,248,0.08);" onclick="openMarketRfModal(selectedMarket ? selectedMarket.id : null)">
+          <button type="button" class="btn-secondary" id="btnOpenRfTopographyModal" style="width: 100%; padding: 10px; font-weight: 700; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 8px; border-color: rgba(56,189,248,0.4); color: #38bdf8; background: rgba(56,189,248,0.08);" onclick="openMarketRfModal()">
             <i class="fas fa-mountain"></i> ⛰️ Analisar Perfil de Relevo, Visada & Torres
           </button>
 
@@ -5888,6 +5888,28 @@
 
         <!-- Barra de Filtros e Busca dos Logs -->
         <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; background: rgba(0,0,0,0.25); padding: 12px 14px; border-radius: 6px;">
+          <div>
+            <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 3px;">Praça / Host:</label>
+            <select id="logFilterHost" class="filter-select" onchange="loadFleetLogs()">
+              <option value="">🏙️ Todas as Praças (ou Global)</option>
+              <option value="Recife">Recife (PE) - CS-REC-01</option>
+              <option value="Pelotas">Pelotas (RS) - CS-PEL-01</option>
+              <option value="Caxias do Sul">Caxias do Sul (RS) - CS-CXS-01</option>
+              <option value="Porto Alegre">Porto Alegre (RS) - CS-POA-01</option>
+              <option value="São Paulo">São Paulo (SP) - CS-SP01-SRV</option>
+              <option value="Rio de Janeiro">Rio de Janeiro (RJ) - CS-RJ01-SRV</option>
+              <option value="Curitiba">Curitiba (PR) - CS-CTA-01</option>
+              <option value="Belo Horizonte">Belo Horizonte (MG) - CS-BHZ-01</option>
+              <option value="Brasília">Brasília (DF) - CS-BSB-01</option>
+              <option value="Salvador">Salvador (BA) - CS-SSA-01</option>
+              <option value="Fortaleza">Fortaleza (CE) - CS-FOR-01</option>
+              <option value="Florianópolis">Florianópolis (SC) - CS-FLN-01</option>
+              <option value="Goiânia">Goiânia (GO) - CS-GYN-01</option>
+              <option value="Campinas">Campinas (SP) - CS-CPQ-01</option>
+              <option value="São José dos Campos">São José dos Campos (SP) - CS-SJC-01</option>
+            </select>
+          </div>
+
           <div>
             <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 3px;">Origem do Log:</label>
             <select id="logFilterSource" class="filter-select" onchange="onLogFilterSourceChange(); loadFleetLogs();">

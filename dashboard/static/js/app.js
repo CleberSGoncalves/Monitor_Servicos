@@ -3178,6 +3178,7 @@ async function loadFleetLogs() {
     const severity = document.getElementById("logFilterSeverity")?.value || "all";
     const lines = parseInt(document.getElementById("logFilterLines")?.value || "100", 10);
     const keyword = document.getElementById("logFilterKeyword")?.value || "";
+    const host = document.getElementById("logFilterHost")?.value || document.getElementById("filterCity")?.value || "";
 
     try {
         const token = (typeof getAuthToken === "function") ? getAuthToken() : (localStorage.getItem("fleet_token") || "");
@@ -3192,6 +3193,7 @@ async function loadFleetLogs() {
             body: JSON.stringify({
                 source: source,
                 severity: severity,
+                host: host,
                 max_lines: lines,
                 keyword: keyword
             })
@@ -3588,3 +3590,40 @@ async function triggerAtriaEnableKCollect() {
     }
 }
 window.triggerAtriaEnableKCollect = triggerAtriaEnableKCollect;
+
+// Sincronização Automática entre Filtro Global de Praças e Central de Logs
+document.addEventListener("DOMContentLoaded", function() {
+    const filterCityEl = document.getElementById("filterCity");
+    const logHostEl = document.getElementById("logFilterHost");
+
+    if (filterCityEl && logHostEl) {
+        filterCityEl.addEventListener("change", function() {
+            const val = this.value;
+            // Tenta encontrar opcao correspondente no logFilterHost
+            for (let i = 0; i < logHostEl.options.length; i++) {
+                if (logHostEl.options[i].value.toLowerCase().includes(val.toLowerCase()) ||
+                    logHostEl.options[i].text.toLowerCase().includes(val.toLowerCase())) {
+                    logHostEl.selectedIndex = i;
+                    break;
+                }
+            }
+            const activeTab = document.querySelector(".nav-btn.active")?.getAttribute("data-tab");
+            if (activeTab === "logs") {
+                loadFleetLogs();
+            }
+        });
+
+        logHostEl.addEventListener("change", function() {
+            const val = this.value;
+            if (val && filterCityEl) {
+                for (let i = 0; i < filterCityEl.options.length; i++) {
+                    if (filterCityEl.options[i].value.toLowerCase().includes(val.toLowerCase()) ||
+                        filterCityEl.options[i].text.toLowerCase().includes(val.toLowerCase())) {
+                        filterCityEl.selectedIndex = i;
+                        break;
+                    }
+                }
+            }
+        });
+    }
+});
