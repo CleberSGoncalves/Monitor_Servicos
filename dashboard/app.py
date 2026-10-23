@@ -682,104 +682,22 @@ async def get_analytical_problems(category: Optional[str] = None, user: dict = D
 # ==========================================
 
 @app.get("/api/fleet/channels/jpeg")
-async def get_channel_jpeg(canal: str, praca: Optional[str] = None, mode: Optional[str] = "real", seq: Optional[int] = None, t: Optional[str] = None):
+async def get_channel_jpeg(canal: str, praca: Optional[str] = None, mode: Optional[str] = "real", seq: Optional[int] = None, t: Optional[str] = None, meio: Optional[str] = None):
     r"""
-    Retorna o snapshot JPEG da emissora (MediaDNA real gravado em D:\MediaDNA_V2\Data\Video\ ou E:\MediaDNA_V2\Data\Video\).
-    Entrega 100% imagens reais capturadas do sinal de TV broadcast, com overlays analíticos sob demanda.
+    Retorna o snapshot JPEG da emissora.
+    - Canais de Rádio: Retorna painel gráfico exclusivo de Áudio Broadcast com VU Meter (RÁDIO NÃO POSSUI VÍDEO).
+    - Canais de TV: Retorna frames reais do MediaDNA para veículos gravados, ou Standby Slate oficial se sem gravação local.
     """
     import re
-    import glob
+    import time
     from fastapi.responses import Response, FileResponse
     from io import BytesIO
     from datetime import datetime
-    from PIL import Image, ImageDraw, ImageFont
+    from PIL import Image, ImageDraw
 
-    safe_name = re.sub(r'[^\w\-_\.]', '_', canal)
-    c_lower = canal.lower()
+    c_lower = (canal or "").lower()
+    m_lower = (meio or "").lower()
     mode = (mode or "real").lower()
-
-    # Mapeamento do canal para o brand capturado
-    brand_key = "globo"
-    if "globo" in c_lower or "rbs" in c_lower:
-        brand_key = "globo"
-    elif "sbt" in c_lower or "jangadeiro" in c_lower:
-        brand_key = "sbt"
-    elif "record" in c_lower or "rec" in c_lower or "cidade" in c_lower or "guaiba" in c_lower:
-        brand_key = "record"
-    elif "band" in c_lower:
-        brand_key = "band"
-    elif "redetv" in c_lower or "rede tv" in c_lower:
-        brand_key = "redetv"
-    elif "uniao" in c_lower or "união" in c_lower:
-        brand_key = "uniao"
-    elif "diario" in c_lower or "diário" in c_lower:
-        brand_key = "diario"
-    elif "cultura" in c_lower:
-        brand_key = "cultura"
-    elif "cnt" in c_lower:
-        brand_key = "cnt"
-    elif "brasil" in c_lower or "ceara" in c_lower or "ceará" in c_lower:
-        brand_key = "tvbrasil"
-    else:
-        fallback_brands = ["globo", "sbt", "record", "band", "redetv", "tvbrasil", "diario", "uniao"]
-        brand_key = fallback_brands[sum(ord(ch) for ch in canal) % len(fallback_brands)]
-
-    # 1. Busca no pool dinâmico de múltiplos frames reais da emissora gravados pelo MediaDNA
-    matched_file = None
-    frames_dir = Path(__file__).resolve().parent / "static" / "thumbnails" / "channel_frames" / brand_key
-    if frames_dir.exists():
-        all_frames = sorted(list(frames_dir.glob("*.jpg")))
-        if all_frames:
-            import time
-            city_offset = sum(ord(ch) for ch in (praca or "cs"))
-            if seq is not None:
-                idx = (int(seq) + city_offset) % len(all_frames)
-            else:
-                # Alterna frame automaticamente a cada 5 segundos na rotação contínua
-                time_step = int(time.time() // 5)
-                idx = (time_step + city_offset) % len(all_frames)
-            matched_file = all_frames[idx]
-
-    # 2. Fallback para thumbnail estático da marca se o pool não estiver presente
-    real_thumb_dir = Path(__file__).resolve().parent / "static" / "thumbnails" / "real_channels"
-    if not matched_file:
-        brand_file = real_thumb_dir / f"real_channel_{brand_key}.jpg"
-        if brand_file.exists():
-            matched_file = brand_file
-
-    # 3. Busca abrangente em pastas do MediaDNA
-    if not matched_file:
-        candidate_dirs = [
-            real_thumb_dir,
-            Path("E:/MediaDNA_V2/Data/Video/Registered"),
-            Path("D:/MediaDNA_V2/Data/Video/Registered"),
-            Path("D:/MediaDNA_V2/data/video/registered"),
-            Path("D:/MediaDNA_V2/Data/JPEG"),
-            Path("D:/MediaDNA_V2/data/jpeg"),
-            DATA_DIR / "jpeg",
-        ]
-        for b_dir in candidate_dirs:
-            if not b_dir.exists():
-                continue
-            for ext in ["*.jpg", "*.jpeg"]:
-                for p in b_dir.glob(ext):
-                    if brand_key in p.name.lower():
-                        matched_file = p
-                        break
-                if matched_file:
-                    break
-            if matched_file:
-                break
-
-    # Fallback para o primeiro canal real se ainda não achou
-    if not matched_file and real_thumb_dir.exists():
-        all_thumbs = list(real_thumb_dir.glob("*.jpg"))
-        if all_thumbs:
-            matched_file = all_thumbs[0]
-
-    # Checa se o canal possui falha ativa (ex: Pelotas Rede Globo GOP Stall ou Queda)
-    is_fault = (mode == "fault") or any(kw in canal.lower() for kw in ["falha", "queda", "travad", "glitch"])
-    is_pelotas_gop = (praca and "pelotas" in praca.lower() and "globo" in c_lower)
 
     response_headers = {
         "Cache-Control": "no-cache, no-store, must-revalidate",
@@ -787,37 +705,146 @@ async def get_channel_jpeg(canal: str, praca: Optional[str] = None, mode: Option
         "Expires": "0"
     }
 
+    # =========================================================================
+    # 1. RÁDIO NÃO POSSUI VÍDEO NEM IMAGEM DE TV!
+    # =========================================================================
+    is_radio = bool(re.search(r'\b(fm|am|rádio|radio)\b', c_lower) or "radio" in m_lower or "rádio" in m_lower)
+    if is_radio:
+        w, h = 320, 240
+        img = Image.new("RGB", (w, h), color=(10, 15, 29))
+        draw = ImageDraw.Draw(img)
+
+        # Moldura do Console de Áudio
+        draw.rectangle([6, 6, w - 6, h - 6], outline=(56, 189, 248), width=1)
+        draw.rectangle([10, 10, w - 10, 36], fill=(15, 23, 42))
+        draw.text((18, 16), "MONITOR DE AUDIO FM/AM (SEM VIDEO)", fill=(56, 189, 248))
+
+        # Nome da emissora de rádio
+        draw.rectangle([14, 46, w - 14, 84], fill=(15, 23, 42))
+        draw.text((20, 50), canal.upper()[:24], fill=(255, 255, 255))
+        draw.text((20, 68), f"{praca or 'Capture Site'} • AUDIO BROADCAST NOMINAL", fill=(52, 211, 153))
+
+        # VU Meters Estéreo L / R
+        seq_num = int(seq or 0)
+        vu_l = 0.68 + 0.12 * ((seq_num * 5) % 3) / 2.0
+        vu_r = 0.65 + 0.14 * ((seq_num * 7) % 3) / 2.0
+
+        draw.text((20, 96), "L", fill=(203, 213, 225))
+        draw.rectangle([34, 96, w - 65, 110], fill=(15, 23, 42))
+        bar_l = int((w - 99) * vu_l)
+        draw.rectangle([34, 96, 34 + bar_l, 110], fill=(16, 185, 129))
+        draw.text((w - 56, 96), f"-{int(12 + 6*(1-vu_l))} dB", fill=(52, 211, 153))
+
+        draw.text((20, 118), "R", fill=(203, 213, 225))
+        draw.rectangle([34, 118, w - 65, 132], fill=(15, 23, 42))
+        bar_r = int((w - 99) * vu_r)
+        draw.rectangle([34, 118, 34 + bar_r, 132], fill=(16, 185, 129))
+        draw.text((w - 56, 118), f"-{int(14 + 6*(1-vu_r))} dB", fill=(52, 211, 153))
+
+        draw.text((34, 138), "-60     -40     -20     -10     0 dBFS", fill=(100, 116, 139))
+
+        draw.rectangle([14, 160, w - 14, 196], fill=(15, 23, 42))
+        draw.text((20, 166), "CODEC: PCM Estereo • 48.0 kHz / 16-bit", fill=(148, 163, 184))
+        draw.text((20, 180), "MEIO: Placa de Som Sonifex PCIe / RTSP", fill=(148, 163, 184))
+
+        draw.rectangle([0, h - 24, w, h], fill=(8, 12, 22))
+        draw.text((10, h - 18), f"{datetime.now().strftime('%H:%M:%S')} • TRANSMISSAO EXCLUSIVA DE AUDIO", fill=(248, 250, 252))
+
+        buf = BytesIO()
+        img.save(buf, format="JPEG", quality=90)
+        buf.seek(0)
+        return Response(content=buf.getvalue(), media_type="image/jpeg", headers=response_headers)
+
+    # =========================================================================
+    # 2. CANAIS DE TV: ENTREGA FRAMES REAIS GRAVADOS OU STANDBY SLATE SE SEM VÍDEO
+    # =========================================================================
+    matched_file = None
+    brand_key = None
+
+    if "globo" in c_lower or "rbs" in c_lower:
+        brand_key = "globo"
+    elif "sbt" in c_lower or "jangadeiro" in c_lower:
+        brand_key = "sbt"
+    elif "record" in c_lower or "rec" in c_lower or "cidade" in c_lower:
+        brand_key = "record"
+    elif "band" in c_lower:
+        brand_key = "band"
+    elif "brasil" in c_lower or "ceara" in c_lower or "ceará" in c_lower:
+        brand_key = "tvbrasil"
+    elif "diario" in c_lower or "diário" in c_lower:
+        brand_key = "diario"
+    elif "uniao" in c_lower or "união" in c_lower:
+        brand_key = "uniao"
+
+    if brand_key:
+        frames_dir = Path(__file__).resolve().parent / "static" / "thumbnails" / "channel_frames" / brand_key
+        if frames_dir.exists():
+            all_frames = sorted(list(frames_dir.glob("*.jpg")))
+            if all_frames:
+                city_offset = sum(ord(ch) for ch in (praca or "cs"))
+                if seq is not None:
+                    idx = (int(seq) + city_offset) % len(all_frames)
+                else:
+                    time_step = int(time.time() // 5)
+                    idx = (time_step + city_offset) % len(all_frames)
+                matched_file = all_frames[idx]
+
+    # SE O CANAL DE TV NÃO POSSUI GRAVAÇÃO REAL: NÃO INVENTAR FRAME FALSO!
+    # Gera Standby Slate oficial de transmissão DTV
+    if not matched_file:
+        w, h = 320, 240
+        img = Image.new("RGB", (w, h), color=(15, 23, 42))
+        draw = ImageDraw.Draw(img)
+
+        # SMPTE Color Bars no terço superior
+        bar_colors = [(192, 192, 192), (192, 192, 0), (0, 192, 192), (0, 192, 0), (192, 0, 192), (192, 0, 0), (0, 0, 192)]
+        bw = w // len(bar_colors)
+        for bi, col in enumerate(bar_colors):
+            draw.rectangle([bi * bw, 0, (bi + 1) * bw, 70], fill=col)
+
+        draw.rectangle([12, 80, w - 12, h - 30], fill=(11, 19, 43), outline=(56, 189, 248))
+        draw.text((22, 90), canal.upper()[:24], fill=(255, 255, 255))
+        draw.text((22, 110), f"{praca or 'Capture Site'} • SINAL DTV ISDB-Tb", fill=(56, 189, 248))
+        draw.text((22, 130), "AGUARDANDO SINCRONISMO DE VIDEO DO CS", fill=(250, 204, 21))
+        draw.text((22, 150), "FLUXO TS / GRAVAÇÃO NOMINAL", fill=(148, 163, 184))
+
+        draw.rectangle([0, h - 22, w, h], fill=(8, 12, 22))
+        draw.text((10, h - 16), f"{datetime.now().strftime('%H:%M:%S')} • 320x240 @ 29.97 fps", fill=(148, 163, 184))
+
+        buf = BytesIO()
+        img.save(buf, format="JPEG", quality=90)
+        buf.seek(0)
+        return Response(content=buf.getvalue(), media_type="image/jpeg", headers=response_headers)
+
+    # Checa se o canal possui falha ativa (ex: Pelotas Rede Globo GOP Stall ou Queda)
+    is_fault = (mode == "fault") or any(kw in canal.lower() for kw in ["falha", "queda", "travad", "glitch"])
+    is_pelotas_gop = (praca and "pelotas" in praca.lower() and "globo" in c_lower)
+
     # SE MODO REAL E SEM FALHA: Entrega o frame puro de transmissão sem alteração
     if mode == "real" and not (is_fault or is_pelotas_gop):
         if matched_file and matched_file.exists():
             return FileResponse(matched_file, media_type="image/jpeg", headers=response_headers)
+
     # SE FALHA DETECTADA OU MODO DIAGNÓSTICO: Sobrepõe HUD técnico sobre o FRAME REAL da emissora
     w, h = 320, 240
-    if matched_file and matched_file.exists():
-        try:
-            img = Image.open(matched_file).convert("RGB").resize((w, h))
-        except Exception:
-            img = Image.new("RGB", (w, h), color=(15, 23, 42))
-    else:
+    try:
+        img = Image.open(matched_file).convert("RGB").resize((w, h))
+    except Exception:
         img = Image.new("RGB", (w, h), color=(15, 23, 42))
 
     draw = ImageDraw.Draw(img)
 
     if is_fault or is_pelotas_gop or mode == "fault":
-        # FRAME FORENSE DE TRANSMISSÃO COM FALHA (GOP STALL / OUTAGE)
-        # 1. Overlay semi-transparente de estagnação de buffer
         overlay = Image.new("RGBA", (w, h), (15, 23, 42, 140))
         img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
         draw = ImageDraw.Draw(img)
 
-        # 2. Artefatos de congelamento e ruído macroblock no terço superior
         for bx in range(20, w - 20, 36):
             if bx % 2 == 0:
                 draw.rectangle([bx, 28, bx + 32, 54], fill=(24, 48, 54), outline=(16, 185, 129))
             else:
                 draw.rectangle([bx, 28, bx + 32, 54], fill=(45, 20, 38), outline=(239, 68, 68))
 
-        # 3. Moldura vermelha e Banner Forense Central
         draw.rectangle([8, 8, w - 8, h - 8], outline=(239, 68, 68), width=3)
         draw.rectangle([16, 75, w - 16, 145], fill=(15, 23, 42), outline=(239, 68, 68), width=2)
         draw.rectangle([20, 79, w - 20, 100], fill=(220, 38, 38))
@@ -825,41 +852,27 @@ async def get_channel_jpeg(canal: str, praca: Optional[str] = None, mode: Option
         draw.text((28, 106), "TIPO: CONGELAMENTO DE QUADRO (GOP STALL)", fill=(248, 113, 113))
         draw.text((28, 124), "DELTA: 0.00% | KEYFRAME AUSENTE > 4.2s", fill=(254, 202, 202))
 
-        # GC com carimbo do canal
         draw.rectangle([0, h - 44, w, h - 20], fill=(15, 23, 42), outline=(239, 68, 68))
         draw.text((12, h - 38), f"FALHA: {canal[:20]} ({praca or 'CS'})", fill=(248, 113, 113))
 
         draw.rectangle([0, h - 20, w, h], fill=(8, 12, 22))
         draw.text((10, h - 16), "STATUS: BUFFER H.264 TRAVADO • HANG DETECTADO", fill=(239, 68, 68))
-
     else:
-        # MODO DIAGNÓSTICO COM TELEMETRIA SOBREPOSTA AO VÍDEO REAL
         dim = Image.new("RGBA", (w, h), (10, 16, 30, 110))
         img = Image.alpha_composite(img.convert("RGBA"), dim).convert("RGB")
         draw = ImageDraw.Draw(img)
 
-        # Header OSD
         draw.rectangle([0, 0, w, 26], fill=(15, 23, 42))
         draw.rectangle([8, 4, 75, 22], fill=(37, 99, 235))
         draw.text((14, 7), canal[:8].upper(), fill=(255, 255, 255))
         draw.text((82, 7), f"CS • {praca or 'Capture Site'}", fill=(148, 163, 184))
 
-        draw.rectangle([w - 82, 5, w - 8, 21], fill=(16, 185, 129))
-        draw.text((w - 76, 7), "● SINAL OK", fill=(255, 255, 255))
-
-        # Painel flutuante de Telemetria de RF
         draw.rectangle([12, 40, w - 12, h - 38], fill=(15, 23, 42), outline=(56, 189, 248), width=1)
         draw.text((22, 52), f"EMISSORA: {canal.upper()}", fill=(248, 250, 252))
         draw.text((22, 72), "PORTADORA: DTV ISDB-Tb (UHF DIGITAL)", fill=(56, 189, 248))
         draw.text((22, 92), "FLUXO TS: 1080i @ 29.97 FPS (H.264/AAC)", fill=(148, 163, 184))
         draw.text((22, 112), "STATUS RF: LOCK ATIVO (68% FORCA)", fill=(16, 185, 129))
         draw.text((22, 132), "MER: 31.8 dB  |  BER: < 1.0e-7", fill=(147, 197, 253))
-
-        # Medidor VU de áudio L/R
-        draw.rectangle([w - 30, 52, w - 24, 140], fill=(30, 41, 59))
-        draw.rectangle([w - 22, 52, w - 16, 140], fill=(30, 41, 59))
-        draw.rectangle([w - 30, 82, w - 24, 140], fill=(16, 185, 129))
-        draw.rectangle([w - 22, 85, w - 16, 140], fill=(16, 185, 129))
 
         draw.rectangle([0, h - 24, w, h], fill=(15, 23, 42))
         tc_now = datetime.now().strftime("%H:%M:%S")

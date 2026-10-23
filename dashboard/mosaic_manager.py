@@ -34,7 +34,13 @@ def detect_channel_region(praca: str) -> str:
 def detect_channel_meio(channel_name: str, raw_meio: str) -> str:
     n = (channel_name or "").lower()
     m = (raw_meio or "").lower()
-    if "fm" in n or "am" in n or "rádio" in n or "radio" in n or "fm" in m or "am" in m:
+    if "rádio" in m or "radio" in m:
+        return "Rádio"
+    if "tv" in m or "isdb" in m or "terrestre" in m or "digital" in m or "satélite" in m or "satelite" in m:
+        return "TV"
+    
+    import re
+    if re.search(r'\b(fm|am|rádio|radio)\b', n) or re.search(r'\b(fm|am|rádio|radio)\b', m):
         return "Rádio"
     return "TV"
 
@@ -158,7 +164,8 @@ def get_channel_live_snapshots(channels: List[Dict[str, Any]], country: Optional
             "tipo_falha": tipo_falha,
             "falha_desc": falha_desc,
             "last_frame_time": now_str,
-            "resolution": "320x240",
+            "resolution": ("Áudio 48 kHz" if meio == "Rádio" else "320x240"),
+            "is_radio": (meio == "Rádio"),
             "jpeg_url": f"/api/fleet/channels/jpeg?canal={canal_nome}&praca={praca_nome}",
             "is_enabled": enabled,
             "has_outage": (tipo_falha not in ["none", "paused"]),

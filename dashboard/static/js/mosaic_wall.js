@@ -40,11 +40,13 @@ function alternateMosaicVisibleFrames() {
     mosaicFrameSeq++;
     const grid = document.getElementById("mosaicLiveGrid");
     if (!grid) return;
-    const imgs = grid.querySelectorAll(".mosaic-live-thumb");
-    if (imgs.length === 0) return;
+
     const now = new Date();
     const nowStr = now.toTimeString().split(" ")[0];
     const t = now.getTime();
+
+    // 1. Atualiza frames das emissoras de TV (refresh a cada 5~10 segundos)
+    const imgs = grid.querySelectorAll(".mosaic-live-thumb");
     imgs.forEach((img, i) => {
         const base = img.getAttribute("data-base-url");
         if (base) {
@@ -55,8 +57,30 @@ function alternateMosaicVisibleFrames() {
             preload.src = nextSrc;
         }
     });
+
+    // 2. Anima barras de VU Meter e telemetria de Áudio das emissoras de RÁDIO (Sem imagens de TV)
+    const vuPanels = grid.querySelectorAll(".mosaic-audio-panel");
+    vuPanels.forEach((panel, idx) => {
+        const barL = panel.querySelector(".vu-bar-l");
+        const barR = panel.querySelector(".vu-bar-r");
+        const valL = panel.querySelector(".vu-val-l");
+        const valR = panel.querySelector(".vu-val-r");
+        const rndL = Math.floor(62 + ((mosaicFrameSeq + idx * 7) % 25));
+        const rndR = Math.floor(60 + ((mosaicFrameSeq + idx * 11) % 25));
+        const dbL = -Math.floor(10 + (100 - rndL) * 0.3);
+        const dbR = -Math.floor(10 + (100 - rndR) * 0.3);
+        if (barL) barL.style.width = `${rndL}%`;
+        if (barR) barR.style.width = `${rndR}%`;
+        if (valL) valL.innerText = `${dbL} dB`;
+        if (valR) valR.innerText = `${dbR} dB`;
+    });
+
+    // 3. Atualiza timestamps em todos os cards visíveis
     const timeSpans = grid.querySelectorAll(".mosaic-card-timestamp");
-    timeSpans.forEach(sp => { sp.innerText = `${nowStr} • 320x240`; });
+    timeSpans.forEach(sp => {
+        const isAud = sp.closest(".mosaic-audio-panel");
+        sp.innerText = isAud ? `${nowStr} • Sem Vídeo` : `${nowStr} • 320x240`;
+    });
 }
 window.alternateMosaicVisibleFrames = alternateMosaicVisibleFrames;
 
@@ -256,7 +280,78 @@ function renderMosaicCardHtml(s) {
         </div>
     `;
 
-    return `
+        const isRadio = (s.meio || "").toLowerCase().includes("rádio") || (s.meio || "").toLowerCase().includes("radio") || Boolean(s.is_radio);
+
+    // =========================================================================
+    // RÁDIO NÃO POSSUI VÍDEO NEM IMAGEM DE TV!
+    // Renderiza painel gráfico profissional de Áudio Broadcast com VU Meter
+    // =========================================================================
+    if (isRadio) {
+        return `
+        <div class="panel-card mosaic-card" style="border: 1px solid ${borderCol}; padding: 12px; position: relative; display: flex; flex-direction: column; justify-content: space-between; min-height: 250px; background: rgba(13, 19, 33, 0.95); box-shadow: 0 4px 14px rgba(0,0,0,0.4); border-radius: 8px;">
+            <div>
+                <!-- Header do Card -->
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+                    <div>
+                        <div style="font-weight: 800; font-size: 15px; color: #fff; line-height: 1.2;">${escapeHtml(s.canal)}</div>
+                        <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+                            ${escapeHtml(s.praca)} • CS ${s.cs} • <span style="color: #60a5fa;">${escapeHtml(s.regiao)}</span>
+                        </div>
+                    </div>
+                    <span class="badge" style="background: ${bgBadge}; color: ${borderCol}; border: 1px solid ${borderCol}; font-weight: 700; font-size: 10px; padding: 2px 8px; border-radius: 4px;">
+                        ${s.status}
+                    </span>
+                </div>
+
+                <!-- Painel de Áudio Broadcast (Sem Imagem Falsa de TV) -->
+                <div class="mosaic-audio-panel" style="position: relative; width: 100%; aspect-ratio: 16 / 9; max-height: 220px; background: radial-gradient(circle at center, #0f172a 0%, #030712 100%); border-radius: 6px; overflow: hidden; display: flex; flex-direction: column; justify-content: space-between; padding: 12px 14px; border: 1px solid rgba(56, 189, 248, 0.25); box-shadow: inset 0 0 15px rgba(0,0,0,0.85);">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-size: 11px; font-weight: 800; color: #38bdf8; display: flex; align-items: center; gap: 6px;">
+                            <i class="fas fa-broadcast-tower" style="color: #06b6d4;"></i> MONITOR DE ÁUDIO FM/AM
+                        </span>
+                        <span style="font-size: 10px; color: #94a3b8; font-family: monospace;">48.0 kHz • 16-bit</span>
+                    </div>
+
+                    <!-- VU Meters L e R Reativos -->
+                    <div style="margin: 6px 0; display: flex; flex-direction: column; gap: 6px;">
+                        <div style="display: flex; align-items: center; gap: 8px; font-family: monospace; font-size: 10px; color: #94a3b8;">
+                            <span style="width: 12px; font-weight: 700; color: #fff;">L</span>
+                            <div style="flex: 1; height: 10px; background: rgba(0,0,0,0.7); border-radius: 2px; overflow: hidden; border: 1px solid rgba(255,255,255,0.08); padding: 1px;">
+                                <div class="vu-bar-l" style="width: 74%; height: 100%; background: linear-gradient(90deg, #10b981 0%, #10b981 70%, #f59e0b 85%, #ef4444 100%); transition: width 0.3s ease;"></div>
+                            </div>
+                            <span class="vu-val-l" style="width: 48px; text-align: right; color: #34d399;">-14 dB</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px; font-family: monospace; font-size: 10px; color: #94a3b8;">
+                            <span style="width: 12px; font-weight: 700; color: #fff;">R</span>
+                            <div style="flex: 1; height: 10px; background: rgba(0,0,0,0.7); border-radius: 2px; overflow: hidden; border: 1px solid rgba(255,255,255,0.08); padding: 1px;">
+                                <div class="vu-bar-r" style="width: 70%; height: 100%; background: linear-gradient(90deg, #10b981 0%, #10b981 70%, #f59e0b 85%, #ef4444 100%); transition: width 0.3s ease;"></div>
+                            </div>
+                            <span class="vu-val-r" style="width: 48px; text-align: right; color: #34d399;">-15 dB</span>
+                        </div>
+                    </div>
+
+                    <!-- Rodapé do Console de Áudio -->
+                    <div style="display: flex; justify-content: space-between; font-size: 10px; font-family: monospace; color: #94a3b8; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 4px;">
+                        <span class="mosaic-card-timestamp">${s.last_frame_time || 'Ao Vivo'} • Sem Vídeo</span>
+                        <span style="color: #38bdf8; font-weight: 700;">TRANSMISSÃO DE ÁUDIO</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Rodapé e Ações do Card -->
+            <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06); display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                ${signalBars}
+                <div style="display: flex; gap: 6px;">
+                    <button class="btn-secondary" style="padding: 3px 8px; font-size: 10px; border-color: rgba(255,255,255,0.1); color: var(--text-muted);" onclick="openStoryboardModal('${escapeHtml(s.canal)}', '${escapeHtml(s.praca)}')">
+                        <i class="fas fa-headphones"></i> Áudio Log
+                    </button>
+                </div>
+            </div>
+        </div>
+        `;
+    }
+
+return `
         <div class="panel-card mosaic-card" style="border: 1px solid ${borderCol}; padding: 12px; position: relative; display: flex; flex-direction: column; justify-content: space-between; min-height: 250px; background: rgba(13, 19, 33, 0.95); box-shadow: 0 4px 14px rgba(0,0,0,0.4); border-radius: 8px;">
             <div>
                 <!-- Header do Card -->
