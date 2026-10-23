@@ -512,7 +512,7 @@ def dispatch_remote_command(hosts: List[str], shell_type: str, command_script: s
         """, (exec_id, command_title, shell_type, command_script, json.dumps(valid_hosts), op_name, op_name, len(valid_hosts), json.dumps(valid_hosts), now_str))
         conn.commit()
 
-        # Execução dos nós com transação segura
+        # Execução dos nós com transação segura + Enfileiramento Real no SharePoint Drive (Agente C# v1.0.16.0+)
         for host in valid_hosts:
             start_t = time.time()
             try:
@@ -529,6 +529,25 @@ def dispatch_remote_command(hosts: List[str], shell_type: str, command_script: s
 
         cursor.execute("UPDATE remote_command_executions SET status = 'concluido', finished_at = datetime('now'), completed_at = datetime('now') WHERE id = ?", (exec_id,))
         conn.commit()
+
+    # Publica de forma assíncrona na Fila_Comandos do SharePoint Drive para execução real pelo serviço C# v1.0.16.0+
+    def _async_enqueue():
+        try:
+            from remote_queue import enqueue_command_on_sharepoint
+            for h in valid_hosts:
+                enqueue_command_on_sharepoint(
+                    exec_id=exec_id,
+                    host=h,
+                    title=command_title,
+                    shell_type=shell_type,
+                    script=command_script,
+                    requested_by=op_name,
+                )
+        except Exception:
+            pass
+
+    import threading
+    threading.Thread(target=_async_enqueue, daemon=True).start()
 
     return exec_id
 
@@ -719,6 +738,11 @@ def get_all_executions(limit: int = 50) -> List[Dict[str, Any]]:
 
 
 def get_execution_details(exec_id: str) -> Optional[Dict[str, Any]]:
+    try:
+        from remote_queue import sync_pending_execution_results
+        sync_pending_execution_results(exec_id)
+    except Exception:
+        pass
     with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()

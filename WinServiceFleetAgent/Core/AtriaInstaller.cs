@@ -222,8 +222,10 @@ if (-not (Test-Path $finalExe)) {
 }
 
 if ($finalExe -and (Test-Path $finalExe)) {
-    Write-Host ""[AtriaInstaller] Abrindo aplicacao Atria Capture em $finalExe...""
-    Start-Process -FilePath $finalExe -WorkingDirectory (Split-Path $finalExe)
+    # NAO usar Start-Process aqui: este script roda como SYSTEM na Sessao 0 e a aplicacao
+    # nasceria invisivel (aparece no Gerenciador de Tarefas mas sem janela).
+    # A abertura na sessao do usuario e feita pelo agente C# (InteractiveProcessLauncher).
+    Write-Host ""[AtriaInstaller] Executavel pronto em $finalExe. Abertura sera feita na sessao do usuario pelo agente.""
 } else {
     Write-Host '[AtriaInstaller] Executavel DigitalTVCapture.exe nao foi encontrado para inicializacao.'
 }
@@ -330,6 +332,27 @@ if ($finalExe -and (Test-Path $finalExe)) {
 
                 if (targetExe != null)
                 {
+                    if (InteractiveProcessLauncher.IsAtriaRunningInUserSession())
+                    {
+                        FileLogger.Log("[AtriaInstaller] Atria Capture já está aberto na sessão do usuário. Nenhuma ação necessária.");
+                        return;
+                    }
+
+                    if (InteractiveProcessLauncher.GetActiveUserSessionId() == null)
+                    {
+                        FileLogger.Log("[AtriaInstaller] ⚠️ Nenhum usuário logado no Capture Site. A interface do Atria será aberta quando houver sessão ativa (instâncias da Sessão 0 preservadas para não interromper a captura).");
+                        return;
+                    }
+
+                    // Instaladores (MSI/script oficial) rodando como SYSTEM costumam deixar o Atria aberto na Sessão 0
+                    // (processos visíveis no Gerenciador de Tarefas, porém sem janela). Remove os fantasmas antes de abrir.
+                    int ghosts = InteractiveProcessLauncher.KillSessionZeroAtriaInstances();
+                    if (ghosts > 0)
+                    {
+                        FileLogger.Log($"[AtriaInstaller] {ghosts} instância(s) invisível(is) do Atria encerrada(s) na Sessão 0.");
+                        System.Threading.Thread.Sleep(3000);
+                    }
+
                     FileLogger.Log($"[AtriaInstaller] 🚀 Abrindo aplicação Atria Capture na Sessão Interativa do Usuário em '{targetExe}'...");
                     string? workDir = Path.GetDirectoryName(targetExe);
                     bool started = InteractiveProcessLauncher.LaunchProcessInActiveSession(targetExe, workDir);

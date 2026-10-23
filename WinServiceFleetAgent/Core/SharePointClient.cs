@@ -543,9 +543,12 @@ namespace WinServiceFleetAgent.Core
 
                     string shortInstalled = FormatShortVersion(versaoInstalada);
 
-                    string targetVerRaw = !string.IsNullOrWhiteSpace(versaoDesejada)
-                        ? versaoDesejada
-                        : (!string.IsNullOrWhiteSpace(existingVersaoDesejada) ? existingVersaoDesejada : versaoInstalada);
+                    // GOVERNANÇA CANÁRIO (v1.0.16.0): Preserva a Versao_Desejada já gravada no SharePoint
+                    // (definida pelo pipeline canário de 5 pilotos ou pelo operador na aba Frota).
+                    // Só usa versaoDesejada do GitHub se o registro ainda não tiver Versao_Desejada definida.
+                    string targetVerRaw = !string.IsNullOrWhiteSpace(existingVersaoDesejada)
+                        ? existingVersaoDesejada
+                        : (!string.IsNullOrWhiteSpace(versaoDesejada) ? versaoDesejada : versaoInstalada);
 
                     string shortTarget = FormatShortVersion(targetVerRaw);
 
@@ -1006,6 +1009,128 @@ namespace WinServiceFleetAgent.Core
         }
 
         private static readonly Dictionary<string, DateTime> _lastLogAttachmentTimes = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
+
+        // ======================================================================
+        // Fila de Comandos Remotos (v1.0.16.0) — SharePoint Drive (Documentos)
+        // Estrutura: Fila_Comandos/{HOST}/pending/{exec_id}.json  -> criado pelo Dashboard
+        //            Fila_Comandos/{HOST}/results/{exec_id}.json  -> criado pelo Agente
+        // Custo no Capture Site: 1 GET leve por ciclo (404 quando não há fila).
+        // ======================================================================
+
+        /// <summary>Chave HMAC compartilhada com o Dashboard (segredo do SPN já descriptografado).</summary>
+        internal string CommandSigningKey => _clientSecret;
+
+        private string DriveRoot => $"https://graph.microsoft.com/v1.0/sites/{_siteId}/drive/root:";
+
+        private static string EncodeDrivePath(string path) =>
+            string.Join("/", path.Split('/', StringSplitOptions.RemoveEmptyEntries).Select(Uri.EscapeDataString));
+
+        public async Task<List<string>> ListDriveFolderFileNamesAsync(string folderPath)
+        {
+            var names = new List<string>();
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+            await EnsureGraphContextAsync(client);
+            if (string.IsNullOrEmpty(_accessToken) || string.IsNullOrEmpty(_siteId)) return names;
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
+            try
+            {
+                var resp = await client.GetAsync($"{DriveRoot}/{EncodeDrivePath(folderPath)}:/children?$select=name,file&$top=50");
+                if (resp.StatusCode == System.Net.HttpStatusCode.NotFound) return names;
+                if (!resp.IsSuccessStatusCode) return names;
+                using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+                if (doc.RootElement.TryGetProperty("value", out var arr))
+                {
+                    foreach (var it in arr.EnumerateArray())
+                    {
+                        if (it.TryGetProperty("file", out _) && it.TryGetProperty("name", out var n))
+                            names.Add(n.GetString() ?? "");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                FileLogger.Log($"[SharePointClient] Aviso ao listar fila '{folderPath}': {ex.Message}");
+            }
+            return names;
+        }
+
+        public async Task<string?> DownloadDriveTextAsync(string filePath)
+        {
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+            await EnsureGraphContextAsync(client);
+            if (string.IsNullOrEmpty(_accessToken) || string.IsNullOrEmpty(_siteId)) return null;
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
+            try
+            {
+                var resp = await client.GetAsync($"{DriveRoot}/{EncodeDrivePath(filePath)}:/content");
+                if (!resp.IsSuccessStatusCode) return null;
+                return await resp.Content.ReadAsStringAsync();
+            }
+            catch (Exception ex)
+            {
+                FileLogger.Log($"[SharePointClient] Aviso ao baixar '{filePath}': {ex.Message}");
+                return null;
+            }
+        }
+
+        public async Task<bool> UploadDriveTextAsync(string filePath, string content)
+        {
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+            await EnsureGraphContextAsync(client);
+            if (string.IsNullOrEmpty(_accessToken) || string.IsNullOrEmpty(_siteId)) return false;
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
+            try
+            {
+                var body = new ByteArrayContent(Encoding.UTF8.GetBytes(content));
+                body.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+                var resp = await ExecuteWithThrottlingRetryAsync(() => client.PutAsync($"{DriveRoot}/{EncodeDrivePath(filePath)}:/content", body));
+                return resp.IsSuccessStatusCode;
+            }
+            catch (Exception ex)
+            {
+                FileLogger.LogError($"[SharePointClient] Erro ao enviar '{filePath}': {ex.Message}");
+                return false;
+            }
+        }
+
+        public async Task<bool> DeleteDriveItemAsync(string itemPath)
+        {
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+            await EnsureGraphContextAsync(client);
+            if (string.IsNullOrEmpty(_accessToken) || string.IsNullOrEmpty(_siteId)) return false;
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
+            try
+            {
+                var resp = await client.DeleteAsync($"{DriveRoot}/{EncodeDrivePath(itemPath)}:");
+                return resp.IsSuccessStatusCode || resp.StatusCode == System.Net.HttpStatusCode.NotFound;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>Lê a Versao_Desejada definida no SharePoint (pela esteira canário da aba Frota) para um serviço deste host.</summary>
+        public async Task<string?> GetDesiredVersionAsync(string hostname, string nomeServico)
+        {
+            using var client = new HttpClient();
+            await EnsureGraphContextAsync(client);
+            if (string.IsNullOrEmpty(_accessToken) || string.IsNullOrEmpty(_listId)) return null;
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
+            try
+            {
+                foreach (var item in await GetAllListItemsAsync(client))
+                {
+                    if (!item.TryGetProperty("fields", out var f)) continue;
+                    string h = f.TryGetProperty("Hostname", out var hp) ? hp.GetString()?.Trim() ?? "" : "";
+                    string s = f.TryGetProperty("Nome_Servico", out var sp) ? sp.GetString()?.Trim() ?? "" : "";
+                    if (h.Equals(hostname.Trim(), StringComparison.OrdinalIgnoreCase) && s.Equals(nomeServico.Trim(), StringComparison.OrdinalIgnoreCase))
+                        return f.TryGetProperty("Versao_Desejada", out var vd) ? vd.GetString()?.Trim() : null;
+                }
+            }
+            catch (Exception ex)
+            {
+                FileLogger.Log($"[SharePointClient] Aviso ao ler Versao_Desejada: {ex.Message}");
+            }
+            return null;
+        }
 
         public async Task<string> UploadLogAttachmentAsync(string hostname, string nomeServico, string logContent, bool force = false)
         {

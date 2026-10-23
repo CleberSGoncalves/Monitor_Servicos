@@ -4180,134 +4180,77 @@
 
 
 
-    <section class="content-section" id="tab-fleet">
-
-
-
+        <section class="content-section" id="tab-fleet">
       <div class="panel-card">
-
-
-
         <div class="panel-header">
-
-
-
-          <div class="panel-title"><span>🚀</span> Esteira de Homologação e Deploy Canário</div>
-
-
-
-          <span style="font-size: 12px; color: var(--text-muted);">Validação de melhorias em 5 praças piloto antes de liberar para todo o parque</span>
-
-
-
+          <div class="panel-title"><span>🚀</span> Esteira de Homologação Canário (5 Pilotos → Frota) & Versionamento do Agente C#</div>
+          <span style="font-size: 12px; color: var(--text-muted);">Sincronia obrigatória entre features locais dos Capture Sites e versão do <code>DNA.MonitorServiceSVC</code></span>
         </div>
 
+        <!-- Diretriz Arquitetural Zero-Overhead & Alinhamento de Versão -->
+        <div style="background: rgba(37, 99, 235, 0.08); border: 1px solid rgba(59, 130, 246, 0.3); padding: 14px 18px; border-radius: var(--radius-md); margin-bottom: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px;">
+            <strong style="color: #60a5fa; font-size: 13px;">📌 Diretriz de Engenharia: Proteção de Recursos do Capture Site & Evolução de Versão do Serviço C#</strong>
+            <span style="background: rgba(16, 185, 129, 0.18); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); padding: 3px 10px; border-radius: 999px; font-size: 11px; font-family: monospace; font-weight: 700;">Build C# Atual: v1.0.16.0</span>
+          </div>
+          <div style="font-size: 12px; color: #cbd5e1; line-height: 1.55;">
+            • <strong>Zero-Overhead na Ponta:</strong> Cálculos pesados de IA (Gemini Pro), topografia RF/Fresnel e correlação rodam 100% no Dashboard Central.<br>
+            • <strong>Acompanhamento Obrigatório de Versão no Agente C#:</strong> Toda funcionalidade que exige interação física com a máquina da cidade (varredura de pastas <code>.MP4/.ASF</code>, leitura de <code>DTVCaptureLog</code>, execução real de scripts e abertura interativa do Atria) gera nova versão compilada do <code>DNA.MonitorServiceSVC</code> (<code>v1.0.16.0</code>), homologada primeiro em <strong>5 praças piloto</strong> antes do despacho automático para as demais.
+          </div>
+        </div>
 
+        <!-- Novidades da Release v1.0.16.0 do Serviço C# -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; margin-bottom: 16px;">
+          <div style="background: rgba(15, 23, 42, 0.65); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px; padding: 10px 12px;">
+            <div style="font-size: 12px; font-weight: 700; color: #38bdf8;">🖥️ Fix Interface Atria Capture (Sessão 0)</div>
+            <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">Elimina processos fantasmas sem janela no Gerenciador de Tarefas e abre a GUI na sessão ativa do usuário (Console/RDP/TeamViewer) com token elevado.</div>
+          </div>
+          <div style="background: rgba(15, 23, 42, 0.65); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px; padding: 10px 12px;">
+            <div style="font-size: 12px; font-weight: 700; color: #34d399;">⚡ Fila Real de Comandos & Tail de Logs</div>
+            <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">Canal assinado HMAC-SHA256 via SharePoint Drive (<code>Fila_Comandos</code>) com prioridade <code>BelowNormal</code> e leitura nativa de logs sem onerar a CPU.</div>
+          </div>
+          <div style="background: rgba(15, 23, 42, 0.65); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px; padding: 10px 12px;">
+            <div style="font-size: 12px; font-weight: 700; color: #fbbf24;">🛡️ Trava Canário (5 Pilotos → Frota)</div>
+            <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">O agente C# respeita estritamente a <code>Versao_Desejada</code> de cada host, garantindo que apenas as 5 máquinas piloto atualizem na Fase 1.</div>
+          </div>
+        </div>
 
+        <!-- Painel de Status Canário ao Vivo -->
+        <div id="canaryStatusSummaryGrid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 16px;"></div>
 
-
-
-
-        <div style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); padding: 20px; border-radius: var(--radius-md); margin-bottom: 20px;">
-
-
-
-          <h4 style="margin-bottom: 8px;">Disparo Controlado de Versão</h4>
-
-
-
-          <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
-
-
-
-            Ao disparar o Deploy Canário, o sistema seleciona 5 praças piloto, audita o funcionamento por 5 minutos e só promove para a frota inteira se homologar com 100% de sucesso. Se houver falha, o <strong>Rollback Automático</strong> restaura as máquinas piloto sem afetar o restante da rede.
-
-
-
+        <div style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); padding: 18px; border-radius: var(--radius-md); margin-bottom: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 10px;">
+            <h4 style="margin: 0;">Controle de Homologação (5 Pilotos) e Despacho Global</h4>
+            <button class="btn-secondary" onclick="loadCanaryPipelineStatus()" style="padding: 5px 12px; font-size: 12px;">🔄 Atualizar Status</button>
+          </div>
+          <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 14px;">
+            Na <strong>Fase 1</strong>, o sistema seleciona 5 praças piloto online e define <code>Versao_Desejada = 1.0.16.0</code> + <code>Acao_Solicitada = Atualizar</code>, mantendo o restante da frota blindado. Assim que as 5 praças confirmarem a atualização sem falhas, a <strong>Fase 2</strong> despacha automaticamente para as demais praças (ou você pode promover manualmente abaixo).
           </p>
 
+          <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px;">
+            <label style="font-size: 13px; font-weight: 600;">Versão Alvo do Agente C#:</label>
+            <input type="text" id="canaryTargetVersion" value="1.0.16.0" onchange="loadCanaryPipelineStatus()" style="padding: 8px 14px; background: rgba(0,0,0,0.4); border: 1px solid var(--border-color); color: #34d399; font-weight: 700; border-radius: var(--radius-sm); font-family: monospace; width: 130px;">
 
-
-
-
-
-
-          <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
-
-
-
-            <label style="font-size: 13px; font-weight: 600;">Versão Alvo:</label>
-
-
-
-            <input type="text" id="canaryTargetVersion" value="1.0.15.0" style="padding: 8px 14px; background: rgba(0,0,0,0.4); border: 1px solid var(--border-color); color: #fff; border-radius: var(--radius-sm); font-family: monospace; width: 140px;">
-
-
-
-
-
-
-
-            <button class="btn-primary" onclick="triggerCanaryFromDashboard()">
-
-
-
-              <span>🐤</span> Validar em 5 Praças Piloto (Canary)
-
-
-
+            <button class="btn-primary" id="btnTriggerCanary5" onclick="triggerCanaryFromDashboard()">
+              <span>🐤</span> 1. Homologar em 5 Praças Piloto (Canary)
             </button>
 
-
-
-
-
-
-
-            <button class="btn-secondary" onclick="triggerPromoteFleetFromDashboard()">
-
-
-
-              <span>🚀</span> Promover para Toda a Frota (22 Praças)
-
-
-
+            <button class="btn-secondary" id="btnPromoteFullFleet" onclick="triggerPromoteFleetFromDashboard()">
+              <span>🚀</span> 2. Despachar para Demais Praças da Frota
             </button>
-
-
-
           </div>
 
-
-
+          <div style="border-top: 1px solid rgba(148,163,184,0.15); padding-top: 10px;">
+            <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; margin-bottom: 6px; font-weight: 600;">Praças no Lote Canário / Atualizadas na Versão Alvo:</div>
+            <div id="canaryPilotsList" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
+          </div>
         </div>
-
-
-
-
-
-
 
         <div>
-
-
-
-          <h4 style="margin-bottom: 8px; font-size: 13px; color: var(--text-muted);">Console de Deploy e Auditoria:</h4>
-
-
-
-          <pre id="canaryLogOutput" style="background: #000; padding: 14px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); font-family: monospace; font-size: 12px; color: #34d399; min-height: 120px; white-space: pre-wrap;">Pronto para homologação de versão. Selecione uma ação acima.</pre>
-
-
-
+          <h4 style="margin-bottom: 8px; font-size: 13px; color: var(--text-muted);">Console de Deploy e Auditoria Canário:</h4>
+          <pre id="canaryLogOutput" style="background: #000; padding: 14px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); font-family: monospace; font-size: 12px; color: #34d399; min-height: 110px; white-space: pre-wrap;">Pronto para homologação da versão v1.0.16.0 em 5 praças piloto. Selecione uma ação acima.</pre>
         </div>
-
-
-
       </div>
-
-
-
     </section>
 
 
@@ -7108,14 +7051,14 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=3.9.36"></script>
-  <script src="/static/js/ai_insights.js?v=3.9.36"></script>
-  <script src="/static/js/fleet_ops.js?v=3.9.36"></script>
-  <script src="/static/js/remote_commands.js?v=3.9.36"></script>
-  <script src="/static/js/signals_analysis.js?v=3.9.36"></script>
-  <script src="/static/js/mosaic_wall.js?v=3.9.36"></script>
-  <script src="/static/js/topology_map.js?v=3.9.36"></script>
-  <script src="/static/js/network_link.js?v=3.9.36"></script>
+  <script src="/static/js/app.js?v=3.9.37"></script>
+  <script src="/static/js/ai_insights.js?v=3.9.37"></script>
+  <script src="/static/js/fleet_ops.js?v=3.9.37"></script>
+  <script src="/static/js/remote_commands.js?v=3.9.37"></script>
+  <script src="/static/js/signals_analysis.js?v=3.9.37"></script>
+  <script src="/static/js/mosaic_wall.js?v=3.9.37"></script>
+  <script src="/static/js/topology_map.js?v=3.9.37"></script>
+  <script src="/static/js/network_link.js?v=3.9.37"></script>
 
 <!-- MODAL: DIAGNÓSTICO DE IA DE LINK & CONECTIVIDADE DE REDE -->
   <div class="modal-overlay" id="networkAiDiagModal" style="display: none; align-items: center; justify-content: center; z-index: 10000;">

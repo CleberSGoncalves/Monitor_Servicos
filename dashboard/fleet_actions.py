@@ -102,27 +102,39 @@ def execute_predefined_action(
             sync_fleet_data()
             return {"success": True, "message": f"Atualização para {target_version} agendada com sucesso."}
 
-    # 4. Disparo do Canary Deployment (Grupo Piloto)
+    # 4. Disparo do Canary Deployment (Grupo Piloto de 5 Máquinas -> Auto-Promoção após Homologação)
     elif action_type == "canary_deploy":
-        target_ver = target_version or "1.0.14.0"
+        target_ver = (target_version or "1.0.16.0").strip().lstrip("vV")
+        srv_target = service_name or "DNA.MonitorServiceSVC"
+        from remote_queue import trigger_canary_rollout_sharepoint
+        res = trigger_canary_rollout_sharepoint(
+            service_name=srv_target,
+            target_version=target_ver,
+            phase="canary",
+            pilot_count=5,
+        )
+        # Inicia também o monitor background que acompanha as 5 piloto e promove para as demais automaticamente quando homologarem
         script_path = PARENT_DIR / "Deploy_Canary_Pipeline.ps1"
-        cmd = f'powershell.exe -ExecutionPolicy Bypass -NoProfile -File "{script_path}" -ServiceName "{service_name or "DNA.MonitorServiceSVC"}" -TargetVersion "{target_ver}" -CanaryCount 5 -TimeoutMinutes 5 -AutoPromote:$false'
-        
-        subprocess.Popen(cmd, shell=True)
-        return {"success": True, "message": f"Pipeline Canário disparado para 5 praças piloto na versão {target_ver}."}
+        if script_path.exists():
+            cmd = f'powershell.exe -ExecutionPolicy Bypass -NoProfile -File "{script_path}" -ServiceName "{srv_target}" -TargetVersion "{target_ver}" -CanaryCount 5 -TimeoutMinutes 15 -AutoPromote:$true'
+            subprocess.Popen(cmd, shell=True)
+        if not res.get("success"):
+            return {"success": False, "error": res.get("detail", "Falha ao iniciar canário")}
+        return res
 
     # 5. Promoção para Toda a Frota
     elif action_type == "promote_fleet":
-        target_ver = target_version or "1.0.14.0"
-        script_path = PARENT_DIR / "Atualizar_Versao_Desejada.ps1"
-        if not script_path.exists():
-            script_path = PARENT_DIR / "Deploy_Canary_Pipeline.ps1"
-            cmd = f'powershell.exe -ExecutionPolicy Bypass -NoProfile -File "{script_path}" -ServiceName "{service_name or "DNA.MonitorServiceSVC"}" -TargetVersion "{target_ver}" -CanaryCount 22 -TimeoutMinutes 15 -AutoPromote:$true'
-        else:
-            cmd = f'powershell.exe -ExecutionPolicy Bypass -NoProfile -File "{script_path}" -ServiceName "{service_name or "DNA.MonitorServiceSVC"}" -NovaVersao "{target_ver}"'
-            
-        subprocess.Popen(cmd, shell=True)
-        return {"success": True, "message": f"Rollout geral da versão {target_ver} promovido para todas as praças da frota."}
+        target_ver = (target_version or "1.0.16.0").strip().lstrip("vV")
+        srv_target = service_name or "DNA.MonitorServiceSVC"
+        from remote_queue import trigger_canary_rollout_sharepoint
+        res = trigger_canary_rollout_sharepoint(
+            service_name=srv_target,
+            target_version=target_ver,
+            phase="full",
+        )
+        if not res.get("success"):
+            return {"success": False, "error": res.get("detail", "Falha ao promover versão para a frota")}
+        return res
 
     return {"success": False, "error": f"Ação desconhecida: {action_type}"}
 

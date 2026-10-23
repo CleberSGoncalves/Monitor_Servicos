@@ -26,6 +26,7 @@ scratch/
 servicos/
 publish/*.zip
 publish/*.zip.sha256
+publish/agent_v*/
 
 ## OS & IDE
 .DS_Store

@@ -1,4 +1,4 @@
-﻿# ==============================================================================
+# ==============================================================================
 # WATCHDOG & AUDITOR DE FROTAS (DNA Monitor Fleet)
 # ==============================================================================
 # 1. Auto-atualiza este proprio script a partir do repositorio GitHub (main).
@@ -223,9 +223,14 @@ foreach ($item in $matchingItems) {
     $auditReport += $entry
 }
 
-# 6. Execucao de Remediacao e Classificacao
+# 6. Execucao de Remediacao e Classificacao (Com Governanca Canario de 5 Pilotos)
 Write-Host ""
-Write-Host "[Passo 3/3] Aplicando acoes de remediacao e isolamento..." -ForegroundColor Cyan
+Write-Host "[Passo 3/3] Aplicando acoes de remediacao e governanca canario (5 pilotos -> frota)..." -ForegroundColor Cyan
+
+$canarySize = 5
+$canaryApproved = ($upToDateCount -ge $canarySize)
+$allowedActivePilots = [Math]::Max(0, $canarySize - $upToDateCount)
+$currentActivePilots = 0
 
 foreach ($item in $auditReport) {
     $itemId = $item.Id
@@ -250,6 +255,11 @@ foreach ($item in $auditReport) {
         $manualUpdateList += $item
     }
     elseif ($item.Acao -eq "Auto-Recuperacao" -and $doAutoRecover) {
+        if (-not $canaryApproved -and $currentActivePilots -ge $allowedActivePilots) {
+            Write-Host "  [CANARY HOLD] $hName -> Aguardando homologacao das $canarySize maquinas piloto (Atualizadas: $upToDateCount/$canarySize)" -ForegroundColor DarkGray
+            continue
+        }
+        $currentActivePilots++
         try {
             $patchBody = @{
                 Versao_Desejada = $TargetVersion
@@ -260,7 +270,7 @@ foreach ($item in $auditReport) {
 
             $patchUrl = "https://graph.microsoft.com/v1.0/sites/$siteId/lists/$listId/items/$itemId/fields"
             Invoke-RestMethod -Uri $patchUrl -Method Patch -Headers $headers -Body $patchBody | Out-Null
-            Write-Host "  [RECOVER] $hName -> Disparada Auto-Recuperacao para versao $TargetVersion" -ForegroundColor Yellow
+            Write-Host "  [RECOVER/PILOT] $hName -> Disparada Atualizacao para versao $TargetVersion" -ForegroundColor Yellow
             $recoveredList += $item
         } catch {
             Write-Host "  [ERRO] Falha ao disparar recuperacao para $hName`: $($_.Exception.Message)" -ForegroundColor Red

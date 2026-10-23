@@ -19,6 +19,7 @@ namespace WinServiceFleetAgent.Core
         private readonly ChannelOrchestrator _channelOrchestrator;
         private readonly string _hostname;
         private readonly AutoUpdateConfig _autoUpdateConfig;
+        private readonly RemoteCommandExecutor _remoteCommands;
         private DateTime _lastAutoUpdateCheck = DateTime.MinValue;
         private static DateTime _selfUpdateTriggeredTime = DateTime.MinValue;
         // Rastreamento de flapping para prevenção de crash-loop (Item 1)
@@ -54,7 +55,8 @@ namespace WinServiceFleetAgent.Core
             string? multiplexesXmlPath = null,
             string? tunersStatusXmlPath = null,
             string? telemetriaApiUrl = null,
-            AutoUpdateConfig? autoUpdateConfig = null)
+            AutoUpdateConfig? autoUpdateConfig = null,
+            RemoteCommandConfig? remoteCommandConfig = null)
         {
             _hostname = string.IsNullOrWhiteSpace(hostnameOverride) ? Environment.MachineName : hostnameOverride;
             _configXmlPath = configXmlPath;
@@ -66,6 +68,7 @@ namespace WinServiceFleetAgent.Core
             _autoUpdateConfig = autoUpdateConfig ?? new AutoUpdateConfig();
 
             _spClient = new SharePointClient(siteUrl, listName, clientId, clientSecret);
+            _remoteCommands = new RemoteCommandExecutor(_spClient, _hostname, remoteCommandConfig);
             _channelOrchestrator = new ChannelOrchestrator(
                 _spClient,
                 multiplexesXmlPath,
@@ -88,7 +91,13 @@ namespace WinServiceFleetAgent.Core
             string agentInstallDir = (agentSrvDef != null && Directory.Exists(agentSrvDef.InstallPath)) ? agentSrvDef.InstallPath.TrimEnd('\\') : agentBaseDir;
             await AgentAutoUpdater.ProcessStartupMarkersAsync(agentInstallDir, _spClient, _hostname, "DNA.MonitorServiceSVC");
 
+            // Passo 0.2: Fila de Comandos Remotos REAIS do Dashboard (não bloqueia o ciclo; 1 GET leve quando vazia)
+            _remoteCommands.PollInBackground();
+
             // Passo 0.5: Verificação Autônoma Periódica de Auto-Atualização do Agente
+            // GOVERNANÇA CANÁRIO (v1.0.16.0): o agente só se auto-atualiza para versões AUTORIZADAS
+            // pela esteira da aba Frota (Versao_Desejada no SharePoint). Publicar release no GitHub
+            // NÃO dispara mais rollout em massa — a frota só avança após homologação nos 5 pilotos.
             if (_autoUpdateConfig.Enabled && (DateTime.UtcNow - _lastAutoUpdateCheck).TotalMinutes >= _autoUpdateConfig.CheckIntervalMinutes)
             {
                 _lastAutoUpdateCheck = DateTime.UtcNow;
@@ -97,6 +106,13 @@ namespace WinServiceFleetAgent.Core
                 string currentAgentVer = VersionInspector.GetExecutableVersion(currentAgentExe);
 
                 var checkResult = await AgentAutoUpdater.CheckForUpdateAsync(_autoUpdateConfig, _githubToken, currentAgentVer, currentAgentExe);
+                string? authorizedVer = await _spClient.GetDesiredVersionAsync(_hostname, "DNA.MonitorServiceSVC");
+                if (checkResult.IsUpdateAvailable &&
+                    (string.IsNullOrWhiteSpace(authorizedVer) || !SharePointClient.IsInstalledUpToDate(authorizedVer.TrimStart('v', 'V'), checkResult.LatestVersion.TrimStart('v', 'V'))))
+                {
+                    FileLogger.Log($"[FleetOrchestrator] 🛡️ Release '{checkResult.LatestVersion}' disponível no GitHub, mas NÃO autorizada para este host (Versao_Desejada='{authorizedVer ?? "vazia"}'). Aguardando esteira canário da aba Frota.");
+                    checkResult.IsUpdateAvailable = false;
+                }
                 if (checkResult.IsUpdateAvailable)
                 {
                     FileLogger.Log($"[FleetOrchestrator] 🚀 Nova versão detectada para o agente: '{checkResult.LatestVersion}' (Instalada: '{currentAgentVer}'). Iniciando auto-atualização autônoma...", writeToEventLog: true, eventId: 1100);
@@ -212,9 +228,14 @@ namespace WinServiceFleetAgent.Core
                 {
                     if (exeExists)
                     {
-                        bool procRunning = Process.GetProcessesByName("DigitalTVCapture").Length > 0 ||
-                                           Process.GetProcessesByName("AtriaCapture").Length > 0 ||
-                                           Process.GetProcessesByName("Atria").Length > 0;
+                        // Instância só na Sessão 0 = sem interface (fantasma). Se há usuário logado, trata como "Parado"
+                        // para disparar a reabertura correta na sessão interativa.
+                        bool procRunning = InteractiveProcessLauncher.IsAtriaRunningInUserSession() ||
+                                           (InteractiveProcessLauncher.IsAtriaRunningAnySession() && InteractiveProcessLauncher.GetActiveUserSessionId() == null);
+                        if (!procRunning && InteractiveProcessLauncher.IsAtriaRunningAnySession())
+                        {
+                            FileLogger.Log("[FleetOrchestrator] 👻 Atria rodando apenas na Sessão 0 (sem janela) com usuário logado. Marcado como 'Parado' para reabertura interativa.");
+                        }
                         statusServico = procRunning ? "Em Execução" : "Parado";
                         installedVer = VersionInspector.GetExecutableVersion(exeFullPath);
                     }
@@ -295,10 +316,8 @@ namespace WinServiceFleetAgent.Core
                                 if (isStandaloneApp)
                                 {
                                     AtriaInstaller.StartAtriaApplication(srv.InstallPath, srv.ExeName);
-                                    await Task.Delay(2000);
-                                    restarted = Process.GetProcessesByName("DigitalTVCapture").Length > 0 ||
-                                                Process.GetProcessesByName("AtriaCapture").Length > 0 ||
-                                                Process.GetProcessesByName("Atria").Length > 0;
+                                    await Task.Delay(4000);
+                                    restarted = InteractiveProcessLauncher.IsAtriaRunningInUserSession();
                                 }
                                 else
                                 {
@@ -505,7 +524,10 @@ namespace WinServiceFleetAgent.Core
                 githubLatest = await GitHubDownloader.GetLatestReleaseVersionAsync(srvConfig.GithubRepo, _githubToken);
             }
 
-            string targetVersion = !string.IsNullOrWhiteSpace(githubLatest) ? githubLatest : (!string.IsNullOrWhiteSpace(action.VersaoDesejada) ? action.VersaoDesejada : "latest");
+            // Prioriza a Versao_Desejada definida no SharePoint (pipeline canário / aba Frota); usa GitHub latest como fallback
+            string targetVersion = !string.IsNullOrWhiteSpace(action.VersaoDesejada)
+                ? action.VersaoDesejada.Trim().TrimStart('v', 'V')
+                : (!string.IsNullOrWhiteSpace(githubLatest) ? githubLatest : "latest");
 
             bool isAtriaUpdate = srvConfig.ServiceName.Equals("Atria Capture", StringComparison.OrdinalIgnoreCase) ||
                                  srvConfig.ServiceName.Equals("AtriaCapture", StringComparison.OrdinalIgnoreCase) ||

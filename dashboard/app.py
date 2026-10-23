@@ -427,6 +427,20 @@ async def trigger_action(req: FleetActionRequest, user: dict = Depends(get_curre
     return res
 
 
+@app.get("/api/fleet/canary-status")
+async def get_fleet_canary_status_endpoint(
+    service_name: str = "DNA.MonitorServiceSVC",
+    target_version: str = "1.0.16.0",
+    user: dict = Depends(get_current_user)
+):
+    try:
+        from remote_queue import get_service_canary_status
+        return get_service_canary_status(service_name=service_name, target_version=target_version)
+    except Exception as e:
+        logger.error(f"Erro ao obter status canário: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/incidents/history")
 async def list_incident_history(
     key: Optional[str] = None,
