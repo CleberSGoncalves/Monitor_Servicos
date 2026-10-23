@@ -220,6 +220,10 @@ async function loadRemoteCommandHosts() {
         });
 
         // Atualiza contadores nas pills do topo
+        const countBrasil = allFleetHostsData.length;
+        const elBr = document.getElementById("pill-count-brasil");
+        if (elBr) elBr.textContent = countBrasil;
+
         const countSul = (grouped["Sul"] || []).length;
         const countSudeste = (grouped["Sudeste"] || []).length;
         const countNordeste = (grouped["Nordeste"] || []).length;
@@ -315,7 +319,7 @@ function renderGroupsSubtab(grouped) {
             </div>
             <div style="display: flex; gap: 8px;">
                 <button class="btn btn-sm btn-secondary" onclick="selectGroup('${reg}')" style="flex: 1;"><i class="fas fa-plus"></i> Selecionar ${reg}</button>
-                <button class="btn btn-sm btn-primary" onclick="selectGroupAndGoToConsole('${reg}')" style="flex: 1;"><i class="fas fa-terminal"></i> Selecionar e Executar</button>
+                <button class="btn btn-sm btn-primary" onclick="selectGroupAndGoToConsole('${reg}')" style="flex: 1;"><i class="fas fa-terminal"></i> Carregar Grupo no Terminal</button>
             </div>
         `;
         container.appendChild(card);
@@ -359,7 +363,13 @@ function updateSelectedHostsUI() {
     if (!chipsContainer) return;
 
     chipsContainer.innerHTML = "";
-    if (countBadge) countBadge.textContent = `${selectedRemoteHosts.length} selecionado(s)`;
+    if (countBadge) countBadge.textContent = `${selectedRemoteHosts.length} Alvo(s) Selecionado(s)`;
+    const btnLabel = document.getElementById("btn-run-cmd-label");
+    if (btnLabel) {
+        btnLabel.textContent = selectedRemoteHosts.length === 0 
+            ? "Executar na(s) Praça(s)" 
+            : `Executar em ${selectedRemoteHosts.length} Host(s) Selecionado(s)`;
+    }
 
     if (selectedRemoteHosts.length === 0) {
         chipsContainer.innerHTML = '<span class="text-muted" style="font-size: 13px;">Nenhum host selecionado. Escolha uma ou mais praças acima.</span>';
@@ -477,24 +487,34 @@ function renderCatalogCards() {
 
     catalogCommands.forEach(cmd => {
         const card = document.createElement("div");
-        card.className = "rc-command-card";
+        const isConsulta = cmd.category === "consulta";
         const isPs = (cmd.shell_type || "").toLowerCase() === "powershell";
         const badgeClass = isPs ? "badge-ps" : "badge-cmd";
         
+        card.className = `rc-command-card ${isConsulta ? 'rc-card-consultas' : 'rc-card-correcoes'}`;
+        card.style.cursor = "pointer";
+        card.title = "Clique para carregar no terminal do console";
+        card.onclick = () => loadCommandIntoTerminal(cmd.id);
+
+        const pillBadge = isConsulta
+            ? '<span style="font-size: 10px; font-weight: 700; color: #4ade80; background: rgba(34, 197, 94, 0.15); border: 1px solid rgba(34, 197, 94, 0.3); padding: 2px 6px; border-radius: 4px;"><i class="fas fa-shield-alt"></i> SEGURO</span>'
+            : '<span style="font-size: 10px; font-weight: 700; color: #f59e0b; background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.3); padding: 2px 6px; border-radius: 4px;"><i class="fas fa-exclamation-triangle"></i> IMPACTO</span>';
+
         card.innerHTML = `
             <div class="rc-card-header">
                 <span class="rc-card-title">${escapeHtml(cmd.title)}</span>
-                <span class="rc-shell-badge ${badgeClass}">${(cmd.shell_type || "PS").toUpperCase()}</span>
+                <div style="display: flex; align-items: center; gap: 4px;">
+                    ${pillBadge}
+                    <span class="rc-shell-badge ${badgeClass}">${(cmd.shell_type || "PS").toUpperCase()}</span>
+                </div>
             </div>
             <div class="rc-card-desc">${escapeHtml(cmd.description || "")}</div>
-            <div class="rc-card-actions">
-                <button type="button" class="btn btn-sm btn-load-terminal" onclick="loadCommandIntoTerminal(${cmd.id})">
-                    <i class="fas fa-terminal"></i> Carregar no Terminal
-                </button>
+            <div style="display: flex; justify-content: flex-end; align-items: center; font-size: 11px; color: var(--text-muted);">
+                <span style="display: inline-flex; align-items: center; gap: 4px; opacity: 0.8;"><i class="fas fa-terminal"></i> Inserir no Prompt</span>
             </div>
         `;
 
-        if (cmd.category === "consulta") {
+        if (isConsulta) {
             consultasContainer.appendChild(card);
         } else {
             correcoesContainer.appendChild(card);
@@ -509,6 +529,7 @@ window.loadCommandIntoTerminal = function(cmdId) {
     const editor = document.getElementById("rc-terminal-input");
     if (editor) {
         editor.value = cmd.command_script;
+        editor.setAttribute("data-cmd-title", cmd.title);
     }
 
     setShellType(cmd.shell_type || "powershell");
@@ -516,7 +537,19 @@ window.loadCommandIntoTerminal = function(cmdId) {
     safeToast(`Comando "${cmd.title}" carregado no terminal!`);
 };
 
-// Executa o comando digitado no terminal nas praças selecionadas
+// Função utilitária para detectar comandos destrutivos / alto risco
+function isDestructiveScript(script) {
+    if (!script) return false;
+    const s = script.toLowerCase();
+    const destructive = [
+        "restart-service", "stop-service", "remove-item", "format-volume", "kill",
+        "rmdir /s", "del /f", "taskkill /f", "net stop", "shutdown", "iex", "invoke-expression",
+        "restart stack", "purga", "drop"
+    ];
+    return destructive.some(d => s.includes(d));
+}
+
+// Executa o comando digitado no terminal nas praças selecionadas com validação de Blast Radius
 window.executeTerminalCommand = function() {
     const editor = document.getElementById("rc-terminal-input");
     const script = editor ? editor.value.trim() : "";
@@ -541,8 +574,97 @@ window.executeTerminalCommand = function() {
 
     const activeShellBtn = document.querySelector(".shell-type-btn.active");
     const shellType = activeShellBtn ? activeShellBtn.getAttribute("data-shell") : "powershell";
+    const activeTitle = editor.getAttribute("data-cmd-title");
+    const title = activeTitle || script.split("\n")[0].substring(0, 45);
 
-    executeRemoteScript(script, shellType, script.split("\n")[0].substring(0, 40));
+    // Validação de Blast Radius e Operações Destrutivas
+    const isDestructive = isDestructiveScript(script);
+    const isMultiHostHighRisk = selectedRemoteHosts.length >= 4;
+
+    if (isDestructive || isMultiHostHighRisk) {
+        const warningReason = isDestructive && isMultiHostHighRisk
+            ? `ATENÇÃO CRÍTICA: Disparo de script potencialmente destrutivo em massa para ${selectedRemoteHosts.length} praças simultâneas! Risco de impacto na captação nacional.`
+            : (isDestructive
+                ? "Este comando reinicia serviços, encerra processos ou remove arquivos nos servidores de produção."
+                : `Este comando será disparado simultaneamente em ${selectedRemoteHosts.length} praças da frota.`);
+
+        openSecurityModal({
+            title: title || "Comando Livre com Alto Blast Radius",
+            risk_warning: warningReason,
+            shell_type: shellType,
+            command: script
+        });
+        return;
+    }
+
+    executeRemoteScript(script, shellType, title);
+};
+
+// Validação de Sintaxe e Dry-Run no Terminal
+window.validateTerminalSyntax = async function() {
+    const editor = document.getElementById("rc-terminal-input");
+    const script = editor ? editor.value.trim() : "";
+    const box = document.getElementById("rc-syntax-validation-box");
+    if (!box) return;
+
+    if (!script) {
+        box.style.display = "block";
+        box.style.background = "rgba(245, 158, 11, 0.15)";
+        box.style.border = "1px solid rgba(245, 158, 11, 0.4)";
+        box.style.color = "#fde68a";
+        box.innerHTML = "<strong><i class='fas fa-exclamation-triangle'></i> Aviso:</strong> Nenhum comando digitado para validação.";
+        return;
+    }
+
+    const activeShellBtn = document.querySelector(".shell-type-btn.active");
+    const shellType = activeShellBtn ? activeShellBtn.getAttribute("data-shell") : "powershell";
+
+    box.style.display = "block";
+    box.style.background = "rgba(56, 189, 248, 0.15)";
+    box.style.border = "1px solid rgba(56, 189, 248, 0.4)";
+    box.style.color = "#38bdf8";
+    box.innerHTML = "<i class='fas fa-spinner fa-spin'></i> Analisando sintaxe, balanceamento de blocos e blast radius...";
+
+    try {
+        const token = getSafeToken();
+        const headers = { "Content-Type": "application/json" };
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+
+        const resp = await fetch("/api/remote-commands/validate-syntax", {
+            method: "POST",
+            headers: headers,
+            body: JSON.stringify({ shell_type: shellType, command_script: script })
+        });
+
+        if (resp.ok) {
+            const result = await resp.json();
+            if (result.valid) {
+                const riskColor = result.blast_risk === "alto" ? "#ef4444" : (result.blast_risk === "medio" ? "#f59e0b" : "#10b981");
+                const riskBg = result.blast_risk === "alto" ? "rgba(239, 68, 68, 0.15)" : (result.blast_risk === "medio" ? "rgba(245, 158, 11, 0.15)" : "rgba(16, 185, 129, 0.15)");
+                box.style.background = riskBg;
+                box.style.border = `1px solid ${riskColor}`;
+                box.style.color = "#fff";
+                box.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                        <span style="color: #4ade80; font-weight: 700;"><i class="fas fa-check-circle"></i> Sintaxe Válida (${result.shell_type} • ${result.lines_count} linha(s))</span>
+                        <span style="color: ${riskColor}; font-weight: 700; font-size: 11px; text-transform: uppercase;">Classificação: Risco ${result.blast_risk}</span>
+                    </div>
+                    <div style="color: var(--text-muted); font-size: 11px;">Simulação: ${escapeHtml(result.simulated_action)}</div>
+                    ${result.warnings.length > 0 ? `<div style="color: #fde68a; font-size: 11px; margin-top: 4px;">${result.warnings.map(w => `• ${escapeHtml(w)}`).join("<br>")}</div>` : ""}
+                `;
+            } else {
+                box.style.background = "rgba(239, 68, 68, 0.15)";
+                box.style.border = "1px solid #ef4444";
+                box.style.color = "#fca5a5";
+                box.innerHTML = `
+                    <div style="font-weight: 700; margin-bottom: 4px;"><i class="fas fa-times-circle"></i> Erro de Sintaxe Detectado:</div>
+                    ${result.errors.map(e => `<div>• ${escapeHtml(e)}</div>`).join("")}
+                `;
+            }
+        }
+    } catch (e) {
+        box.innerHTML = "Erro ao validar sintaxe.";
+    }
 };
 
 function executeRemoteScript(script, shellType, title) {
@@ -592,7 +714,13 @@ function executeRemoteScript(script, shellType, title) {
             command_title: title || script.split("\n")[0].substring(0, 40)
         })
     })
-    .then(r => r.json())
+    .then(async r => {
+        const data = await r.json().catch(() => ({ detail: "Resposta não formatada do servidor" }));
+        if (!r.ok) {
+            throw new Error(data.detail || data.message || `HTTP ${r.status}`);
+        }
+        return data;
+    })
     .then(data => {
         currentExecutionId = data.execution_id;
         safeToast(data.message || "Comando disparado com sucesso!", "success");
@@ -641,8 +769,11 @@ function renderExecutionTerminal(execData) {
         hostsTabContainer.innerHTML = "";
         execData.results.forEach((r, idx) => {
             const tabBtn = document.createElement("button");
-            tabBtn.className = `btn btn-sm btn-outline-secondary host-tab-btn ${idx === 0 ? "active" : ""}`;
-            tabBtn.innerHTML = `<i class="fas fa-desktop"></i> ${r.host} <span class="badge ${r.status === 'sucesso' ? 'bg-success' : 'bg-danger'}">${(r.status || 'OK').toUpperCase()}</span>`;
+            const isOk = r.status === 'sucesso';
+            const icon = isOk ? '<i class="fas fa-check-circle" style="color: #4ade80;"></i>' : '<i class="fas fa-times-circle" style="color: #ef4444;"></i>';
+            const durationText = r.duration_ms ? `${(r.duration_ms / 1000).toFixed(1)}s` : '<1s';
+            tabBtn.className = `host-tab-btn ${idx === 0 ? 'active' : ''}`;
+            tabBtn.innerHTML = `${icon} <span>${escapeHtml(r.host)}</span> <span style="font-size: 10px; opacity: 0.75; font-family: monospace;">[${durationText}]</span>`;
             tabBtn.onclick = () => {
                 document.querySelectorAll(".host-tab-btn").forEach(b => b.classList.remove("active"));
                 tabBtn.classList.add("active");
@@ -675,7 +806,7 @@ function displayHostTerminalOutput(resultItem) {
 
 window.clearTerminalEditor = function() {
     const editor = document.getElementById("rc-terminal-input");
-    if (editor) editor.value = "";
+    if (editor) { editor.value = ""; editor.removeAttribute("data-cmd-title"); }
     const consoleOutput = document.getElementById("rc-console-output");
     if (consoleOutput) consoleOutput.innerHTML = '<div class="text-muted" style="padding: 10px;">Console limpo. Digite ou selecione um comando e clique em Executar.</div>';
 };
@@ -724,7 +855,10 @@ window.saveCustomCommand = function(event) {
     const title = document.getElementById("new-cmd-title").value.trim();
     const description = document.getElementById("new-cmd-desc").value.trim();
     const category = document.getElementById("new-cmd-category").value;
+    const criticality = document.getElementById("new-cmd-criticality")?.value || "informativo";
     const shellType = document.getElementById("new-cmd-shell").value;
+    const templateVars = document.getElementById("new-cmd-template-vars")?.value.trim() || "";
+    const requiresConfirm = document.getElementById("new-cmd-requires-confirm")?.checked || false;
     const script = document.getElementById("new-cmd-script").value.trim();
 
     if (!title || !script) {
@@ -744,7 +878,10 @@ window.saveCustomCommand = function(event) {
             description: description,
             category: category,
             shell_type: shellType,
-            command_script: script
+            command_script: script,
+            criticality_level: criticality,
+            requires_confirmation: requiresConfirm,
+            template_vars: templateVars
         })
     })
     .then(r => r.json())
@@ -830,15 +967,17 @@ function renderAiSuggestions(suggestions) {
             </div>
             <pre class="ai-cmd-code">${escapeHtml(item.command)}</pre>
             <div class="ai-cmd-actions">
-                <button type="button" class="btn btn-sm btn-secondary" onclick="loadAiCommandIntoEditorById('${item.id}')" title="Carregar o script no terminal para revisar">
-                    <i class="fas fa-terminal"></i> Carregar no Console
+                <button type="button" class="btn btn-sm ${isHighRisk ? 'btn-primary' : 'btn-secondary'}" onclick="loadAiCommandIntoEditorById('${item.id}')" title="Carregar no console para revisar os alvos e código antes do envio">
+                    <i class="fas fa-terminal"></i> ${isHighRisk ? 'Carregar no Console (Revisar Alvos)' : 'Carregar no Console'}
                 </button>
                 <button type="button" class="btn btn-sm" style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.4); color: #6ee7b7;" onclick="saveAiCommandToCatalogById('${item.id}')" title="Salvar permanentemente no catálogo de comandos da equipe">
                     <i class="fas fa-save"></i> Salvar no Catálogo
                 </button>
-                <button type="button" class="btn btn-sm ${isHighRisk ? 'btn-danger' : 'btn-primary'}" onclick="triggerAiCommandExecutionById('${item.id}')" title="Executar imediatamente na(s) praça(s) selecionada(s)">
-                    <i class="fas fa-bolt"></i> Executar Agora
-                </button>
+                ${isHighRisk 
+                    ? '<span style="font-size: 11px; color: #f87171; display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; background: rgba(239, 68, 68, 0.1); border-radius: 4px;"><i class="fas fa-lock"></i> Execução Direta Desabilitada (Revisão Obrigatória)</span>' 
+                    : `<button type="button" class="btn btn-sm btn-primary" onclick="triggerAiCommandExecutionById('${item.id}')" title="Executar imediatamente na(s) praça(s) selecionada(s)">
+                        <i class="fas fa-bolt"></i> Executar Agora
+                       </button>`}
             </div>
         `;
         container.appendChild(card);
@@ -851,7 +990,7 @@ window.loadAiCommandIntoEditorById = function(cmdId) {
     if (!item) return;
 
     const editor = document.getElementById("rc-terminal-input");
-    if (editor) editor.value = item.command;
+    if (editor) { editor.value = item.command; editor.setAttribute("data-cmd-title", item.title); }
 
     setShellType(item.shell_type || "powershell");
     switchRemoteTab("rc-tab-console");
@@ -934,6 +1073,14 @@ function openSecurityModal(cmdItem) {
         hostsListContainer.innerHTML = selectedRemoteHosts.map(h => `<span class="host-chip" style="font-size: 11px; padding: 2px 8px;"><strong>${h}</strong></span>`).join("");
     }
 
+    const kwInput = document.getElementById("sec-modal-keyword-input");
+    if (kwInput) kwInput.value = "";
+    const confirmBtn = document.getElementById("btn-confirm-sec-exec");
+    if (confirmBtn) {
+        confirmBtn.disabled = true;
+        confirmBtn.style.opacity = "0.5";
+        confirmBtn.style.cursor = "not-allowed";
+    }
     modal.classList.add("active");
 }
 
@@ -1076,4 +1223,38 @@ window.exportSpecificExecution = function(execId, format) {
         safeToast("Relatório exportado com sucesso!");
     })
     .catch(err => safeToast("Falha ao exportar: " + err.message, "danger"));
+};
+
+window.onSecurityKeywordInput = function(val) {
+    const btn = document.getElementById("btn-confirm-sec-exec");
+    if (!btn) return;
+    if ((val || "").trim().toUpperCase() === "EXECUTAR") {
+        btn.disabled = false;
+        btn.style.opacity = "1";
+        btn.style.cursor = "pointer";
+    } else {
+        btn.disabled = true;
+        btn.style.opacity = "0.5";
+        btn.style.cursor = "not-allowed";
+    }
+};
+
+window.onCriticalityChange = function(val) {
+    const chk = document.getElementById("new-cmd-requires-confirm");
+    if (chk) {
+        chk.checked = (val === "critico");
+    }
+};
+
+window.onCategoryChange = function(val) {
+    const crit = document.getElementById("new-cmd-criticality");
+    if (crit) {
+        if (val === "consulta") {
+            crit.value = "informativo";
+            onCriticalityChange("informativo");
+        } else if (val === "correcao" && crit.value === "informativo") {
+            crit.value = "operacional";
+            onCriticalityChange("operacional");
+        }
+    }
 };

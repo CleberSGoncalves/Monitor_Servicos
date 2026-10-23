@@ -1475,3 +1475,62 @@ tr:hover td {
   display: flex;
   gap: 8px;
 }
+
+
+/* ==========================================================================
+   REMOTE COMMAND ENHANCEMENTS: MULTI-HOST TABS, SAFEGUARDS & CARD STYLING
+   ========================================================================== */
+.rc-card-consultas {
+  border-left: 3px solid #10b981 !important;
+}
+
+.rc-card-consultas:hover {
+  border-color: #10b981 !important;
+  box-shadow: 0 4px 18px rgba(16, 185, 129, 0.2) !important;
+  transform: translateY(-2px);
+}
+
+.rc-card-correcoes {
+  border-left: 3px solid #f59e0b !important;
+}
+
+.rc-card-correcoes:hover {
+  border-color: #f59e0b !important;
+  box-shadow: 0 4px 18px rgba(245, 158, 11, 0.2) !important;
+  transform: translateY(-2px);
+}
+
+.host-tab-btn {
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--text-muted);
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 6px;
+  margin-bottom: 6px;
+}
+
+.host-tab-btn:hover {
+  background: rgba(30, 41, 59, 0.95);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.host-tab-btn.active {
+  background: rgba(37, 99, 235, 0.25) !important;
+  border-color: #3b82f6 !important;
+  color: #93c5fd !important;
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.3) !important;
+}
+
+#rc-terminal-input {
+  min-height: 140px;
+  max-height: 280px;
+}

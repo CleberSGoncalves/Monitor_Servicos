@@ -5240,141 +5240,65 @@
 
 
 
-      <!-- Host Selector Top Bar -->
-
-
-
-      <div class="rc-top-bar">
-
-
-
-        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-
-
-
-          <div style="display: flex; align-items: center; gap: 10px;">
-
-
-
-            <span style="font-size: 16px; font-weight: 700; color: #fff;">⚡ Orquestrador de Comandos Remotos</span>
-
-
-
-            <span class="badge bg-primary" id="selected-hosts-count">0 selecionado(s)</span>
-
-
-
+      <!-- Host Selector Top Bar (Barra de Alvos Unificada) -->
+      <div class="rc-top-bar" style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: var(--radius-md); padding: 14px 18px; margin-bottom: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+          <!-- Left: Title, Active Targets Summary & Security Lock -->
+          <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+            <div style="font-size: 15px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px;">
+              <span style="color: #38bdf8;">⚡</span> Orquestrador de Comandos Remotos
+            </div>
+            <span class="badge" id="selected-hosts-count" style="background: rgba(59, 130, 246, 0.2); color: #93c5fd; border: 1px solid rgba(59, 130, 246, 0.4); font-size: 11px; padding: 4px 10px;">
+              0 Alvo(s) Selecionado(s)
+            </span>
+            <span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #4ade80; border: 1px solid rgba(16, 185, 129, 0.4); font-size: 11px; padding: 4px 10px; display: inline-flex; align-items: center; gap: 5px;">
+              <i class="fas fa-lock"></i> Trava Anti-Disparo Global: ATIVA
+            </span>
           </div>
 
+          <!-- Right: Actions & Clear Selection -->
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <button type="button" class="btn-secondary" onclick="clearAllHosts()" style="font-size: 11px; padding: 5px 12px; border-color: rgba(239, 68, 68, 0.4); color: #fca5a5;">
+              <i class="fas fa-trash-alt"></i> Limpar Alvos
+            </button>
+          </div>
+        </div>
 
-
-          <div style="display: flex; gap: 8px;">
-
-
-
-            <button class="btn-secondary" onclick="selectAllHosts()"><i class="fas fa-check-double"></i> Selecionar Todas as Praças</button>
-
-
-
-            <button class="btn-secondary" onclick="clearAllHosts()"><i class="fas fa-trash-alt"></i> Limpar Seleção</button>
-
-
-
+        <!-- Add Host Selector Dropdown & Selected Chips -->
+        <div style="display: flex; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <label style="font-size: 12px; font-weight: 600; color: var(--text-muted);"><i class="fas fa-plus"></i> Adicionar Alvo:</label>
+            <select class="rc-host-select" id="remote-host-select" onchange="addHostToSelection()" style="background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); color: #fff; border-radius: 6px; padding: 4px 10px; font-size: 12px;"></select>
           </div>
 
-
-
+          <!-- Container dos Chips de Alvos Ativos -->
+          <div class="host-chips-container" id="selected-hosts-chips" style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center; flex: 1;">
+            <!-- Chips dinâmicos dos nós ativos -->
+          </div>
         </div>
 
-
-
-
-
-
-
-        <div class="rc-host-selector">
-
-
-
-          <label style="font-size: 13px; font-weight: 600; color: var(--text-muted);">Adicionar Praça:</label>
-
-
-
-          <select class="rc-host-select" id="remote-host-select" onchange="addHostToSelection()"></select>
-
-
-
-          <button class="btn-secondary" onclick="addHostToSelection()">➕ Adicionar</button>
-
-
-
+        <!-- Barra de Atalhos Rápidos por Região (Sincronizada) -->
+        <div class="rc-region-pills-bar" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; padding-top: 10px; border-top: 1px dashed rgba(255,255,255,0.08);">
+          <span style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">
+            <i class="fas fa-layer-group"></i> Atalhos Regionais:
+          </span>
+          <button type="button" class="btn btn-sm btn-secondary" onclick="selectGroup('Brasil')" style="font-size: 11px; padding: 3px 10px; border-radius: 12px;">
+            🇧🇷 Brasil (<span id="pill-count-brasil">22</span>)
+          </button>
+          <button type="button" class="btn btn-sm btn-secondary" onclick="selectGroup('Sul')" style="font-size: 11px; padding: 3px 10px; border-radius: 12px;">
+            📍 Região Sul (<span id="pill-count-sul">5</span>)
+          </button>
+          <button type="button" class="btn btn-sm btn-secondary" onclick="selectGroup('Sudeste')" style="font-size: 11px; padding: 3px 10px; border-radius: 12px;">
+            📍 Região Sudeste (<span id="pill-count-sudeste">15</span>)
+          </button>
+          <button type="button" class="btn btn-sm btn-secondary" onclick="selectGroup('Nordeste')" style="font-size: 11px; padding: 3px 10px; border-radius: 12px;">
+            📍 Região Nordeste (<span id="pill-count-nordeste">1</span>)
+          </button>
+          <button type="button" class="btn btn-sm btn-secondary" onclick="selectGroup('Centro-Oeste')" style="font-size: 11px; padding: 3px 10px; border-radius: 12px;">
+            📍 Centro-Oeste (<span id="pill-count-co">1</span>)
+          </button>
         </div>
-
-
-
-
-
-
-
-        <div class="host-chips-container" id="selected-hosts-chips">
-
-
-
-          <!-- Chips de hosts selecionados adicionados dinamicamente -->
-
-
-
-        </div>
-
-
-
-
-
-
-
-        <!-- Barra de Seleção Rápida por Região e País -->
-
-
-
-        <div class="rc-region-pills-bar" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; padding-top: 10px; border-top: 1px dashed rgba(255,255,255,0.08);">
-
-
-
-          <span style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;"><i class="fas fa-layer-group"></i> Seleção Rápida por Região:</span>
-
-
-
-          <button type="button" class="btn btn-sm btn-secondary" onclick="selectGroup('Brasil')" style="font-size: 11px; padding: 3px 10px; border-radius: 12px;">🇧🇷 Brasil (Todas 22)</button>
-
-
-
-          <button type="button" class="btn btn-sm btn-secondary" onclick="selectGroup('Sul')" style="font-size: 11px; padding: 3px 10px; border-radius: 12px;">📍 Região Sul (<span id="pill-count-sul">5</span>)</button>
-
-
-
-          <button type="button" class="btn btn-sm btn-secondary" onclick="selectGroup('Sudeste')" style="font-size: 11px; padding: 3px 10px; border-radius: 12px;">📍 Região Sudeste (<span id="pill-count-sudeste">15</span>)</button>
-
-
-
-          <button type="button" class="btn btn-sm btn-secondary" onclick="selectGroup('Nordeste')" style="font-size: 11px; padding: 3px 10px; border-radius: 12px;">📍 Região Nordeste (<span id="pill-count-nordeste">1</span>)</button>
-
-
-
-          <button type="button" class="btn btn-sm btn-secondary" onclick="selectGroup('Centro-Oeste')" style="font-size: 11px; padding: 3px 10px; border-radius: 12px;">📍 Centro-Oeste (<span id="pill-count-co">1</span>)</button>
-
-
-
-        </div>
-
-
-
       </div>
-
-
-
-
-
-
 
       <!-- Sub-tabs Navigation -->
 
@@ -5571,39 +5495,21 @@
 
 
 
-            <div class="rc-terminal-actions">
-
-
-
+                        <div class="rc-terminal-actions">
               <div style="display: flex; gap: 8px;">
-
-
-
                 <button class="btn-secondary" onclick="clearTerminalEditor()"><i class="fas fa-eraser"></i> Limpar</button>
-
-
-
                 <button class="btn-secondary" onclick="copyTerminalCommand()"><i class="fas fa-copy"></i> Copiar</button>
-
-
-
+                <button class="btn-secondary" id="btn-validate-syntax" onclick="validateTerminalSyntax()" style="border-color: rgba(56, 189, 248, 0.4); color: #38bdf8;">
+                  <i class="fas fa-vial"></i> Validar Sintaxe / Dry-Run
+                </button>
               </div>
-
-
-
-              <button class="btn-primary" id="btn-run-remote-cmd" onclick="executeTerminalCommand()" style="padding: 8px 20px; font-weight: 700;">
-
-
-
-                <i class="fas fa-bolt"></i> Executar na(s) Praça(s)
-
-
-
+              <button class="btn-primary" id="btn-run-remote-cmd" onclick="executeTerminalCommand()" style="padding: 8px 20px; font-weight: 700; background: linear-gradient(135deg, #2563eb, #1d4ed8);">
+                <i class="fas fa-bolt"></i> <span id="btn-run-cmd-label">Executar na(s) Praça(s)</span>
               </button>
-
-
-
             </div>
+
+            <!-- Syntax Validation & Dry-Run Feedback Box -->
+            <div id="rc-syntax-validation-box" style="display: none; margin: 10px 16px; padding: 10px 14px; border-radius: 6px; font-size: 12px; line-height: 1.45;"></div>
 
 
 
@@ -5760,109 +5666,60 @@
 
 
           <form id="form-create-remote-cmd" onsubmit="saveCustomCommand(event)">
-
-
-
             <div class="form-group">
-
-
-
               <label class="form-label">Título do Comando</label>
-
-
-
               <input type="text" class="form-input" id="new-cmd-title" placeholder="Ex: Reiniciar Tuner TBS #1" required>
-
-
-
             </div>
-
-
 
             <div class="form-group">
-
-
-
               <label class="form-label">Descrição / Finalidade</label>
-
-
-
               <input type="text" class="form-input" id="new-cmd-desc" placeholder="Ex: Força o reload do driver de captura digital USB/PCIe">
-
-
-
             </div>
-
-
 
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-
-
-
               <div class="form-group">
-
-
-
                 <label class="form-label">Categoria</label>
-
-
-
-                <select class="form-input" id="new-cmd-category">
-
-
-
-                  <option value="consulta">🔍 Consulta e Diagnóstico</option>
-
-
-
-                  <option value="correcao">🛠️ Correção e Auto-Cura</option>
-
-
-
+                <select class="form-input" id="new-cmd-category" onchange="onCategoryChange(this.value)">
+                  <option value="consulta">🔍 Consulta e Diagnóstico (Read-Only)</option>
+                  <option value="correcao">🛠️ Correção e Auto-Cura (Modificação)</option>
                 </select>
-
-
-
               </div>
-
-
 
               <div class="form-group">
-
-
-
-                <label class="form-label">Interpretador (Shell)</label>
-
-
-
-                <select class="form-input" id="new-cmd-shell">
-
-
-
-                  <option value="powershell">PowerShell (.ps1)</option>
-
-
-
-                  <option value="cmd">Prompt do CMD (.bat/.cmd)</option>
-
-
-
+                <label class="form-label">Nível de Criticidade (Risco)</label>
+                <select class="form-input" id="new-cmd-criticality" onchange="onCriticalityChange(this.value)">
+                  <option value="informativo">🟢 Informativo (Verde) - Consulta Read-Only</option>
+                  <option value="operacional">🟡 Operacional (Amarelo) - Ação com Impacto Controlado</option>
+                  <option value="critico">🔴 Crítico / Destrutivo (Vermelho) - Reinicialização / Expurgo</option>
                 </select>
-
-
-
               </div>
-
-
-
             </div>
 
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+              <div class="form-group">
+                <label class="form-label">Interpretador (Shell)</label>
+                <select class="form-input" id="new-cmd-shell">
+                  <option value="powershell">PowerShell (.ps1)</option>
+                  <option value="cmd">Prompt do CMD (.bat/.cmd)</option>
+                </select>
+              </div>
 
+              <div class="form-group">
+                <label class="form-label">Variáveis de Template Aceitas (Opcional)</label>
+                <input type="text" class="form-input" id="new-cmd-template-vars" placeholder="Ex: $CanalId, $Horas, $Servico">
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 3px;">Declare variáveis para parametrização dinâmica do script.</div>
+              </div>
+            </div>
+
+            <!-- Trava de Segurança Obrigatória para Comandos Críticos -->
+            <div class="form-group" id="grp-new-cmd-confirm-check" style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px; padding: 10px 14px; margin-bottom: 16px;">
+              <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; color: #fca5a5; cursor: pointer; margin: 0;">
+                <input type="checkbox" id="new-cmd-requires-confirm" style="width: 16px; height: 16px;">
+                <span>🔒 Exigir confirmação de segurança com palavra-chave ('EXECUTAR') antes da execução remota</span>
+              </label>
+            </div>
 
             <div class="form-group">
-
-
-
               <label class="form-label">Script / Comando a Executar</label>
 
 
@@ -6992,9 +6849,14 @@
 
 
           <pre id="sec-modal-script-preview" style="background: #000; padding: 10px; border-radius: 6px; border: 1px solid #1e293b; color: #38bdf8; font-family: 'Consolas', monospace; font-size: 11px; max-height: 130px; overflow-y: auto; white-space: pre-wrap; margin: 0;"></pre>
+        </div>
 
-
-
+        <!-- Confirmação Obrigatória por Digitação de Palavra-Chave -->
+        <div style="background: rgba(0,0,0,0.35); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 6px; padding: 12px; margin-bottom: 18px;">
+          <label style="display: block; font-size: 12px; font-weight: 700; color: #fff; margin-bottom: 6px;">
+            ⚠️ Para autorizar este disparo em produção, digite <span style="color: #ef4444; font-family: monospace; font-size: 13px; text-decoration: underline;">EXECUTAR</span> abaixo:
+          </label>
+          <input type="text" id="sec-modal-keyword-input" class="form-input" placeholder="Digite EXECUTAR para desbloquear o botão" style="font-family: monospace; font-weight: 700; letter-spacing: 1px; color: #ef4444;" oninput="onSecurityKeywordInput(this.value)">
         </div>
 
 
@@ -7011,7 +6873,7 @@
 
 
 
-          <button type="button" class="btn-primary" id="btn-confirm-sec-exec" onclick="confirmSecurityExecution()" style="background: #dc2626; border-color: #ef4444; padding: 8px 20px; font-weight: 700;">
+          <button type="button" class="btn-primary" id="btn-confirm-sec-exec" onclick="confirmSecurityExecution()" disabled style="background: #dc2626; border-color: #ef4444; padding: 8px 20px; font-weight: 700; opacity: 0.5; cursor: not-allowed;">
 
 
 

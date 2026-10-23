@@ -267,6 +267,15 @@ def init_remote_command_db():
         if "finished_at" not in cols:
             cursor.execute("ALTER TABLE remote_command_executions ADD COLUMN finished_at TEXT")
 
+        cursor.execute("PRAGMA table_info(remote_command_catalog)")
+        catalog_cols = [r[1] for r in cursor.fetchall()]
+        if "criticality_level" not in catalog_cols:
+            cursor.execute("ALTER TABLE remote_command_catalog ADD COLUMN criticality_level TEXT DEFAULT 'informativo'")
+        if "requires_confirmation" not in catalog_cols:
+            cursor.execute("ALTER TABLE remote_command_catalog ADD COLUMN requires_confirmation INTEGER DEFAULT 0")
+        if "template_vars" not in catalog_cols:
+            cursor.execute("ALTER TABLE remote_command_catalog ADD COLUMN template_vars TEXT DEFAULT ''")
+
         conn.commit()
 
         # Inserção de Comandos Pré-Definidos Essenciais caso não existam
@@ -414,17 +423,42 @@ def get_command_catalog(category: Optional[str] = None) -> List[Dict[str, Any]]:
         return [dict(r) for r in cursor.fetchall()]
 
 
-def add_command_to_catalog(title: str, description: str, category: str, shell_type: str, script: str, created_by: str = "Operador") -> Dict[str, Any]:
+def add_command_to_catalog(
+    title: str,
+    description: str,
+    category: str,
+    shell_type: str,
+    script: str,
+    created_by: str = "Operador",
+    criticality_level: str = "informativo",
+    requires_confirmation: bool = False,
+    template_vars: str = ""
+) -> Dict[str, Any]:
     init_remote_command_db()
     with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO remote_command_catalog (title, description, category, shell_type, command_script, is_builtin, created_by, created_at)
-            VALUES (?, ?, ?, ?, ?, 0, ?, datetime('now'))
-        """, (title, description, category, shell_type, script, created_by))
+            INSERT INTO remote_command_catalog (
+                title, description, category, shell_type, command_script,
+                is_builtin, created_by, created_at, criticality_level,
+                requires_confirmation, template_vars
+            )
+            VALUES (?, ?, ?, ?, ?, 0, ?, datetime('now'), ?, ?, ?)
+        """, (
+            title, description, category, shell_type, script, created_by,
+            criticality_level, 1 if requires_confirmation else 0, template_vars
+        ))
         cmd_id = cursor.lastrowid
         conn.commit()
-        return {"id": cmd_id, "title": title, "category": category, "shell_type": shell_type}
+        return {
+            "id": cmd_id,
+            "title": title,
+            "category": category,
+            "shell_type": shell_type,
+            "criticality_level": criticality_level,
+            "requires_confirmation": bool(requires_confirmation),
+            "template_vars": template_vars
+        }
 
 
 def delete_command_from_catalog(cmd_id: int) -> bool:
@@ -448,9 +482,9 @@ def dispatch_remote_command(hosts: List[str], shell_type: str, command_script: s
     with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO remote_command_executions (id, command_title, shell_type, command_script, requested_by, hosts_count, hosts_list, status, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'em_execucao', ?)
-        """, (exec_id, command_title, shell_type, command_script, op_name, len(hosts), json.dumps(hosts), now_str))
+            INSERT INTO remote_command_executions (id, command_title, shell_type, command_script, target_hosts, executed_by, requested_by, hosts_count, hosts_list, status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'em_execucao', ?)
+        """, (exec_id, command_title, shell_type, command_script, json.dumps(hosts), op_name, op_name, len(hosts), json.dumps(hosts), now_str))
         conn.commit()
 
     # Execução simulada/real dos nós
@@ -469,7 +503,7 @@ def dispatch_remote_command(hosts: List[str], shell_type: str, command_script: s
 
     with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
         cursor = conn.cursor()
-        cursor.execute("UPDATE remote_command_executions SET status = 'concluido', finished_at = datetime('now') WHERE id = ?", (exec_id,))
+        cursor.execute("UPDATE remote_command_executions SET status = 'concluido', finished_at = datetime('now'), completed_at = datetime('now') WHERE id = ?", (exec_id,))
         conn.commit()
 
     return exec_id
@@ -766,3 +800,67 @@ def get_ai_command_recommendations(fleet_data: Optional[Dict[str, Any]] = None, 
 
 create_catalog_command = add_command_to_catalog
 delete_catalog_command = delete_command_from_catalog
+
+
+def validate_script_syntax(shell_type: str, script: str) -> Dict[str, Any]:
+    """
+    Validador de sintaxe e simulação de dry-run para comandos PowerShell e CMD.
+    Verifica integridade de aspas, parênteses, chaves e detecta padrões destrutivos.
+    """
+    errors = []
+    warnings = []
+    s = (script or "").strip()
+    
+    if not s:
+        return {"valid": False, "errors": ["Comando vazio."], "warnings": [], "blast_risk": "baixo", "simulated_action": "Nenhum comando informado."}
+        
+    # 1. Aspas desbalanceadas
+    single_quotes = s.count("'")
+    double_quotes = s.count('"')
+    if single_quotes % 2 != 0:
+        errors.append("Aspas simples desbalanceadas (abertas sem fechamento correspondente).")
+    if double_quotes % 2 != 0:
+        errors.append("Aspas duplas desbalanceadas (abertas sem fechamento correspondente).")
+
+    # 2. Parênteses, chaves e colchetes (especialmente para PowerShell)
+    if shell_type.lower() == "powershell":
+        if s.count("(") != s.count(")"):
+            errors.append("Parênteses () desbalanceados na expressão PowerShell.")
+        if s.count("{") != s.count("}"):
+            errors.append("Chaves {} de ScriptBlock desbalanceadas.")
+        if s.count("[") != s.count("]"):
+            errors.append("Colchetes [] de tipo ou array desbalanceados.")
+            
+        if s.endswith("|"):
+            errors.append("Comando termina com pipe '|' sem comando consumidor subsequente.")
+
+    # 3. Análise de Risco / Blast Radius
+    s_lower = s.lower()
+    destructive_keywords = [
+        "restart-service", "stop-service", "remove-item", "format-volume", "kill",
+        "rmdir /s", "del /f", "taskkill /f", "net stop", "shutdown", "iex", "invoke-expression"
+    ]
+    is_destructive = any(kw in s_lower for kw in destructive_keywords)
+    
+    if is_destructive:
+        risk = "alto"
+        warnings.append("⚠️ Ação Destrutiva Detectada: Este script reinicia serviços, encerra processos ou remove arquivos no SO.")
+    elif any(kw in s_lower for kw in ["set-", "new-", "copy-", "move-", "start-service"]):
+        risk = "medio"
+        warnings.append("Ação Operacional: Este script cria ou modifica recursos no Capture Site.")
+    else:
+        risk = "baixo"
+
+    sim_action = "Consulta de telemetria e leitura segura (Read-Only)" if risk == "baixo" else (
+        "Modificação operacional de sistema" if risk == "medio" else "Ação crítica de Auto-Cura / Reinício de Stack"
+    )
+
+    return {
+        "valid": len(errors) == 0,
+        "errors": errors,
+        "warnings": warnings,
+        "blast_risk": risk,
+        "simulated_action": sim_action,
+        "shell_type": shell_type.upper(),
+        "lines_count": len(s.splitlines())
+    }

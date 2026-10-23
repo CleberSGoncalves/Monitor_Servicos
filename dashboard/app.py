@@ -55,7 +55,8 @@ from ai_insights import (
 from fleet_actions import execute_predefined_action
 from remote_commands import (
     get_command_catalog, create_catalog_command, delete_catalog_command,
-    dispatch_remote_command, get_execution_details, get_ai_command_recommendations
+    dispatch_remote_command, get_execution_details, get_ai_command_recommendations,
+    validate_script_syntax
 )
 
 app = FastAPI(title="Central de Monitoração Proativa dos Capture Sites", version="2.0.0")
@@ -110,6 +111,13 @@ class RemoteCommandCatalogCreateRequest(BaseModel):
     title: str
     description: str = ""
     category: str = "consulta"
+    shell_type: str = "powershell"
+    command_script: str
+    criticality_level: str = "informativo"
+    requires_confirmation: bool = False
+    template_vars: str = ""
+
+class RemoteCommandValidateRequest(BaseModel):
     shell_type: str = "powershell"
     command_script: str
 
@@ -1017,8 +1025,17 @@ async def list_command_catalog(category: Optional[str] = None, user: dict = Depe
 
 @app.post("/api/remote-commands/catalog")
 async def add_catalog_command(req: RemoteCommandCatalogCreateRequest, user: dict = Depends(get_current_user)):
-    res = create_catalog_command(req.title, req.description, req.category, req.shell_type, req.command_script, user.get("username", "admin"))
+    res = create_catalog_command(
+        req.title, req.description, req.category, req.shell_type, req.command_script,
+        user.get("username", "admin"),
+        req.criticality_level, req.requires_confirmation, req.template_vars
+    )
     return {"success": True, "command": res}
+
+
+@app.post("/api/remote-commands/validate-syntax")
+async def validate_syntax_endpoint(req: RemoteCommandValidateRequest, user: dict = Depends(get_current_user)):
+    return validate_script_syntax(req.shell_type, req.command_script)
 
 @app.delete("/api/remote-commands/catalog/{cmd_id}")
 async def remove_catalog_command(cmd_id: int, user: dict = Depends(get_current_user)):
