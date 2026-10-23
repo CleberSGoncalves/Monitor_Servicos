@@ -61,7 +61,7 @@ try {
 }
 
 if (-not $downloadUrl) {
-    $downloadUrl = "https://github.com/$REPO/releases/download/v1.0.14.0/DNA.MonitorServiceSVC_v1.0.14.0.zip"
+    $downloadUrl = "https://github.com/$REPO/releases/download/v1.0.16.0/DNA.MonitorServiceSVC_v1.0.16.0.zip"
     Write-Host "[INFO] Utilizando URL direta: $downloadUrl"
 }
 

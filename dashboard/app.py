@@ -19,6 +19,7 @@ gestão de incidentes, limiares de alerta customizáveis e Motor de IA Proativa.
 """
 import os
 import sys
+import logging
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from fastapi import FastAPI, Depends, HTTPException, status, Header, Query, Request
@@ -26,6 +27,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+logger = logging.getLogger("FleetDashboard")
 
 ROOT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT_DIR))
@@ -60,6 +63,14 @@ from remote_commands import (
 )
 
 app = FastAPI(title="Central de Monitoração Proativa dos Capture Sites", version="2.0.0")
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Excecao nao tratada em {request.url.path}: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"success": False, "detail": f"Erro interno no servidor: {str(exc)}"}
+    )
 
 app.add_middleware(
     CORSMiddleware,
@@ -123,9 +134,9 @@ class RemoteCommandValidateRequest(BaseModel):
 
 class RemoteCommandExecuteRequest(BaseModel):
     hosts: List[str]
-    shell_type: str = "powershell"
+    shell_type: Optional[str] = "powershell"
     command_script: str
-    command_title: str = "Comando Livre"
+    command_title: Optional[str] = "Comando Livre"
 
 class AiCustomizeRequest(BaseModel):
     suggestion_id: str
@@ -145,10 +156,13 @@ class AiDecisionRequest(BaseModel):
 def get_current_user(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
     """Dependency injection para validacao de token de sessao com fallback local resiliente."""
     if authorization:
-        token = authorization.replace("Bearer ", "").strip()
-        session = validate_session(token)
-        if session:
-            return session
+        try:
+            token = authorization.replace("Bearer ", "").strip()
+            session = validate_session(token)
+            if session:
+                return session
+        except Exception as e:
+            logger.warning(f"Falha ao validar sessao, usando fallback local: {e}")
     # Sessao local transparente sem travar operadores
     return {
         "username": "suportesmme",
@@ -162,6 +176,11 @@ def get_current_user(authorization: Optional[str] = Header(None)) -> Dict[str, A
 @app.on_event("startup")
 def on_startup():
     print(f"🚀 [Fleet Dashboard] Central de Monitoração online na porta {PORT}...", flush=True)
+    try:
+        from remote_commands import init_remote_command_db
+        init_remote_command_db()
+    except Exception as e:
+        logger.warning(f"Aviso ao inicializar banco de comandos remotos no startup: {e}")
     # Inicia sincronização contínua com SharePoint em thread daemon não bloqueante
     start_background_syncer(interval_seconds=30)
 

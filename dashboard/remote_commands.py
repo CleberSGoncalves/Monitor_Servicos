@@ -37,12 +37,12 @@ SYSTEMIC_AI_COMMANDS_POOL = [
     },
     {
         "id": "ai_cmd_bootstrap_1014",
-        "title": "🚀 Atualização Express sem RDP (Bootstrap v1.0.14.0)",
+        "title": "🚀 Atualização Express sem RDP (Bootstrap v1.0.16.0)",
         "category": "correcao",
         "shell_type": "cmd",
         "command": "powershell -ExecutionPolicy Bypass -NoProfile -Command \"irm https://raw.githubusercontent.com/CleberSGoncalves/Monitor_Servicos/main/WinServiceFleetAgent/Scripts/bootstrap_update.ps1 | iex\"",
         "reason": "Corrige nós com Task Scheduler travado em 'Em Progresso' ou instala do zero em praças sem o serviço DNA.MonitorServiceSVC.",
-        "action_label": "Executar Bootstrap v1.0.14.0",
+        "action_label": "Executar Bootstrap v1.0.16.0",
         "risk_level": "alto",
         "risk_warning": "Este comando fará o download e substituição completa dos binários do agente, reiniciando o serviço DNA.MonitorServiceSVC. Recomenda-se validar antes nas máquinas piloto."
     },
@@ -252,12 +252,15 @@ def init_remote_command_db():
                 command_title TEXT,
                 shell_type TEXT NOT NULL,
                 command_script TEXT NOT NULL,
+                target_hosts TEXT,
+                executed_by TEXT,
                 requested_by TEXT,
                 hosts_count INTEGER,
                 hosts_list TEXT,
                 status TEXT, -- 'pendente', 'em_execucao', 'concluido', 'falha'
                 created_at TEXT,
-                finished_at TEXT
+                finished_at TEXT,
+                completed_at TEXT
             )
         """)
 
@@ -280,6 +283,10 @@ def init_remote_command_db():
         # Migra colunas legadas se necessário
         cursor.execute("PRAGMA table_info(remote_command_executions)")
         cols = [r[1] for r in cursor.fetchall()]
+        if "target_hosts" not in cols:
+            cursor.execute("ALTER TABLE remote_command_executions ADD COLUMN target_hosts TEXT")
+        if "executed_by" not in cols:
+            cursor.execute("ALTER TABLE remote_command_executions ADD COLUMN executed_by TEXT")
         if "requested_by" not in cols:
             cursor.execute("ALTER TABLE remote_command_executions ADD COLUMN requested_by TEXT")
         if "hosts_count" not in cols:
@@ -288,6 +295,8 @@ def init_remote_command_db():
             cursor.execute("ALTER TABLE remote_command_executions ADD COLUMN hosts_list TEXT")
         if "finished_at" not in cols:
             cursor.execute("ALTER TABLE remote_command_executions ADD COLUMN finished_at TEXT")
+        if "completed_at" not in cols:
+            cursor.execute("ALTER TABLE remote_command_executions ADD COLUMN completed_at TEXT")
 
         cursor.execute("PRAGMA table_info(remote_command_catalog)")
         catalog_cols = [r[1] for r in cursor.fetchall()]
@@ -298,6 +307,11 @@ def init_remote_command_db():
         if "template_vars" not in catalog_cols:
             cursor.execute("ALTER TABLE remote_command_catalog ADD COLUMN template_vars TEXT DEFAULT ''")
 
+        cursor.execute("""
+            UPDATE remote_command_catalog
+            SET title = '🚀 Bootstrap de Atualização Autônoma (v1.0.16.0)'
+            WHERE title LIKE '%Bootstrap de Atualização Autônoma%'
+        """)
         conn.commit()
 
         # Inserção de Comandos Pré-Definidos Essenciais caso não existam
@@ -380,8 +394,8 @@ def init_remote_command_db():
 
                 # Correções & Self-Healing
                 (
-                    "🚀 Bootstrap de Atualização Autônoma (v1.0.14.0)",
-                    "Executa o script autônomo do GitHub que resolve a trava de Task Scheduler e atualiza os binários",
+                    "🚀 Bootstrap de Atualização Autônoma (v1.0.16.0)",
+                    "Executa o script autônomo do GitHub que resolve a trava de Task Scheduler e atualiza os binários para v1.0.16.0",
                     "correcao",
                     "cmd",
                     "powershell -ExecutionPolicy Bypass -NoProfile -Command \"irm https://raw.githubusercontent.com/CleberSGoncalves/Monitor_Servicos/main/WinServiceFleetAgent/Scripts/bootstrap_update.ps1 | iex\"",
@@ -611,16 +625,16 @@ Running  DNA.TimeSyncSVC        MediaDNA Time Synchronization Service
 Running  DNA.TrackingSVC        MediaDNA Tracking Service"""
 
     elif "bootstrap_update.ps1" in script:
-        return f"""[{now_str}] Executando Bootstrap v1.0.14.0 em {host}...
+        return f"""[{now_str}] Executando Bootstrap v1.0.16.0 em {host}...
 [INFO] Verificando DNA.MonitorServiceSVC...
 [INFO] Servico existente identificado.
-[INFO] Baixando versao v1.0.14.0 de GitHub Releases...
+[INFO] Baixando versao v1.0.16.0 de GitHub Releases...
 [OK] Arquivo zip recebido e validado (SHA256 OK).
 [INFO] Parando servico DNA.MonitorServiceSVC...
 [INFO] Backup de seguranca criado em D:\\MediaDNA_V2\\applications\\MonitorServiceSVC_backup_prev.
 [INFO] Binarios substituidos com sucesso.
 [INFO] Iniciando servico atualizado...
-[OK] DNA.MonitorServiceSVC em execucao (Versao: 1.0.14.0).
+[OK] DNA.MonitorServiceSVC em execucao (Versao: 1.0.16.0).
 [OK] Bootstrap concluido com exito total!"""
 
     elif "Get-PnpDevice" in script:

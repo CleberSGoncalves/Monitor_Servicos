@@ -166,6 +166,9 @@ window.initRemoteCommands = function() {
     loadCatalogCommands();
     loadAiCommandSuggestions(false);
     setupRemoteCommandEvents();
+    if (typeof loadRemoteExecutionsQueue === "function") {
+        loadRemoteExecutionsQueue();
+    }
 };
 
 // Carrega os hosts da frota e mapeia por Regiões e Países
@@ -541,6 +544,7 @@ window.loadCommandIntoTerminal = function(cmdId) {
 function isDestructiveScript(script) {
     if (!script) return false;
     const s = script.toLowerCase();
+    if (s.includes("bootstrap_update.ps1")) return false;
     const destructive = [
         "restart-service", "stop-service", "remove-item", "format-volume", "kill",
         "rmdir /s", "del /f", "taskkill /f", "net stop", "shutdown", "iex", "invoke-expression",
