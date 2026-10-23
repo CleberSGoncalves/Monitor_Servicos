@@ -4109,7 +4109,7 @@
 
 
 
-          <i class="fas fa-brain"></i> 🧠 Sugestões Proativas da Frota
+          <i class="fas fa-brain"></i> 🧠 Mesa de Engenharia de Triggers (Inbox Proativo)
 
 
 
@@ -4146,76 +4146,88 @@
 
 
       <div id="ai-content-suggestions">
-
-
-
-        <div class="panel-card">
-
-
-
-          <div class="panel-header">
-
-
-
-            <div>
-
-
-
-              <div class="panel-title"><span>🧠</span> Motor de Inteligência Artificial Proativa</div>
-
-
-
-              <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Analisa correlações de telemetria, desgaste de tuners, saturação de I/O e padrões de queda para sugerir novas automações</div>
-
-
-
+        <div class="panel-card" style="padding: 20px;">
+          <!-- Header Bar with Metrics & Filters -->
+          <div class="ai-workbench-header">
+            <div class="ai-header-info">
+              <div class="panel-title" style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 20px;">🧠</span> Mesa de Engenharia de Triggers & Automações Proativas
+              </div>
+              <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+                Fila inteligente de inovação: sugestões deduplicadas com análise de impacto, simulação de 14 dias e esteira canário antes do rollout.
+              </div>
             </div>
 
-
+            <!-- Telemetria Rápida de Deduplicação -->
+            <div class="ai-metrics-badges">
+              <div class="ai-metric-pill" title="Oportunidades únicas propostas pela IA">
+                <span class="ai-metric-icon">💡</span>
+                <span class="ai-metric-val" id="aiUniqueCount">10</span>
+                <span class="ai-metric-lbl">Oportunidades Únicas</span>
+              </div>
+              <div class="ai-metric-pill ai-metric-dedup" title="Regras repetidas deduplicadas automaticamente pelo motor">
+                <span class="ai-metric-icon">🔁</span>
+                <span class="ai-metric-val" id="aiDedupCount">0</span>
+                <span class="ai-metric-lbl">Deduplicadas</span>
+              </div>
+            </div>
 
             <button class="btn-primary" id="btnTriggerAi" onclick="triggerAiAnalysis()">
-
-
-
               <span>✨</span> Analisar Todo o Sistema com IA
-
-
-
             </button>
-
-
-
           </div>
 
-
-
-
-
-
-
-          <div class="ai-cards-grid" id="aiCardsGrid">
-
-
-
-            <!-- Cards dinâmicos gerados pela IA com botão 'Aprovar para Homologação' -->
-
-
-
+          <!-- Filter Pills Toolbar -->
+          <div class="ai-filter-toolbar">
+            <div class="ai-category-filters" id="aiCategoryFilters">
+              <button class="ai-filter-btn active" data-cat="all" onclick="filterAiCategory('all')">
+                <i class="fas fa-layer-group"></i> Todas as Oportunidades
+              </button>
+              <button class="ai-filter-btn" data-cat="auto_healing" onclick="filterAiCategory('auto_healing')">
+                <i class="fas fa-heartbeat"></i> Auto-Healing
+              </button>
+              <button class="ai-filter-btn" data-cat="performance" onclick="filterAiCategory('performance')">
+                <i class="fas fa-tachometer-alt"></i> Performance & I/O
+              </button>
+              <button class="ai-filter-btn" data-cat="sinal_rf" onclick="filterAiCategory('sinal_rf')">
+                <i class="fas fa-satellite-dish"></i> Sinal RF & Drivers
+              </button>
+              <button class="ai-filter-btn" data-cat="sistema" onclick="filterAiCategory('sistema')">
+                <i class="fas fa-server"></i> Sistema & SO
+              </button>
+            </div>
+            <div class="ai-quick-search">
+              <i class="fas fa-search" style="color: var(--text-muted); font-size: 12px;"></i>
+              <input type="text" id="aiTriggerSearch" placeholder="Filtrar por serviço, título ou praça..." oninput="onAiSearchInput(this.value)">
+            </div>
           </div>
 
+          <!-- Two-Column Engineering Desk -->
+          <div class="ai-workbench-grid">
+            <!-- Left Column: List of Triggers (60%) -->
+            <div class="ai-trigger-list-column">
+              <div class="ai-column-title">
+                <span>📋 Triggers Propostas para Avaliação</span>
+                <span id="aiTriggerListBadge" class="badge badge-blue">0 listadas</span>
+              </div>
+              <div class="ai-trigger-cards-list" id="aiTriggerListContainer">
+                <div style="text-align: center; padding: 40px; color: var(--text-muted);">
+                  <i class="fas fa-spinner fa-spin"></i> Carregando sugestões deduplicadas da frota...
+                </div>
+              </div>
+            </div>
 
+            <!-- Right Column: Inspection, Dry-Run & Canary Desk (40%) -->
+            <div class="ai-trigger-detail-column" id="aiTriggerDetailPanel">
+              <div class="ai-detail-empty">
+                <i class="fas fa-sliders-h" style="font-size: 36px; margin-bottom: 12px; opacity: 0.5;"></i>
+                <h4>Selecione uma regra à esquerda para inspecionar parâmetros, simulação e script.</h4>
+              </div>
+            </div>
+          </div>
 
         </div>
-
-
-
       </div>
-
-
-
-
-
-
 
       <!-- SUBTAB 2: ESTEIRA DE HOMOLOGAÇÃO & VALIDAÇÃO NO AGENTE -->
 

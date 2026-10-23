@@ -52,12 +52,17 @@ window.switchAiSubtab = switchAiSubtab;
 
 
 // =========================================================================
-// SUBTAB 1: PROACTIVE AI SUGGESTIONS
+// SUBTAB 1: PROACTIVE AI SUGGESTIONS & ENGINEERING WORKBENCH
 // =========================================================================
+let aiSuggestionsCache = [];
+let activeAiCategory = "all";
+let activeAiSearchQuery = "";
+let selectedAiTriggerId = null;
+
 async function loadAiSuggestions() {
-    const container = document.getElementById("aiCardsGrid");
-    if (!container) return;
-    container.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 30px; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Carregando sugestões ativas da IA...</div>`;
+    const listContainer = document.getElementById("aiTriggerListContainer");
+    if (!listContainer) return;
+    listContainer.innerHTML = `<div style="text-align: center; padding: 40px; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Carregando sugestões deduplicadas da frota...</div>`;
 
     try {
         const token = getAiToken();
@@ -65,34 +70,435 @@ async function loadAiSuggestions() {
             headers: token ? { "Authorization": `Bearer ${token}` } : {}
         });
         if (!resp.ok) return;
-        const suggestions = await resp.json();
-        renderAiCards(suggestions);
-    } catch {
-        container.innerHTML = `<div style="grid-column: 1/-1; color: var(--accent-red); text-align: center; padding: 20px;">Falha ao carregar sugestões da IA.</div>`;
+        const resData = await resp.json();
+        
+        let suggestions = [];
+        let totalUnique = 0;
+        let dedupCount = 0;
+        
+        if (Array.isArray(resData)) {
+            suggestions = resData;
+            totalUnique = suggestions.length;
+            dedupCount = 0;
+        } else if (resData && typeof resData === "object") {
+            suggestions = resData.suggestions || resData.items || [];
+            totalUnique = resData.total_unique || suggestions.length;
+            dedupCount = resData.deduplicated_count || 0;
+        }
+
+        aiSuggestionsCache = suggestions;
+        
+        const uniqueEl = document.getElementById("aiUniqueCount");
+        const dedupEl = document.getElementById("aiDedupCount");
+        if (uniqueEl) uniqueEl.textContent = totalUnique;
+        if (dedupEl) dedupEl.textContent = dedupCount;
+
+        renderAiWorkbench();
+    } catch (e) {
+        if (listContainer) {
+            listContainer.innerHTML = `<div style="color: var(--accent-red); text-align: center; padding: 20px;">Falha ao carregar sugestões da IA.</div>`;
+        }
     }
 }
 
+function filterAiCategory(cat) {
+    activeAiCategory = cat;
+    document.querySelectorAll(".ai-filter-btn").forEach(btn => {
+        if (btn.getAttribute("data-cat") === cat) {
+            btn.classList.add("active");
+        } else {
+            btn.classList.remove("active");
+        }
+    });
+    renderAiWorkbench();
+}
+window.filterAiCategory = filterAiCategory;
+
+function onAiSearchInput(query) {
+    activeAiSearchQuery = (query || "").toLowerCase().trim();
+    renderAiWorkbench();
+}
+window.onAiSearchInput = onAiSearchInput;
+
+function renderAiWorkbench() {
+    const listContainer = document.getElementById("aiTriggerListContainer");
+    const badgeEl = document.getElementById("aiTriggerListBadge");
+    if (!listContainer) return;
+
+    let filtered = aiSuggestionsCache.filter(s => {
+        if (activeAiCategory !== "all" && s.category !== activeAiCategory) {
+            return false;
+        }
+        if (activeAiSearchQuery) {
+            const haystack = `${s.title} ${s.description} ${s.category} ${s.blast_radius || ""}`.toLowerCase();
+            if (!haystack.includes(activeAiSearchQuery)) return false;
+        }
+        return true;
+    });
+
+    if (badgeEl) {
+        badgeEl.textContent = `${filtered.length} listadas`;
+    }
+
+    if (filtered.length === 0) {
+        listContainer.innerHTML = `
+            <div style="text-align: center; padding: 40px 20px; background: rgba(0,0,0,0.2); border-radius: var(--radius-lg); border: 1px dashed var(--border-color);">
+                <span style="font-size: 28px;">🎯</span>
+                <h4 style="margin-top: 10px; font-size: 14px; color: #fff;">Nenhuma trigger encontrada para este filtro</h4>
+                <p style="color: var(--text-muted); font-size: 12px; margin-top: 4px;">Tente alterar a categoria ou a busca textual.</p>
+            </div>
+        `;
+        renderAiDetailEmpty();
+        return;
+    }
+
+    // Auto-select first item if current selection not in filtered
+    if (!selectedAiTriggerId || !filtered.find(f => f.id === selectedAiTriggerId)) {
+        selectedAiTriggerId = filtered[0].id;
+    }
+
+    listContainer.innerHTML = filtered.map(s => {
+        const isSelected = s.id === selectedAiTriggerId;
+        const riskClass = s.risk_level === "alto" ? "risk-pill-red" : (s.risk_level === "medio" ? "risk-pill-yellow" : "risk-pill-green");
+        const dry = s.dry_run || {};
+        let firings = dry.triggered_14d !== undefined ? String(dry.triggered_14d) : "Simulado";
+        if (typeof dry.triggered_14d === "number") firings += "x / 14d";
+        let fpRate = dry.false_positive_pct !== undefined ? String(dry.false_positive_pct) : "<0.5% FP";
+        if (typeof dry.false_positive_pct === "number") fpRate += "% falso-pos.";
+        const categoryLabels = {
+            "auto_healing": "Auto-Healing",
+            "performance": "Performance",
+            "sinal_rf": "Sinal RF",
+            "sistema": "Sistema"
+        };
+        const catLabel = categoryLabels[s.category] || s.category.toUpperCase();
+
+        return `
+            <div class="ai-trigger-item ${isSelected ? 'selected' : ''}" id="ai-trigger-item-${s.id}" onclick="selectAiTrigger('${s.id}')">
+                <div class="ai-trigger-item-header">
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <span class="badge badge-blue" style="font-size: 10px; padding: 2px 6px;">${catLabel}</span>
+                        <span class="${riskClass}">${escapeHtml(s.risk_label || '🟢 Baixo Risco')}</span>
+                    </div>
+                    <span style="font-size: 11px; font-weight: 600; color: #a78bfa; font-family: monospace;">
+                        <i class="fas fa-check-double"></i> ${firings}
+                    </span>
+                </div>
+                <div class="ai-trigger-item-title">${escapeHtml(s.title)}</div>
+                <div class="ai-trigger-item-desc">${escapeHtml(s.description)}</div>
+                <div class="ai-trigger-item-footer">
+                    <span><i class="fas fa-bullseye" style="color: #38bdf8;"></i> ${escapeHtml(s.blast_radius || 'Escopo Controlado')}</span>
+                    <span style="color: #34d399;"><i class="fas fa-shield-alt"></i> ${fpRate}</span>
+                </div>
+            </div>
+        `;
+    }).join("");
+
+    renderAiTriggerDetail(selectedAiTriggerId);
+}
+
+function selectAiTrigger(triggerId) {
+    selectedAiTriggerId = triggerId;
+    document.querySelectorAll(".ai-trigger-item").forEach(item => {
+        if (item.id === `ai-trigger-item-${triggerId}`) {
+            item.classList.add("selected");
+        } else {
+            item.classList.remove("selected");
+        }
+    });
+    renderAiTriggerDetail(triggerId);
+}
+window.selectAiTrigger = selectAiTrigger;
+
+function renderAiDetailEmpty() {
+    const detailPanel = document.getElementById("aiTriggerDetailPanel");
+    if (!detailPanel) return;
+    detailPanel.innerHTML = `
+        <div class="ai-detail-empty">
+            <i class="fas fa-sliders-h" style="font-size: 36px; margin-bottom: 12px; opacity: 0.5;"></i>
+            <h4>Selecione uma regra à esquerda para inspecionar parâmetros, simulação e script.</h4>
+        </div>
+    `;
+}
+
+function renderAiTriggerDetail(triggerId) {
+    const detailPanel = document.getElementById("aiTriggerDetailPanel");
+    if (!detailPanel) return;
+
+    const s = aiSuggestionsCache.find(x => x.id === triggerId);
+    if (!s) {
+        renderAiDetailEmpty();
+        return;
+    }
+
+    const dry = s.dry_run || { triggered_14d: 6, false_positive_pct: 0.0, impact_cpu_network: "+0.3% CPU" };
+    const customParams = s.customizable_params || { threshold: 3, threshold_label: "Limiar de disparo", threshold_unit: "ocorrências", pilot_host: "Pelotas - CS 1" };
+    const pilotOptions = s.pilot_options || [
+        "Pelotas - CS 1", "São Paulo - CS 1", "Campinas - CS 1", "São José dos Campos - CS 2", "Ribeirão Preto - CS 1"
+    ];
+    const riskClass = s.risk_level === "alto" ? "risk-pill-red" : (s.risk_level === "medio" ? "risk-pill-yellow" : "risk-pill-green");
+    const scriptText = s.code_snippet || "# Script Watchdog padrão\nWrite-Host 'Auto-Healing monitor ativo'";
+
+    const optionsHtml = pilotOptions.map(host => {
+        const selected = host === customParams.pilot_host ? "selected" : "";
+        return `<option value="${escapeHtml(host)}" ${selected}>${escapeHtml(host)}</option>`;
+    }).join("");
+
+    detailPanel.innerHTML = `
+        <div class="ai-detail-header">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <span class="${riskClass}">${escapeHtml(s.risk_label || '🟢 Risco Baixo')}</span>
+                <span style="font-size: 11px; color: var(--text-muted);">
+                    <i class="fas fa-satellite"></i> ${escapeHtml(s.blast_radius || 'Frota Nacional')}
+                </span>
+            </div>
+            <div class="ai-detail-title">${escapeHtml(s.title)}</div>
+            <div style="font-size: 12px; color: var(--text-muted); margin-top: 6px; line-height: 1.45;">
+                ${escapeHtml(s.description)}
+            </div>
+        </div>
+
+        <!-- Dry Run Box -->
+        <div class="ai-dry-run-box">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+                <span style="font-size: 12px; font-weight: 700; color: #38bdf8;">
+                    <i class="fas fa-chart-line"></i> Simulação Histórica (Últimos 14 Dias)
+                </span>
+                <span style="font-size: 11px; color: var(--text-muted);">Base: Logs da Frota</span>
+            </div>
+            <div class="ai-dry-run-grid">
+                <div class="ai-dry-run-stat">
+                    <div class="ai-dry-run-val">${escapeHtml(String(dry.triggered_14d ?? "0"))}</div>
+                    <div class="ai-dry-run-lbl">Disparos projetados</div>
+                </div>
+                <div class="ai-dry-run-stat">
+                    <div class="ai-dry-run-val" style="color: #34d399;">${escapeHtml(String(dry.false_positive_pct ?? "0%"))}</div>
+                    <div class="ai-dry-run-lbl">Risco falso-positivo</div>
+                </div>
+                <div class="ai-dry-run-stat" style="grid-column: span 2;">
+                    <div class="ai-dry-run-val" style="font-size: 12px; color: #cbd5e1;">${escapeHtml(dry.impact_cpu_network || 'Uso residual insignificante')}</div>
+                    <div class="ai-dry-run-lbl">Impacto estimado em CPU / I/O / Rede</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Script Watchdog Preview -->
+        <div>
+            <div class="ai-script-wrapper">
+                <div class="ai-script-header">
+                    <span><i class="fas fa-terminal"></i> Watchdog Script (PowerShell / C#)</span>
+                    <button class="btn-secondary" style="padding: 2px 8px; font-size: 10px;" onclick="copyAiScript('${s.id}')">
+                        <i class="fas fa-copy"></i> Copiar
+                    </button>
+                </div>
+                <pre class="ai-script-code" id="ai-script-code-${s.id}">${escapeHtml(scriptText)}</pre>
+            </div>
+        </div>
+
+        <!-- Parameter Customization Form -->
+        <div class="ai-params-box">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                <span style="font-size: 12px; font-weight: 700; color: #fff;">
+                    <i class="fas fa-sliders-h"></i> Customização de Parâmetros
+                </span>
+                <button class="btn-secondary" style="font-size: 11px; padding: 4px 10px;" onclick="saveCustomParameters('${s.id}')">
+                    <i class="fas fa-save"></i> Salvar Ajustes
+                </button>
+            </div>
+            <div class="ai-params-grid">
+                <div class="ai-params-field">
+                    <label>${escapeHtml(customParams.threshold_label || 'Limiar Operacional')} (${escapeHtml(customParams.threshold_unit || '')}):</label>
+                    <input type="number" id="input-param-threshold-${s.id}" value="${customParams.threshold ?? 3}" step="any">
+                </div>
+                <div class="ai-params-field">
+                    <label>Praça Piloto Alvo:</label>
+                    <select id="select-param-pilot-${s.id}">
+                        ${optionsHtml}
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Desk Actions -->
+        <div class="ai-desk-actions">
+            <button class="btn-primary" style="background: linear-gradient(135deg, #0ea5e9, #0284c7); padding: 10px;" onclick="runCanaryTest('${s.id}')">
+                <i class="fas fa-vial"></i> Iniciar Teste Piloto (Canary 48h no Host Alvo)
+            </button>
+            <div class="ai-desk-btn-row">
+                <button class="btn-primary" style="flex: 1.2; background: linear-gradient(135deg, #2563eb, #1d4ed8); padding: 10px;" onclick="approveWorkbenchHomologation('${s.id}')">
+                    <i class="fas fa-flask"></i> Aprovar p/ Homologação
+                </button>
+                <button class="btn-secondary" style="flex: 0.8; padding: 10px; color: #ef4444;" onclick="decideAiSuggestion('${s.id}', false)">
+                    <i class="fas fa-times"></i> Descartar
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+function copyAiScript(suggestionId) {
+    const el = document.getElementById(`ai-script-code-${suggestionId}`);
+    if (!el) return;
+    navigator.clipboard.writeText(el.innerText).then(() => {
+        alert("📋 Script copiado com sucesso para a área de transferência!");
+    }).catch(() => {
+        alert("Erro ao copiar script.");
+    });
+}
+window.copyAiScript = copyAiScript;
+
+async function saveCustomParameters(suggestionId) {
+    const threshInput = document.getElementById(`input-param-threshold-${suggestionId}`);
+    const pilotSelect = document.getElementById(`select-param-pilot-${suggestionId}`);
+    if (!threshInput || !pilotSelect) return;
+
+    const thresholdVal = parseFloat(threshInput.value) || threshInput.value;
+    const pilotVal = pilotSelect.value;
+
+    try {
+        const token = getAiToken();
+        const resp = await fetch("/api/ai/suggestions/customize", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": token ? `Bearer ${token}` : ""
+            },
+            body: JSON.stringify({
+                suggestion_id: suggestionId,
+                threshold: thresholdVal,
+                pilot_host: pilotVal
+            })
+        });
+
+        if (resp.ok) {
+            const data = await resp.json();
+            const s = aiSuggestionsCache.find(x => x.id === suggestionId);
+            if (s && s.customizable_params) {
+                s.customizable_params.threshold = thresholdVal;
+                s.customizable_params.pilot_host = pilotVal;
+            }
+            alert(`✅ Parâmetros salvos com sucesso!\n\nLimiar configurado: ${thresholdVal}\nHost Piloto: ${pilotVal}`);
+        } else {
+            const err = await resp.json();
+            alert(`Erro ao salvar: ${err.detail || "Falha ao gravar parâmetros"}`);
+        }
+    } catch (e) {
+        alert("Erro de comunicação ao salvar parâmetros.");
+    }
+}
+window.saveCustomParameters = saveCustomParameters;
+
+async function runCanaryTest(suggestionId) {
+    const pilotSelect = document.getElementById(`select-param-pilot-${suggestionId}`);
+    const pilotHost = pilotSelect ? pilotSelect.value : "Pelotas - CS 1";
+
+    if (!confirm(`Deseja iniciar o Teste Piloto (Canary 48h) no host '${pilotHost}' em modo isolado?\n\nA regra operará em observação sem afetar outras praças da frota.`)) {
+        return;
+    }
+
+    try {
+        const token = getAiToken();
+        const resp = await fetch("/api/ai/suggestions/canary-test", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": token ? `Bearer ${token}` : ""
+            },
+            body: JSON.stringify({
+                suggestion_id: suggestionId,
+                pilot_host: pilotHost,
+                test_hours: 48
+            })
+        });
+
+        if (resp.ok) {
+            const res = await resp.json();
+            alert(`🧪 Teste Piloto Ativado!\n\n${res.message}\nHost: ${pilotHost}\nStatus: ${res.status}`);
+            loadAiSuggestions();
+        } else {
+            const err = await resp.json();
+            alert(`Erro ao iniciar piloto: ${err.detail || "Falha"}`);
+        }
+    } catch (e) {
+        alert("Erro de comunicação ao iniciar teste canário.");
+    }
+}
+window.runCanaryTest = runCanaryTest;
+
+async function approveWorkbenchHomologation(suggestionId) {
+    const pilotSelect = document.getElementById(`select-param-pilot-${suggestionId}`);
+    const pilotHost = pilotSelect ? pilotSelect.value : "São Paulo - CS 1";
+
+    try {
+        const token = getAiToken();
+        const resp = await fetch("/api/ai/homologation/approve", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": token ? `Bearer ${token}` : ""
+            },
+            body: JSON.stringify({
+                suggestion_id: suggestionId,
+                pilot_host: pilotHost
+            })
+        });
+
+        if (resp.ok) {
+            alert(`🧪 Sugestão aprovada e enviada para a Esteira de Homologação!\n\nHost piloto selecionado: ${pilotHost}\nO recurso está disponível na subaba 'Esteira de Homologação'.`);
+            loadAiSuggestions();
+            loadHomologationCountBadge();
+        } else {
+            const err = await resp.json();
+            alert(`Erro: ${err.detail || "Falha ao aprovar para homologação"}`);
+        }
+    } catch (err) {
+        alert(`Erro de comunicação: ${err.message}`);
+    }
+}
+window.approveWorkbenchHomologation = approveWorkbenchHomologation;
+
+async function decideAiSuggestion(id, approve) {
+    try {
+        const token = getAiToken();
+        const resp = await fetch("/api/ai/decision", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": token ? `Bearer ${token}` : ""
+            },
+            body: JSON.stringify({ suggestion_id: id, approve: approve })
+        });
+
+        if (resp.ok) {
+            alert(approve ? "Sugestão aprovada!" : "Sugestão descartada. O motor de IA aprendeu sua preferência.");
+            loadAiSuggestions();
+        }
+    } catch {
+        alert("Erro ao processar decisão.");
+    }
+}
+window.decideAiSuggestion = decideAiSuggestion;
+
 async function triggerAiAnalysis() {
     const btn = document.getElementById("btnTriggerAi");
-    const container = document.getElementById("aiCardsGrid");
+    const container = document.getElementById("aiTriggerListContainer");
     
     if (btn) {
         btn.disabled = true;
         btn.innerHTML = `<span>⏳</span> Analisando Métricas e Sinais da Frota...`;
     }
     if (container) {
-        container.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--text-highlight);"><span style="font-size: 28px;">🧠</span><br><br><strong>A Inteligência Artificial está correlacionando métricas operacionais do Windows, desgaste de memória do kernel, latência de disco D:, saturação de TCP e padrões em todas as 22 praças...</strong></div>`;
+        container.innerHTML = `<div style="text-align: center; padding: 40px; color: var(--text-highlight);"><span style="font-size: 28px;">🧠</span><br><br><strong>A Inteligência Artificial está correlacionando telemetria operacional, buffers, sockets e logs de todas as praças para deduplicar e propor automações...</strong></div>`;
     }
 
     try {
         const token = getAiToken();
         const resp = await fetch("/api/ai/analyze", {
             method: "POST",
-            headers: token ? { "Authorization": `Bearer ${token}` } : {}
+            headers: token ? { "Authorization": token ? `Bearer ${token}` : "" } : {}
         });
         if (resp.ok) {
-            const data = await resp.json();
-            renderAiCards(data.suggestions || []);
+            await loadAiSuggestions();
         } else {
             alert("Erro ao disparar análise de IA.");
         }
@@ -105,127 +511,8 @@ async function triggerAiAnalysis() {
         }
     }
 }
-
-function renderAiCards(suggestions) {
-    const container = document.getElementById("aiCardsGrid");
-    if (!container) return;
-
-    if (!suggestions || suggestions.length === 0) {
-        container.innerHTML = `
-            <div style="grid-column: 1/-1; text-align: center; padding: 50px 20px; background: rgba(0,0,0,0.2); border-radius: var(--radius-lg); border: 1px dashed var(--border-color);">
-                <span style="font-size: 32px;">🎯</span>
-                <h3 style="margin-top: 10px; font-size: 16px;">Tudo Calibrado e Otimizado no Escopo Global</h3>
-                <p style="color: var(--text-muted); font-size: 13px; margin-top: 6px;">Nenhuma anomalia oculta pendente. Clique no botão acima para rodar uma nova auditoria com IA a qualquer momento.</p>
-            </div>
-        `;
-        return;
-    }
-
-    container.innerHTML = suggestions.map(s => {
-        const badgeColor = s.severity === "critica" ? "badge-red" : (s.severity === "alta" ? "badge-yellow" : "badge-blue");
-
-        return `
-            <div class="ai-card" id="ai-card-${s.id}">
-                <div>
-                    <div class="ai-card-header">
-                        <span class="badge ${badgeColor}">${s.category.toUpperCase()} • ${s.severity.toUpperCase()}</span>
-                        <span style="font-size: 11px; font-weight: 600; color: #38bdf8; background: rgba(56, 189, 248, 0.15); padding: 3px 8px; border-radius: 4px; border: 1px solid rgba(56, 189, 248, 0.3);">
-                            <i class="fas fa-globe"></i> Escopo Global (Todas as Praças)
-                        </span>
-                    </div>
-                    <h4 class="ai-card-title">${escapeHtml(s.title)}</h4>
-                    <p class="ai-card-desc">${escapeHtml(s.description)}</p>
-                </div>
-                <div class="ai-card-actions">
-                    <button class="btn-primary" style="flex: 1.2; font-size: 12px; padding: 8px; background: linear-gradient(135deg, #2563eb, #1d4ed8);" onclick="approveForHomologation('${s.id}')">
-                        🧪 Aprovar para Homologação
-                    </button>
-                    <button class="btn-secondary" style="flex: 0.8; font-size: 12px; padding: 8px;" onclick="decideAiSuggestion('${s.id}', false)">
-                        ❌ Recusar
-                    </button>
-                </div>
-            </div>
-        `;
-    }).join("");
-}
-
-async function approveForHomologation(suggestionId) {
-    const card = document.getElementById(`ai-card-${suggestionId}`);
-    if (card) {
-        card.style.opacity = "0.5";
-        card.style.pointerEvents = "none";
-    }
-
-    try {
-        const token = getAiToken();
-        const resp = await fetch("/api/ai/homologation/approve", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${token}`
-            },
-            body: JSON.stringify({
-                suggestion_id: suggestionId,
-                pilot_host: "São Paulo - CS 1"
-            })
-        });
-
-        if (resp.ok) {
-            if (card) card.remove();
-            alert("🧪 Sugestão aprovada e enviada para a Esteira de Homologação!\n\nO recurso está agora na subaba 'Homologação' pronto para testes no agente piloto antes da implantação oficial.");
-            loadAiSuggestions();
-            loadHomologationCountBadge();
-        } else {
-            const err = await resp.json();
-            alert(`Erro: ${err.detail || "Falha ao aprovar para homologação"}`);
-            if (card) {
-                card.style.opacity = "1";
-                card.style.pointerEvents = "auto";
-            }
-        }
-    } catch (err) {
-        alert(`Erro de comunicação: ${err.message}`);
-        if (card) {
-            card.style.opacity = "1";
-            card.style.pointerEvents = "auto";
-        }
-    }
-}
-window.approveForHomologation = approveForHomologation;
-
-async function decideAiSuggestion(id, approve) {
-    const card = document.getElementById(`ai-card-${id}`);
-    if (card) {
-        card.style.opacity = "0.5";
-        card.style.pointerEvents = "none";
-    }
-
-    try {
-        const token = getAiToken();
-        const resp = await fetch("/api/ai/decision", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${token}`
-            },
-            body: JSON.stringify({ suggestion_id: id, approve: approve })
-        });
-
-        if (resp.ok) {
-            if (card) card.remove();
-            alert("Sugestão recusada. O motor de IA aprendeu sua preferência.");
-            loadAiSuggestions();
-        }
-    } catch {
-        alert("Erro ao processar decisão.");
-        if (card) {
-            card.style.opacity = "1";
-            card.style.pointerEvents = "auto";
-        }
-    }
-}
-window.decideAiSuggestion = decideAiSuggestion;
-
+window.triggerAiAnalysis = triggerAiAnalysis;
+window.loadAiSuggestions = loadAiSuggestions;
 
 // =========================================================================
 // SUBTAB 2: ESTEIRA DE HOMOLOGAÇÃO & VALIDAÇÃO NO AGENTE

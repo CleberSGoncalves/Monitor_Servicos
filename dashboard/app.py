@@ -48,7 +48,10 @@ from media_pipeline_monitor import (
     get_fleet_pipeline_incidents, get_link_monitoring_metrics,
     diagnose_link_and_pipeline_with_ai
 )
-from ai_insights import run_ai_fleet_analysis, get_active_ai_suggestions, apply_ai_suggestion
+from ai_insights import (
+    run_ai_fleet_analysis, get_active_ai_suggestions, apply_ai_suggestion,
+    save_suggestion_customization, start_canary_test
+)
 from fleet_actions import execute_predefined_action
 from remote_commands import (
     get_command_catalog, create_catalog_command, delete_catalog_command,
@@ -115,6 +118,16 @@ class RemoteCommandExecuteRequest(BaseModel):
     shell_type: str = "powershell"
     command_script: str
     command_title: str = "Comando Livre"
+
+class AiCustomizeRequest(BaseModel):
+    suggestion_id: str
+    threshold: Optional[Any] = None
+    pilot_host: Optional[str] = None
+
+class AiCanaryRequest(BaseModel):
+    suggestion_id: str
+    pilot_host: str
+    test_hours: int = 48
 
 class AiDecisionRequest(BaseModel):
     suggestion_id: str
@@ -642,6 +655,22 @@ async def analyze_with_ai(user: dict = Depends(get_current_user)):
 @app.get("/api/ai/suggestions")
 async def get_suggestions(user: dict = Depends(get_current_user)):
     return get_active_ai_suggestions()
+
+
+@app.post("/api/ai/suggestions/customize")
+async def customize_suggestion_endpoint(req: AiCustomizeRequest, user: dict = Depends(get_current_user)):
+    res = save_suggestion_customization(req.suggestion_id, req.threshold, req.pilot_host)
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("error", "Erro ao customizar sugestão"))
+    return res
+
+
+@app.post("/api/ai/suggestions/canary-test")
+async def start_canary_test_endpoint(req: AiCanaryRequest, user: dict = Depends(get_current_user)):
+    res = start_canary_test(req.suggestion_id, req.pilot_host, req.test_hours)
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("error", "Erro ao iniciar teste canário"))
+    return res
 
 
 @app.post("/api/ai/decision")
