@@ -2796,15 +2796,15 @@
 
 
 
-              <span style="display: inline-flex; align-items: center; gap: 6px;"><span style="width: 12px; height: 12px; background: #10b981; border-radius: 2px;"></span> Qualidade (%)</span>
+              <span style="display: inline-flex; align-items: center; gap: 6px;"><span style="width: 12px; height: 12px; background: #10b981; border-radius: 2px;"></span> <span id="label-signal-green">Qualidade (%)</span></span>
 
 
 
-              <span style="display: inline-flex; align-items: center; gap: 6px;"><span style="width: 12px; height: 12px; background: #38bdf8; border-radius: 2px;"></span> Força (%)</span>
+              <span style="display: inline-flex; align-items: center; gap: 6px;"><span style="width: 12px; height: 12px; background: #38bdf8; border-radius: 2px;"></span> <span id="label-signal-blue">Força (%)</span></span>
 
 
 
-              <span style="display: inline-flex; align-items: center; gap: 6px;"><span style="width: 16px; height: 2px; border-top: 2px dashed #ef4444;"></span> Limiar de Lock (45%)</span>
+              <span style="display: inline-flex; align-items: center; gap: 6px;"><span style="width: 16px; height: 2px; border-top: 2px dashed #ef4444;"></span> <span id="label-signal-red">Limiar de Lock (45%)</span></span>
 
 
 
@@ -5104,7 +5104,7 @@
 
 
 
-          <select class="rc-host-select" id="remote-host-select"></select>
+          <select class="rc-host-select" id="remote-host-select" onchange="addHostToSelection()"></select>
 
 
 

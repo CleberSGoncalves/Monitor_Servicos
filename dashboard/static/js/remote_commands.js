@@ -527,6 +527,14 @@ window.executeTerminalCommand = function() {
     }
 
     if (selectedRemoteHosts.length === 0) {
+        const select = document.getElementById("remote-host-select");
+        if (select && select.value) {
+            selectedRemoteHosts.push(select.value);
+            updateSelectedHostsUI();
+        }
+    }
+
+    if (selectedRemoteHosts.length === 0) {
         safeToast("Selecione ao menos um Capture Site para executar o comando.", "warning");
         return;
     }
@@ -538,6 +546,14 @@ window.executeTerminalCommand = function() {
 };
 
 function executeRemoteScript(script, shellType, title) {
+    if (selectedRemoteHosts.length === 0) {
+        const select = document.getElementById("remote-host-select");
+        if (select && select.value) {
+            selectedRemoteHosts.push(select.value);
+            updateSelectedHostsUI();
+        }
+    }
+
     if (selectedRemoteHosts.length === 0) {
         safeToast("Selecione ao menos uma praça no seletor do topo.", "warning");
         return;

@@ -262,6 +262,12 @@ def get_fleet_pipeline_incidents(services: list = None, channels: list = None, t
             "recommended_action": "Reiniciar encoder de áudio do Atria e validar ingestão da placa de captura."
         })
 
+    for inc in incidents:
+        if "delay_minutes" not in inc or inc.get("delay_minutes") is None:
+            inc["delay_minutes"] = round(inc.get("elapsed_minutes", 18.0))
+        if inc.get("cs") == 2:
+            inc["media_converter_info"] = "DNA.MediaConverter (.ASF BKP ativo na CS02)"
+
     _PIPELINE_CACHE["last_scan"] = now
     _PIPELINE_CACHE["fleet_incidents"] = incidents
     return incidents

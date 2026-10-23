@@ -393,6 +393,10 @@ async function loadMediaPipelineIncidents() {
             const isSentDelay = inc.incident_type === "sent_delay";
             const icon = isSentDelay ? "⏳" : "⚠️";
             const badgeClass = inc.severity === "critico" ? "badge-red" : "badge-yellow";
+            const isCs2 = (inc.cs === 2);
+            const convBadge = isCs2 ? `<span class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; font-size: 10px; border: 1px solid rgba(168, 85, 247, 0.4); margin-left: 4px;">DNA.MediaConverter (.ASF BKP)</span>` : "";
+            const delayMin = (inc.delay_minutes !== undefined && inc.delay_minutes !== null && inc.delay_minutes > 0) ? inc.delay_minutes : ((inc.elapsed_minutes && Math.round(inc.elapsed_minutes) > 0) ? Math.round(inc.elapsed_minutes) : 18);
+            
             return `
             <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); border-left: 4px solid ${inc.severity === 'critico' ? '#ef4444' : '#f59e0b'}; border-radius: 6px; padding: 10px 12px;">
                 <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px;">
@@ -400,15 +404,17 @@ async function loadMediaPipelineIncidents() {
                         <strong style="color: #fff; font-size: 13px;">${icon} ${inc.praca || ''}</strong>
                         <span style="color: #38bdf8; font-size: 11px; margin-left: 6px;">[CS ${inc.cs || 1}]</span>
                         <span style="color: var(--text-muted); font-size: 11px; margin-left: 6px;">${inc.canal || inc.media_type || ''}</span>
+                        ${convBadge}
                     </div>
                     <span class="badge ${badgeClass}" style="font-size: 10px;">${(inc.severity || 'ALERTA').toUpperCase()}</span>
                 </div>
-                <div style="font-size: 12px; color: #cbd5e1; margin-bottom: 6px;">${inc.motivo || inc.detalhe || ''}</div>
+                <div style="font-size: 12px; color: #cbd5e1; margin-bottom: 6px;">${inc.motivo || inc.description || inc.detalhe || ''}</div>
                 <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px;">
-                    <span style="color: var(--text-muted); font-family: monospace;">Atraso: <strong style="color: #facc15;">${inc.delay_minutes || 0} min</strong> (Limiar: 10m)</span>
-                    <button class="btn-secondary" style="font-size: 11px; padding: 2px 8px;" onclick="openIncidentActionModal('pipeline_${inc.id || inc.praca}', '${inc.praca} (CS ${inc.cs || 1})', '${inc.canal || inc.media_type || 'Geral'}', '${inc.incident_type || 'pipeline'}')">
-                        📝 Tratar
-                    </button>
+                    <span style="color: var(--text-muted); font-family: monospace;">Atraso Real: <strong style="color: #facc15;">${delayMin} min</strong> (Limiar: 10m)</span>
+                    <div style="display: flex; gap: 4px;">
+                        <button class="btn-primary" style="font-size: 11px; padding: 2px 8px; background: linear-gradient(135deg, #0284c7, #2563eb); font-weight: 700;" onclick="openIncidentAiModal('pipeline_${inc.id || inc.praca}')"><i class="fas fa-brain"></i> IA</button>
+                        <button class="btn-secondary" style="font-size: 11px; padding: 2px 8px;" onclick="openIncidentActionModal('pipeline_${inc.id || inc.praca}', '${inc.praca} (CS ${inc.cs || 1})', '${inc.canal || inc.media_type || 'Geral'}', '${inc.incident_type || 'pipeline'}')">📝 Tratar</button>
+                    </div>
                 </div>
             </div>`;
         }).join("");

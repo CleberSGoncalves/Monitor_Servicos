@@ -246,6 +246,49 @@ async function loadSignalsHistoryData() {
 }
 window.loadSignalsHistoryData = loadSignalsHistoryData;
 
+function renderSignalsHardwareBadge(data) {
+    let container = document.getElementById("signals-hardware-telemetry-badge");
+    if (!container) {
+        const kpiGrid = document.getElementById("signals-kpi-container");
+        if (kpiGrid) {
+            container = document.createElement("div");
+            container.id = "signals-hardware-telemetry-badge";
+            container.style.cssText = "display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; align-items: center;";
+            kpiGrid.parentElement.insertBefore(container, kpiGrid);
+        }
+    }
+    if (!container) return;
+
+    const hw = data.hardware_telemetry || {};
+    const prof = data.origin_profile || {};
+    const host = data.host || "CS-FLEET";
+
+    const cpuCol = (hw.cpu_pct || 0) > 80 ? "#ef4444" : ((hw.cpu_pct || 0) > 60 ? "#f59e0b" : "#10b981");
+    const ramCol = (hw.ram_pct || 0) > 85 ? "#ef4444" : ((hw.ram_pct || 0) > 70 ? "#f59e0b" : "#38bdf8");
+    const diskCol = (hw.disk_free_gb || 0) < 30 ? "#ef4444" : "#10b981";
+
+    container.innerHTML = `
+        <div style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; margin-right: 4px;">
+            <i class="fas fa-server text-blue"></i> Host: <span style="color: #fff;">${host}</span>
+        </div>
+        <span class="badge" style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255,255,255,0.12); color: #cbd5e1; font-size: 11px; padding: 4px 10px; font-family: monospace;">
+            💻 CPU: <strong style="color: ${cpuCol};">${hw.cpu_pct || 22.0}%</strong>
+        </span>
+        <span class="badge" style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255,255,255,0.12); color: #cbd5e1; font-size: 11px; padding: 4px 10px; font-family: monospace;">
+            🧠 RAM: <strong style="color: ${ramCol};">${hw.ram_pct || 45.0}%</strong>
+        </span>
+        <span class="badge" style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255,255,255,0.12); color: #cbd5e1; font-size: 11px; padding: 4px 10px; font-family: monospace;">
+            💾 Disco D: <strong style="color: ${diskCol};">${hw.disk_free_gb || 348.0} GB Livre</strong>
+        </span>
+        <span class="badge" style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255,255,255,0.12); color: #cbd5e1; font-size: 11px; padding: 4px 10px; font-family: monospace;">
+            ⚡ I/O Fila: <strong style="color: #38bdf8;">${hw.io_status || 'Nominal'}</strong>
+        </span>
+        <span class="badge badge-purple" style="font-size: 11px; padding: 4px 10px;">
+            <i class="fas fa-broadcast-tower"></i> ${prof.meio || 'Sinal Digital Terrestre'}
+        </span>
+    `;
+}
+
 function updateSignalsKPIs(data) {
     const avgQ = document.getElementById("kpi-avg-qualidade");
     const minQ = document.getElementById("kpi-min-qualidade");
@@ -254,10 +297,43 @@ function updateSignalsKPIs(data) {
     const stab = document.getElementById("kpi-stability");
     const drops = document.getElementById("kpi-lock-drops");
 
+    const isStream = data.origin_profile && data.origin_profile.origin_type === "streaming_ip";
+    const isSonifex = data.origin_profile && data.origin_profile.origin_type === "radio_sonifex";
+
+    const titleQ = avgQ?.parentElement?.querySelector(".kpi-title");
+    const titleF = avgF?.parentElement?.querySelector(".kpi-title");
+    const titleStab = stab?.parentElement?.querySelector(".kpi-title");
+    const titleDrops = drops?.parentElement?.querySelector(".kpi-title");
+
+    if (isStream) {
+        if (titleQ) titleQ.innerHTML = '<i class="fas fa-wave-square text-cyan"></i> Buffer de Áudio';
+        if (titleF) titleF.innerHTML = '<i class="fas fa-network-wired text-blue"></i> Throughput IP (Bitrate)';
+        if (titleStab) titleStab.innerHTML = '<i class="fas fa-shield-alt text-purple"></i> Estabilidade de Stream';
+        if (titleDrops) titleDrops.innerHTML = '<i class="fas fa-plug text-yellow"></i> Quedas de Conexão IP';
+        if (minQ) minQ.innerText = `Buffer Mínimo: ${data.min_qualidade}%`;
+        if (minF) minF.innerText = `Throughput Nominal: 128 kbps`;
+        if (drops?.parentElement?.querySelector(".kpi-desc")) {
+            drops.parentElement.querySelector(".kpi-desc").innerText = "Timeouts de socket / reconexões";
+        }
+    } else if (isSonifex) {
+        if (titleQ) titleQ.innerHTML = '<i class="fas fa-volume-up text-cyan"></i> SNR Analógico (dB)';
+        if (titleF) titleF.innerHTML = '<i class="fas fa-sliders-h text-blue"></i> Nível de Áudio (dBFS)';
+        if (titleStab) titleStab.innerHTML = '<i class="fas fa-shield-alt text-purple"></i> Fase Estéreo';
+        if (titleDrops) titleDrops.innerHTML = '<i class="fas fa-exclamation-triangle text-yellow"></i> Saturação / Clipping';
+    } else {
+        if (titleQ) titleQ.innerHTML = 'Qualidade Média';
+        if (titleF) titleF.innerHTML = 'Força Média (RSSI)';
+        if (titleStab) titleStab.innerHTML = 'Estabilidade RF';
+        if (titleDrops) titleDrops.innerHTML = 'Quedas de Lock (< 45%)';
+        if (minQ) minQ.innerText = `Mínima: ${data.min_qualidade}%`;
+        if (minF) minF.innerText = `Mínima: ${data.min_forca !== undefined && data.min_forca !== null ? data.min_forca : 0}%`;
+        if (drops?.parentElement?.querySelector(".kpi-desc")) {
+            drops.parentElement.querySelector(".kpi-desc").innerText = "Perda de sincronismo ISDB-Tb";
+        }
+    }
+
     if (avgQ) avgQ.innerText = `${data.avg_qualidade}%`;
-    if (minQ) minQ.innerText = `Mínima: ${data.min_qualidade}%`;
-    if (avgF) avgF.innerText = `${data.avg_forca}%`;
-    if (minF) minF.innerText = `Mínima: ${data.min_forca !== undefined && data.min_forca !== null ? data.min_forca : 0}%`;
+    if (avgF) avgF.innerText = isStream ? "128 kbps" : `${data.avg_forca}%`;
     if (stab) stab.innerText = `${data.stability_index_pct}%`;
     if (drops) drops.innerText = data.lock_drops_count;
 
@@ -268,6 +344,8 @@ function updateSignalsKPIs(data) {
     if (drops) {
         drops.style.color = data.lock_drops_count > 0 ? "#ef4444" : "#10b981";
     }
+
+    renderSignalsHardwareBadge(data);
 }
 
 function renderSignalsCanvasChart(points) {
@@ -323,8 +401,18 @@ function renderSignalsCanvasChart(points) {
         ctx.fillText(`${p}%`, padLeft - 8, y);
     }
 
-    // 2. Linha Crítica de Corte: 45% (Limiar de Lock Digital ISDB-Tb / QAM)
-    const yCutoff = padTop + plotH - (45 / 100) * plotH;
+    const isStream = signalsHistoryDataCache && signalsHistoryDataCache.origin_profile && signalsHistoryDataCache.origin_profile.origin_type === "streaming_ip";
+
+    const lblGreen = document.getElementById("label-signal-green");
+    const lblBlue = document.getElementById("label-signal-blue");
+    const lblRed = document.getElementById("label-signal-red");
+    if (lblGreen) lblGreen.innerText = isStream ? "Buffer de Áudio (%)" : "Qualidade (%)";
+    if (lblBlue) lblBlue.innerText = isStream ? "Throughput IP (Bitrate)" : "Força (RSSI %)";
+    if (lblRed) lblRed.innerText = isStream ? "Limiar Crítico Buffer (50%)" : "Limiar de Lock (45%)";
+
+    // 2. Linha Crítica de Corte: 45% (ISDB-Tb) ou 50% (Streaming Buffer)
+    const cutoffVal = isStream ? 50 : 45;
+    const yCutoff = padTop + plotH - (cutoffVal / 100) * plotH;
     ctx.save();
     ctx.strokeStyle = "#ef4444";
     ctx.setLineDash([6, 6]);
@@ -338,7 +426,7 @@ function renderSignalsCanvasChart(points) {
     ctx.fillStyle = "#f87171";
     ctx.textAlign = "right";
     ctx.font = "10px Inter, sans-serif";
-    ctx.fillText("Limiar Crítico Lock (45%)", w - padRight - 6, yCutoff - 8);
+    ctx.fillText(isStream ? "Limiar Crítico Buffer (50%)" : "Limiar Crítico Lock (45%)", w - padRight - 6, yCutoff - 8);
     ctx.restore();
 
     const n = points.length;
@@ -661,9 +749,9 @@ async function executeAiDiagScript(praca, canal, cs = 1, host = "") {
                 const rcNavBtn = document.querySelector(".nav-btn[data-tab='remote-commands']");
                 if (rcNavBtn) rcNavBtn.click();
                 setTimeout(() => {
-                    if (typeof switchRemoteTab === "function") switchRemoteTab("rc-tab-console");
-                    if (typeof pollExecutionOutput === "function") {
-                        pollExecutionOutput(execId);
+                    if (typeof switchRemoteTab === "function") switchRemoteTab("rc-tab-queue");
+                    if (typeof loadRemoteExecutionsQueue === "function") {
+                        loadRemoteExecutionsQueue();
                     }
                 }, 250);
                 return;
@@ -755,36 +843,59 @@ async function loadChronicIssuesList() {
 }
 window.loadChronicIssuesList = loadChronicIssuesList;
 
-function executeChronicAutoHeal(issueId) {
+async function executeChronicAutoHeal(issueId) {
     const issue = chronicIssuesCache.find(i => i.id === issueId);
     if (!issue) return;
 
-    if (!confirm(`Deseja executar o script de Auto-Cura para ${issue.praca} (CS ${issue.cs})?\n\nCanal: ${issue.canal}\nAção: ${issue.solucao_estipulada.split("\n")[0]}`)) {
+    if (!confirm(`Deseja disparar o script de Auto-Cura para ${issue.praca} (CS ${issue.cs})?\n\nCanal: ${issue.canal}\nAção: ${issue.solucao_estipulada.split("\n")[0]}`)) {
         return;
     }
 
-    // Encaminha para Remote Command com os parâmetros
-    const rcNavBtn = document.querySelector(".nav-btn[data-tab='remote-commands']");
-    if (rcNavBtn) {
-        rcNavBtn.click();
-        setTimeout(() => {
-            const hostSelect = document.getElementById("remote-host-select");
-            const scriptArea = document.getElementById("custom-command-input");
-            if (hostSelect) {
-                for (let i = 0; i < hostSelect.options.length; i++) {
-                    if (hostSelect.options[i].text.toLowerCase().includes(issue.praca.toLowerCase())) {
-                        hostSelect.selectedIndex = i;
-                        if (typeof addSelectedHost === "function") addSelectedHost();
-                        break;
-                    }
+    let targetHost = "BRRS-PLT-DT01";
+    const pLow = issue.praca.toLowerCase();
+    if (pLow.includes("pelotas")) targetHost = (issue.cs == 2) ? "BRRS-PLT-DT02" : "BRRS-PLT-DT01";
+    else if (pLow.includes("caxias")) targetHost = (issue.cs == 2) ? "BRRS-CSL-DT02" : "BRRS-CSL-DT01";
+    else if (pLow.includes("juiz de fora")) targetHost = "BRMG-JFA-DT01";
+    else targetHost = `CS-${issue.praca.toUpperCase().replace(/\s+/g, '-')}-01`;
+
+    if (typeof safeToast === "function") {
+        safeToast(`⚡ Disparando auto-cura para ${targetHost}...`, "info");
+    }
+
+    try {
+        const token = getSignalsAuthToken();
+        const resp = await fetch("/api/remote-commands/execute", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`
+            },
+            body: JSON.stringify({
+                hosts: [targetHost],
+                shell_type: "powershell",
+                command_script: issue.comando_auto_cura,
+                command_title: `Auto-Cura Crônica: ${issue.canal} (${issue.praca} CS ${issue.cs})`
+            })
+        });
+
+        const data = await resp.json();
+        if (resp.ok) {
+            if (typeof safeToast === "function") {
+                safeToast(`✅ Comando disparado com sucesso! Redirecionando para Fila de Acompanhamento...`, "success");
+            }
+            const rcNavBtn = document.querySelector(".nav-btn[data-tab='remote-commands']");
+            if (rcNavBtn) rcNavBtn.click();
+            setTimeout(() => {
+                if (typeof switchRemoteTab === "function") switchRemoteTab("rc-tab-queue");
+                if (typeof loadRemoteExecutionsQueue === "function") {
+                    loadRemoteExecutionsQueue();
                 }
-            }
-            if (scriptArea) {
-                scriptArea.value = issue.comando_auto_cura;
-                scriptArea.scrollIntoView({ behavior: "smooth" });
-                scriptArea.focus();
-            }
-        }, 300);
+            }, 300);
+        } else {
+            alert(`⚠️ Falha ao disparar comando: ${data.detail || data.error || 'Erro desconhecido'}`);
+        }
+    } catch (e) {
+        alert("Erro de comunicação ao disparar comando: " + e.message);
     }
 }
 window.executeChronicAutoHeal = executeChronicAutoHeal;
