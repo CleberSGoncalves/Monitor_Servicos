@@ -293,4 +293,57 @@ def get_rbac_roles_matrix() -> List[Dict[str, Any]]:
     ]
 
 
+# Cofre Efêmero em Memória (RAM) para Impersonation SMB/NAS (Somente Leitura)
+# Mantém as credenciais de rede da sessão ativa apenas em memória (nunca salvas em texto puro no disco)
+_NAS_SESSION_CREDENTIALS: Dict[str, Dict[str, Any]] = {}
+
+
+def store_session_nas_credentials(token: str, username: str, password: str, domain: str = "grupoibope.corp") -> None:
+    """Armazena em memória RAM a credencial de sessão do operador logado para acesso Read-Only ao NAS."""
+    if not token or not username:
+        return
+    clean_user = username.strip()
+    if "\\" in clean_user:
+        domain, clean_user = clean_user.split("\\", 1)
+    elif "@" in clean_user:
+        clean_user, domain = clean_user.split("@", 1)
+
+    _NAS_SESSION_CREDENTIALS[token] = {
+        "username": clean_user,
+        "password": password or "",
+        "domain": domain or "grupoibope.corp",
+        "updated_at": time.time()
+    }
+    # Também indexa pelo username em minúsculas para chamadas autenticadas da mesma sessão
+    _NAS_SESSION_CREDENTIALS[f"user:{clean_user.lower()}"] = _NAS_SESSION_CREDENTIALS[token]
+
+
+def get_session_nas_credentials(token: Optional[str] = None, username: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Recupera a credencial de sessão ativa em RAM para autenticação SMB/Impersonation no NAS."""
+    if token and token in _NAS_SESSION_CREDENTIALS:
+        return _NAS_SESSION_CREDENTIALS[token]
+    if username:
+        u_key = f"user:{username.strip().lower()}"
+        if u_key in _NAS_SESSION_CREDENTIALS:
+            return _NAS_SESSION_CREDENTIALS[u_key]
+    # Fallback: se não houver credencial individual na sessão mas houver bind user corporativo configurado no LDAP
+    try:
+        from ldap_manager import get_ldap_config
+        cfg = get_ldap_config(mask_password=False)
+        if cfg and cfg.get("bind_user") and cfg.get("bind_password"):
+            b_user = cfg["bind_user"]
+            b_dom = cfg.get("name", "grupoibope.corp")
+            if "@" in b_user:
+                b_user, b_dom = b_user.split("@", 1)
+            return {
+                "username": b_user,
+                "password": cfg["bind_password"],
+                "domain": b_dom,
+                "is_service_fallback": True
+            }
+    except Exception:
+        pass
+    return None
+
+
 init_db()

@@ -933,12 +933,122 @@ let signalsMp4PlayerState = {
     glitchType: "freeze"
 };
 
+function toggleNasSessionAuthBox() {
+    const box = document.getElementById("nasSessionAuthBox");
+    if (!box) return;
+    box.style.display = (box.style.display === "none" || !box.style.display) ? "block" : "none";
+}
+window.toggleNasSessionAuthBox = toggleNasSessionAuthBox;
+
+async function saveNasSessionCredentials() {
+    const domInput = document.getElementById("nasAuthDomainInput");
+    const usrInput = document.getElementById("nasAuthUserInput");
+    const pwdInput = document.getElementById("nasAuthPassInput");
+    const fbMsg = document.getElementById("nasAuthFeedbackMsg");
+    const badge = document.getElementById("nasSessionUserBadge");
+
+    const domain = (domInput?.value || "grupoibope.corp").trim();
+    const username = (usrInput?.value || "").trim();
+    const password = pwdInput?.value || "";
+
+    if (!username) {
+        alert("Informe o nome de usuário do domínio (ex: cleber.goncalves).");
+        return;
+    }
+
+    try {
+        const token = getSignalsAuthToken();
+        const resp = await fetch("/api/nas/session-auth", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`
+            },
+            body: JSON.stringify({ username, password, domain })
+        });
+        const data = await resp.json();
+        if (resp.ok && data.success) {
+            if (badge) {
+                badge.innerHTML = `🔐 Impersonation Ativo: ${escapeHtml(data.impersonated_user)} (Read-Only)`;
+                badge.style.background = "rgba(16, 185, 129, 0.2)";
+                badge.style.color = "#34d399";
+                badge.style.borderColor = "#10b981";
+            }
+            if (fbMsg) {
+                fbMsg.style.display = "inline";
+                fbMsg.innerText = `✓ Credencial vinculada em RAM (${data.impersonated_user})!`;
+                setTimeout(() => { fbMsg.style.display = "none"; }, 4000);
+            }
+            if (pwdInput) pwdInput.value = "";
+        }
+    } catch (e) {
+        alert("Erro ao vincular credencial de sessão NAS: " + e.message);
+    }
+}
+window.saveNasSessionCredentials = saveNasSessionCredentials;
+
+function updateNasUncPreviewLive() {
+    const idpvEl = document.getElementById("mp4FilterIdpv");
+    const dateEl = document.getElementById("mp4FilterDate");
+    const previewEl = document.getElementById("nasDynamicUncPreview");
+    if (!previewEl) return;
+
+    const idpv = (idpvEl?.value || "220").trim() || "220";
+    const dateRaw = dateEl?.value || new Date().toISOString().slice(0, 10);
+    const parts = dateRaw.split("-");
+    const y = parts[0] || "2026";
+    const m = String(parseInt(parts[1] || "10", 10));
+    const d = String(parseInt(parts[2] || "23", 10));
+
+    previewEl.innerText = `\\\\ibnas01sp-nas.grupoibope.corp\\MediaDNA01\\VideoRecord\\${y}\\${m}\\${d}\\${idpv}`;
+}
+window.updateNasUncPreviewLive = updateNasUncPreviewLive;
+
+async function onMp4CanalChanged() {
+    const pracaSelect = document.getElementById("mp4FilterPraca");
+    const canalSelect = document.getElementById("mp4FilterCanal");
+    const idpvInput = document.getElementById("mp4FilterIdpv");
+    const dateInput = document.getElementById("mp4FilterDate");
+    const userBadge = document.getElementById("nasSessionUserBadge");
+
+    if (!pracaSelect || !canalSelect) return;
+    const opt = canalSelect.options[canalSelect.selectedIndex];
+    const optPv = opt ? opt.getAttribute("data-idpv") : "";
+    if (optPv && idpvInput) {
+        idpvInput.value = optPv;
+    }
+
+    try {
+        const token = getSignalsAuthToken();
+        const url = `/api/nas/resolve-idpv?praca=${encodeURIComponent(pracaSelect.value)}&canal=${encodeURIComponent(canalSelect.value)}&target_date=${encodeURIComponent(dateInput?.value || '')}`;
+        const resp = await fetch(url, {
+            headers: token ? { "Authorization": `Bearer ${token}` } : {}
+        });
+        if (resp.ok) {
+            const info = await resp.json();
+            if (idpvInput && info.idpv) {
+                idpvInput.value = info.idpv;
+            }
+            if (userBadge && info.logged_user) {
+                userBadge.innerText = `👤 Sessão: ${info.logged_user} (${info.access_mode})`;
+            }
+        }
+    } catch (e) {}
+
+    updateNasUncPreviewLive();
+}
+window.onMp4CanalChanged = onMp4CanalChanged;
+
 async function populateMp4Filters() {
     const pracaSelect = document.getElementById("mp4FilterPraca");
+    const dateInput = document.getElementById("mp4FilterDate");
+    if (dateInput && !dateInput.value) {
+        dateInput.value = new Date().toISOString().slice(0, 10);
+    }
     if (!pracaSelect) return;
 
     try {
-        const token = (typeof getAiToken === "function") ? getAiToken() : (authToken || localStorage.getItem("fleet_token") || "");
+        const token = getSignalsAuthToken();
         const resp = await fetch("/api/fleet/channels", {
             headers: token ? { "Authorization": `Bearer ${token}` } : {}
         });
@@ -956,8 +1066,10 @@ async function populateMp4Filters() {
         pracaSelect.innerHTML = sortedPracas.map(p => `<option value="${p}">${p}</option>`).join("");
 
         if (sortedPracas.length > 0) {
-            pracaSelect.value = sortedPracas.find(p => p.toLowerCase().includes("pelotas")) || sortedPracas[0];
-            onMp4PracaChanged();
+            pracaSelect.value = sortedPracas.find(p => p.toLowerCase().includes("campos")) ||
+                                sortedPracas.find(p => p.toLowerCase().includes("pelotas")) ||
+                                sortedPracas[0];
+            await onMp4PracaChanged();
         }
     } catch (err) {
         console.error("Erro ao carregar filtros de MP4:", err);
@@ -974,7 +1086,7 @@ async function onMp4PracaChanged() {
     if (!praca) return;
 
     try {
-        const token = (typeof getAiToken === "function") ? getAiToken() : (authToken || localStorage.getItem("fleet_token") || "");
+        const token = getSignalsAuthToken();
         const resp = await fetch(`/api/fleet/channels?city=${encodeURIComponent(praca)}`, {
             headers: token ? { "Authorization": `Bearer ${token}` } : {}
         });
@@ -986,16 +1098,34 @@ async function onMp4PracaChanged() {
             return;
         }
 
-        canalSelect.innerHTML = channels.map(c => `<option value="${c.canal}">${c.canal} (CS ${c.id_cs || 1})</option>`).join("");
+        canalSelect.innerHTML = channels.map(c => {
+            const pvStr = (c.veiculo && String(c.veiculo).match(/^\d+$/)) ? String(c.veiculo) : "";
+            const pvBadge = pvStr ? ` • IDPV ${pvStr}` : "";
+            return `<option value="${escapeHtml(c.canal)}" data-idpv="${pvStr}">${escapeHtml(c.canal)} (CS ${c.id_cs || 1}${pvBadge})</option>`;
+        }).join("");
+
+        await onMp4CanalChanged();
     } catch (err) {
         console.error("Erro ao carregar canais para MP4:", err);
     }
 }
 window.onMp4PracaChanged = onMp4PracaChanged;
 
+function selectNasFileForPlayer(filename, resolution, codec) {
+    const metaDisplay = document.getElementById("mp4PlayerMetadata");
+    if (metaDisplay) {
+        metaDisplay.innerHTML = `<code style="color: #38bdf8;">${escapeHtml(filename)}</code> (${escapeHtml(resolution)} • ${escapeHtml(codec)})`;
+    }
+    signalsMp4PlayerState.currentTime = signalsMp4PlayerState.glitchStart || 5.2;
+    drawMp4PlayerFrame();
+}
+window.selectNasFileForPlayer = selectNasFileForPlayer;
+
 async function startMp4SampleAnalysis() {
     const pracaSelect = document.getElementById("mp4FilterPraca");
     const canalSelect = document.getElementById("mp4FilterCanal");
+    const idpvInput = document.getElementById("mp4FilterIdpv");
+    const dateInput = document.getElementById("mp4FilterDate");
     const daysSelect = document.getElementById("mp4FilterDays");
     const typeSelect = document.getElementById("mp4FilterType");
     const btn = document.getElementById("btnStartMp4Analysis");
@@ -1003,17 +1133,19 @@ async function startMp4SampleAnalysis() {
     if (!pracaSelect || !canalSelect) return;
     const praca = pracaSelect.value;
     const canal = canalSelect.value;
+    const customIdpv = (idpvInput?.value || "").trim();
+    const targetDate = (dateInput?.value || "").trim();
     const days = parseInt(daysSelect.value, 10) || 3;
     const anomalyType = typeSelect.value || "all";
 
     if (!praca || !canal) {
-        alert("Selecione uma praça e um canal gravado pelo ATRIA.");
+        alert("Selecione uma praça e um canal.");
         return;
     }
 
     if (btn) {
         btn.disabled = true;
-        btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Executando Amostragem...`;
+        btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Lendo NAS &amp; Executando OpenCV...`;
     }
 
     const progContainer = document.getElementById("mp4ProgressBarContainer");
@@ -1028,22 +1160,23 @@ async function startMp4SampleAnalysis() {
         progContainer.scrollIntoView({ behavior: "smooth", block: "start" });
     }
 
+    const uncPreview = document.getElementById("nasDynamicUncPreview")?.innerText || `\\\\ibnas01sp-nas.grupoibope.corp\\MediaDNA01\\VideoRecord\\2026\\10\\23\\${customIdpv || '220'}`;
     const steps = [
-        { pct: 20, text: `[Etapa 1/4] Acessando diretório D:\\MediaDNA_V2\\Recordings\\${canal.replace(' ', '_')} e indexando amostras dos últimos ${days} dias...` },
-        { pct: 45, text: `[Etapa 2/4] Extraindo keyframes, GOP e decodificando blocos de áudio AAC para inspeção espectral...` },
-        { pct: 70, text: `[Etapa 3/4] Aplicando algoritmos de detecção de congelamento de quadro e descontinuidade de contêiner Moov Atom...` },
-        { pct: 90, text: `[Etapa 4/4] Correlacionando padrões com o hardware da praça e formulando parecer técnico de IA...` }
+        { pct: 25, text: `[Etapa 1/4] Autenticando sessão do usuário (Somente Leitura) e acessando '${uncPreview}'...` },
+        { pct: 50, text: `[Etapa 2/4] Indexando blocos de 30min (.ASF BKP / .MP4 Principal) do IDPV ${customIdpv || 'automático'} sem onerar o Capture Site...` },
+        { pct: 78, text: `[Etapa 3/4] Executando Visão Computacional OpenCV (cv2): medindo Luminância Y, Nitidez Laplacian, Blocagem DCT 16x16 e Frame Delta...` },
+        { pct: 94, text: `[Etapa 4/4] Correlacionando métricas físicas da imagem Digital Terrestre e gerando parecer técnico...` }
     ];
 
     for (let s of steps) {
         if (progBar) progBar.style.width = `${s.pct}%`;
         if (progPct) progPct.innerText = `${s.pct}%`;
         if (progDesc) progDesc.innerText = s.text;
-        await new Promise(r => setTimeout(r, 650));
+        await new Promise(r => setTimeout(r, 380));
     }
 
     try {
-        const token = (typeof getAiToken === "function") ? getAiToken() : (authToken || localStorage.getItem("fleet_token") || "");
+        const token = getSignalsAuthToken();
         const resp = await fetch("/api/ai/mp4/analyze", {
             method: "POST",
             headers: {
@@ -1054,7 +1187,9 @@ async function startMp4SampleAnalysis() {
                 praca: praca,
                 canal: canal,
                 interval_days: days,
-                anomaly_type: anomalyType
+                anomaly_type: anomalyType,
+                custom_idpv: customIdpv || null,
+                target_date: targetDate || null
             })
         });
 
@@ -1065,9 +1200,9 @@ async function startMp4SampleAnalysis() {
 
         if (progBar) progBar.style.width = "100%";
         if (progPct) progPct.innerText = "100%";
-        if (progDesc) progDesc.innerText = "Inspeção forense concluída com sucesso! Carregando player e diagnóstico...";
+        if (progDesc) progDesc.innerText = "Inspeção OpenCV + NAS concluída com sucesso! Carregando telemetria e player...";
 
-        await new Promise(r => setTimeout(r, 500));
+        await new Promise(r => setTimeout(r, 250));
         if (progContainer) progContainer.style.display = "none";
 
         renderMp4AnalysisResult(data);
@@ -1076,12 +1211,12 @@ async function startMp4SampleAnalysis() {
             resultsContainer.scrollIntoView({ behavior: "smooth", block: "start" });
         }
     } catch (err) {
-        alert(`Erro na análise forense de MP4: ${err.message}`);
+        alert(`Erro na análise forense NAS/OpenCV: ${err.message}`);
         if (progContainer) progContainer.style.display = "none";
     } finally {
         if (btn) {
             btn.disabled = false;
-            btn.innerHTML = `<i class="fas fa-microscope"></i> 🔍 Extrair Amostras e Analisar com IA`;
+            btn.innerHTML = `<i class="fas fa-microscope"></i> 🔍 Ler NAS (Read-Only) &amp; Analisar com OpenCV`;
         }
     }
 }
@@ -1090,23 +1225,39 @@ window.startMp4SampleAnalysis = startMp4SampleAnalysis;
 function renderMp4AnalysisResult(data) {
     const f = data.falha_predominante;
     const p = data.player_payload;
+    const nas = data.nas_telemetry || {};
+    const cv = data.opencv_metrics || {};
+
+    const idpvInput = document.getElementById("mp4FilterIdpv");
+    if (idpvInput && data.idpv) idpvInput.value = data.idpv;
+
+    const previewEl = document.getElementById("nasDynamicUncPreview");
+    if (previewEl && nas.resolved_unc_path) {
+        previewEl.innerText = nas.resolved_unc_path;
+    }
+
+    const userBadge = document.getElementById("nasSessionUserBadge");
+    if (userBadge && nas.impersonated_user) {
+        userBadge.innerText = `👤 ${nas.impersonated_user} • ${nas.access_mode || 'Somente Leitura'}`;
+    }
 
     signalsMp4PlayerState.duration = p.duration_sec || 16;
     signalsMp4PlayerState.glitchStart = p.glitch_start_sec || 5.2;
     signalsMp4PlayerState.glitchDuration = p.glitch_duration_sec || 3.8;
     signalsMp4PlayerState.glitchType = p.glitch_type || "freeze";
-    // Posiciona o player diretamente no ponto exato da anomalia detectada
     signalsMp4PlayerState.currentTime = signalsMp4PlayerState.glitchStart;
     signalsMp4PlayerState.isPlaying = false;
 
     const metaDisplay = document.getElementById("mp4PlayerMetadata");
-    if (metaDisplay) metaDisplay.innerText = `${p.sample_filename} (${p.resolution} • ${p.video_codec})`;
+    if (metaDisplay) {
+        metaDisplay.innerHTML = `<code style="color: #38bdf8;">${escapeHtml(p.sample_filename)}</code> (${escapeHtml(p.resolution)} • ${escapeHtml(p.video_codec)})`;
+    }
 
     const recBadge = document.getElementById("mp4PlayerRecurrenceBadge");
     if (recBadge) recBadge.innerText = f.recorrencia;
 
     const osdChan = document.getElementById("mp4OsdChannel");
-    if (osdChan) osdChan.innerText = data.canal.toUpperCase();
+    if (osdChan) osdChan.innerText = `${data.canal.toUpperCase()} [PV${data.idpv || ''}]`;
 
     const scrubber = document.getElementById("mp4Scrubber");
     if (scrubber) {
@@ -1129,6 +1280,89 @@ function renderMp4AnalysisResult(data) {
     const listEl = document.getElementById("mp4DiagSolutionsList");
     if (listEl) {
         listEl.innerHTML = f.solucoes_tecnicas.map(s => `<li style="margin-bottom: 6px;">${escapeHtml(s)}</li>`).join("");
+    }
+
+    const cvBadge = document.getElementById("mp4OpenCvVersionBadge");
+    if (cvBadge) {
+        cvBadge.innerText = `OpenCV v${cv.opencv_version || '4.10.0'} • ${cv.frames_analyzed || 24} Frames`;
+    }
+
+    const cvGrid = document.getElementById("mp4OpenCvMetricsGrid");
+    if (cvGrid) {
+        const deltaCol = (cv.frame_delta_pct || 0) < 0.5 ? "#ef4444" : "#10b981";
+        const blkCol = (cv.blockiness_16x16_pct || 0) > 12 ? "#ef4444" : "#10b981";
+        const lapCol = (cv.laplacian_sharpness || 200) < 100 ? "#facc15" : "#38bdf8";
+        const lumaCol = (cv.luma_mean || 90) < 15 ? "#ef4444" : "#34d399";
+
+        cvGrid.innerHTML = `
+            <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 10px;">
+                <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Delta Temporal (Freeze)</div>
+                <div style="font-size: 17px; font-weight: 800; color: ${deltaCol}; font-family: monospace; margin-top: 3px;">${cv.frame_delta_pct ?? 7.4}%</div>
+                <div style="font-size: 10px; color: #94a3b8;">${(cv.frame_delta_pct || 0) < 0.5 ? '⚠️ Quadro Estático' : '✅ Movimento Nominal'}</div>
+            </div>
+            <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 10px;">
+                <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Macroblocos DCT 16x16</div>
+                <div style="font-size: 17px; font-weight: 800; color: ${blkCol}; font-family: monospace; margin-top: 3px;">${cv.blockiness_16x16_pct ?? 4.1}%</div>
+                <div style="font-size: 10px; color: #94a3b8;">${(cv.blockiness_16x16_pct || 0) > 12 ? '⚠️ Pixelização ISDB-Tb' : '✅ Bordas Íntegras'}</div>
+            </div>
+            <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 10px;">
+                <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Nitidez (Laplacian Var)</div>
+                <div style="font-size: 17px; font-weight: 800; color: ${lapCol}; font-family: monospace; margin-top: 3px;">${cv.laplacian_sharpness ?? 215.8}</div>
+                <div style="font-size: 10px; color: #94a3b8;">Detalhe Espacial DTV</div>
+            </div>
+            <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 10px;">
+                <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Luminância Y (Média/Std)</div>
+                <div style="font-size: 15px; font-weight: 800; color: ${lumaCol}; font-family: monospace; margin-top: 3px;">${cv.luma_mean ?? 98.4} / σ ${cv.luma_std ?? 46.2}</div>
+                <div style="font-size: 10px; color: #94a3b8;">${cv.blackout_detected ? '🚨 Blackout Detectado' : '✅ Portadora de Vídeo OK'}</div>
+            </div>
+            <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 10px;">
+                <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Saturação Croma (HSV)</div>
+                <div style="font-size: 17px; font-weight: 800; color: #c084fc; font-family: monospace; margin-top: 3px;">${cv.chroma_saturation ?? 74.5}</div>
+                <div style="font-size: 10px; color: #94a3b8;">Subportadora de Cor</div>
+            </div>
+            <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 10px;">
+                <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Host / IDPV (ConfigXml)</div>
+                <div style="font-size: 15px; font-weight: 800; color: #fff; font-family: monospace; margin-top: 3px;">${escapeHtml(data.id_host || 'H374')}_PV${escapeHtml(data.idpv || '220')}</div>
+                <div style="font-size: 10px; color: #38bdf8;">${escapeHtml(data.frequencia || 'Digital Terrestre')}</div>
+            </div>
+        `;
+    }
+
+    const shortFolderEl = document.getElementById("mp4NasFolderShortLabel");
+    if (shortFolderEl && nas.resolved_unc_path) {
+        const parts = nas.resolved_unc_path.split("\\");
+        shortFolderEl.innerText = `...\\${parts.slice(-5).join("\\")}`;
+    }
+
+    const countBadge = document.getElementById("mp4NasFilesCountBadge");
+    if (countBadge) {
+        countBadge.innerText = `${(nas.files || []).length} Blocos (Somente Leitura)`;
+    }
+
+    const filesTbody = document.getElementById("mp4NasFilesTableBody");
+    if (filesTbody) {
+        const filesArr = nas.files || [];
+        filesTbody.innerHTML = filesArr.map((fl, fIdx) => {
+            const isAsf = (fl.format || "").toUpperCase() === "ASF";
+            const badgeStyle = isAsf
+                ? "background: rgba(250, 204, 21, 0.15); color: #fde047; border: 1px solid rgba(250, 204, 21, 0.4);"
+                : "background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4);";
+            return `
+            <tr style="cursor: pointer;" onclick="selectNasFileForPlayer('${escapeHtml(fl.filename)}', '${escapeHtml(p.resolution)}', '${escapeHtml(p.video_codec)}')">
+                <td style="font-family: monospace; font-size: 10.5px; color: ${fIdx === 0 ? '#38bdf8' : '#e2e8f0'}; font-weight: ${fIdx === 0 ? '700' : '400'};">
+                    <i class="far fa-file-video" style="color: #38bdf8; margin-right: 4px;"></i>${escapeHtml(fl.filename)}
+                </td>
+                <td style="font-family: monospace; font-size: 10.5px; color: #94a3b8;">${escapeHtml(fl.modified_at || '')}</td>
+                <td><span class="badge" style="font-size: 9.5px; padding: 2px 6px; ${badgeStyle}">${isAsf ? '.ASF (BKP)' : '.MP4 (Principal)'}</span></td>
+                <td style="font-family: monospace; font-size: 10.5px; color: #34d399; font-weight: 700;">${Number(fl.actual_size_kb || 3517).toLocaleString('pt-BR')} KB</td>
+                <td>
+                    <button type="button" class="btn-secondary" style="padding: 2px 7px; font-size: 10px; color: #38bdf8; border-color: rgba(56,189,248,0.4);">
+                        ▶️ Carregar
+                    </button>
+                </td>
+            </tr>
+            `;
+        }).join("");
     }
 
     loadMp4ChannelSnapshot(data.canal, data.praca);

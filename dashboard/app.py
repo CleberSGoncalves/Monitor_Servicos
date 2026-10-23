@@ -6,7 +6,8 @@ from feature_flags import get_all_feature_flags, set_feature_flag
 from updater import check_for_updates, apply_update, trigger_service_restart_async
 from mosaic_manager import get_channel_live_snapshots, get_mosaic_analytical_problems
 from mp4_analyzer import (
-    analyze_channel_mp4_samples, register_mp4_threshold_from_diagnosis
+    analyze_channel_mp4_samples, register_mp4_threshold_from_diagnosis,
+    resolve_channel_idpv_and_host, list_or_simulate_nas_directory_files, NAS_BASE_UNC
 )
 from signals_analysis import (
     get_channel_telemetry_history, diagnose_channel_with_ai, get_all_chronic_issues
@@ -37,7 +38,8 @@ from config import PORT, DOMAIN_NAME, DATA_DIR
 from auth import (
     authenticate_user, create_session, validate_session,
     search_ldap_users, hash_password, update_user_role,
-    get_rbac_roles_matrix, DB_PATH
+    get_rbac_roles_matrix, store_session_nas_credentials,
+    get_session_nas_credentials, DB_PATH
 )
 from sharepoint_sync import get_cached_data, start_background_syncer, sync_fleet_data
 from incident_manager import register_incident_action, get_incident_history, diagnose_incident_with_ai
@@ -212,6 +214,7 @@ async def login(req: LoginRequest):
     if not user:
         raise HTTPException(status_code=400, detail="Usuário ou senha inválidos")
     token = create_session(user["username"], user["role"])
+    store_session_nas_credentials(token, req.username, req.password, "grupoibope.corp")
     return {
         "token": token,
         "username": user["username"],
@@ -790,6 +793,16 @@ class Mp4AnalyzeRequest(BaseModel):
     canal: str
     interval_days: int = 3
     anomaly_type: str = "all"
+    custom_idpv: Optional[str] = None
+    target_date: Optional[str] = None
+    nas_username: Optional[str] = None
+    nas_password: Optional[str] = None
+    nas_domain: str = "grupoibope.corp"
+
+class NasAuthUpdateRequest(BaseModel):
+    username: str
+    password: str
+    domain: str = "grupoibope.corp"
 
 class Mp4RegisterThresholdRequest(BaseModel):
     threshold_data: Dict[str, Any]
@@ -820,11 +833,64 @@ async def deploy_homologation(req: HomologationActionRequest, user: dict = Depen
     return res
 
 # ==========================================
-# Análise de Gravações MP4 ATRIA com Player
+# Análise de Gravações MP4 / ASF via NAS VideoRecord + OpenCV (Somente Leitura)
 # ==========================================
+@app.get("/api/nas/resolve-idpv")
+async def resolve_nas_idpv_endpoint(
+    praca: str = "",
+    canal: str = "",
+    custom_idpv: Optional[str] = None,
+    target_date: Optional[str] = None,
+    user: dict = Depends(get_current_user)
+):
+    from datetime import datetime
+    info = resolve_channel_idpv_and_host(praca, canal, custom_idpv)
+    try:
+        dt = datetime.strptime(target_date, "%Y-%m-%d") if target_date else datetime.now()
+    except Exception:
+        dt = datetime.now()
+    unc_preview = f"{NAS_BASE_UNC}\\{dt.year}\\{dt.month}\\{dt.day}\\{info['idpv']}"
+    creds = get_session_nas_credentials(user.get("token"), user.get("username"))
+    logged_user = (creds or {}).get("username") or user.get("username", "operador")
+    logged_domain = (creds or {}).get("domain", "grupoibope.corp")
+    return {
+        **info,
+        "unc_path_preview": unc_preview,
+        "logged_user": f"{logged_domain}\\{logged_user}",
+        "has_session_password": bool((creds or {}).get("password")),
+        "access_mode": "READ_ONLY (Somente Leitura)"
+    }
+
+
+@app.post("/api/nas/session-auth")
+async def set_nas_session_auth_endpoint(req: NasAuthUpdateRequest, user: dict = Depends(get_current_user)):
+    token = user.get("token") or f"session_{user.get('username', 'op')}"
+    store_session_nas_credentials(token, req.username, req.password, req.domain)
+    return {
+        "success": True,
+        "impersonated_user": f"{req.domain}\\{req.username}",
+        "access_mode": "READ_ONLY (Somente Leitura Estrita)",
+        "message": f"Credencial de sessão SMB/NAS vinculada em memória RAM para {req.domain}\\{req.username} (Somente Leitura)."
+    }
+
+
 @app.post("/api/ai/mp4/analyze")
 async def analyze_mp4(req: Mp4AnalyzeRequest, user: dict = Depends(get_current_user)):
-    return analyze_channel_mp4_samples(req.praca, req.canal, req.interval_days, req.anomaly_type)
+    token = user.get("token") or f"session_{user.get('username', 'op')}"
+    if req.nas_username and req.nas_password:
+        store_session_nas_credentials(token, req.nas_username, req.nas_password, req.nas_domain)
+    creds = get_session_nas_credentials(token, user.get("username"))
+    if not creds:
+        creds = {"username": user.get("username", "suportesmme"), "password": "", "domain": "grupoibope.corp"}
+    return analyze_channel_mp4_samples(
+        praca=req.praca,
+        canal=req.canal,
+        interval_days=req.interval_days,
+        anomaly_type=req.anomaly_type,
+        custom_idpv=req.custom_idpv,
+        target_date=req.target_date,
+        user_creds=creds
+    )
 
 @app.post("/api/ai/mp4/register-threshold")
 async def register_mp4_threshold(req: Mp4RegisterThresholdRequest, user: dict = Depends(get_current_user)):
