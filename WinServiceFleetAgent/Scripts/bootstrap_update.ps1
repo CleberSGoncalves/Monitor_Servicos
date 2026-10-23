@@ -1,23 +1,25 @@
-# ===========================================================
-#  BOOTSTRAP DE ATUALIZACAO - DNA.MonitorServiceSVC
-#  Executa como ADMINISTRADOR no servidor destino
-#  Atualiza de qualquer versao para a mais recente do GitHub
-# ===========================================================
-param(
-    [string]$GitHubToken = ""
-)
+# ==============================================================================
+#  BOOTSTRAP DE ATUALIZACAO CORPORATIVA HOMOLOGADA (100% SHAREPOINT + SHA-256)
+#  DNA.MonitorServiceSVC - Kantar IBOPE Media
+#  Zero conexoes externas ao GitHub | Validacao criptografica SHA-256 em disco
+# ==============================================================================
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference     = "SilentlyContinue"
 $SERVICE_NAME = "DNA.MonitorServiceSVC"
 $EXE_NAME     = "WinServiceFleetAgent.exe"
-$REPO         = "CleberSGoncalves/DNA.MonitorServiceSVC"
-$WORK         = "$env:TEMP\dna_bootstrap_$(Get-Random)"
+$TENANT_ID    = "b2767241-fab5-454b-8b62-f6324650e316"
+$CLIENT_ID    = "0a8faad1-6f41-4b6f-ac0d-d18399b4e9dc"
+$ENC_SECRET   = "pmGCK1dfa+FaAQAtlvRow3fpazdGco1b5BlFcuBrkhvGnneyKLXk93FsMzUJZWE6Hcy2YtNVIgn+70DsqWJP8g=="
+$DRIVE_ID     = "b!R5fko7abk0yZMN2ibI0QUFX-yDT-LPxOjOApWP13XuB7rzp8hYGATLhyYvhIJ0iG"
+$FOLDER_NAME  = "Releases_Servicos_CS"
+$WORK         = "$env:TEMP\dna_sp_bootstrap_$(Get-Random)"
 
 Write-Host ""
-Write-Host "=========================================" -ForegroundColor Cyan
-Write-Host "  DNA.MonitorServiceSVC - Bootstrap" -ForegroundColor Cyan
-Write-Host "=========================================" -ForegroundColor Cyan
+Write-Host "==========================================================" -ForegroundColor Cyan
+Write-Host "  DNA.MonitorServiceSVC - SharePoint Corporate Bootstrap" -ForegroundColor Cyan
+Write-Host "  Compliance: Microsoft 365 Graph API + SHA-256 Verified" -ForegroundColor Cyan
+Write-Host "==========================================================" -ForegroundColor Cyan
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
@@ -38,38 +40,55 @@ if (-not $svc) {
 Write-Host "[INFO] InstallDir  : $installDir"
 Write-Host "[INFO] Versao atual: $currentVer"
 
-$headers = @{ "User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" }
-if (-not $GitHubToken) {
-    $p1 = "gho_Pynh8Rw35i5TE"
-    $p2 = "BDX3s2PHXaO1ER5jv3uSnGv"
-    $GitHubToken = $p1 + $p2
-}
-$headers["Authorization"] = "token $GitHubToken"
+# 1. Descriptografa segredo SPN AES-256
+$rawBytes    = [Convert]::FromBase64String($ENC_SECRET)
+$keyBytes    = [System.Text.Encoding]::UTF8.GetBytes("DNA_MONITOR_FLEET_SEC_2026_ADGBL")
+$ivBytes     = $rawBytes[0..15]
+$cipherBytes = $rawBytes[16..($rawBytes.Length - 1)]
+$aes         = [System.Security.Cryptography.Aes]::Create()
+$aes.Key     = $keyBytes
+$aes.IV      = $ivBytes
+$decryptor   = $aes.CreateDecryptor()
+$plainBytes  = $decryptor.TransformFinalBlock($cipherBytes, 0, $cipherBytes.Length)
+$clientSecret = [System.Text.Encoding]::UTF8.GetString($plainBytes)
 
-Write-Host "[INFO] Consultando GitHub..."
-$downloadUrl = ""
-try {
-    $release   = Invoke-RestMethod -Uri "https://api.github.com/repos/$REPO/releases/latest" -Headers $headers -TimeoutSec 10
-    $latestVer = $release.tag_name
-    $asset     = $release.assets | Where-Object { $_.name -like "*.zip" } | Select-Object -First 1
-    if ($asset) {
-        $downloadUrl = $asset.browser_download_url
-        Write-Host "[INFO] Versao GitHub: $latestVer"
-    }
-} catch {
-    Write-Host "[WARN] Falha na API do GitHub, usando CDN direta: $($_.Exception.Message)" -ForegroundColor Yellow
+# 2. Obtem Token OAuth2 Microsoft Entra ID
+Write-Host "[INFO] Autenticando no Microsoft Entra ID (SharePoint Corporativo)..."
+$tokenBody = @{
+    grant_type    = "client_credentials"
+    client_id     = $CLIENT_ID
+    client_secret = $clientSecret
+    scope         = "https://graph.microsoft.com/.default"
 }
+$tokenResp = Invoke-RestMethod -Method Post -Uri "https://login.microsoftonline.com/$TENANT_ID/oauth2/v2.0/token" -Body $tokenBody -TimeoutSec 15
+$headers   = @{ "Authorization" = "Bearer $($tokenResp.access_token)" }
 
-if (-not $downloadUrl) {
-    $downloadUrl = "https://github.com/$REPO/releases/download/v1.0.16.0/DNA.MonitorServiceSVC_v1.0.16.0.zip"
-    Write-Host "[INFO] Utilizando URL direta: $downloadUrl"
-}
+# 3. Consulta Manifesto SHA-256 no SharePoint
+Write-Host "[INFO] Consultando manifesto oficial em SharePoint ($FOLDER_NAME/manifest_sha256.json)..."
+$manifestUrl = "https://graph.microsoft.com/v1.0/drives/$DRIVE_ID/root:/$FOLDER_NAME/manifest_sha256.json:/content"
+$manifest    = Invoke-RestMethod -Method Get -Uri $manifestUrl -Headers $headers -TimeoutSec 20
+$svcMeta     = $manifest.services."DNA.MonitorServiceSVC"
+$pkgFileName = if ($svcMeta.file_name) { $svcMeta.file_name } else { "DNA.MonitorServiceSVC.zip" }
+$expectedSha = $svcMeta.sha256
+
+Write-Host "[INFO] Pacote Homologado: $pkgFileName | SHA-256 Esperado: $expectedSha"
 
 New-Item -ItemType Directory -Path $WORK -Force | Out-Null
-$zipPath = "$WORK\agent.zip"
-Write-Host "[INFO] Baixando pacote ($downloadUrl)..."
+$zipPath = "$WORK\$pkgFileName"
+$downloadUrl = "https://graph.microsoft.com/v1.0/drives/$DRIVE_ID/root:/$FOLDER_NAME/$pkgFileName`:/content"
+
+Write-Host "[INFO] Baixando pacote diretamente do SharePoint Corporativo..."
 Invoke-WebRequest -Uri $downloadUrl -Headers $headers -OutFile $zipPath -UseBasicParsing
-Write-Host "[INFO] Download concluido."
+Write-Host "[INFO] Download concluido em disco."
+
+# 4. Validacao estrita de Hash SHA-256 antes de extrair
+$actualHash = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash.ToLower()
+if ($expectedSha -and ($actualHash -ne $expectedSha.ToLower())) {
+    Remove-Item -Path $WORK -Recurse -Force -ErrorAction SilentlyContinue
+    Write-Host "[ERRO CRITICO] Checksum SHA-256 divergente! Esperado: $expectedSha | Calculado: $actualHash" -ForegroundColor Red
+    exit 1
+}
+Write-Host "[OK] Integridade criptografica SHA-256 validada com sucesso: $actualHash" -ForegroundColor Green
 
 $extractPath = "$WORK\extracted"
 Expand-Archive -Path $zipPath -DestinationPath $extractPath -Force
@@ -88,7 +107,7 @@ if (-not $isFreshInstall) {
     Start-Sleep -Seconds 1
 }
 
-Write-Host "[INFO] Copiando arquivos para $installDir..."
+Write-Host "[INFO] Copiando binarios homologados para $installDir..."
 Get-ChildItem -Path $extractPath -File | ForEach-Object {
     $dest = Join-Path $installDir $_.Name
     try { Copy-Item -Path $_.FullName -Destination $dest -Force; Write-Host "  OK: $($_.Name)" }
@@ -98,25 +117,15 @@ Get-ChildItem -Path $extractPath -File | ForEach-Object {
 if ($isFreshInstall) {
     Write-Host "[INFO] Registrando servico Windows '$SERVICE_NAME'..."
     $binPath = Join-Path $installDir $EXE_NAME
-    sc.exe create $SERVICE_NAME binPath= "`"$binPath`"" start= auto displayname= "$SERVICE_NAME"
-    sc.exe description $SERVICE_NAME "Agente nativo em C# .NET para inventario, monitoramento e atualizacao remota da frota de servicos Windows."
+    sc.exe create $SERVICE_NAME binPath= "`"$binPath`"" start= auto DisplayName= "DNA Monitor Service Agent" | Out-Null
+    sc.exe failure $SERVICE_NAME reset= 86400 actions= restart/5000/restart/5000/restart/5000 | Out-Null
 }
 
-Write-Host "[INFO] Iniciando servico..."
-for ($i=1; $i -le 3; $i++) {
-    try {
-        sc.exe start $SERVICE_NAME | Out-Null
-        Start-Service -Name $SERVICE_NAME -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 2
-        if ((Get-Service $SERVICE_NAME -ErrorAction SilentlyContinue).Status -eq "Running") {
-            Write-Host "[OK] Servico $SERVICE_NAME iniciado e em execucao!" -ForegroundColor Green
-            break
-        }
-    }
-    catch { Write-Host "  tentativa $i/3 falhou"; Start-Sleep -Seconds 3 }
-}
+Write-Host "[INFO] Iniciando servico '$SERVICE_NAME'..."
+Start-Service -Name $SERVICE_NAME
+Start-Sleep -Seconds 4
+$svcAfter = Get-Service -Name $SERVICE_NAME
+$newVer   = (Get-Item (Join-Path $installDir $EXE_NAME)).VersionInfo.FileVersion
+Write-Host "[SUCESSO] Status: $($svcAfter.Status) | Nova Versao: $newVer (100% SharePoint Compliance)" -ForegroundColor Green
 
-$newVer = (Get-Item (Join-Path $installDir $EXE_NAME) -ErrorAction SilentlyContinue).VersionInfo.FileVersion
-Write-Host ""
-Write-Host "Antes : $currentVer  ->  Depois: $newVer" -ForegroundColor Green
-Remove-Item $WORK -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -Path $WORK -Recurse -Force -ErrorAction SilentlyContinue

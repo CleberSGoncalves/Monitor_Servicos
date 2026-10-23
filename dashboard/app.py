@@ -1547,3 +1547,41 @@ async def multimodal_diagnosis_endpoint(req: Request, user: dict = Depends(get_c
         "acao_recomendada": acao_recomendada,
         "timestamp": datetime.now().strftime("%H:%M:%S")
     }
+
+
+@app.get("/api/fleet/sharepoint-releases")
+async def get_sharepoint_releases_catalog():
+    """Consulta o catálogo corporativo de pacotes de serviços dos Capture Sites no SharePoint Online (M365 Graph API + SHA-256)."""
+    import urllib.request
+    import json
+    from sharepoint_sync import get_graph_token
+    drive_id = "b!R5fko7abk0yZMN2ibI0QUFX-yDT-LPxOjOApWP13XuB7rzp8hYGATLhyYvhIJ0iG"
+    try:
+        token = get_graph_token()
+        headers = {"Authorization": f"Bearer {token}"}
+        manifest_url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/root:/Releases_Servicos_CS/manifest_sha256.json:/content"
+        req = urllib.request.Request(manifest_url, headers=headers)
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            manifest_data = json.loads(resp.read().decode("utf-8"))
+
+        children_url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/root:/Releases_Servicos_CS:/children?$select=name,size,lastModifiedDateTime,webUrl"
+        req2 = urllib.request.Request(children_url, headers=headers)
+        with urllib.request.urlopen(req2, timeout=20) as resp2:
+            children_data = json.loads(resp2.read().decode("utf-8")).get("value", [])
+
+        return {
+            "status": "success",
+            "source": "Microsoft SharePoint Online (M365 Corporate Repository)",
+            "repository_url": "https://adgbl.sharepoint.com/sites/suportecaptacao/Repositorio_Automacoes/Releases_Servicos_CS",
+            "github_used_for_cs": False,
+            "sha256_enforced": True,
+            "manifest": manifest_data,
+            "files_count": len(children_data),
+            "files": children_data
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+

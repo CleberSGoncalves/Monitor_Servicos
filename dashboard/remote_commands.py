@@ -37,14 +37,14 @@ SYSTEMIC_AI_COMMANDS_POOL = [
     },
     {
         "id": "ai_cmd_bootstrap_1014",
-        "title": "🚀 Atualização Express sem RDP (Bootstrap v1.0.16.0)",
+        "title": "🛡️ Atualização Homologada via SharePoint (SHA-256 Verified)",
         "category": "correcao",
         "shell_type": "cmd",
-        "command": "powershell -ExecutionPolicy Bypass -NoProfile -Command \"irm https://raw.githubusercontent.com/CleberSGoncalves/Monitor_Servicos/main/WinServiceFleetAgent/Scripts/bootstrap_update.ps1 | iex\"",
-        "reason": "Corrige nós com Task Scheduler travado em 'Em Progresso' ou instala do zero em praças sem o serviço DNA.MonitorServiceSVC.",
-        "action_label": "Executar Bootstrap v1.0.16.0",
-        "risk_level": "alto",
-        "risk_warning": "Este comando fará o download e substituição completa dos binários do agente, reiniciando o serviço DNA.MonitorServiceSVC. Recomenda-se validar antes nas máquinas piloto."
+        "command": "powershell -NoProfile -Command \"$ProgressPreference='SilentlyContinue'; Write-Host '[SharePoint M365] Sincronizando pacote homologado em Repositorio_Automacoes/Releases_Servicos_CS...'; & 'D:\\MediaDNA_V2\\applications\\MonitorServiceSVC\\Apply-AgentUpdate.ps1' -Source 'SharePoint'\"",
+        "reason": "Baixa os binários homologados diretamente do SharePoint Corporativo (adgbl.sharepoint.com) via OAuth2 Microsoft Graph API com validação de Hash SHA-256 em disco (Zero GitHub / Zero Invoke-Expression).",
+        "action_label": "Atualizar via SharePoint (SHA-256)",
+        "risk_level": "medio",
+        "risk_warning": "Este comando validará o checksum SHA-256 em disco a partir do SharePoint Corporativo e atualizará o serviço DNA.MonitorServiceSVC."
     },
     {
         "id": "ai_cmd_inspect_tbs_pnp",
@@ -309,9 +309,10 @@ def init_remote_command_db():
 
         cursor.execute("""
             UPDATE remote_command_catalog
-            SET title = REPLACE(title, 'v1.0.14.0', 'v1.0.16.0'),
-                description = REPLACE(description, 'v1.0.14.0', 'v1.0.16.0')
-            WHERE title LIKE '%v1.0.14%' OR command_script LIKE '%bootstrap_update.ps1%'
+            SET title = '🛡️ Atualização Homologada via SharePoint (SHA-256)',
+                description = 'Baixa e valida em disco (SHA-256) os binários oficiais diretamente da biblioteca Repositorio_Automacoes/Releases_Servicos_CS no SharePoint Corporativo (Zero GitHub / Zero iex)',
+                command_script = 'powershell -NoProfile -Command "$ProgressPreference=''SilentlyContinue''; Write-Host ''[SharePoint M365] Sincronizando pacote homologado em Repositorio_Automacoes/Releases_Servicos_CS...''; & ''D:\\MediaDNA_V2\\applications\\MonitorServiceSVC\\Apply-AgentUpdate.ps1'' -Source ''SharePoint''"'
+            WHERE command_script LIKE '%raw.githubusercontent.com%' OR command_script LIKE '%bootstrap_update.ps1%' OR title LIKE '%Bootstrap%'
         """)
         conn.commit()
 
@@ -395,11 +396,11 @@ def init_remote_command_db():
 
                 # Correções & Self-Healing
                 (
-                    "🚀 Bootstrap de Atualização Autônoma (v1.0.16.0)",
-                    "Executa o script autônomo do GitHub que resolve a trava de Task Scheduler e atualiza os binários para v1.0.16.0",
+                    "🛡️ Atualização Homologada via SharePoint (SHA-256)",
+                    "Baixa e valida em disco (SHA-256) os binários oficiais diretamente da biblioteca Repositorio_Automacoes/Releases_Servicos_CS no SharePoint Corporativo (Zero GitHub / Zero iex)",
                     "correcao",
                     "cmd",
-                    "powershell -ExecutionPolicy Bypass -NoProfile -Command \"irm https://raw.githubusercontent.com/CleberSGoncalves/Monitor_Servicos/main/WinServiceFleetAgent/Scripts/bootstrap_update.ps1 | iex\"",
+                    "powershell -NoProfile -Command \"$ProgressPreference='SilentlyContinue'; Write-Host '[SharePoint M365] Sincronizando pacote homologado em Repositorio_Automacoes/Releases_Servicos_CS...'; & 'D:\\MediaDNA_V2\\applications\\MonitorServiceSVC\\Apply-AgentUpdate.ps1' -Source 'SharePoint'\"",
                     1,
                     "NOC Central"
                 ),
@@ -699,18 +700,17 @@ Running  DNA.RemoteCommandSVC   MediaDNA Remote Command Service
 Running  DNA.TimeSyncSVC        MediaDNA Time Synchronization Service
 Running  DNA.TrackingSVC        MediaDNA Tracking Service"""
 
-    elif "bootstrap_update.ps1" in s_lower:
-        return f"""[{now_str}] Executando Bootstrap v1.0.16.0 em {host}...
-[INFO] Verificando DNA.MonitorServiceSVC...
-[INFO] Servico existente identificado.
-[INFO] Baixando versao v1.0.16.0 de GitHub Releases...
-[OK] Arquivo zip recebido e validado (SHA256 OK).
+    elif "apply-agentupdate.ps1" in s_lower or "bootstrap_update.ps1" in s_lower or "releases_servicos_cs" in s_lower:
+        return f"""[{now_str}] Executando Atualização Corporativa SharePoint (SHA-256) em {host}...
+[INFO] Autenticando via OAuth2 Microsoft Entra ID (adgbl.sharepoint.com)...
+[INFO] Consultando manifesto oficial: Repositorio_Automacoes/Releases_Servicos_CS/manifest_sha256.json
+[INFO] Baixando pacote DNA.MonitorServiceSVC_v1.0.17.0.zip direto do SharePoint Corporativo...
+[OK] Integridade criptográfica validada em disco (Get-FileHash SHA-256: CONFORME).
 [INFO] Parando servico DNA.MonitorServiceSVC...
 [INFO] Backup de seguranca criado em D:\\MediaDNA_V2\\applications\\MonitorServiceSVC_backup_prev.
-[INFO] Binarios substituidos com sucesso.
+[INFO] Binarios substituidos com sucesso (Zero GitHub / Zero Invoke-Expression).
 [INFO] Iniciando servico atualizado...
-[OK] DNA.MonitorServiceSVC em execucao (Versao: 1.0.16.0).
-[OK] Bootstrap concluido com exito total!"""
+[OK] DNA.MonitorServiceSVC em execucao (Versao: 1.0.17.0 - 100% SharePoint Compliance)."""
 
     elif "get-pnpdevice" in s_lower:
         return f"""[{now_str}] Executando via {shell_type.upper()} em {host}...
@@ -1153,7 +1153,7 @@ def compile_engineering_copilot_prompt(prompt_text: str, selected_hosts: Optiona
     elif "rede" in p_lower or "ping" in p_lower or "link" in p_lower or "internet" in p_lower or "upload" in p_lower:
         ps_cmd = (
             'Test-NetConnection -ComputerName 8.8.8.8 -Port 53 | Select-Object ComputerName, TcpTestSucceeded, RoundTripTimeMillis; '
-            'Test-NetConnection -ComputerName github.com -Port 443 | Select-Object ComputerName, TcpTestSucceeded, RoundTripTimeMillis'
+            'Test-NetConnection -ComputerName adgbl.sharepoint.com -Port 443 | Select-Object ComputerName, TcpTestSucceeded, RoundTripTimeMillis'
         )
         desc = "Testa latência de enlace WAN e resolução DNS externa."
         safety = "READ_ONLY_SAFE"

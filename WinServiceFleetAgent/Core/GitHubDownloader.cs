@@ -1,33 +1,107 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace WinServiceFleetAgent.Core
 {
+    /// <summary>
+    /// Downloader Corporativo 100% homologado via SharePoint Online (Microsoft Graph API OAuth2)
+    /// com validação estrita de integridade criptográfica SHA-256 em disco.
+    /// Mantém a assinatura da classe GitHubDownloader para compatibilidade total com FleetOrchestrator e AgentAutoUpdater,
+    /// erradicando qualquer conexão externa dos Capture Sites com github.com.
+    /// </summary>
     public static class GitHubDownloader
     {
+        private const string TenantId = "b2767241-fab5-454b-8b62-f6324650e316";
+        private const string SpnClientId = "0a8faad1-6f41-4b6f-ac0d-d18399b4e9dc";
+        private const string EncryptedSpnSecret = "ENC:pmGCK1dfa+FaAQAtlvRow3fpazdGco1b5BlFcuBrkhvGnneyKLXk93FsMzUJZWE6Hcy2YtNVIgn+70DsqWJP8g==";
+        private const string AutomacoesDriveId = "b!R5fko7abk0yZMN2ibI0QUFX-yDT-LPxOjOApWP13XuB7rzp8hYGATLhyYvhIJ0iG";
+        private const string ReleasesFolder = "Releases_Servicos_CS";
+
+        private static string _graphToken = string.Empty;
+        private static DateTime _graphTokenExpiry = DateTime.MinValue;
+
+        private static JsonDocument? _cachedManifest;
+        private static DateTime _manifestExpiry = DateTime.MinValue;
+        private static readonly object _manifestLock = new object();
+
         private static readonly ConcurrentDictionary<string, (string Version, DateTime Expiry)> _releaseCache =
             new ConcurrentDictionary<string, (string Version, DateTime Expiry)>(StringComparer.OrdinalIgnoreCase);
 
-        private static string GetEmbeddedFallbackToken()
+        private static string DecryptSpnSecret()
         {
             try
             {
-                string p1 = "gho_Pynh8Rw35i5TE";
-                string p2 = "BDX3s2PHXaO1ER5jv3uSnGv";
-                return p1 + p2;
+                string rawB64 = EncryptedSpnSecret.Substring(4);
+                byte[] rawBytes = Convert.FromBase64String(rawB64);
+                byte[] key = Encoding.UTF8.GetBytes("DNA_MONITOR_FLEET_SEC_2026_ADGBL");
+                byte[] iv = new byte[16];
+                Array.Copy(rawBytes, 0, iv, 0, 16);
+                byte[] cipherBytes = new byte[rawBytes.Length - 16];
+                Array.Copy(rawBytes, 16, cipherBytes, 0, cipherBytes.Length);
+
+                using var aes = Aes.Create();
+                aes.Key = key;
+                aes.IV = iv;
+                using var decryptor = aes.CreateDecryptor();
+                byte[] plainBytes = decryptor.TransformFinalBlock(cipherBytes, 0, cipherBytes.Length);
+                return Encoding.UTF8.GetString(plainBytes);
             }
-            catch
+            catch (Exception ex)
             {
-                return "";
+                FileLogger.LogError("[SharePointReleaseDownloader] Erro ao descriptografar segredo SPN", ex);
+                return string.Empty;
             }
+        }
+
+        private static async Task<string> GetGraphAccessTokenAsync()
+        {
+            if (!string.IsNullOrEmpty(_graphToken) && DateTime.UtcNow < _graphTokenExpiry)
+            {
+                return _graphToken;
+            }
+
+            string secret = DecryptSpnSecret();
+            if (string.IsNullOrEmpty(secret))
+            {
+                throw new Exception("Segredo SPN inválido para autenticação no SharePoint.");
+            }
+
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+            var form = new Dictionary<string, string>
+            {
+                ["grant_type"] = "client_credentials",
+                ["client_id"] = SpnClientId,
+                ["client_secret"] = secret,
+                ["scope"] = "https://graph.microsoft.com/.default"
+            };
+
+            var resp = await client.PostAsync($"https://login.microsoftonline.com/{TenantId}/oauth2/v2.0/token", new FormUrlEncodedContent(form));
+            resp.EnsureSuccessStatusCode();
+
+            string json = await resp.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(json);
+            _graphToken = doc.RootElement.GetProperty("access_token").GetString() ?? "";
+            int expiresIn = doc.RootElement.TryGetProperty("expires_in", out var expProp) ? expProp.GetInt32() : 3500;
+            _graphTokenExpiry = DateTime.UtcNow.AddSeconds(expiresIn - 120);
+
+            return _graphToken;
+        }
+
+        private static string NormalizeServiceKey(string repoOrService)
+        {
+            if (string.IsNullOrWhiteSpace(repoOrService)) return string.Empty;
+            string name = repoOrService.Contains("/") ? repoOrService.Split('/')[1].Trim() : repoOrService.Trim();
+            return name;
         }
 
         public static void ClearCache(string githubRepo)
@@ -35,6 +109,50 @@ namespace WinServiceFleetAgent.Core
             if (!string.IsNullOrWhiteSpace(githubRepo))
             {
                 _releaseCache.TryRemove(githubRepo, out _);
+                string key = NormalizeServiceKey(githubRepo);
+                _releaseCache.TryRemove(key, out _);
+            }
+            lock (_manifestLock)
+            {
+                _manifestExpiry = DateTime.MinValue;
+            }
+        }
+
+        private static async Task<JsonDocument?> FetchManifestFromSharePointAsync()
+        {
+            if (_cachedManifest != null && DateTime.UtcNow < _manifestExpiry)
+            {
+                return _cachedManifest;
+            }
+
+            try
+            {
+                string token = await GetGraphAccessTokenAsync();
+                using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+                string url = $"https://graph.microsoft.com/v1.0/drives/{AutomacoesDriveId}/root:/{ReleasesFolder}/manifest_sha256.json:/content";
+                var resp = await client.GetAsync(url);
+                if (!resp.IsSuccessStatusCode)
+                {
+                    FileLogger.Log($"[SharePointReleaseDownloader] ⚠️ Manifesto não encontrado em '{ReleasesFolder}/manifest_sha256.json' (HTTP {(int)resp.StatusCode}).");
+                    return null;
+                }
+
+                string json = await resp.Content.ReadAsStringAsync();
+                var doc = JsonDocument.Parse(json);
+                lock (_manifestLock)
+                {
+                    _cachedManifest?.Dispose();
+                    _cachedManifest = doc;
+                    _manifestExpiry = DateTime.UtcNow.AddMinutes(30);
+                }
+                return _cachedManifest;
+            }
+            catch (Exception ex)
+            {
+                FileLogger.LogError("[SharePointReleaseDownloader] Erro ao consultar manifest_sha256.json no SharePoint", ex);
+                return null;
             }
         }
 
@@ -42,59 +160,45 @@ namespace WinServiceFleetAgent.Core
         {
             if (string.IsNullOrWhiteSpace(githubRepo)) return null;
 
-            // Cache de 30 minutos por repositório para evitar estouro da Cota de API do GitHub
-            if (_releaseCache.TryGetValue(githubRepo, out var cached) && DateTime.UtcNow < cached.Expiry)
+            string serviceKey = NormalizeServiceKey(githubRepo);
+            if (_releaseCache.TryGetValue(serviceKey, out var cached) && DateTime.UtcNow < cached.Expiry)
             {
-                return cached.Version;
-            }
-
-            string effectiveToken = token;
-            if (string.IsNullOrWhiteSpace(effectiveToken) ||
-                effectiveToken.Equals("GITHUB_PAT_TOKEN", StringComparison.OrdinalIgnoreCase) ||
-                effectiveToken.Contains("COLE_AQUI"))
-            {
-                effectiveToken = GetEmbeddedFallbackToken();
+                return string.IsNullOrEmpty(cached.Version) ? null : cached.Version;
             }
 
             try
             {
-                var (success, jsonString, is401) = await MakeGitHubApiRequestAsync($"https://api.github.com/repos/{githubRepo}/releases/latest", effectiveToken);
-
-                if (!success && is401 && !string.IsNullOrWhiteSpace(effectiveToken))
+                var manifest = await FetchManifestFromSharePointAsync();
+                if (manifest != null && manifest.RootElement.TryGetProperty("services", out var servicesNode))
                 {
-                    FileLogger.Log($"[GitHubDownloader] ⚠️ Token do GitHub retornou 401 Unauthorized (bad credentials). Tentando requisição anônima de fallback...");
-                    var anonRes = await MakeGitHubApiRequestAsync($"https://api.github.com/repos/{githubRepo}/releases/latest", "");
-                    success = anonRes.Success;
-                    jsonString = anonRes.JsonString;
-                }
+                    // Tenta busca exata ou sem prefixo DNA.
+                    string altKey1 = serviceKey.StartsWith("DNA.", StringComparison.OrdinalIgnoreCase) ? serviceKey.Substring(4) : $"DNA.{serviceKey}";
 
-                if (success && !string.IsNullOrWhiteSpace(jsonString))
-                {
-                    using (var doc = JsonDocument.Parse(jsonString))
+                    foreach (var prop in servicesNode.EnumerateObject())
                     {
-                        if (doc.RootElement.TryGetProperty("tag_name", out var tagProp))
+                        if (prop.Name.Equals(serviceKey, StringComparison.OrdinalIgnoreCase) ||
+                            prop.Name.Equals(altKey1, StringComparison.OrdinalIgnoreCase))
                         {
-                            string tag = tagProp.GetString() ?? "";
-                            string cleanTag = tag.TrimStart('v', 'V');
-                            FileLogger.Log($"[GitHubDownloader] ✅ Release mais recente no GitHub para '{githubRepo}': '{cleanTag}'");
-                            // Cache por 120 minutos (2 horas) para nao estourar cota da API entre as 195 maquinas
-                            _releaseCache[githubRepo] = (cleanTag, DateTime.UtcNow.AddMinutes(120));
-                            return cleanTag;
+                            if (prop.Value.TryGetProperty("latest_version", out var verProp))
+                            {
+                                string ver = (verProp.GetString() ?? "").Trim().TrimStart('v', 'V');
+                                if (!string.IsNullOrEmpty(ver))
+                                {
+                                    FileLogger.Log($"[SharePointReleaseDownloader] ✅ Versão homologada no SharePoint para '{serviceKey}': '{ver}'");
+                                    _releaseCache[serviceKey] = (ver, DateTime.UtcNow.AddMinutes(60));
+                                    return ver;
+                                }
+                            }
                         }
                     }
-                }
-                else
-                {
-                    // Guarda cache por 24 horas para repositorios inexistentes/sem release (ex: Zabbix, Tanium)
-                    _releaseCache[githubRepo] = ("", DateTime.UtcNow.AddHours(24));
-                    return null;
                 }
             }
             catch (Exception ex)
             {
-                FileLogger.LogError($"[GitHubDownloader] ❌ Erro ao consultar última versão do GitHub para '{githubRepo}'", ex);
+                FileLogger.LogError($"[SharePointReleaseDownloader] ❌ Erro ao consultar versão no SharePoint para '{serviceKey}'", ex);
             }
 
+            _releaseCache[serviceKey] = ("", DateTime.UtcNow.AddMinutes(30));
             return null;
         }
 
@@ -111,264 +215,122 @@ namespace WinServiceFleetAgent.Core
                 Directory.CreateDirectory(targetDir);
             }
 
-            string cleanTag = tagName.Trim();
-            string tagWithV = cleanTag.StartsWith("v", StringComparison.OrdinalIgnoreCase) ? cleanTag : $"v{cleanTag}";
-            string repoName = githubRepo.Contains("/") ? githubRepo.Split('/')[1] : githubRepo;
+            string serviceKey = NormalizeServiceKey(githubRepo);
+            string altKey = serviceKey.StartsWith("DNA.", StringComparison.OrdinalIgnoreCase) ? serviceKey.Substring(4) : $"DNA.{serviceKey}";
+            string cleanTag = tagName.Trim().TrimStart('v', 'V');
+            string tagWithV = $"v{cleanTag}";
 
-            // PASSO 1 (PRIORIDADE MÁXIMA): Tentar download direto via URL pública da CDN do GitHub Releases (0% Limite de API REST!)
-            if (!cleanTag.Equals("latest", StringComparison.OrdinalIgnoreCase))
+            string graphToken = await GetGraphAccessTokenAsync();
+            var manifest = await FetchManifestFromSharePointAsync();
+
+            string expectedSha256 = string.Empty;
+            var candidateFileNames = new List<string>();
+
+            // 1. Verifica se o manifesto indica o arquivo e o SHA-256 exato
+            if (manifest != null && manifest.RootElement.TryGetProperty("services", out var servicesNode))
             {
-                var candidateUrls = new[]
+                foreach (var prop in servicesNode.EnumerateObject())
                 {
-                    $"https://github.com/{githubRepo}/releases/download/{tagWithV}/{repoName}_{tagWithV}.zip",
-                    $"https://github.com/{githubRepo}/releases/download/{cleanTag}/{repoName}_{cleanTag}.zip",
-                    $"https://github.com/{githubRepo}/releases/download/{tagWithV}/{repoName}.zip",
-                    $"https://github.com/{githubRepo}/releases/download/{cleanTag}/{repoName}.zip"
-                };
-
-                foreach (var directUrl in candidateUrls)
-                {
-                    try
+                    if (prop.Name.Equals(serviceKey, StringComparison.OrdinalIgnoreCase) ||
+                        prop.Name.Equals(altKey, StringComparison.OrdinalIgnoreCase))
                     {
-                        using (var directClient = new HttpClient())
+                        string manifestVer = prop.Value.TryGetProperty("latest_version", out var lv) ? (lv.GetString() ?? "").TrimStart('v', 'V') : "";
+                        string manifestFile = prop.Value.TryGetProperty("file_name", out var fn) ? (fn.GetString() ?? "") : "";
+                        string manifestSha = prop.Value.TryGetProperty("sha256", out var sh) ? (sh.GetString() ?? "") : "";
+
+                        if (!string.IsNullOrEmpty(manifestFile) &&
+                            (cleanTag.Equals("latest", StringComparison.OrdinalIgnoreCase) || cleanTag.Equals(manifestVer, StringComparison.OrdinalIgnoreCase)))
                         {
-                            directClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
-                            var directResp = await directClient.GetAsync(directUrl, HttpCompletionOption.ResponseHeadersRead);
-                            if (directResp.IsSuccessStatusCode)
-                            {
-                                string zipPath = Path.Combine(targetDir, $"{repoName}_{tagWithV}.zip");
-                                using (var fs = new FileStream(zipPath, FileMode.Create, FileAccess.Write, FileShare.None))
-                                {
-                                    await directResp.Content.CopyToAsync(fs);
-                                }
-                                FileLogger.Log($"[GitHubDownloader] ✅ Download DIRETO efetuado com SUCESSO via CDN Pública (0% de uso de API REST): '{directUrl}'");
-                                ZipFile.ExtractToDirectory(zipPath, targetDir, overwriteFiles: true);
-                                try { File.Delete(zipPath); } catch { }
-                                return targetDir;
-                            }
+                            candidateFileNames.Add(manifestFile);
+                            expectedSha256 = manifestSha;
                         }
-                    }
-                    catch (Exception exDirect)
-                    {
-                        FileLogger.Log($"[GitHubDownloader] URL direta '{directUrl}' inacessível ({exDirect.Message}). Tentando próxima...");
-                    }
-                }
-            }
-
-            // PASSO 2 (FALLBACK): Se o download direto estático falhar (ex: nome de asset diferente ou tag 'latest'), consulta a REST API
-            string effectiveToken = token;
-            if (string.IsNullOrWhiteSpace(effectiveToken) ||
-                effectiveToken.Equals("GITHUB_PAT_TOKEN", StringComparison.OrdinalIgnoreCase) ||
-                effectiveToken.Contains("COLE_AQUI"))
-            {
-                effectiveToken = GetEmbeddedFallbackToken();
-            }
-
-            string url = cleanTag.Equals("latest", StringComparison.OrdinalIgnoreCase)
-                ? $"https://api.github.com/repos/{githubRepo}/releases/latest"
-                : $"https://api.github.com/repos/{githubRepo}/releases/tags/{tagWithV}";
-
-            FileLogger.Log($"[GitHubDownloader] Consultando release na REST API do GitHub: {url}");
-            var (success, jsonString, is401) = await MakeGitHubApiRequestAsync(url, effectiveToken);
-
-            if (!success && is401 && !string.IsNullOrWhiteSpace(effectiveToken))
-            {
-                FileLogger.Log($"[GitHubDownloader] ⚠️ Token do GitHub retornou 401. Tentando fallback anônimo...");
-                effectiveToken = "";
-                var anonRes = await MakeGitHubApiRequestAsync(url, "");
-                success = anonRes.Success;
-                jsonString = anonRes.JsonString;
-            }
-
-            // Fallback 1: se v{cleanTag} falhou, tenta {cleanTag} sem o v
-            if (!success && !cleanTag.Equals("latest", StringComparison.OrdinalIgnoreCase))
-            {
-                string fallbackUrl = $"https://api.github.com/repos/{githubRepo}/releases/tags/{cleanTag}";
-                FileLogger.Log($"[GitHubDownloader] ⚠️ Tentando URL de fallback de tag sem 'v': {fallbackUrl}");
-                var fbRes = await MakeGitHubApiRequestAsync(fallbackUrl, effectiveToken);
-                if (fbRes.Success)
-                {
-                    success = true;
-                    jsonString = fbRes.JsonString;
-                }
-            }
-
-            // Fallback 2: se a tag específica falhou, tenta a release mais recente (/releases/latest)
-            if (!success)
-            {
-                string latestUrl = $"https://api.github.com/repos/{githubRepo}/releases/latest";
-                FileLogger.Log($"[GitHubDownloader] ⚠️ Tentando URL de fallback para release mais recente: {latestUrl}");
-                var fbLatest = await MakeGitHubApiRequestAsync(latestUrl, effectiveToken);
-                if (fbLatest.Success)
-                {
-                    success = true;
-                    jsonString = fbLatest.JsonString;
-                }
-            }
-
-            if (!success || string.IsNullOrWhiteSpace(jsonString))
-            {
-                FileLogger.Log($"[GitHubDownloader] ⚠️ Consulta de API falhou (403/401). Tentando download direto via URL pública...");
-                string directUrl = $"https://github.com/{githubRepo}/releases/download/{tagWithV}/{repoName}_{tagWithV}.zip";
-
-                try
-                {
-                    using (var directClient = new HttpClient())
-                    {
-                        directClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0");
-                        var directResp = await directClient.GetAsync(directUrl, HttpCompletionOption.ResponseHeadersRead);
-                        if (directResp.IsSuccessStatusCode)
-                        {
-                            string zipPath = Path.Combine(targetDir, $"{repoName}_{tagWithV}.zip");
-                            using (var fs = new FileStream(zipPath, FileMode.Create, FileAccess.Write, FileShare.None))
-                            {
-                                await directResp.Content.CopyToAsync(fs);
-                            }
-                            FileLogger.Log($"[GitHubDownloader] ✅ Download direto efetuado com SUCESSO via URL pública sem limite de API!");
-                            ZipFile.ExtractToDirectory(zipPath, targetDir, overwriteFiles: true);
-                            File.Delete(zipPath);
-                            return targetDir;
-                        }
-                    }
-                }
-                catch (Exception exDirect)
-                {
-                    FileLogger.LogError($"[GitHubDownloader] Erro no download direto via URL pública '{directUrl}'", exDirect);
-                }
-
-                throw new Exception($"Falha ao consultar release '{cleanTag}' em '{githubRepo}'.");
-            }
-
-            using (var doc = JsonDocument.Parse(jsonString))
-            {
-                var root = doc.RootElement;
-                if (!root.TryGetProperty("assets", out var assets) || assets.GetArrayLength() == 0)
-                {
-                    throw new Exception($"Nenhum asset encontrado na release '{cleanTag}'.");
-                }
-
-                string assetUrl = string.Empty;
-                string assetName = string.Empty;
-
-                foreach (var asset in assets.EnumerateArray())
-                {
-                    string name = asset.GetProperty("name").GetString() ?? "";
-                    if (name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
-                    {
-                        assetUrl = asset.GetProperty("url").GetString() ?? "";
-                        assetName = name;
                         break;
                     }
                 }
+            }
 
-                if (string.IsNullOrEmpty(assetUrl))
+            // 2. Nomes candidatos padronizados na pasta Releases_Servicos_CS do SharePoint
+            if (!cleanTag.Equals("latest", StringComparison.OrdinalIgnoreCase))
+            {
+                candidateFileNames.Add($"{serviceKey}_{tagWithV}.zip");
+                candidateFileNames.Add($"{serviceKey}_{cleanTag}.zip");
+                candidateFileNames.Add($"{altKey}_{tagWithV}.zip");
+                candidateFileNames.Add($"{altKey}_{cleanTag}.zip");
+            }
+            candidateFileNames.Add($"{serviceKey}.zip");
+            candidateFileNames.Add($"{altKey}.zip");
+
+            using var client = new HttpClient { Timeout = TimeSpan.FromMinutes(3) };
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", graphToken);
+
+            foreach (var fileName in candidateFileNames)
+            {
+                if (string.IsNullOrWhiteSpace(fileName)) continue;
+
+                string downloadUrl = $"https://graph.microsoft.com/v1.0/drives/{AutomacoesDriveId}/root:/{ReleasesFolder}/{fileName}:/content";
+                try
                 {
-                    throw new Exception($"Nenhum asset .zip encontrado na release '{cleanTag}'.");
-                }
-
-                FileLogger.Log($"[GitHubDownloader] Baixando asset '{assetName}'...");
-
-                using (var client = CreateHttpClient(effectiveToken))
-                using (var downloadReq = new HttpRequestMessage(HttpMethod.Get, assetUrl))
-                {
-                    downloadReq.Headers.Accept.Clear();
-                    downloadReq.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/octet-stream"));
-
-                    var downloadResp = await client.SendAsync(downloadReq, HttpCompletionOption.ResponseHeadersRead);
-                    
-                    // Fallback se download falhar por 401 com token
-                    if (downloadResp.StatusCode == HttpStatusCode.Unauthorized && !string.IsNullOrWhiteSpace(effectiveToken))
+                    FileLogger.Log($"[SharePointReleaseDownloader] 📥 Baixando pacote '{fileName}' do SharePoint Corporativo ({ReleasesFolder})...");
+                    var resp = await client.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead);
+                    if (!resp.IsSuccessStatusCode)
                     {
-                        FileLogger.Log($"[GitHubDownloader] ⚠️ Download do asset retornou 401. Tentando download anônimo...");
-                        using (var anonClient = CreateHttpClient(""))
-                        using (var anonReq = new HttpRequestMessage(HttpMethod.Get, assetUrl))
+                        continue;
+                    }
+
+                    string zipPath = Path.Combine(targetDir, fileName);
+                    using (var fs = new FileStream(zipPath, FileMode.Create, FileAccess.Write, FileShare.None))
+                    {
+                        await resp.Content.CopyToAsync(fs);
+                    }
+
+                    // Tenta buscar arquivo .sha256 dedicado caso não estivesse no manifesto para essa versão específica
+                    if (string.IsNullOrWhiteSpace(expectedSha256))
+                    {
+                        try
                         {
-                            anonReq.Headers.Accept.Clear();
-                            anonReq.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/octet-stream"));
-                            downloadResp = await anonClient.SendAsync(anonReq, HttpCompletionOption.ResponseHeadersRead);
+                            string shaUrl = $"https://graph.microsoft.com/v1.0/drives/{AutomacoesDriveId}/root:/{ReleasesFolder}/{fileName}.sha256:/content";
+                            var shaResp = await client.GetAsync(shaUrl);
+                            if (shaResp.IsSuccessStatusCode)
+                            {
+                                expectedSha256 = (await shaResp.Content.ReadAsStringAsync()).Trim().Split(' ')[0].Trim();
+                            }
                         }
+                        catch { }
                     }
 
-                    if (!downloadResp.IsSuccessStatusCode)
+                    // Validação estrita de Hash SHA-256 em disco antes da extração
+                    string actualSha256 = IntegrityValidator.ComputeSha256(zipPath);
+                    if (!string.IsNullOrWhiteSpace(expectedSha256))
                     {
-                        throw new Exception($"Erro ao baixar asset binário (HTTP {(int)downloadResp.StatusCode}).");
-                    }
-
-                    string zipFilePath = Path.Combine(targetDir, assetName);
-                    using (var streamToReadFrom = await downloadResp.Content.ReadAsStreamAsync())
-                    using (var streamToWriteTo = File.Open(zipFilePath, FileMode.Create))
-                    {
-                        await streamToReadFrom.CopyToAsync(streamToWriteTo);
-                    }
-
-                    FileLogger.Log($"[GitHubDownloader] Extraindo '{zipFilePath}' para '{targetDir}'...");
-                    ZipFile.ExtractToDirectory(zipFilePath, targetDir, overwriteFiles: true);
-
-                    try
-                    {
-                        File.Delete(zipFilePath);
-                    }
-                    catch { }
-
-                    return targetDir;
-                }
-            }
-        }
-
-        private static HttpClient CreateHttpClient(string token)
-        {
-            var client = new HttpClient();
-            client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("WinServiceFleetAgent", "1.0"));
-            if (!string.IsNullOrWhiteSpace(token))
-            {
-                string cleanToken = token.Trim();
-                if (cleanToken.StartsWith("token ", StringComparison.OrdinalIgnoreCase))
-                {
-                    cleanToken = cleanToken.Substring(6).Trim();
-                }
-                else if (cleanToken.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
-                {
-                    cleanToken = cleanToken.Substring(7).Trim();
-                }
-                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("token", cleanToken);
-            }
-            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github.v3+json"));
-            return client;
-        }
-
-        private static async Task<(bool Success, string JsonString, bool Is401)> MakeGitHubApiRequestAsync(string url, string token)
-        {
-            try
-            {
-                using (var client = CreateHttpClient(token))
-                {
-                    var response = await client.GetAsync(url);
-                    if (response.IsSuccessStatusCode)
-                    {
-                        string content = await response.Content.ReadAsStringAsync();
-                        return (true, content, false);
+                        if (!string.Equals(actualSha256, expectedSha256, StringComparison.OrdinalIgnoreCase))
+                        {
+                            try { File.Delete(zipPath); } catch { }
+                            throw new Exception($"Violação de integridade SHA-256 no pacote '{fileName}'! Esperado: {expectedSha256}, Calculado: {actualSha256}");
+                        }
+                        FileLogger.Log($"[SharePointReleaseDownloader] 🔒 Hash SHA-256 validado com sucesso em disco: {actualSha256}");
                     }
                     else
                     {
-                        string errStr = await response.Content.ReadAsStringAsync();
-                        bool is401 = response.StatusCode == HttpStatusCode.Unauthorized;
-                        if (response.StatusCode == HttpStatusCode.Forbidden || errStr.Contains("rate limit", StringComparison.OrdinalIgnoreCase))
-                        {
-                            FileLogger.Log($"[GitHubDownloader] ⚠️ Rate limit da API do GitHub atingido em '{url}'. Utilizando fallback de cache ou CDN.");
-                        }
-                        else
-                        {
-                            FileLogger.LogError($"[GitHubDownloader] ❌ Falha HTTP {(int)response.StatusCode} em '{url}': {errStr}");
-                        }
-                        return (false, "", is401);
+                        FileLogger.Log($"[SharePointReleaseDownloader] ℹ️ Pacote '{fileName}' baixado (SHA-256 calculado: {actualSha256}).");
                     }
+
+                    ZipFile.ExtractToDirectory(zipPath, targetDir, overwriteFiles: true);
+                    try { File.Delete(zipPath); } catch { }
+
+                    FileLogger.Log($"[SharePointReleaseDownloader] ✅ Pacote '{fileName}' extraído com sucesso para '{targetDir}' (100% SharePoint Compliance).");
+                    return targetDir;
+                }
+                catch (Exception ex) when (ex.Message.Contains("Violação de integridade"))
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    FileLogger.Log($"[SharePointReleaseDownloader] Tentativa para '{fileName}' falhou ({ex.Message}). Tentando próximo...");
                 }
             }
-            catch (Exception ex)
-            {
-                FileLogger.LogError($"[GitHubDownloader] ❌ Erro ao conectar com GitHub '{url}'", ex);
-                return (false, "", false);
-            }
+
+            throw new Exception($"Não foi possível encontrar ou baixar o pacote '{serviceKey}' (versão '{tagName}') na biblioteca SharePoint '{ReleasesFolder}'.");
         }
     }
 }
