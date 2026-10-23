@@ -309,8 +309,9 @@ def init_remote_command_db():
 
         cursor.execute("""
             UPDATE remote_command_catalog
-            SET title = '🚀 Bootstrap de Atualização Autônoma (v1.0.16.0)'
-            WHERE title LIKE '%Bootstrap de Atualização Autônoma%'
+            SET title = REPLACE(title, 'v1.0.14.0', 'v1.0.16.0'),
+                description = REPLACE(description, 'v1.0.14.0', 'v1.0.16.0')
+            WHERE title LIKE '%v1.0.14%' OR command_script LIKE '%bootstrap_update.ps1%'
         """)
         conn.commit()
 
