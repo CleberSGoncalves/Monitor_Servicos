@@ -6956,126 +6956,155 @@
     </div>
   </div>
 
-  <!-- Modal: Perfil Topográfico de RF, Visada e Torres Transmissoras da Praça -->
-  <div class="modal-overlay" id="rfTopographyModal" style="display: none;">
-    <div class="modal-card" style="max-width: 960px; width: 95%; max-height: 92vh; overflow-y: auto; padding: 22px;">
-      <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 12px;">
-        <div>
-          <div style="font-size: 17px; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 8px;">
-            <span style="font-size: 20px;">⛰️</span>
-            <span id="rfModalTitle">Perfil Geográfico & Topografia RF • Pelotas (RS)</span>
-            <span class="badge badge-green" id="rfModalStatusBadge" style="margin-left: 8px;">Estável</span>
-          </div>
-          <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
-            Geolocalização precisa do Capture Site, perfil de elevação do terreno, torres transmissoras e cálculo de visada ótica (LOS)
+  <!-- Modal: Perfil Topográfico de RF, Visada e Torres Transmissoras da Praça (Widescreen Dual-Column) -->
+  <div class="modal-overlay" id="rfTopographyModal" style="display: none; align-items: center; justify-content: center; z-index: 9999;">
+    <div class="modal-card" style="max-width: 96vw; width: 96vw; height: 93vh; max-height: 93vh; margin: auto; display: flex; flex-direction: column; padding: 18px 24px; background: #070d18; border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 10px; box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.9);">
+      
+      <!-- Topo: Título, Status e Métricas Compactas de Hardware -->
+      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 10px; margin-bottom: 12px; flex-shrink: 0;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <span style="font-size: 22px;">⛰️</span>
+          <div>
+            <div style="font-size: 16px; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 8px;">
+              <span id="rfModalTitle">Perfil Geográfico & Topografia RF</span>
+              <span class="badge badge-green" id="rfModalStatusBadge">Estável</span>
+            </div>
+            <div style="font-size: 11px; color: var(--text-muted);">
+              Geolocalização precisa do Capture Site, perfil de elevação do terreno, torres transmissoras e cálculo de visada ótica (LOS)
+            </div>
           </div>
         </div>
-        <button type="button" class="btn-secondary" style="padding: 4px 10px;" onclick="closeMarketRfModal()">✕</button>
-      </div>
 
-      <!-- Informações Físicas do Capture Site -->
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; margin-top: 14px; margin-bottom: 16px;">
-        <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 12px;">
-          <div style="font-size: 10px; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">Coordenadas do Capture Site</div>
-          <div style="font-size: 13px; font-weight: 700; color: #38bdf8; font-family: monospace;" id="rfModalSiteCoords">-31.76540, -52.33760</div>
-        </div>
-        <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 12px;">
-          <div style="font-size: 10px; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">Altitude do Terreno (Solo)</div>
-          <div style="font-size: 13px; font-weight: 700; color: #fff;" id="rfModalSiteElevation">36 m acima do nível do mar</div>
-        </div>
-        <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 12px;">
-          <div style="font-size: 10px; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">Altura do Mastro Receptor</div>
-          <div style="font-size: 13px; font-weight: 700; color: #10b981;" id="rfModalMastHeight">24 m (Topo da Edificação)</div>
-        </div>
-        <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 12px;">
-          <div style="font-size: 10px; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">Hardware de Recepção</div>
-          <div style="font-size: 12px; font-weight: 700; color: #c084fc;">TBS Quad DVB-T/T2/ISDB-T</div>
-        </div>
-      </div>
-
-      <!-- Alternância de Visão: Radar Geográfico vs Corte Transversal de Relevo -->
-      <div style="display: flex; gap: 8px; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 10px;">
-        <button id="btnModalViewRadar" type="button" class="btn-primary" style="font-size: 11px; padding: 6px 14px; font-weight: 700; cursor: pointer;" onclick="switchRfModalView('radar')">
-          <i class="fas fa-satellite-dish"></i> 📍 Mapa Geográfico & Radar das Torres da Praça
-        </button>
-        <button id="btnModalViewFresnel" type="button" class="btn-secondary" style="font-size: 11px; padding: 6px 14px; font-weight: 700; cursor: pointer;" onclick="switchRfModalView('fresnel')">
-          <i class="fas fa-chart-area"></i> 📈 Corte Transversal de Relevo (LOS / Fresnel)
-        </button>
-      </div>
-
-      <!-- VISÃO A: Mapa Geográfico & Radar 2D das Torres da Praça -->
-      <div id="rfRadarViewContainer" style="background: #070d18; border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-          <div style="font-size: 12px; font-weight: 700; color: #38bdf8; text-transform: uppercase; display: flex; align-items: center; gap: 6px;">
-            <i class="fas fa-satellite-dish"></i> Radar Geográfico Local • Posição do Capture Site vs Torres Transmissoras
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <!-- 4 Métricas Rápidas Compactas -->
+          <div style="display: flex; gap: 8px; font-size: 11px;">
+            <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid var(--border-color); border-radius: 6px; padding: 4px 10px;">
+              <span style="color: var(--text-muted); font-size: 9px; text-transform: uppercase; display: block;">Coordenadas:</span>
+              <strong style="color: #38bdf8; font-family: monospace;" id="rfModalSiteCoords">-31.76540, -52.33760</strong>
+            </div>
+            <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid var(--border-color); border-radius: 6px; padding: 4px 10px;">
+              <span style="color: var(--text-muted); font-size: 9px; text-transform: uppercase; display: block;">Altitude Terreno:</span>
+              <strong style="color: #fff;" id="rfModalSiteElevation">36 m</strong>
+            </div>
+            <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid var(--border-color); border-radius: 6px; padding: 4px 10px;">
+              <span style="color: var(--text-muted); font-size: 9px; text-transform: uppercase; display: block;">Mastro Receptor:</span>
+              <strong style="color: #10b981;" id="rfModalMastHeight">24 m</strong>
+            </div>
+            <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid var(--border-color); border-radius: 6px; padding: 4px 10px;">
+              <span style="color: var(--text-muted); font-size: 9px; text-transform: uppercase; display: block;">Hardware:</span>
+              <strong style="color: #c084fc;">TBS Quad DVB/ISDB-T</strong>
+            </div>
           </div>
-          <div style="display: flex; gap: 10px; font-size: 11px;">
-            <span style="color: #38bdf8;">🔵 Capture Site</span>
-            <span style="color: #10b981;">📡 Torre Transmissora</span>
-            <span style="color: #facc15;">⛰️ Elevação / Morro</span>
-          </div>
-        </div>
-        <canvas id="rfMarketRadarCanvas" width="900" height="340" style="width: 100%; height: 340px; display: block; background: #050b14; border-radius: 6px;"></canvas>
-        <div id="rfAtmosphericConditionsNotice" style="font-size: 11px; margin-top: 8px; padding: 8px 12px; border-radius: 4px; background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(56, 189, 248, 0.2); color: #cbd5e1; display: flex; align-items: center; justify-content: space-between;">
-          <div id="rfAtmosphericText">Calculando intempéries e propagação troposférica...</div>
-          <div id="rfAtmosphericBadge" class="badge badge-blue">Telemetria RF</div>
+          <button type="button" class="btn-secondary" style="padding: 6px 12px; font-weight: 700;" onclick="closeMarketRfModal()">✕</button>
         </div>
       </div>
 
-      <!-- VISÃO B: Corte Transversal de Relevo e Perfil de Propagação (Canvas Fresnel) -->
-      <div id="rfFresnelViewContainer" style="display: none; background: #070d18; border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-          <div style="font-size: 12px; font-weight: 700; color: #38bdf8; text-transform: uppercase; display: flex; align-items: center; gap: 6px;">
-            <i class="fas fa-chart-area"></i> Corte Transversal de Relevo e Linha de Visada Ótica (LOS / Fresnel)
+      <!-- CORPO PRINCIPAL EM 2 COLUNAS LADO A LADO -->
+      <div style="display: grid; grid-template-columns: 1.12fr 0.88fr; gap: 16px; flex: 1; min-height: 0;">
+        
+        <!-- COLUNA 1: Gráficos (Radar / Relevo) + Clima + Simulador de Mastro -->
+        <div style="display: flex; flex-direction: column; gap: 10px; min-height: 0; overflow-y: auto; padding-right: 4px;">
+          <!-- Alternância de Visão: Radar Geográfico vs Corte Transversal de Relevo -->
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 6px;">
+            <div style="display: flex; gap: 8px;">
+              <button id="btnModalViewRadar" type="button" class="btn-primary" style="font-size: 11px; padding: 5px 12px; font-weight: 700; cursor: pointer;" onclick="switchRfModalView('radar')">
+                <i class="fas fa-satellite-dish"></i> 📍 Radar 2D das Torres da Praça
+              </button>
+              <button id="btnModalViewFresnel" type="button" class="btn-secondary" style="font-size: 11px; padding: 5px 12px; font-weight: 700; cursor: pointer;" onclick="switchRfModalView('fresnel')">
+                <i class="fas fa-chart-area"></i> 📈 Corte Transversal de Relevo (LOS / Fresnel)
+              </button>
+            </div>
+            <div style="font-size: 10px; color: var(--text-muted);">
+              Alcance de Visada: 25 km
+            </div>
           </div>
-          <div style="display: flex; gap: 10px; font-size: 11px;">
-            <span style="color: #38bdf8;">━━ Feixe Direto (LOS)</span>
-            <span style="color: rgba(56, 189, 248, 0.45);">⬭ 1ª Zona Fresnel (60%)</span>
-            <span style="color: #10b981;">▲ Perfil do Terreno</span>
+
+          <!-- VISÃO A: Mapa Geográfico & Radar 2D das Torres da Praça -->
+          <div id="rfRadarViewContainer" style="background: #050b14; border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 11px;">
+              <span style="font-weight: 700; color: #38bdf8; text-transform: uppercase;">
+                <i class="fas fa-satellite-dish"></i> Radar Geográfico • Posição do Capture Site vs Torres Transmissoras
+              </span>
+              <div style="display: flex; gap: 10px; font-size: 10px;">
+                <span style="color: #38bdf8;">🔵 Capture Site</span>
+                <span style="color: #10b981;">📡 Torre Transmissora</span>
+                <span style="color: #facc15;">⛰️ Elevação / Morro</span>
+              </div>
+            </div>
+            <canvas id="rfMarketRadarCanvas" width="960" height="340" style="width: 100%; height: 340px; display: block; background: #040812; border-radius: 6px;"></canvas>
+            <div id="rfAtmosphericConditionsNotice" style="font-size: 11px; margin-top: 6px; padding: 6px 10px; border-radius: 4px; background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(56, 189, 248, 0.2); color: #cbd5e1; display: flex; align-items: center; justify-content: space-between;">
+              <div id="rfAtmosphericText">Calculando intempéries e propagação troposférica...</div>
+              <div id="rfAtmosphericBadge" class="badge badge-blue">Telemetria RF</div>
+            </div>
+          </div>
+
+          <!-- VISÃO B: Corte Transversal de Relevo e Perfil de Propagação (Canvas Fresnel) -->
+          <div id="rfFresnelViewContainer" style="display: none; background: #050b14; border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 11px;">
+              <span style="font-weight: 700; color: #38bdf8; text-transform: uppercase;">
+                <i class="fas fa-chart-area"></i> Corte Transversal de Relevo e Linha de Visada Ótica (LOS / Fresnel)
+              </span>
+              <div style="display: flex; gap: 10px; font-size: 10px;">
+                <span style="color: #38bdf8;">━━ Feixe Direto (LOS)</span>
+                <span style="color: rgba(56, 189, 248, 0.45);">⬭ 1ª Zona Fresnel (60%)</span>
+                <span style="color: #10b981;">▲ Perfil do Terreno</span>
+              </div>
+            </div>
+            <canvas id="rfTerrainCanvas" width="960" height="340" style="width: 100%; height: 340px; display: block; background: #040812; border-radius: 6px;"></canvas>
+            <div id="rfTerrainDiagnosisNotice" style="font-size: 11px; margin-top: 6px; padding: 6px 10px; border-radius: 4px; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255,255,255,0.08); color: #cbd5e1;">
+              Calculando correlação de relevo...
+            </div>
+          </div>
+
+          <!-- Container do Simulador What-If e Microclima -->
+          <div id="rfModalInteractiveControls" style="display: flex; flex-direction: column; gap: 8px;">
+            <!-- Preenchido dinamicamente via JS com Clima e Simulador What-If -->
           </div>
         </div>
-        <canvas id="rfTerrainCanvas" width="900" height="230" style="width: 100%; height: 230px; display: block; background: #050b14; border-radius: 6px;"></canvas>
-        <div id="rfTerrainDiagnosisNotice" style="font-size: 11px; margin-top: 8px; padding: 8px 12px; border-radius: 4px; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255,255,255,0.08); color: #cbd5e1;">
-          Calculando correlação de relevo...
+
+        <!-- COLUNA 2: Tabela de Canais Terrestres + Parecer de Engenharia -->
+        <div style="display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow-y: auto; padding-right: 4px;">
+          <!-- Tabela Completa de Canais Terrestres da Praça -->
+          <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px;">
+            <div style="font-size: 12px; font-weight: 700; color: #fff; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+              <span style="display: flex; align-items: center; gap: 6px;"><i class="fas fa-broadcast-tower" style="color: #38bdf8;"></i> Emissoras Sintonizadas na Praça (Sinal Digital Terrestre DTV)</span>
+              <span id="rfModalChannelsCountBadge" class="badge badge-blue" style="font-size: 10px;">0 Canais</span>
+            </div>
+            <div class="table-responsive" style="max-height: 280px; overflow-y: auto;">
+              <table style="font-size: 11px;">
+                <thead>
+                  <tr>
+                    <th>Emissora</th>
+                    <th>Canal / Freq</th>
+                    <th>Torre Transmissora</th>
+                    <th>Distância</th>
+                    <th>Azimute</th>
+                    <th>Perda FSPL</th>
+                    <th>Nível Estimado</th>
+                    <th>Força Medida</th>
+                    <th>Visada / Diagnóstico</th>
+                  </tr>
+                </thead>
+                <tbody id="rfModalChannelsTableBody">
+                  <!-- Renderizado dinamicamente -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Recomendações de Engenharia para Otimização de Recepção -->
+          <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(56, 189, 248, 0.3); border-left: 4px solid #38bdf8; border-radius: 8px; padding: 14px 16px; flex: 1; min-height: 0; overflow-y: auto;">
+            <div style="font-size: 11px; text-transform: uppercase; color: #38bdf8; font-weight: 700; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+              <i class="fas fa-lightbulb"></i> Diagnóstico de Perspectiva e Recomendações de Engenharia de RF
+            </div>
+            <div id="rfModalEngineeringNotes" style="font-size: 12px; color: #e2e8f0; line-height: 1.55;">
+              Carregando perspectivas técnicas...
+            </div>
+          </div>
         </div>
+
       </div>
 
-      <!-- Tabela Completa de Canais Terrestres da Praça -->
-      <div style="margin-bottom: 16px;">
-        <div style="font-size: 13px; font-weight: 700; color: #fff; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
-          <span>📡</span> Emissoras Sintonizadas na Praça (Sinal Digital Terrestre DTV)
-        </div>
-        <div class="table-responsive">
-          <table>
-            <thead>
-              <tr>
-                <th>Emissora</th>
-                <th>Canal / Freq</th>
-                <th>Torre Transmissora</th>
-                <th>Distância</th>
-                <th>Azimute</th>
-                <th>Perda FSPL</th>
-                <th>Nível Estimado</th>
-                <th>Força Medida</th>
-                <th>Visada / Diagnóstico</th>
-              </tr>
-            </thead>
-            <tbody id="rfModalChannelsTableBody">
-              <!-- Renderizado dinamicamente -->
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Recomendações de Engenharia para Otimização de Recepção -->
-      <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(56, 189, 248, 0.3); border-left: 4px solid #38bdf8; border-radius: 6px; padding: 12px 16px;">
-        <div style="font-size: 11px; text-transform: uppercase; color: #38bdf8; font-weight: 700; margin-bottom: 4px;">
-          <i class="fas fa-lightbulb"></i> Diagnóstico de Perspectiva e Recomendações de Engenharia de RF
-        </div>
-        <div id="rfModalEngineeringNotes" style="font-size: 12px; color: #e2e8f0; line-height: 1.5;">
-          Carregando perspectivas técnicas...
-        </div>
-      </div>
     </div>
   </div>
 
@@ -7088,10 +7117,7 @@
   <script src="/static/js/topology_map.js?v=3.9.20"></script>
   <script src="/static/js/network_link.js?v=3.9.20"></script>
 
-
-
-
-  <!-- MODAL: DIAGNÓSTICO DE IA DE LINK & CONECTIVIDADE DE REDE -->
+<!-- MODAL: DIAGNÓSTICO DE IA DE LINK & CONECTIVIDADE DE REDE -->
   <div class="modal-overlay" id="networkAiDiagModal" style="display: none; align-items: center; justify-content: center; z-index: 10000;">
     <div class="modal" style="max-width: 740px; width: 94%; border: 1px solid #38bdf8; background: #0b1329; border-radius: 8px; box-shadow: 0 20px 35px -5px rgba(0, 0, 0, 0.8); padding: 24px;">
       <div class="modal-header" style="border-bottom: 1px solid rgba(56, 189, 248, 0.3); padding-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">

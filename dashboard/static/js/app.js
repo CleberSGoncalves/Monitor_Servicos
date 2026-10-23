@@ -154,7 +154,7 @@ function setupTabNavigation() {
 
             if (tabName === "mosaic") {
                 if (typeof initMosaicTab === "function") initMosaicTab();
-            } else if (tabName === "map") {
+            } else if (tabName === "map" || tabName === "topology") {
                 if (typeof loadTopologyMapData === "function") loadTopologyMapData();
             } else if (tabName === "incidents") {
                 if (typeof loadIncidentsHistoryData === "function") loadIncidentsHistoryData();
