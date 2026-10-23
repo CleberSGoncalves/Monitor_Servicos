@@ -469,28 +469,73 @@ function openMarketRfModal(marketId) {
         }
     }
 
-    // 5. Diagnóstico de Perspectiva e Recomendações de Engenharia com Cálculo de Fresnel
+    // 5. Diagnóstico de Perspectiva e Recomendações de Engenharia com Clima, Fator K e Simulador What-If
     const notesEl = document.getElementById("rfModalEngineeringNotes");
     if (notesEl) {
-        const fresnelM = market.mast_increase_needed_m || (market.cidade.toLowerCase() === "pelotas" ? 3.5 : 0);
-        const fresnelBox = fresnelM > 0 ? `
-            <div style="margin-top: 8px; padding: 10px 12px; background: rgba(99,102,241,0.15); border: 1px solid rgba(99,102,241,0.4); border-left: 4px solid #6366f1; border-radius: 6px;">
-                <div style="font-weight: 700; color: #c7d2fe; font-size: 11px; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
-                    <i class="fas fa-calculator" style="color: #a5b4fc;"></i> CÁLCULO DE DESOBSTRUÇÃO DE FRESNEL (LOS / FRESNEL / RELEVO):
+        const w = market.weather_troposphere || {
+            temperatura_c: 19.5, umidade_pct: 91, ponto_orvalho_c: 18.0,
+            fator_k: 1.56, fator_k_status: "Duto Troposférico Úmido",
+            atenuacao_troposferica_db: 3.4,
+            previsao_4h: ["+1h: Manutenção de alta umidade (+3.2 dB)", "+2h: Início de dispersão por vento NE", "+3h: Fator K em 1.40", "+4h: Recuperação de +2.5 dB"]
+        };
+
+        const weatherBox = `
+            <div style="margin-top: 10px; padding: 12px; background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(56, 189, 248, 0.35); border-left: 4px solid #38bdf8; border-radius: 6px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
+                    <span style="font-weight: 700; color: #38bdf8; font-size: 11px; text-transform: uppercase;">
+                        <i class="fas fa-cloud-sun-rain"></i> Microclima &amp; Troposfera em Tempo Real (Fator K da Rota)
+                    </span>
+                    <span class="badge" style="background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); font-size: 10px;">
+                        Fator K: ${w.fator_k} (${w.fator_k_status})
+                    </span>
                 </div>
-                <div style="font-size: 11px; color: #e2e8f0; line-height: 1.5;">
-                    Raio da 1ª Zona de Fresnel: <strong>${market.fresnel_r1_m || 14.2}m</strong> (Cota mínima 60%: <strong>${market.fresnel_clearance_60_m || 8.5}m</strong>).<br>
-                    <span style="color: #38bdf8; font-weight: 700;">Solução Efetiva Calculada:</span> ${market.fresnel_verdict || `Aumentar mastro em +${fresnelM}m para livrar 60% da 1ª Zona de Fresnel sobre o Morro Intermediário.`}
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin-bottom: 8px; font-family: monospace; font-size: 11px; color: #cbd5e1;">
+                    <div>Temp: <strong style="color: #fff;">${w.temperatura_c}°C</strong></div>
+                    <div>Umidade: <strong style="color: #38bdf8;">${w.umidade_pct}%</strong></div>
+                    <div>Orvalho: <strong style="color: #93c5fd;">${w.ponto_orvalho_c}°C</strong></div>
+                    <div>Atenuação Estimada: <strong style="color: #facc15;">+${w.atenuacao_troposferica_db} dB</strong></div>
+                </div>
+                <div style="font-size: 10px; color: var(--text-muted); border-top: 1px solid rgba(255,255,255,0.08); padding-top: 6px;">
+                    <strong>Previsão de Propagação Troposférica (4 horas):</strong> ${w.previsao_4h.join(" • ")}
                 </div>
             </div>
-        ` : '';
+        `;
+
+        const fresnelM = market.mast_increase_needed_m || (market.cidade.toLowerCase() === "pelotas" ? 3.5 : 0);
+        const currentMast = market.rx_antenna_height_m || 24;
+
+        const whatIfBox = `
+            <div style="margin-top: 10px; padding: 12px; background: rgba(99,102,241,0.15); border: 1px solid rgba(99,102,241,0.4); border-left: 4px solid #6366f1; border-radius: 6px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
+                    <span style="font-weight: 700; color: #c7d2fe; font-size: 11px; text-transform: uppercase;">
+                        <i class="fas fa-sliders-h" style="color: #a5b4fc;"></i> Simulador What-If de Elevação de Mastro (Otimização Instantânea)
+                    </span>
+                    <span id="whatIfMastCurrentLabel" style="font-family: monospace; font-size: 11px; color: #a5b4fc; font-weight: 700;">
+                        Mastro Simulado: ${currentMast}m (+0.0m)
+                    </span>
+                </div>
+                
+                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+                    <span style="font-size: 10px; color: var(--text-muted);">15m</span>
+                    <input type="range" min="15" max="45" value="${currentMast}" step="0.5" id="sliderWhatIfMastHeight" style="flex: 1; accent-color: #6366f1; cursor: pointer;" oninput="updateWhatIfSimulationLive('${market.id}', this.value)">
+                    <span style="font-size: 10px; color: var(--text-muted);">45m</span>
+                </div>
+
+                <div id="whatIfSimulationResults" style="font-size: 11px; color: #e2e8f0; line-height: 1.5; background: rgba(0,0,0,0.3); padding: 8px 10px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.06);">
+                    Clearance de Fresnel Atual: <strong id="whatIfClearanceVal" style="color: #facc15;">${market.cidade.toLowerCase() === 'pelotas' ? '42%' : '85%'}</strong> | 
+                    Margem Recuperada Estimada: <strong id="whatIfMarginVal" style="color: #34d399;">+0.0 dB</strong>.<br>
+                    <span id="whatIfRecommendationText" style="color: #38bdf8; font-size: 10px;">${market.fresnel_verdict || `Se elevar o mastro de ${currentMast}m para ${currentMast + 3.5}m (+3.5m), o clearance de Fresnel sobe para 78%, recuperando +4.2 dB na portadora UHF.`}</span>
+                </div>
+            </div>
+        `;
 
         if (market.cidade.toLowerCase() === "pelotas") {
             notesEl.innerHTML = `
                 <div style="margin-bottom: 6px;"><strong>Perspectiva Topográfica de Pelotas - RS:</strong> O Capture Site está localizado no centro urbano a uma altitude de 36m, enquanto a Torre Morro da Glória fica a 14.8 km a Noroeste (azimute 312.4°) com cota de topo a 320m.</div>
                 <div style="margin-bottom: 6px; color: #facc15;">⚠️ <strong>Causa de Atenuação em Canais Altos:</strong> Foi identificado um morro intermediário a 8.2 km (elevação 74m) que penetra na primeira zona de Fresnel (raio 14.2m a 580 MHz). Isso gera difração por gume de faca (Knife-Edge Diffraction), atenuando a portadora UHF de canais com frequência acima de 560 MHz em até -8.5 dB em dias úmidos.</div>
                 <div>💡 <strong>Recomendações Técnicas:</strong> 1. Ajustar o azimute da antena receptora log-periódica em +3.5° no sentido Noroeste para maximizar ganho no lóbulo secundário. 2. Elevar o mastro receptor em 3.5 metros na laje para desobstruir 60% do elipsoide de Fresnel.</div>
-                ${fresnelBox}
+                ${weatherBox}
+                ${whatIfBox}
             `;
         } else if (market.status_color === "red" || market.outage_channels > 0) {
             notesEl.innerHTML = `

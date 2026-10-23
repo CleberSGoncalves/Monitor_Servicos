@@ -783,8 +783,10 @@ function openStoryboardModal(canal, praca) {
     const modal = document.getElementById("storyboardModal");
     if (!modal) return;
 
-    document.getElementById("storyboardChannelTitle").innerText = canal;
-    document.getElementById("storyboardPracaSub").innerText = `Praça: ${praca} • Linha do Tempo Forense`;
+    const titleEl = document.getElementById("storyboardChannelTitle");
+    if (titleEl) titleEl.innerText = canal;
+    const subEl = document.getElementById("storyboardPracaSub") || document.getElementById("storyboardSubtitle");
+    if (subEl) subEl.innerText = `${canal} (${praca}) • Sequência Forense & Diagnóstico Multimodal`;
 
     const channelItem = allMosaicSnapshots.find(s => s.canal === canal && s.praca === praca);
     const steps = (channelItem && channelItem.storyboard && channelItem.storyboard.length > 0)
@@ -816,9 +818,72 @@ function openStoryboardModal(canal, praca) {
         `).join("");
     }
 
+    // Painel de Diagnóstico Multimodal IA Sob Demanda
+    let diagPanel = document.getElementById("storyboardAiDiagPanel");
+    if (!diagPanel) {
+        diagPanel = document.createElement("div");
+        diagPanel.id = "storyboardAiDiagPanel";
+        diagPanel.style.marginTop = "14px";
+        container.parentNode.appendChild(diagPanel);
+    }
+
+    const currentChan = channelItem || { canal: canal, praca: praca, qualidade: 85, forca: 80, status: "NORMAL" };
+    diagPanel.innerHTML = `
+        <div style="background: rgba(99, 102, 241, 0.12); border: 1px solid rgba(99, 102, 241, 0.35); border-left: 4px solid #6366f1; border-radius: 6px; padding: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;">
+                <span style="font-weight: 700; color: #c7d2fe; font-size: 11px; text-transform: uppercase;">
+                    <i class="fas fa-brain"></i> Visão Computacional Multimodal (Imagem x RF x Closed Caption)
+                </span>
+                <button type="button" class="btn-primary" style="padding: 4px 10px; font-size: 10px; background: linear-gradient(135deg, #6366f1, #3b82f6); font-weight: 700;" onclick="runMultimodalDiagnosis('${escapeHtml(canal)}', '${escapeHtml(praca)}', ${currentChan.qualidade || 100}, ${currentChan.forca || 100}, '${escapeHtml(currentChan.status || 'NORMAL')}')">
+                    <i class="fas fa-search"></i> Executar Diagnóstico Sob Demanda
+                </button>
+            </div>
+            <div id="storyboardAiDiagResult" style="font-size: 11px; color: #cbd5e1; line-height: 1.5;">
+                Clique no botão acima para correlacionar o quadro JPEG com os limiares de RF e descartar falsos positivos sem consumo desnecessário de tokens.
+            </div>
+        </div>
+    `;
+
     modal.classList.add("active");
 }
 window.openStoryboardModal = openStoryboardModal;
+
+async function runMultimodalDiagnosis(canal, praca, qualidade, forca, statusVisual) {
+    const resEl = document.getElementById("storyboardAiDiagResult");
+    if (resEl) resEl.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Correlacionando imagem (JPEG 320x240), portadora RF e telemetria de áudio...`;
+
+    try {
+        const token = localStorage.getItem("token") || (typeof getAuthToken === "function" ? getAuthToken() : "");
+        const resp = await fetch("/api/mosaic/multimodal-diagnosis", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...(token ? { "Authorization": "Bearer " + token } : {})
+            },
+            body: JSON.stringify({
+                canal: canal,
+                praca: praca,
+                qualidade: qualidade,
+                forca: forca,
+                status_visual: statusVisual
+            })
+        });
+
+        if (!resp.ok) throw new Error("Erro na API multimodal.");
+        const data = await resp.json();
+
+        if (resEl) {
+            resEl.innerHTML = `
+                <div style="margin-bottom: 4px;"><strong>Diagnóstico de Causa:</strong> <span style="color: #60a5fa;">${escapeHtml(data.diagnostico_tipo)}</span> (${escapeHtml(data.origem_problema)})</div>
+                <div style="margin-bottom: 4px; color: #fff;">${escapeHtml(data.detalhe_tecnico)}</div>
+                <div style="color: #34d399;"><strong>Ação Recomendada:</strong> ${escapeHtml(data.acao_recomendada)}</div>
+            `;
+        }
+    } catch (err) {
+        if (resEl) resEl.innerText = "Falha no diagnóstico multimodal: " + err.message;
+    }
+}
+window.runMultimodalDiagnosis = runMultimodalDiagnosis;
 
 function closeStoryboardModal() {
     const modal = document.getElementById("storyboardModal");

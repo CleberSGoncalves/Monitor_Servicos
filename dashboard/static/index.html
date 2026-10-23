@@ -5387,6 +5387,32 @@
 
 
 
+                        <!-- Co-Piloto Conversacional de Engenharia (Linguagem Natural -> PowerShell Seguro) -->
+            <div style="background: rgba(99, 102, 241, 0.12); border: 1px solid rgba(99, 102, 241, 0.35); border-radius: 8px; margin: 10px 16px; padding: 10px 14px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
+                <span style="font-size: 11px; font-weight: 700; color: #a5b4fc; text-transform: uppercase;">
+                  <i class="fas fa-magic text-purple"></i> Co-Piloto de Engenharia IA (Linguagem Natural &rarr; PowerShell Seguro)
+                </span>
+                <span style="font-size: 10px; color: var(--text-muted);">Zero Custo • Validação de Blast Radius</span>
+              </div>
+              <div style="display: flex; gap: 8px;">
+                <input type="text" id="rc-copilot-input" class="form-input" style="flex: 1; font-size: 12px; background: rgba(0,0,0,0.5);" placeholder="Ex: Verifique se o processo da Atria consumiu mais de 2GB de RAM e se há erros no Event Viewer...">
+                <button type="button" class="btn-primary" onclick="compileCopilotPrompt()" style="padding: 6px 14px; font-size: 11px; background: linear-gradient(135deg, #6366f1, #4f46e5); font-weight: 700; white-space: nowrap;">
+                  <i class="fas fa-brain"></i> Compilar Comando
+                </button>
+              </div>
+              <div id="rc-copilot-preview-box" style="display: none; margin-top: 8px; padding: 8px 10px; background: rgba(0,0,0,0.4); border-radius: 6px; border: 1px solid rgba(255,255,255,0.08);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                  <span id="rc-copilot-badge" class="badge" style="font-size: 10px; font-weight: 700; background: rgba(16, 185, 129, 0.2); color: #10b981; border: 1px solid #10b981;">🟢 SEGURO (APENAS LEITURA)</span>
+                  <button type="button" class="btn-secondary" onclick="applyCopilotCompiledCommand()" style="padding: 2px 8px; font-size: 10px; color: #38bdf8; border-color: #38bdf8;">
+                    <i class="fas fa-level-down-alt"></i> Aplicar no Editor
+                  </button>
+                </div>
+                <div id="rc-copilot-desc" style="font-size: 11px; color: #cbd5e1; margin-bottom: 4px;"></div>
+                <pre id="rc-copilot-code" style="margin: 0; font-family: monospace; font-size: 11px; color: #34d399; white-space: pre-wrap; word-break: break-all;"></pre>
+              </div>
+            </div>
+
             <div class="rc-terminal-input-wrapper">
 
 
@@ -5450,6 +5476,7 @@
 
 
                 <button class="btn-secondary btn-export-rc" onclick="exportExecutionResults('csv')" disabled><i class="fas fa-file-excel"></i> Exportar Excel / CSV</button>
+                <button type="button" class="btn-secondary btn-export-rc" id="btn-synthesize-multihost" onclick="synthesizeMultiHostOutput()" style="border-color: rgba(99,102,241,0.5); color: #a5b4fc;" disabled><i class="fas fa-wand-magic-sparkles"></i> ✨ Sintetizar Retorno Multi-Host</button>
 
 
 

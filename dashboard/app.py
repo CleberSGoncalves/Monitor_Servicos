@@ -1328,3 +1328,92 @@ async def get_system_handover_report(user: dict = Depends(get_current_user)):
             "Pipeline DNA.MediaConverter 100% nominal na CS02 sem retenção de arquivos."
         ]
     }
+
+
+# =========================================================================
+# ROTAS DE INTELIGÊNCIA AVANÇADA (TROPOSFERA, CO-PILOTO E MULTIMODAL)
+# =========================================================================
+from geo_topology import get_topology_full_payload, get_weather_troposphere_metrics
+from remote_commands import compile_engineering_copilot_prompt, synthesize_multihost_execution_output
+
+@app.get("/api/geo/weather-troposphere")
+async def get_weather_troposphere_endpoint(cidade: Optional[str] = None):
+    """Retorna os dados meteorológicos dinâmicos, Fator K de refração e clusters de geofencing."""
+    if cidade:
+        return get_weather_troposphere_metrics(cidade, -31.7654, -52.3376)
+    
+    cached = get_cached_data()
+    channels = cached.get("channels", [])
+    services = cached.get("services", [])
+    return get_topology_full_payload(channels, services)
+
+
+@app.post("/api/remote/copilot/compile-prompt")
+async def compile_remote_copilot_prompt_endpoint(req: Request, user: dict = Depends(get_current_user)):
+    """Traduz instrução em linguagem natural para PowerShell seguro com validação de Blast Radius."""
+    body = await req.json()
+    prompt_text = body.get("prompt", "")
+    hosts = body.get("hosts", [])
+    if not prompt_text:
+        raise HTTPException(status_code=400, detail="Prompt não informado.")
+    
+    res = compile_engineering_copilot_prompt(prompt_text, hosts)
+    return res
+
+
+@app.post("/api/remote/copilot/synthesize-output")
+async def synthesize_remote_copilot_output_endpoint(req: Request, user: dict = Depends(get_current_user)):
+    """Sintetiza e mastiga saídas de terminal de múltiplos hosts remotos para rápida leitura técnica."""
+    body = await req.json()
+    outputs = body.get("outputs", {})
+    cmd = body.get("command", "")
+    if not outputs:
+        return {"status": "success", "overall_verdict": "Nenhuma saída recebida para síntese.", "by_host": []}
+    
+    res = synthesize_multihost_execution_output(outputs, cmd)
+    return res
+
+
+@app.post("/api/mosaic/multimodal-diagnosis")
+async def multimodal_diagnosis_endpoint(req: Request, user: dict = Depends(get_current_user)):
+    """Diagnóstico sob demanda de Visão Computacional Multimodal (Imagem x RF x Closed Caption)."""
+    from datetime import datetime
+    body = await req.json()
+    canal = body.get("canal", "Canal")
+    praca = body.get("praca", "Geral")
+    qualidade = body.get("qualidade", 100)
+    forca = body.get("forca", 100)
+    status_visual = body.get("status_visual", "NORMAL")
+
+    # Correlação cruzada Imagem vs RF (Custo zero / determinístico)
+    if status_visual in ["⚠️ Padrão de Teste / Fora do Ar", "test_pattern"]:
+        diag_tipo = "Barras SMPTE / Fora do Ar"
+        diag_origem = "Geradora da Emissora (Transmissão de Grade Suspensa)"
+        diag_detalhe = "Padrão de cores SMPTE detectado no topo do quadro. Sinal de portadora ISDB-Tb estável, confirmando que a ausência de programa origina-se na mesa de corte da própria emissora."
+        acao_recomendada = "Não reiniciar tuners locais. Aguardar restabelecimento da programação regular."
+    elif qualidade > 75 and status_visual in ["CONGELADO", "ÁUDIO MUDO"]:
+        diag_tipo = "Falha de Compressão / Grafo DirectShow"
+        diag_origem = "Mux da Emissora ou Grafo Atria"
+        diag_detalhe = f"Portadora RF nominal ({qualidade}% qualidade / {forca}% força), porém o Presentation Time Stamp (PTS) está estagnado. Descarte de quadros IDR na codificação."
+        acao_recomendada = "Disparar soft-reset no Tuner TBS via Atria API ou reciclagem do demuxer."
+    elif qualidade < 45:
+        diag_tipo = "Degradação / Interferência de RF"
+        diag_origem = "Enlace de Transmissão / Relevo"
+        diag_detalhe = f"Qualidade de sinal atenuada ({qualidade}%). Taxa BER elevada por difração de relevo ou atenuação troposférica."
+        acao_recomendada = "Verificar Fator K troposférico na aba Topologia & Mapa RF e orientar antena receptora."
+    else:
+        diag_tipo = "Sinal Nominal Conforme"
+        diag_origem = "Operação Normal"
+        diag_detalhe = "Quadro de vídeo e portadora RF com fluxo contínuo e sincronismo dentro dos limiares de projeto."
+        acao_recomendada = "Nenhuma intervenção necessária."
+
+    return {
+        "status": "success",
+        "canal": canal,
+        "praca": praca,
+        "diagnostico_tipo": diag_tipo,
+        "origem_problema": diag_origem,
+        "detalhe_tecnico": diag_detalhe,
+        "acao_recomendada": acao_recomendada,
+        "timestamp": datetime.now().strftime("%H:%M:%S")
+    }

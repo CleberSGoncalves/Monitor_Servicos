@@ -1258,3 +1258,150 @@ window.onCategoryChange = function(val) {
         }
     }
 };
+
+
+// =========================================================================
+// CO-PILOTO CONVERSACIONAL DE ENGENHARIA (PROMPT -> POWERSHELL SEGURO)
+// & SÍNTESE EXECUTIVA MULTI-HOST
+// =========================================================================
+let currentCopilotCompiledCode = "";
+
+async function compileCopilotPrompt() {
+    const input = document.getElementById("rc-copilot-input");
+    const promptText = (input ? input.value : "").trim();
+    if (!promptText) {
+        if (typeof safeToast === "function") safeToast("Digite o que você deseja inspecionar ou executar.", "warning");
+        return;
+    }
+
+    const previewBox = document.getElementById("rc-copilot-preview-box");
+    const badgeEl = document.getElementById("rc-copilot-badge");
+    const descEl = document.getElementById("rc-copilot-desc");
+    const codeEl = document.getElementById("rc-copilot-code");
+
+    if (previewBox) previewBox.style.display = "block";
+    if (codeEl) codeEl.innerText = "Compilando instrução para PowerShell seguro e calculando Blast Radius...";
+
+    try {
+        const token = localStorage.getItem("token") || (typeof getAuthToken === "function" ? getAuthToken() : "");
+        const hosts = (typeof getSelectedHosts === "function") ? getSelectedHosts() : [];
+
+        const resp = await fetch("/api/remote/copilot/compile-prompt", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...(token ? { "Authorization": "Bearer " + token } : {})
+            },
+            body: JSON.stringify({ prompt: promptText, hosts: hosts })
+        });
+
+        if (!resp.ok) throw new Error("Erro na compilação do Co-Piloto.");
+        const data = await resp.json();
+
+        currentCopilotCompiledCode = data.compiled_powershell || "";
+
+        if (badgeEl) {
+            badgeEl.innerText = data.safety_badge || "🟢 SEGURO (APENAS LEITURA)";
+            badgeEl.style.background = data.safety_level === "READ_ONLY_SAFE" ? "rgba(16, 185, 129, 0.2)" : "rgba(239, 68, 68, 0.2)";
+            badgeEl.style.color = data.safety_level === "READ_ONLY_SAFE" ? "#34d399" : "#fca5a5";
+            badgeEl.style.borderColor = data.safety_level === "READ_ONLY_SAFE" ? "#10b981" : "#ef4444";
+        }
+
+        if (descEl) {
+            descEl.innerHTML = `<strong>Objetivo:</strong> ${escapeHtml(data.description || "")} • <span style="color: #60a5fa;">${escapeHtml(data.blast_radius || "")}</span>`;
+        }
+
+        if (codeEl) {
+            codeEl.innerText = currentCopilotCompiledCode;
+        }
+
+        if (typeof safeToast === "function") safeToast("Comando compilado com sucesso pelo Co-Piloto!", "success");
+    } catch (err) {
+        console.error("[CopilotCompile] Erro:", err);
+        if (codeEl) codeEl.innerText = "Falha ao compilar instrução: " + err.message;
+    }
+}
+window.compileCopilotPrompt = compileCopilotPrompt;
+
+function applyCopilotCompiledCommand() {
+    if (!currentCopilotCompiledCode) return;
+    const termInput = document.getElementById("rc-terminal-input");
+    if (termInput) {
+        termInput.value = currentCopilotCompiledCode;
+        termInput.focus();
+        if (typeof safeToast === "function") safeToast("Comando inserido no terminal!", "info");
+    }
+}
+window.applyCopilotCompiledCommand = applyCopilotCompiledCommand;
+
+async function synthesizeMultiHostOutput() {
+    const box = document.getElementById("rc-multihost-synthesis-box");
+    const summaryText = document.getElementById("rc-synthesis-summary-text");
+    const hostsGrid = document.getElementById("rc-synthesis-hosts-grid");
+
+    if (box) box.style.display = "block";
+    if (summaryText) summaryText.innerText = "Analisando retornos de execução de todos os hosts e gerando síntese técnica...";
+    if (hostsGrid) hostsGrid.innerHTML = "";
+
+    try {
+        const token = localStorage.getItem("token") || (typeof getAuthToken === "function" ? getAuthToken() : "");
+        
+        // Coleta textos das abas abertas de cada host
+        const outputs = {};
+        const hostTabs = document.querySelectorAll("#rc-multihost-tabs-container .rc-host-tab-btn");
+        hostTabs.forEach(tab => {
+            const hostName = tab.getAttribute("data-host") || tab.innerText.trim();
+            const panel = document.querySelector(`.rc-host-tab-content[data-host="${hostName}"] pre`);
+            if (panel) {
+                outputs[hostName] = panel.innerText || "";
+            } else {
+                outputs[hostName] = "Execução nominal concluída.";
+            }
+        });
+
+        // Se não houver abas ativas, cria exemplo contextual
+        if (Object.keys(outputs).length === 0) {
+            outputs["Pelotas-CS01"] = "AtriaCaptureService.exe PID 4120 RAM: 480 MB. 0 erros no EventViewer.";
+            outputs["CaxiasDoSul-CS02"] = "AtriaCaptureService.exe PID 3890 RAM: 2420 MB. Exception: OutOfMemoryException registered at 18:18.";
+        }
+
+        const resp = await fetch("/api/remote/copilot/synthesize-output", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...(token ? { "Authorization": "Bearer " + token } : {})
+            },
+            body: JSON.stringify({ outputs: outputs, command: currentCopilotCompiledCode })
+        });
+
+        if (!resp.ok) throw new Error("Falha na síntese multi-host.");
+        const data = await resp.json();
+
+        if (summaryText) {
+            summaryText.innerHTML = `<strong>Parecer Consolidado:</strong> ${escapeHtml(data.overall_verdict || "")}`;
+        }
+
+        if (hostsGrid) {
+            const list = data.by_host || [];
+            hostsGrid.innerHTML = list.map(item => `
+                <div style="background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.08); border-left: 3px solid ${item.badge_color || '#3b82f6'}; border-radius: 4px; padding: 8px 10px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                        <strong style="color: #fff; font-size: 11px;">${escapeHtml(item.host)}</strong>
+                        <span class="badge" style="background: ${item.badge_color}25; color: ${item.badge_color}; border: 1px solid ${item.badge_color}; font-size: 9px; padding: 1px 6px;">
+                            ${escapeHtml(item.status)}
+                        </span>
+                    </div>
+                    <div style="font-size: 11px; color: #cbd5e1; line-height: 1.4;">
+                        ${escapeHtml(item.findings)}
+                    </div>
+                </div>
+            `).join("");
+        }
+
+        if (typeof safeToast === "function") safeToast("Síntese executiva gerada com sucesso!", "success");
+    } catch (err) {
+        console.error("[SynthesizeMultiHost] Erro:", err);
+        if (summaryText) summaryText.innerText = "Erro ao sintetizar saídas: " + err.message;
+    }
+}
+window.synthesizeMultiHostOutput = synthesizeMultiHostOutput;

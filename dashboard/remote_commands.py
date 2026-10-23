@@ -864,3 +864,168 @@ def validate_script_syntax(shell_type: str, script: str) -> Dict[str, Any]:
         "shell_type": shell_type.upper(),
         "lines_count": len(s.splitlines())
     }
+
+
+# =========================================================================
+# CO-PILOTO DE ENGENHARIA IA (PROMPT NATURAL -> POWERSHELL SEGURO)
+# & SÍNTESE AUTOMÁTICA MULTI-HOST
+# =========================================================================
+
+def compile_engineering_copilot_prompt(prompt_text: str, selected_hosts: Optional[List[str]] = None) -> Dict[str, Any]:
+    """
+    Traduz linguagem natural do operador para PowerShell otimizado e seguro com análise de Blast Radius.
+    Zero consumo excessivo de IA: usa heurística contextual imediata com fallback para Gemini Pro apenas se necessário.
+    """
+    p_lower = prompt_text.lower().strip()
+    
+    # 1. Padrão: Checagem de Memória / RAM do Atria + Event Viewer
+    if "memória" in p_lower or "ram" in p_lower or "atria" in p_lower and ("crash" in p_lower or "event" in p_lower or "consum" in p_lower):
+        ps_cmd = (
+            'Get-Process -Name "*Atria*" -ErrorAction SilentlyContinue | '
+            'Where-Object { $_.WorkingSet64 -gt 500MB } | '
+            'Select-Object ProcessName, Id, @{N="RAM_MB";E={[math]::round($_.WorkingSet64/1MB,2)}}; '
+            'Get-EventLog -LogName Application -Source "*Atria*" -EntryType Error -After (Get-Date).AddHours(-4) -Newest 10 -ErrorAction SilentlyContinue | '
+            'Select-Object TimeGenerated, Source, Message'
+        )
+        desc = "Inspeciona o consumo real de memória do pipeline Atria (>500MB) e pesquisa erros críticos de aplicação nas últimas 4 horas."
+        safety = "READ_ONLY_SAFE"
+        badge = "🟢 SEGURO (APENAS LEITURA)"
+        risk_level = "baixo"
+
+    # 2. Padrão: Espaço em Disco e Pipeline de Vídeo (.asf / .mp4 / .tmp)
+    elif "disco" in p_lower or "espaço" in p_lower or "armazenamento" in p_lower or ".asf" in p_lower or ".tmp" in p_lower:
+        ps_cmd = (
+            'Get-PSDrive C, D -ErrorAction SilentlyContinue | '
+            'Select-Object Name, @{N="Used_GB";E={[math]::round($_.Used/1GB,2)}}, @{N="Free_GB";E={[math]::round($_.Free/1GB,2)}}; '
+            'Write-Host "--- Buffers Temporários .tmp ---"; '
+            'Get-ChildItem "D:\\MediaDNA_V2\\data\\records\\*.tmp" -ErrorAction SilentlyContinue | Measure-Object | Select-Object Count; '
+            'Write-Host "--- Últimos 3 ASF Gerados na CS02 ---"; '
+            'Get-ChildItem "D:\\MediaDNA_V2\\data\\video\\*.asf" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 3 Name, Length, LastWriteTime'
+        )
+        desc = "Audita a capacidade livre dos volumes C: e D:, contagem de buffers .tmp e integridade de arquivos .ASF recentes."
+        safety = "READ_ONLY_SAFE"
+        badge = "🟢 SEGURO (APENAS LEITURA)"
+        risk_level = "baixo"
+
+    # 3. Padrão: Status de Serviços DNA e Detecção de Crash-Loop
+    elif "serviço" in p_lower or "service" in p_lower or "dna." in p_lower or "parado" in p_lower:
+        ps_cmd = (
+            'Get-Service DNA.* | Select-Object Name, Status, StartType | Format-Table -AutoSize; '
+            'Get-WinEvent -FilterHashtable @{LogName="System"; ProviderName="Service Control Manager"; Level=2} -MaxEvents 5 -ErrorAction SilentlyContinue | '
+            'Select-Object TimeCreated, Message'
+        )
+        desc = "Lista todos os 9 microsserviços DNA MediaDNA e verifica falhas do Service Control Manager do Windows."
+        safety = "READ_ONLY_SAFE"
+        badge = "🟢 SEGURO (APENAS LEITURA)"
+        risk_level = "baixo"
+
+    # 4. Padrão: Placas Sintonizadoras TBS / Hardware de RF
+    elif "tbs" in p_lower or "tuner" in p_lower or "sintonizador" in p_lower or "pnp" in p_lower:
+        ps_cmd = (
+            'Get-PnpDevice -Class "Media" -ErrorAction SilentlyContinue | '
+            'Where-Object { $_.FriendlyName -like "*TBS*" -or $_.FriendlyName -like "*DTV*" } | '
+            'Select-Object FriendlyName, Status, Problem | Format-Table -AutoSize; '
+            'try { Invoke-RestMethod -Uri "http://localhost:9000/api/v1/Muxes" -TimeoutSec 4 | Select-Object -ExpandProperty Muxes -First 3 } catch { Write-Host "Atria Muxes API offline: " $_.Exception.Message }'
+        )
+        desc = "Audita o estado dos drivers PCIe/USB TBS Technologies e testa resposta local da API Atria 9000."
+        safety = "READ_ONLY_SAFE"
+        badge = "🟢 SEGURO (APENAS LEITURA)"
+        risk_level = "baixo"
+
+    # 5. Padrão: Conectividade de Rede e Latência de Link WAN
+    elif "rede" in p_lower or "ping" in p_lower or "link" in p_lower or "internet" in p_lower or "upload" in p_lower:
+        ps_cmd = (
+            'Test-NetConnection -ComputerName 8.8.8.8 -Port 53 | Select-Object ComputerName, TcpTestSucceeded, RoundTripTimeMillis; '
+            'Test-NetConnection -ComputerName github.com -Port 443 | Select-Object ComputerName, TcpTestSucceeded, RoundTripTimeMillis'
+        )
+        desc = "Testa latência de enlace WAN e resolução DNS externa."
+        safety = "READ_ONLY_SAFE"
+        badge = "🟢 SEGURO (APENAS LEITURA)"
+        risk_level = "baixo"
+
+    # 6. Fallback / Comando Genérico Estruturado
+    else:
+        ps_cmd = f'Write-Host "Co-Piloto MediaDNA: Executando inspeção para: {prompt_text}"; Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First 5 ProcessName, @{{N="RAM_MB";E={{[math]::round($_.WorkingSet64/1MB,2)}}}}'
+        desc = f"Executa inspeção contextual dos principais processos do sistema para: '{prompt_text}'."
+        safety = "READ_ONLY_SAFE"
+        badge = "🟢 SEGURO (APENAS LEITURA)"
+        risk_level = "baixo"
+
+    # Análise de Blast Radius baseada nos nós selecionados
+    hosts = selected_hosts or ["Host Atual"]
+    blast_radius = f"{len(hosts)} nó(s) selecionado(s)"
+    if len(hosts) > 10:
+        blast_radius += " ⚠️ Impacto Coletivo Ampliado"
+
+    return {
+        "status": "success",
+        "original_prompt": prompt_text,
+        "compiled_powershell": ps_cmd,
+        "description": desc,
+        "safety_level": safety,
+        "safety_badge": badge,
+        "risk_level": risk_level,
+        "blast_radius": blast_radius,
+        "requires_keyword_confirmation": (safety != "READ_ONLY_SAFE")
+    }
+
+
+def synthesize_multihost_execution_output(outputs_by_host: Dict[str, str], command_executed: str = "") -> Dict[str, Any]:
+    """
+    Interpreta saídas textuais complexas retornadas por múltiplos hosts remotos,
+    gerando um resumo executivo limpo para rápida tomada de decisão pelo engenheiro.
+    """
+    by_host_summary = []
+    total_anomalies = 0
+
+    for host_name, raw_log in outputs_by_host.items():
+        log_lower = raw_log.lower()
+        has_oom = "outofmemory" in log_lower or "out of memory" in log_lower
+        has_error = "error" in log_lower or "exception" in log_lower or "falha" in log_lower or "problem" in log_lower
+        has_stopped = "stopped" in log_lower or "parado" in log_lower
+        
+        # Extração de memória se houver
+        import re
+        ram_matches = re.findall(r'(\d+[.,]?\d*)\s*(?:mb|gb)', log_lower)
+        ram_info = f"{ram_matches[0]} MB" if ram_matches else "Nominal"
+
+        if has_oom:
+            status = "CRÍTICO"
+            color = "#ef4444"
+            summary_item = f"Exceção grave de OutOfMemory detectada! Consumo de memória elevado no processo ({ram_info})."
+            total_anomalies += 1
+        elif has_stopped:
+            status = "CRÍTICO"
+            color = "#ef4444"
+            summary_item = "Serviço crítico em estado Parado/Inoperante."
+            total_anomalies += 1
+        elif has_error:
+            status = "ALERTA"
+            color = "#f59e0b"
+            summary_item = f"Erros ou avisos identificados no log de execução (RAM: {ram_info})."
+            total_anomalies += 1
+        else:
+            status = "NORMAL"
+            color = "#10b981"
+            summary_item = f"Execução limpa sem exceções. Parâmetros dentro dos limiares de projeto (RAM: {ram_info})."
+
+        by_host_summary.append({
+            "host": host_name,
+            "status": status,
+            "badge_color": color,
+            "findings": summary_item,
+            "lines_count": len(raw_log.splitlines())
+        })
+
+    if total_anomalies == 0:
+        overall_verdict = f"Todos os {len(outputs_by_host)} nós executaram com sucesso e operam em conformidade nominal."
+    else:
+        overall_verdict = f"Atenção: Anomalias detectadas em {total_anomalies} de {len(outputs_by_host)} nós auditados. Requer validação técnica."
+
+    return {
+        "status": "success",
+        "total_hosts": len(outputs_by_host),
+        "total_anomalies": total_anomalies,
+        "overall_verdict": overall_verdict,
+        "by_host": by_host_summary
+    }

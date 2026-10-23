@@ -257,6 +257,9 @@ def get_incident_history(
         cursor.execute("SELECT * FROM incident_worklog ORDER BY id DESC LIMIT 20")
         worklogs = [dict(r) for r in cursor.fetchall()]
 
+        # Aplica motor de Causa-Raiz Sistêmica e Supressão de Tempestade de Alarmes
+        root_cause_data = correlate_root_cause_and_suppress_storms(items)
+
         return {
             "period": period,
             "total_incidents": count_total,
@@ -266,6 +269,9 @@ def get_incident_history(
             "by_type": type_counts,
             "by_city": city_counts,
             "items": items,
+            "master_incidents": root_cause_data["master_incidents"],
+            "suppressed_count": root_cause_data["suppressed_count"],
+            "root_cause_summary": root_cause_data["root_cause_summary"],
             "worklogs": worklogs
         }
 
@@ -740,4 +746,121 @@ def cluster_and_diagnose_incidents_with_ai(period: str = "30d") -> Dict[str, Any
         "clusters": clusters,
         "gemini_synthesis": gemini_synthesis,
         "analyzed_at": datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M:%S UTC")
+    }
+
+
+# =========================================================================
+# MOTOR DE CAUSA-RAIZ SISTÊMICA & SUPRESSÃO DE TEMPESTADE DE ALARMES
+# (ROOT-CAUSE ENGINE & ALERT STORM MUTING) - ZERO CUSTO / ZERO CARGA NO CS
+# =========================================================================
+
+def correlate_root_cause_and_suppress_storms(raw_incidents: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Agrupa incidentes correlacionados por sítio/praça, eliminando tempestades de alarmes repetitivos.
+    Cria Incidentes Mestres com agregação hierárquica e identificação instantânea de origem:
+    - Torre Externa (Blecaute Geral no Sítio)
+    - Emissora Isolada (Falha Pontual no Transmissor da Emissora)
+    - Hardware Local (Tuner TBS / LNA / Cabo no Capture Site)
+    - Software Local (Atria / MuxesController / Crash-Loop de Processos)
+    - Link WAN / Operadora (Rompimento de Fibra / Upload)
+    """
+    if not raw_incidents:
+        return {
+            "master_incidents": [],
+            "suppressed_count": 0,
+            "root_cause_summary": "Nenhum incidente ativo no momento."
+        }
+
+    # Agrupa incidentes por praça
+    by_city = {}
+    for inc in raw_incidents:
+        praca = inc.get("praca", "Geral")
+        if praca not in by_city:
+            by_city[praca] = []
+        by_city[praca].append(inc)
+
+    master_incidents = []
+    total_suppressed = 0
+
+    for praca, inc_list in by_city.items():
+        if len(inc_list) >= 2:
+            # Tempestade de alarmes detectada na mesma praça!
+            rf_faults = [i for i in inc_list if "rf_" in i.get("incident_type", "") or "gop" in i.get("incident_type", "") or "queda" in i.get("impact_summary", "").lower()]
+            srv_faults = [i for i in inc_list if "service" in i.get("incident_type", "") or "srv_" in i.get("incident_code", "")]
+            pipe_faults = [i for i in inc_list if "pipeline" in i.get("incident_type", "") or "disk" in i.get("incident_type", "")]
+
+            # 1. Caso de Blecaute Geral de Torre / Sinal (Múltiplas emissoras caídas juntas)
+            if len(rf_faults) >= 2:
+                affected_channels = [i.get("target_name", "Canal") for i in rf_faults]
+                master_code = f"MASTER-TOWER-{praca.upper()[:3]}"
+                master_incidents.append({
+                    "incident_code": master_code,
+                    "praca": praca,
+                    "is_master": True,
+                    "title": f"⚡ Blecaute Geral de Torre / Queda de Enlace Coletivo ({praca})",
+                    "origin_category": "TORRE_EXTERNA",
+                    "origin_badge": "Torre Externa (Concessionária)",
+                    "severity": "critico",
+                    "status": "aberto",
+                    "duration_minutes": max(i.get("duration_minutes", 10) for i in rf_faults),
+                    "impact_summary": f"Queda simultânea de {len(rf_faults)} emissoras ({', '.join(affected_channels)}). Todas no mesmo enlace/azimute de transmissão.",
+                    "root_cause_analysis": (
+                        f"Análise de Correlação Causa-Raiz: Queda concomitante de múltiplos canais de operadoras distintas "
+                        f"em {praca} descarta falha em transmissor individual. Causa mais provável: interrupção de energia "
+                        f"na torre transmissora central ou falha catastrófica no alimentador comum do sítio."
+                    ),
+                    "action_required": "Aguardar telemetria de energia da concessionária regional e não reiniciar tuners locais do Capture Site desnecessariamente.",
+                    "child_count": len(rf_faults),
+                    "child_incidents": rf_faults
+                })
+                total_suppressed += (len(rf_faults) - 1)
+
+            # 2. Caso de Falha de Software Local / Crash de Processos
+            elif len(srv_faults) >= 2:
+                srv_names = [i.get("target_name", "Serviço") for i in srv_faults]
+                master_code = f"MASTER-SW-{praca.upper()[:3]}"
+                master_incidents.append({
+                    "incident_code": master_code,
+                    "praca": praca,
+                    "is_master": True,
+                    "title": f"⚙️ Instabilidade no Host Local / Múltiplos Serviços Parados ({praca})",
+                    "origin_category": "PROCESSO_LOCAL_ATRIA",
+                    "origin_badge": "Processos Locais CS (Software)",
+                    "severity": "critico",
+                    "status": "aberto",
+                    "duration_minutes": max(i.get("duration_minutes", 10) for i in srv_faults),
+                    "impact_summary": f"Parada simultânea dos serviços: {', '.join(srv_names)}.",
+                    "root_cause_analysis": f"Esgotamento de recursos ou crash em cascata de dependências WCF no host local do Capture Site {praca}.",
+                    "action_required": "Disparar reciclagem limpa da stack MediaDNA via Remote Command.",
+                    "child_count": len(srv_faults),
+                    "child_incidents": srv_faults
+                })
+                total_suppressed += (len(srv_faults) - 1)
+            else:
+                # Adiciona individualmente se não enquadrar em padrão mestre
+                for i in inc_list:
+                    i["is_master"] = False
+                    i["origin_category"] = "EMISSORA_ISOLADA" if "rf" in i.get("incident_type", "") else "INFRA_LOCAL"
+                    i["origin_badge"] = "Falha Exclusiva da Emissora" if "rf" in i.get("incident_type", "") else "Infra Local"
+                    master_incidents.append(i)
+        else:
+            # Apenas 1 incidente isolado na praça -> Falha Exclusiva / Pontual
+            for i in inc_list:
+                i["is_master"] = False
+                itype = i.get("incident_type", "")
+                if "rf" in itype or "gop" in itype:
+                    i["origin_category"] = "EMISSORA_ISOLADA"
+                    i["origin_badge"] = "Falha Exclusiva da Emissora"
+                    i["root_cause_analysis"] = f"Apenas a emissora {i.get('target_name')} está com falha em {praca}. Os demais canais locais operam normalmente, comprovando que o Capture Site e o mastro estão íntegros."
+                else:
+                    i["origin_category"] = "INFRA_LOCAL"
+                    i["origin_badge"] = "Infra Local"
+                master_incidents.append(i)
+
+    return {
+        "master_incidents": master_incidents,
+        "suppressed_count": total_suppressed,
+        "total_raw": len(raw_incidents),
+        "total_consolidated": len(master_incidents),
+        "root_cause_summary": f"{total_suppressed} alertas duplicados foram silenciados e consolidados em incidentes mestres de causa-raiz."
     }
