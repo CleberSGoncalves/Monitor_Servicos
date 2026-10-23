@@ -197,7 +197,7 @@ def get_fleet_pipeline_incidents(services: list = None, channels: list = None, t
                 "recommended_action": f"Disparar reinício do serviço DNA.FiletransferSVC em {h_name}."
             })
 
-        if "mediarecorder" in svc_name and svc_status in ["parado", "stopped", "erro"]:
+        if "mediarecorder" in svc_name and svc_status in ["parado", "stopped", "erro"] and int(float(cs_id or 1)) != 2:
             incidents.append({
                 "id": f"svc_mr_{h_name}_{cs_id}",
                 "type": "ausencia_geracao_30min",

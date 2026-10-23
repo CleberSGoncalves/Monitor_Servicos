@@ -95,6 +95,13 @@ def sync_fleet_data():
 
         channels_list = []
         outages = []
+
+        # Mapeia praças/CS com DNA.MediaConverter ativo para converter MP4 BKP em ASF
+        converter_running_keys = {
+            (s.get("praca", "").strip().lower(), int(float(s.get("cs", 1))))
+            for s in services_list
+            if "mediaconverter" in str(s.get("nome_servico", "")).lower() and s.get("status_servico") == "Em Execução"
+        }
         
         for it in raw_channels:
             f = it.get("fields", {})
@@ -112,6 +119,16 @@ def sync_fleet_data():
             is_rtsp = "rtsp" in meio_str.lower() or "udp" in meio_str.lower() or "ip" in meio_str.lower()
             is_digital = "digital" in meio_str.lower() or "terrestre" in meio_str.lower()
             id_cs = f.get("IDCS", 1)
+            parsed_cs = int(float(id_cs or 1))
+            p_lower = praca.strip().lower()
+
+            # Regra Arquitetural DNA.MediaConverter:
+            # Em CS02 ou nós com DNA.MediaConverterSVC ativo, o ATRIA grava BKP em .MP4 e o conversor
+            # gera .ASF para D:\MediaDNA_V2\data\video. Se o conversor estiver rodando ou for CS 2,
+            # nunca reportar falso alerta de "Sem Arquivos MP4" ou "Travado".
+            is_converter_node = (p_lower, parsed_cs) in converter_running_keys or parsed_cs == 2 or "bkp" in ch_name.lower()
+            if is_converter_node and ("sem arquivos" in rec_mp4.lower() or "travado" in rec_mp4.lower()):
+                rec_mp4 = "Gravando (.ASF BKP)"
 
             # Classificação Preditiva de Falha e Queda
             has_outage = False
@@ -219,7 +236,7 @@ def sync_fleet_data():
             "total_channels": len(channels_list),
             "channels_ok": len(channels_list) - channels_down,
             "channels_down": channels_down,
-            "recordings_active": sum(1 for c in channels_list if "sim" in c["gravando_mp4"].lower()),
+            "recordings_active": sum(1 for c in channels_list if "sim" in c["gravando_mp4"].lower() or "gravando" in c["gravando_mp4"].lower() or "asf" in c["gravando_mp4"].lower()),
             "recordings_critical": recordings_critical
         }
 

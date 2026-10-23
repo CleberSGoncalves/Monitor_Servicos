@@ -636,6 +636,16 @@ namespace WinServiceFleetAgent.Core
 
             try
             {
+                bool isMediaConverterRunning = false;
+                try
+                {
+                    var procs = System.Diagnostics.Process.GetProcesses();
+                    isMediaConverterRunning = procs.Any(p => 
+                        p.ProcessName.IndexOf("MediaConverter", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        p.ProcessName.IndexOf("DNA.MediaConverter", StringComparison.OrdinalIgnoreCase) >= 0);
+                }
+                catch { }
+
                 string targetDir = basePath.Trim();
                 string registeredDir = Path.Combine(targetDir, "registered");
                 if (Directory.Exists(registeredDir))
@@ -644,16 +654,53 @@ namespace WinServiceFleetAgent.Core
                 }
                 else if (!Directory.Exists(targetDir))
                 {
-                    return "⚠️ Pasta Não Encontrada";
+                    string[] alternateDirs = new string[] {
+                        @"D:\MediaDNA_V2\Data\video",
+                        @"D:\MediaDNA_V2\data\video",
+                        @"C:\c_BKP\registered",
+                        @"C:\c_BKP",
+                        @"E:\MediaDNA_V2\Data\Video"
+                    };
+                    bool foundAlt = false;
+                    foreach (var alt in alternateDirs)
+                    {
+                        if (Directory.Exists(alt))
+                        {
+                            targetDir = alt;
+                            foundAlt = true;
+                            break;
+                        }
+                    }
+                    if (!foundAlt) return "⚠️ Pasta Não Encontrada";
                 }
 
                 var dir = new DirectoryInfo(targetDir);
-                var latestFile = dir.EnumerateFiles("*.mp4")
+                var latestFile = dir.EnumerateFiles("*.*")
+                    .Where(f => f.Extension.Equals(".mp4", StringComparison.OrdinalIgnoreCase) || 
+                                f.Extension.Equals(".asf", StringComparison.OrdinalIgnoreCase) ||
+                                f.Extension.Equals(".wmv", StringComparison.OrdinalIgnoreCase))
                     .OrderByDescending(f => f.LastWriteTimeUtc)
                     .FirstOrDefault();
 
+                if (latestFile == null && isMediaConverterRunning)
+                {
+                    string asfDest = @"D:\MediaDNA_V2\Data\video";
+                    if (!Directory.Exists(asfDest)) asfDest = @"D:\MediaDNA_V2\data\video";
+                    if (Directory.Exists(asfDest))
+                    {
+                        var asfDir = new DirectoryInfo(asfDest);
+                        latestFile = asfDir.EnumerateFiles("*.asf")
+                            .OrderByDescending(f => f.LastWriteTimeUtc)
+                            .FirstOrDefault();
+                    }
+                }
+
                 if (latestFile == null)
                 {
+                    if (isMediaConverterRunning)
+                    {
+                        return "Gravando (.ASF BKP)";
+                    }
                     return "⚠️ Sem Arquivos MP4";
                 }
 
@@ -663,16 +710,25 @@ namespace WinServiceFleetAgent.Core
                 }
 
                 var minutesSinceLastFile = (DateTime.UtcNow - latestFile.LastWriteTimeUtc).TotalMinutes;
-                if (minutesSinceLastFile > 15)
+                if (minutesSinceLastFile > 25)
                 {
-                    return $"⚠️ Travado ({minutesSinceLastFile:F0}m sem MP4)";
+                    if (isMediaConverterRunning && latestFile.Extension.Equals(".asf", StringComparison.OrdinalIgnoreCase) && minutesSinceLastFile <= 40)
+                    {
+                        return "Gravando (.ASF BKP)";
+                    }
+                    return $"⚠️ Travado ({minutesSinceLastFile:F0}m sem Mídia)";
+                }
+
+                if (latestFile.Extension.Equals(".asf", StringComparison.OrdinalIgnoreCase) || isMediaConverterRunning)
+                {
+                    return "Gravando (.ASF BKP)";
                 }
 
                 return "Sim";
             }
             catch (Exception ex)
             {
-                FileLogger.Log($"[ChannelOrchestrator] Aviso na auditoria MP4 '{basePath}': {ex.Message}");
+                FileLogger.Log($"[ChannelOrchestrator] Aviso na auditoria MP4/ASF '{basePath}': {ex.Message}");
                 return "Sim";
             }
         }

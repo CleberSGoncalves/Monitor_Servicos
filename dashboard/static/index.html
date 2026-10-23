@@ -1279,13 +1279,7 @@
 
 
       <button class="nav-btn active" data-tab="overview">
-
-
-
-        <span>📊</span> Visão Geral
-
-
-
+        <span>🚨</span> Incidentes N1 (NOC)
       </button>
 
 
@@ -1362,6 +1356,9 @@
 
 
 
+            <button class="nav-btn" data-tab="logs">
+        <span>📑</span> Central de Logs
+      </button>
       <button class="nav-btn" data-tab="remote-commands">
 
 
@@ -1753,50 +1750,97 @@
       <!-- ============================================================== -->
       <!-- COCKPIT OPERACIONAL: AÇÕES REATIVAS VS AÇÕES PROATIVAS (DUAL)  -->
       <!-- ============================================================== -->
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 16px; margin-bottom: 16px;">
-
-        <!-- PAINEL 1 (REATIVO): QUEDAS & FALHAS CRÍTICAS ATIVAS -->
-        <div class="panel-card" style="margin-bottom: 0; display: flex; flex-direction: column; max-height: 480px;">
-          <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(239,68,68,0.25); padding-bottom: 10px; margin-bottom: 10px;">
-            <div class="panel-title" style="color: #f87171;">
-              <span>🚨</span> Quedas & Falhas Críticas
-              <span class="badge badge-red" id="badgeActiveOutagesCount" style="margin-left: 8px;">0 Quedas</span>
-            </div>
-            <span style="font-size: 11px; color: var(--text-muted);">Canais / Sintonizadores TBS</span>
+      <!-- ============================================================== -->
+      <!-- NOC COCKPIT N1: TELEMETRIA DE HOSTS CRÍTICOS & MATRIZ UNIFICADA -->
+      <!-- ============================================================== -->
+      
+      <!-- 1. BARRA SUPERIOR DE HOSTS CRÍTICOS (CPU > 85%, RAM > 90%, DISCO D: < 30GB, LINK SATURADO) -->
+      <div id="nocCriticalHostsSection" class="panel-card" style="margin-bottom: 16px; padding: 14px 18px; border: 1px solid rgba(239, 68, 68, 0.35); background: rgba(239, 68, 68, 0.04);">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 16px;">🖥️</span>
+            <strong style="color: #fca5a5; font-size: 14px;">Monitoramento de Hardware & Hosts Críticos (Gargalos de CPU, Memória, Disco D: e Link)</strong>
+            <span class="badge badge-red" id="badgeCriticalHostsCount">0 Hosts em Alerta</span>
           </div>
-          <div id="activeOutagesList" style="flex: 1; overflow-y: auto; padding-right: 6px; display: flex; flex-direction: column; gap: 8px;">
-            <div style="color: var(--text-muted); padding: 10px;">Carregando incidentes ativos...</div>
+          <span style="font-size: 11px; color: var(--text-muted);"><i class="fas fa-filter"></i> Clique no host para filtrar toda a matriz operacional</span>
+        </div>
+        <div id="nocCriticalHostsList" style="display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; min-height: 42px; align-items: center;">
+          <div style="color: var(--accent-green); font-size: 12px; display: flex; align-items: center; gap: 6px;">
+            <i class="fas fa-check-circle"></i> Todos os 24 servidores operando com CPU, RAM e Disco D: dentro dos SLAs nominais.
           </div>
         </div>
+      </div>
 
-        <!-- PAINEL 2 (PROATIVO): ALERTAS PREDITIVOS & RISCOS DE SLA -->
-        <div class="panel-card" style="margin-bottom: 0; display: flex; flex-direction: column; max-height: 480px;">
-          <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(234,179,8,0.25); padding-bottom: 10px; margin-bottom: 10px;">
-            <div class="panel-title" style="color: #facc15;">
-              <span>⚡</span> Alertas Preditivos & SLA
-              <span class="badge badge-yellow" id="badgeThresholdBreachesCount" style="margin-left: 8px;">0 Riscos</span>
-            </div>
-            <span style="font-size: 11px; color: var(--text-muted);">Disco D:, RF, Autonomia, CPU</span>
+      <!-- 2. BARRA MULTIDIMENSIONAL DE FILTROS & SEVERIDADE N1 (P1 a P4) -->
+      <div class="panel-card" style="margin-bottom: 16px; padding: 12px 18px; background: rgba(15, 23, 42, 0.65); border: 1px solid var(--border-color);">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+          <!-- Severity Filter Chips -->
+          <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+            <span style="font-size: 12px; font-weight: 700; color: #94a3b8; margin-right: 4px;">TRIAGEM N1:</span>
+            <button type="button" class="btn-secondary noc-sev-chip active" id="chipSevAll" onclick="filterNocBySeverity('all')">Todos (<span id="countSevAll">0</span>)</button>
+            <button type="button" class="btn-secondary noc-sev-chip" id="chipSevP1" onclick="filterNocBySeverity('P1')" style="border-color: rgba(239, 68, 68, 0.5); color: #f87171;">
+              <span class="badge badge-red" style="font-size: 10px; padding: 1px 5px;">P1</span> Blackout (<span id="countSevP1">0</span>)
+            </button>
+            <button type="button" class="btn-secondary noc-sev-chip" id="chipSevP2" onclick="filterNocBySeverity('P2')" style="border-color: rgba(245, 158, 11, 0.5); color: #fbbf24;">
+              <span class="badge badge-yellow" style="font-size: 10px; padding: 1px 5px;">P2</span> Degradação (<span id="countSevP2">0</span>)
+            </button>
+            <button type="button" class="btn-secondary noc-sev-chip" id="chipSevP3" onclick="filterNocBySeverity('P3')" style="border-color: rgba(59, 130, 246, 0.5); color: #93c5fd;">
+              <span class="badge badge-blue" style="font-size: 10px; padding: 1px 5px;">P3</span> Pipeline (<span id="countSevP3">0</span>)
+            </button>
+            <button type="button" class="btn-secondary noc-sev-chip" id="chipSevP4" onclick="filterNocBySeverity('P4')" style="border-color: rgba(168, 85, 247, 0.5); color: #d8b4fe;">
+              <span class="badge badge-purple" style="font-size: 10px; padding: 1px 5px;">P4</span> Infra & Disco (<span id="countSevP4">0</span>)
+            </button>
           </div>
-          <div id="thresholdBreachesList" style="flex: 1; overflow-y: auto; padding-right: 6px; display: flex; flex-direction: column; gap: 8px;">
-            <div style="color: var(--text-muted); padding: 10px;">Verificando limiares operacionais...</div>
+
+          <!-- Secondary Filters: Category, City, CS -->
+          <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+            <select id="nocFilterCategory" class="filter-select" onchange="applyNocMatrixFilters()" style="min-width: 140px;">
+              <option value="all">Todas Categorias</option>
+              <option value="sinal_rf">📡 Sinal RF / Stream</option>
+              <option value="pipeline_midia">📦 Pipeline & Conversão</option>
+              <option value="hardware_infra">💾 Hardware & Disco</option>
+              <option value="servicos">⚙️ Serviços Windows</option>
+            </select>
+            <select id="nocFilterCity" class="filter-select" onchange="applyNocMatrixFilters()" style="min-width: 130px;">
+              <option value="all">Todas as Praças</option>
+            </select>
+            <select id="nocFilterCs" class="filter-select" onchange="applyNocMatrixFilters()" style="min-width: 110px;">
+              <option value="all">Todos os CS</option>
+              <option value="1">Apenas CS 1</option>
+              <option value="2">Apenas CS 2 (BKP/ASF)</option>
+            </select>
+            <button type="button" class="btn-primary" style="padding: 6px 14px; font-size: 12px;" onclick="loadAllData()">
+              <i class="fas fa-sync-alt"></i> Atualizar
+            </button>
           </div>
         </div>
+      </div>
 
-        <!-- PAINEL 3 (PIPELINE DE MÍDIA): ATRASOS .SENT, AUSÊNCIA 30MIN & LINK NOS CS -->
-        <div class="panel-card" style="margin-bottom: 0; display: flex; flex-direction: column; max-height: 480px; border: 1px solid rgba(56,189,248,0.3);">
-          <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(56,189,248,0.25); padding-bottom: 10px; margin-bottom: 10px;">
-            <div class="panel-title" style="color: #38bdf8;">
-              <span>📦</span> Pipeline & Atrasos nos CS
-              <span class="badge badge-blue" id="badgeMediaPipelineCount" style="margin-left: 8px;">0 Atrasos</span>
-            </div>
-            <span style="font-size: 11px; color: var(--text-muted);">Atraso .SENT, Ausência 30min</span>
+      <!-- 3. MATRIZ UNIFICADA DE INCIDENTES (CARDS ACIONÁVEIS N1) -->
+      <div class="panel-card" style="margin-bottom: 16px;">
+        <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+          <div class="panel-title" style="color: #fff; font-size: 15px; display: flex; align-items: center; gap: 10px;">
+            <span>⚡</span>
+            <span>Matriz Unificada de Incidentes & Alarmes Ativos</span>
+            <span class="badge badge-purple" id="badgeNocTotalIncidents" style="font-size: 11px;">0 Ocorrências</span>
           </div>
-          <div id="mediaPipelineList" style="flex: 1; overflow-y: auto; padding-right: 6px; display: flex; flex-direction: column; gap: 8px;">
-            <div style="color: var(--text-muted); padding: 10px;">Inspecionando pipeline de mídias...</div>
+          <span style="font-size: 11px; color: var(--text-muted);">Cards ordenados por prioridade operacional (P1 ➔ P4) com 1-Clique IA e Ação</span>
+        </div>
+        <div id="nocIncidentsGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 14px;">
+          <div style="color: var(--text-muted); padding: 20px; text-align: center; grid-column: 1 / -1;">
+            <i class="fas fa-circle-notch fa-spin"></i> Consolidando telemetria e incidentes da frota...
           </div>
         </div>
+      </div>
 
+      <!-- Fallback hidden containers to preserve backward compatibility with all background listeners -->
+      <div style="display: none;" aria-hidden="true">
+        <span id="badgeActiveOutagesCount">0</span>
+        <div id="activeOutagesList"></div>
+        <span id="badgeThresholdBreachesCount">0</span>
+        <div id="thresholdBreachesList"></div>
+        <span id="badgeMediaPipelineCount">0</span>
+        <div id="mediaPipelineList"></div>
       </div>
 
       <!-- ============================================================== -->
@@ -5943,6 +5987,101 @@
     </div>
       </div>
     </section>
+
+    <!-- TAB 12: CENTRAL DE LOGS INTELIGENTE (LOG EXPLORER COM IA) -->
+    <section class="content-section" id="tab-logs">
+      <div class="panel-card" style="margin-bottom: 16px;">
+        <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; border-bottom: 1px solid var(--border-color); padding-bottom: 12px; margin-bottom: 14px;">
+          <div class="panel-title" style="color: #38bdf8; font-size: 16px; display: flex; align-items: center; gap: 10px;">
+            <span>📑</span>
+            <span>Central de Logs Inteligente (Log Explorer com IA)</span>
+            <span class="badge badge-blue" style="font-size: 11px;">Sob Demanda • Zero-Overhead</span>
+          </div>
+          <span style="font-size: 11px; color: var(--text-muted);">Inspeciona D:\MediaDNA_V2\Applications\DTVCapture64\Logs, Serviços Windows e EventViewer</span>
+        </div>
+
+        <!-- Barra de Filtros e Busca dos Logs -->
+        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; background: rgba(0,0,0,0.25); padding: 12px 14px; border-radius: 6px;">
+          <div>
+            <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 3px;">Origem do Log:</label>
+            <select id="logFilterSource" class="filter-select" onchange="loadFleetLogs()">
+              <option value="atria">Atria DigitalTV Capture (DTVCapture64)</option>
+              <option value="mediaconverter">DNA.MediaConverterSVC (Transcode ASF)</option>
+              <option value="filetransfer">DNA.FiletransferSVC (Uploads e .SENT)</option>
+              <option value="mediarecorder">DNA.MediaRecorderSVC (Gravação Chunks)</option>
+              <option value="detection">DNA.DetectionSVC (OCR & Fingerprint)</option>
+              <option value="monitorservice">DNA.MonitorServiceSVC (Agente Local)</option>
+              <option value="eventviewer">Windows Event Viewer (Application)</option>
+            </select>
+          </div>
+
+          <div>
+            <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 3px;">Severidade:</label>
+            <select id="logFilterSeverity" class="filter-select" onchange="loadFleetLogs()">
+              <option value="all">Todas as Linhas</option>
+              <option value="grave">🔴 Apenas Erros Graves / Fatal</option>
+              <option value="atencao">🟡 Avisos & Alertas (Warn)</option>
+              <option value="info">🟢 Informativo (Info)</option>
+            </select>
+          </div>
+
+          <div>
+            <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 3px;">Qtd. Linhas:</label>
+            <select id="logFilterLines" class="filter-select" onchange="loadFleetLogs()">
+              <option value="50">Últimas 50 linhas</option>
+              <option value="100" selected>Últimas 100 linhas</option>
+              <option value="200">Últimas 200 linhas</option>
+            </select>
+          </div>
+
+          <div style="flex: 1; min-width: 200px;">
+            <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 3px;">Filtrar Palavra-chave:</label>
+            <input type="text" id="logFilterKeyword" class="filter-select" placeholder="Ex: TBS, Lock, BER, Exception..." style="width: 100%;" onkeyup="if(event.key==='Enter') loadFleetLogs()">
+          </div>
+
+          <div style="display: flex; gap: 8px; align-self: flex-end;">
+            <button type="button" class="btn-primary" style="padding: 7px 16px; font-size: 12px;" onclick="loadFleetLogs()">
+              <i class="fas fa-search"></i> Ler Logs Sob Demanda
+            </button>
+            <button type="button" class="btn-primary" style="padding: 7px 16px; font-size: 12px; background: linear-gradient(135deg, #8b5cf6, #6366f1); font-weight: 700; box-shadow: 0 0 12px rgba(139, 92, 246, 0.4);" onclick="diagnoseCurrentLogsWithAi()">
+              <i class="fas fa-brain"></i> Diagnosticar com Gemini Pro
+            </button>
+          </div>
+        </div>
+
+        <!-- Terminal / Console de Logs -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 11px; color: var(--text-muted);">
+          <span id="logViewerFilePath">Arquivo: D:\MediaDNA_V2\Applications\DTVCapture64\Logs</span>
+          <div style="display: flex; gap: 12px;">
+            <span style="color: #f87171;">🔴 Graves: <strong id="logCountGraves">0</strong></span>
+            <span style="color: #facc15;">🟡 Atenção: <strong id="logCountAtencao">0</strong></span>
+            <span style="color: #34d399;">🟢 Info: <strong id="logCountInfo">0</strong></span>
+          </div>
+        </div>
+
+        <div id="logConsoleOutput" style="background: #090d16; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 14px; font-family: 'Consolas', 'Courier New', monospace; font-size: 12px; line-height: 1.6; max-height: 480px; overflow-y: auto; color: #cbd5e1; white-space: pre-wrap; word-break: break-all;">
+          <div style="color: var(--text-muted); text-align: center; padding: 30px;">
+            Clique em "Ler Logs Sob Demanda" para inspecionar os arquivos sem onerar o Capture Site.
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal / Drawer de Diagnóstico de Logs com IA -->
+      <div id="logAiDiagnosisDrawer" style="display: none; background: rgba(15, 23, 42, 0.95); border: 1px solid #8b5cf6; border-radius: 8px; padding: 20px; margin-top: 16px; box-shadow: 0 0 20px rgba(139, 92, 246, 0.25);">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(139, 92, 246, 0.3); padding-bottom: 10px; margin-bottom: 14px;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 20px;">🧠</span>
+            <strong style="color: #c084fc; font-size: 15px;">Parecer de Engenharia com Google Gemini Pro (Análise dos Logs)</strong>
+          </div>
+          <button type="button" class="btn-secondary" style="padding: 4px 10px; font-size: 11px;" onclick="document.getElementById('logAiDiagnosisDrawer').style.display='none'">Fechar</button>
+        </div>
+        <div id="logAiDiagnosisContent">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+    </section>
+
+
 
   </main>
 

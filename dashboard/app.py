@@ -557,6 +557,45 @@ async def diagnose_network_link_endpoint(req: LinkDiagnoseRequest, user: dict = 
     return diagnose_link_and_pipeline_with_ai(req.praca, req.cs, req.hostname)
 
 
+# Central de Logs Inteligente (Log Explorer com IA)
+class LogQueryRequest(BaseModel):
+    source: str = "atria"
+    severity: str = "all"
+    host: Optional[str] = None
+    keyword: Optional[str] = None
+    max_lines: int = 100
+
+class LogAiDiagnoseRequest(BaseModel):
+    source: str = "atria"
+    host: str = "CS-FLEET-GLOBAL"
+    logs: List[str] = []
+
+@app.get("/api/fleet/logs/sources")
+async def get_log_sources_endpoint(user: dict = Depends(get_current_user)):
+    return {
+        "sources": [
+            {"id": "atria", "name": "Atria DigitalTV Capture (DTVCapture64)", "desc": "Logs de sintonia TBS, RF e gravação", "icon": "fa-satellite-dish"},
+            {"id": "mediaconverter", "name": "DNA.MediaConverterSVC", "desc": "Conversão MP4 para ASF (CS02)", "icon": "fa-exchange-alt"},
+            {"id": "filetransfer", "name": "DNA.FiletransferSVC", "desc": "Uploads HTTP/FTP e marcação .SENT", "icon": "fa-cloud-upload-alt"},
+            {"id": "mediarecorder", "name": "DNA.MediaRecorderSVC", "desc": "Gravação de blocos de 30 minutos", "icon": "fa-film"},
+            {"id": "detection", "name": "DNA.DetectionSVC", "desc": "OCR e Fingerprint acústico", "icon": "fa-search"},
+            {"id": "monitorservice", "name": "DNA.MonitorServiceSVC", "desc": "Agente local de telemetria", "icon": "fa-heartbeat"},
+            {"id": "eventviewer", "name": "Windows Event Viewer", "desc": "Falhas de Aplicação e Serviços do SO", "icon": "fa-windows"}
+        ]
+    }
+
+@app.post("/api/fleet/logs/query")
+async def query_logs_endpoint(req: LogQueryRequest, user: dict = Depends(get_current_user)):
+    from logs_explorer import query_fleet_logs
+    return query_fleet_logs(req.source, req.severity, req.host, req.keyword, req.max_lines)
+
+@app.post("/api/fleet/logs/ai-diagnose")
+async def ai_diagnose_logs_endpoint(req: LogAiDiagnoseRequest, user: dict = Depends(get_current_user)):
+    from logs_explorer import diagnose_logs_with_ai
+    operator_name = user.get("full_name", user.get("username", "suportesmme"))
+    return diagnose_logs_with_ai(req.source, req.host, req.logs, operator_name)
+
+
 @app.post("/api/thresholds")
 async def save_threshold(req: ThresholdUpdateRequest, user: dict = Depends(get_current_user)):
     if user.get("role") != "admin":
