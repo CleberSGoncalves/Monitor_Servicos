@@ -704,18 +704,34 @@ function executeRemoteScript(script, shellType, title) {
     const headers = { "Content-Type": "application/json" };
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
+    const validHosts = (selectedRemoteHosts || []).map(h => String(h).trim()).filter(h => h.length > 0);
+    if (validHosts.length === 0) {
+        safeToast("Selecione ao menos uma praça no seletor do topo.", "warning");
+        if (execBtn) {
+            execBtn.disabled = false;
+            execBtn.innerHTML = '<i class="fas fa-bolt"></i> Executar na(s) Praça(s)';
+        }
+        return;
+    }
+
     fetch("/api/remote-commands/execute", {
         method: "POST",
         headers: headers,
         body: JSON.stringify({
-            hosts: selectedRemoteHosts,
+            hosts: validHosts,
             shell_type: shellType,
             command_script: script,
             command_title: title || script.split("\n")[0].substring(0, 40)
         })
     })
     .then(async r => {
-        const data = await r.json().catch(() => ({ detail: "Resposta não formatada do servidor" }));
+        const text = await r.text();
+        let data = {};
+        try {
+            data = JSON.parse(text);
+        } catch (e) {
+            data = { detail: text ? text.substring(0, 300) : `HTTP ${r.status}` };
+        }
         if (!r.ok) {
             throw new Error(data.detail || data.message || `HTTP ${r.status}`);
         }
@@ -1291,7 +1307,7 @@ async function compileCopilotPrompt() {
     if (codeEl) codeEl.innerText = "Compilando instrução para PowerShell seguro e calculando Blast Radius...";
 
     try {
-        const token = localStorage.getItem("token") || (typeof getAuthToken === "function" ? getAuthToken() : "");
+        const token = getSafeToken();
         const hosts = (typeof getSelectedHosts === "function") ? getSelectedHosts() : [];
 
         const resp = await fetch("/api/remote/copilot/compile-prompt", {
@@ -1359,7 +1375,7 @@ async function synthesizeMultiHostOutput() {
     if (hostsGrid) hostsGrid.innerHTML = "";
 
     try {
-        const token = localStorage.getItem("token") || (typeof getAuthToken === "function" ? getAuthToken() : "");
+        const token = getSafeToken();
         
         // Coleta textos das abas abertas de cada host
         const outputs = {};
@@ -1426,15 +1442,34 @@ window.synthesizeMultiHostOutput = synthesizeMultiHostOutput;
 function applyAndExecuteCopilotCommand() {
     if (!currentCopilotCompiledCode) return;
     applyCopilotCompiledCommand();
-    executeTerminalCommand();
+    setTimeout(() => {
+        if (typeof executeTerminalCommand === "function") {
+            executeTerminalCommand();
+        }
+    }, 120);
 }
 window.applyAndExecuteCopilotCommand = applyAndExecuteCopilotCommand;
 
 // Compila a instrução em linguagem natural e já executa em um único clique
 async function compileAndRunCopilotPrompt() {
-    await compileCopilotPrompt();
-    if (currentCopilotCompiledCode) {
-        applyAndExecuteCopilotCommand();
+    const btn = document.querySelector("button[onclick='compileAndRunCopilotPrompt()']");
+    const origHtml = btn ? btn.innerHTML : "";
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Compilando...';
+    }
+    try {
+        await compileCopilotPrompt();
+        if (currentCopilotCompiledCode) {
+            applyAndExecuteCopilotCommand();
+        } else {
+            if (typeof safeToast === "function") safeToast("Não foi possível compilar a instrução.", "warning");
+        }
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
+        }
     }
 }
 window.compileAndRunCopilotPrompt = compileAndRunCopilotPrompt;

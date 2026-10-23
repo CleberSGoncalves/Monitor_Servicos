@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 from fastapi import FastAPI, Depends, HTTPException, status, Header, Query, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -1099,22 +1099,29 @@ async def remove_catalog_command(cmd_id: int, user: dict = Depends(get_current_u
 
 @app.post("/api/remote-commands/execute")
 async def execute_remote_cmd(req: RemoteCommandExecuteRequest, user: dict = Depends(get_current_user)):
-    if user.get("role") == "n1":
-        raise HTTPException(status_code=403, detail="🔒 Perfil N1 possui acesso restrito para monitoramento. Execução de comandos remotos requer Perfil N2 ou Administrador.")
-    if not req.hosts:
-        raise HTTPException(status_code=400, detail="Selecione ao menos um host para execução")
-    if not req.command_script.strip():
-        raise HTTPException(status_code=400, detail="Comando não pode ser vazio")
-    
-    operator_tag = f"{user.get('full_name', user.get('username'))} ({user.get('username')})"
-    res = dispatch_remote_command(
-        hosts=req.hosts,
-        shell_type=req.shell_type,
-        command_script=req.command_script,
-        command_title=req.command_title,
-        requested_by=operator_tag
-    )
-    return {"success": True, "execution_id": res, "message": "Comando disparado com sucesso!"}
+    try:
+        if user.get("role") == "n1":
+            raise HTTPException(status_code=403, detail="🔒 Perfil N1 possui acesso restrito para monitoramento. Execução de comandos remotos requer Perfil N2 ou Administrador.")
+        cleaned_hosts = [h.strip() for h in req.hosts if h and h.strip()]
+        if not cleaned_hosts:
+            raise HTTPException(status_code=400, detail="Selecione ao menos um host para execução")
+        if not req.command_script.strip():
+            raise HTTPException(status_code=400, detail="Comando não pode ser vazio")
+        
+        operator_tag = f"{user.get('full_name', user.get('username'))} ({user.get('username')})"
+        res = dispatch_remote_command(
+            hosts=cleaned_hosts,
+            shell_type=req.shell_type,
+            command_script=req.command_script,
+            command_title=req.command_title,
+            requested_by=operator_tag
+        )
+        return {"success": True, "execution_id": res, "message": "Comando disparado com sucesso!"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erro ao disparar comando remoto: {e}", exc_info=True)
+        return JSONResponse(status_code=500, content={"success": False, "detail": f"Erro interno ao disparar comando: {str(e)}"})
 
 @app.get("/api/remote-commands/executions")
 async def list_remote_command_executions(limit: int = 50, user: dict = Depends(get_current_user)):

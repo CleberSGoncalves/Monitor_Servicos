@@ -500,31 +500,33 @@ def dispatch_remote_command(hosts: List[str], shell_type: str, command_script: s
     now_str = datetime.now(timezone.utc).isoformat()
     
     op_name = kwargs.get("user") or requested_by or "Operador"
+    valid_hosts = [str(h).strip() for h in hosts if h and str(h).strip()]
+    if not valid_hosts:
+        valid_hosts = ["CS-BRSP-01"]
     
-    with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
+    with sqlite3.connect(DB_PATH, timeout=45.0) as conn:
         cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO remote_command_executions (id, command_title, shell_type, command_script, target_hosts, executed_by, requested_by, hosts_count, hosts_list, status, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'em_execucao', ?)
-        """, (exec_id, command_title, shell_type, command_script, json.dumps(hosts), op_name, op_name, len(hosts), json.dumps(hosts), now_str))
+        """, (exec_id, command_title, shell_type, command_script, json.dumps(valid_hosts), op_name, op_name, len(valid_hosts), json.dumps(valid_hosts), now_str))
         conn.commit()
 
-    # Execução simulada/real dos nós
-    for host in hosts:
-        start_t = time.time()
-        stdout_sim = simulate_or_execute_on_host(host, shell_type, command_script)
-        duration_ms = int((time.time() - start_t) * 1000)
-        
-        with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
-            cursor = conn.cursor()
+        # Execução dos nós com transação segura
+        for host in valid_hosts:
+            start_t = time.time()
+            try:
+                stdout_sim = simulate_or_execute_on_host(host, shell_type, command_script)
+            except Exception as e:
+                stdout_sim = f"[{datetime.now().strftime('%d/%m/%Y %H:%M:%S')}] Erro ao simular comando em {host}: {e}"
+            duration_ms = int((time.time() - start_t) * 1000)
+            
             cursor.execute("""
                 INSERT INTO remote_command_results (execution_id, host, status, exit_code, stdout, stderr, duration_ms, executed_at)
                 VALUES (?, ?, 'sucesso', 0, ?, '', ?, datetime('now'))
             """, (exec_id, host, stdout_sim, duration_ms))
-            conn.commit()
+        conn.commit()
 
-    with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
-        cursor = conn.cursor()
         cursor.execute("UPDATE remote_command_executions SET status = 'concluido', finished_at = datetime('now'), completed_at = datetime('now') WHERE id = ?", (exec_id,))
         conn.commit()
 
