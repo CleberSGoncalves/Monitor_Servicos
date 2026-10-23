@@ -1754,81 +1754,216 @@
       <!-- NOC COCKPIT N1: TELEMETRIA DE HOSTS CRÍTICOS & MATRIZ UNIFICADA -->
       <!-- ============================================================== -->
       
-      <!-- 1. BARRA SUPERIOR DE HOSTS CRÍTICOS (CPU > 85%, RAM > 90%, DISCO D: < 30GB, LINK SATURADO) -->
-      <div id="nocCriticalHostsSection" class="panel-card" style="margin-bottom: 16px; padding: 14px 18px; border: 1px solid rgba(239, 68, 68, 0.35); background: rgba(239, 68, 68, 0.04);">
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
+      <!-- 1. BARRA DE KPIs CONSOLIDADOS DO TOPO (ESTILO COCKPIT NOC) -->
+      <div class="panel-card" style="margin-bottom: 16px; padding: 12px 18px; background: rgba(15, 23, 42, 0.7); border: 1px solid var(--border-color);">
+        <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;">
+          <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+            <div style="background: rgba(2, 132, 199, 0.15); border: 1px solid rgba(2, 132, 199, 0.35); padding: 5px 12px; border-radius: 20px; font-size: 12px; color: #7dd3fc; display: flex; align-items: center; gap: 6px;">
+              <span>🖥️</span> <strong>Servidores:</strong> <span id="nocKpiServers">24/24 Online</span>
+            </div>
+            <div style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.35); padding: 5px 12px; border-radius: 20px; font-size: 12px; color: #6ee7b7; display: flex; align-items: center; gap: 6px;">
+              <span>⚙️</span> <strong>Serviços:</strong> <span id="nocKpiServices">256/312 Ativos</span>
+            </div>
+            <div style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.35); padding: 5px 12px; border-radius: 20px; font-size: 12px; color: #93c5fd; display: flex; align-items: center; gap: 6px;">
+              <span>📡</span> <strong>Sinal Estável:</strong> <span id="nocKpiSignals">96/128 MUX</span>
+            </div>
+            <div style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.35); padding: 5px 12px; border-radius: 20px; font-size: 12px; color: #fca5a5; display: flex; align-items: center; gap: 6px;">
+              <span>⚠️</span> <strong>Quedas:</strong> <span id="nocKpiOutages">32 Ocorrências</span>
+            </div>
+            <div style="background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.35); padding: 5px 12px; border-radius: 20px; font-size: 12px; color: #d8b4fe; display: flex; align-items: center; gap: 6px;">
+              <span>📼</span> <strong>Gravações:</strong> <span id="nocKpiRecordings">57 Streams</span>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 11px; color: var(--text-muted);"><i class="fas fa-clock"></i> Atualização em Tempo Real</span>
+            <button class="btn-primary" style="padding: 5px 12px; font-size: 11px;" onclick="loadAllData()">
+              <i class="fas fa-sync-alt"></i> Atualizar Cockpit
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. BARRA DE HOSTS CRÍTICOS (CPU > 85%, RAM > 90%, DISCO D: < 30GB, LINK SATURADO) -->
+      <div id="nocCriticalHostsSection" class="panel-card" style="margin-bottom: 16px; padding: 12px 18px; border: 1px solid rgba(239, 68, 68, 0.35); background: rgba(239, 68, 68, 0.04);">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
           <div style="display: flex; align-items: center; gap: 10px;">
             <span style="font-size: 16px;">🖥️</span>
-            <strong style="color: #fca5a5; font-size: 14px;">Monitoramento de Hardware & Hosts Críticos (Gargalos de CPU, Memória, Disco D: e Link)</strong>
+            <strong style="color: #fca5a5; font-size: 13px;">Monitoramento de Hardware & Hosts Críticos (Gargalos de CPU, Memória, Disco D: e Link)</strong>
             <span class="badge badge-red" id="badgeCriticalHostsCount">0 Hosts em Alerta</span>
           </div>
-          <span style="font-size: 11px; color: var(--text-muted);"><i class="fas fa-filter"></i> Clique no host para filtrar toda a matriz operacional</span>
+          <span style="font-size: 11px; color: var(--text-muted);"><i class="fas fa-filter"></i> Clique no host para filtrar a fila de incidentes</span>
         </div>
-        <div id="nocCriticalHostsList" style="display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; min-height: 42px; align-items: center;">
+        <div id="nocCriticalHostsList" style="display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; min-height: 38px; align-items: center;">
           <div style="color: var(--accent-green); font-size: 12px; display: flex; align-items: center; gap: 6px;">
             <i class="fas fa-check-circle"></i> Todos os 24 servidores operando com CPU, RAM e Disco D: dentro dos SLAs nominais.
           </div>
         </div>
       </div>
 
-      <!-- 2. BARRA MULTIDIMENSIONAL DE FILTROS & SEVERIDADE N1 (P1 a P4) -->
-      <div class="panel-card" style="margin-bottom: 16px; padding: 12px 18px; background: rgba(15, 23, 42, 0.65); border: 1px solid var(--border-color);">
-        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
-          <!-- Severity Filter Chips -->
-          <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
-            <span style="font-size: 12px; font-weight: 700; color: #94a3b8; margin-right: 4px;">TRIAGEM N1:</span>
-            <button type="button" class="btn-secondary noc-sev-chip active" id="chipSevAll" onclick="filterNocBySeverity('all')">Todos (<span id="countSevAll">0</span>)</button>
-            <button type="button" class="btn-secondary noc-sev-chip" id="chipSevP1" onclick="filterNocBySeverity('P1')" style="border-color: rgba(239, 68, 68, 0.5); color: #f87171;">
-              <span class="badge badge-red" style="font-size: 10px; padding: 1px 5px;">P1</span> Blackout (<span id="countSevP1">0</span>)
-            </button>
-            <button type="button" class="btn-secondary noc-sev-chip" id="chipSevP2" onclick="filterNocBySeverity('P2')" style="border-color: rgba(245, 158, 11, 0.5); color: #fbbf24;">
-              <span class="badge badge-yellow" style="font-size: 10px; padding: 1px 5px;">P2</span> Degradação (<span id="countSevP2">0</span>)
-            </button>
-            <button type="button" class="btn-secondary noc-sev-chip" id="chipSevP3" onclick="filterNocBySeverity('P3')" style="border-color: rgba(59, 130, 246, 0.5); color: #93c5fd;">
-              <span class="badge badge-blue" style="font-size: 10px; padding: 1px 5px;">P3</span> Pipeline (<span id="countSevP3">0</span>)
-            </button>
-            <button type="button" class="btn-secondary noc-sev-chip" id="chipSevP4" onclick="filterNocBySeverity('P4')" style="border-color: rgba(168, 85, 247, 0.5); color: #d8b4fe;">
-              <span class="badge badge-purple" style="font-size: 10px; padding: 1px 5px;">P4</span> Infra & Disco (<span id="countSevP4">0</span>)
-            </button>
+      <!-- 3. NOC COCKPIT: LAYOUT 2 COLUNAS (TAXONOMIA FACETADA + FILA UNIFICADA) -->
+      <div style="display: grid; grid-template-columns: 280px 1fr; gap: 16px; align-items: start; margin-bottom: 20px;">
+        <!-- SIDEBAR ESQUERDA: BARRA DE FILTROS / TAXONOMIA ESCALÁVEL -->
+        <div class="noc-facet-sidebar">
+          <div style="font-size: 12px; font-weight: 800; color: #fff; margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+            <span>🔍</span> TAXONOMIA DE FILTROS
           </div>
 
-          <!-- Secondary Filters: Category, City, CS -->
-          <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-            <select id="nocFilterCategory" class="filter-select" onchange="applyNocMatrixFilters()" style="min-width: 140px;">
-              <option value="all">Todas Categorias</option>
-              <option value="sinal_rf">📡 Sinal RF / Stream</option>
-              <option value="pipeline_midia">📦 Pipeline & Conversão</option>
-              <option value="hardware_infra">💾 Hardware & Disco</option>
-              <option value="servicos">⚙️ Serviços Windows</option>
-            </select>
-            <select id="nocFilterCity" class="filter-select" onchange="applyNocMatrixFilters()" style="min-width: 130px;">
-              <option value="all">Todas as Praças</option>
-            </select>
-            <select id="nocFilterCs" class="filter-select" onchange="applyNocMatrixFilters()" style="min-width: 110px;">
-              <option value="all">Todos os CS</option>
-              <option value="1">Apenas CS 1</option>
-              <option value="2">Apenas CS 2 (BKP/ASF)</option>
-            </select>
-            <button type="button" class="btn-primary" style="padding: 6px 14px; font-size: 12px;" onclick="loadAllData()">
-              <i class="fas fa-sync-alt"></i> Atualizar
-            </button>
+          <!-- Busca Rápida -->
+          <div style="margin-bottom: 16px;">
+            <input type="text" id="nocSearchInput" class="form-input" placeholder="🔍 Filtrar triggers ou praças..." style="width: 100%; font-size: 11px; padding: 6px 10px;" oninput="onNocFacetChange()">
           </div>
-        </div>
-      </div>
 
-      <!-- 3. MATRIZ UNIFICADA DE INCIDENTES (CARDS ACIONÁVEIS N1) -->
-      <div class="panel-card" style="margin-bottom: 16px;">
-        <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
-          <div class="panel-title" style="color: #fff; font-size: 15px; display: flex; align-items: center; gap: 10px;">
-            <span>⚡</span>
-            <span>Matriz Unificada de Incidentes & Alarmes Ativos</span>
-            <span class="badge badge-purple" id="badgeNocTotalIncidents" style="font-size: 11px;">0 Ocorrências</span>
+          <!-- SEVERIDADE -->
+          <div class="noc-facet-group">
+            <div class="noc-facet-title">
+              <span>▾ SEVERIDADE</span>
+              <button type="button" class="btn-text" style="font-size: 10px; color: #38bdf8; background: none; border: none; cursor: pointer;" onclick="clearNocFacet('sev')">Limpar</button>
+            </div>
+            <div class="noc-facet-item">
+              <label>
+                <input type="checkbox" class="noc-sev-check" value="P0" checked onchange="onNocFacetChange()">
+                <span style="color: #ef4444; font-weight: 700;">Crítico (P0)</span>
+              </label>
+              <span class="noc-facet-count" id="facetCountP0">0</span>
+            </div>
+            <div class="noc-facet-item">
+              <label>
+                <input type="checkbox" class="noc-sev-check" value="P1" checked onchange="onNocFacetChange()">
+                <span style="color: #f59e0b; font-weight: 600;">Alerta Preditivo (P1)</span>
+              </label>
+              <span class="noc-facet-count" id="facetCountP1">0</span>
+            </div>
+            <div class="noc-facet-item">
+              <label>
+                <input type="checkbox" class="noc-sev-check" value="P2" onchange="onNocFacetChange()">
+                <span style="color: #38bdf8;">Informativo / Aviso (P2)</span>
+              </label>
+              <span class="noc-facet-count" id="facetCountP2">0</span>
+            </div>
           </div>
-          <span style="font-size: 11px; color: var(--text-muted);">Cards ordenados por prioridade operacional (P1 ➔ P4) com 1-Clique IA e Ação</span>
+
+          <!-- GATILHOS / TRIGGERS -->
+          <div class="noc-facet-group">
+            <div class="noc-facet-title">
+              <span>▾ GATILHOS / TRIGGERS</span>
+              <button type="button" class="btn-text" style="font-size: 10px; color: #38bdf8; background: none; border: none; cursor: pointer;" onclick="clearNocFacet('trigger')">Limpar</button>
+            </div>
+            <div class="noc-facet-item">
+              <label>
+                <input type="checkbox" class="noc-trig-check" value="rf_level" onchange="onNocFacetChange()">
+                <span>📡 Nível RF / Portadora</span>
+              </label>
+              <span class="noc-facet-count" id="facetCountRf">0</span>
+            </div>
+            <div class="noc-facet-item">
+              <label>
+                <input type="checkbox" class="noc-trig-check" value="rtsp_udp" onchange="onNocFacetChange()">
+                <span>🌐 RTSP / Timeout UDP</span>
+              </label>
+              <span class="noc-facet-count" id="facetCountRtsp">0</span>
+            </div>
+            <div class="noc-facet-item">
+              <label>
+                <input type="checkbox" class="noc-trig-check" value="pipeline" onchange="onNocFacetChange()">
+                <span>📦 Pipeline / Atraso Escoam.</span>
+              </label>
+              <span class="noc-facet-count" id="facetCountPipe">0</span>
+            </div>
+            <div class="noc-facet-item">
+              <label>
+                <input type="checkbox" class="noc-trig-check" value="fresnel" onchange="onNocFacetChange()">
+                <span>🌧️ Troposfera / Fresnel</span>
+              </label>
+              <span class="noc-facet-count" id="facetCountFresnel">0</span>
+            </div>
+            <div class="noc-facet-item">
+              <label>
+                <input type="checkbox" class="noc-trig-check" value="audio" onchange="onNocFacetChange()">
+                <span>🔊 Áudio / Silêncio / Desync</span>
+              </label>
+              <span class="noc-facet-count" id="facetCountAudio">0</span>
+            </div>
+            <div class="noc-facet-item">
+              <label>
+                <input type="checkbox" class="noc-trig-check" value="cpu_disk" onchange="onNocFacetChange()">
+                <span>💻 Carga CPU / Buffer D:</span>
+              </label>
+              <span class="noc-facet-count" id="facetCountCpu">0</span>
+            </div>
+          </div>
+
+          <!-- REGIÕES / PRAÇAS -->
+          <div class="noc-facet-group" style="margin-bottom: 0;">
+            <div class="noc-facet-title">
+              <span>▾ REGIÕES / PRAÇAS</span>
+              <button type="button" class="btn-text" style="font-size: 10px; color: #38bdf8; background: none; border: none; cursor: pointer;" onclick="clearNocFacet('region')">Limpar</button>
+            </div>
+            <div class="noc-facet-item">
+              <label>
+                <input type="checkbox" class="noc-reg-check" value="Sudeste" onchange="onNocFacetChange()">
+                <span>Sudeste</span>
+              </label>
+              <span class="noc-facet-count" id="facetCountSudeste">0</span>
+            </div>
+            <div class="noc-facet-item">
+              <label>
+                <input type="checkbox" class="noc-reg-check" value="Sul" onchange="onNocFacetChange()">
+                <span>Sul</span>
+              </label>
+              <span class="noc-facet-count" id="facetCountSul">0</span>
+            </div>
+            <div class="noc-facet-item">
+              <label>
+                <input type="checkbox" class="noc-reg-check" value="Nordeste" onchange="onNocFacetChange()">
+                <span>Nordeste / Outras</span>
+              </label>
+              <span class="noc-facet-count" id="facetCountNordeste">0</span>
+            </div>
+          </div>
         </div>
-        <div id="nocIncidentsGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 14px;">
-          <div style="color: var(--text-muted); padding: 20px; text-align: center; grid-column: 1 / -1;">
-            <i class="fas fa-circle-notch fa-spin"></i> Consolidando telemetria e incidentes da frota...
+
+        <!-- ÁREA CENTRAL DIREITA: FILA UNIFICADA -->
+        <div>
+          <!-- Barra de Ações em Lote e Ordenação -->
+          <div class="panel-card" style="margin-bottom: 14px; padding: 10px 16px; background: rgba(15, 23, 42, 0.7); border: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+              <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; color: #cbd5e1; user-select: none;">
+                <input type="checkbox" id="nocSelectAllIncidents" onchange="toggleSelectAllNocIncidents(this.checked)">
+                <span>Selecionar Todos</span>
+              </label>
+              <button type="button" class="btn-secondary" style="font-size: 11px; padding: 4px 10px;" onclick="batchMuteIncidents(15)">
+                <i class="fas fa-bell-slash"></i> Silenciar (15m)
+              </button>
+              <button type="button" class="btn-secondary" style="font-size: 11px; padding: 4px 10px;" onclick="batchAcknowledgeIncidents()">
+                <i class="fas fa-check-double"></i> Reconhecer
+              </button>
+              <span class="badge badge-purple" id="badgeNocTotalIncidents" style="font-size: 11px;">0 Ocorrências</span>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 11px; color: var(--text-muted); font-weight: 700;">ORDENAR:</span>
+              <select id="nocSortSelect" class="form-input" style="padding: 4px 8px; font-size: 11px; width: 140px;" onchange="renderNocUnifiedQueue()">
+                <option value="crit">Mais Crítico (P0 ➔ P2)</option>
+                <option value="recent">Mais Recente</option>
+                <option value="praca">Praça (A-Z)</option>
+                <option value="streams">Mais Streams Impactados</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Container da Fila Central Unificada -->
+          <div id="nocUnifiedQueueContainer" style="display: flex; flex-direction: column; gap: 12px;">
+            <div style="color: var(--text-muted); padding: 40px; text-align: center; background: rgba(15, 23, 42, 0.5); border-radius: 8px; border: 1px dashed var(--border-color);">
+              <i class="fas fa-circle-notch fa-spin"></i> Consolidando telemetria e fila unificada de incidentes...
+            </div>
+          </div>
+
+          <!-- Fallback invisível para preservar listeners e compatibilidade -->
+          <div style="display: none;" aria-hidden="true">
+            <div id="nocIncidentsGrid"></div>
+            <select id="nocFilterCategory"><option value="all">all</option></select>
+            <select id="nocFilterCity"><option value="all">all</option></select>
+            <select id="nocFilterCs"><option value="all">all</option></select>
           </div>
         </div>
       </div>
@@ -3894,11 +4029,16 @@
         </div>
       </div>
 
-      <!-- Worklog de Auditoria de Ações Manuais dos Operadores -->
+      <!-- Worklog de Auditoria de Ações Manuais dos Operadores (Master-Detail) -->
       <div class="panel-card">
-        <div class="panel-header">
-          <div class="panel-title"><span>📝</span> Caderno de Auditoria & Trilha de Operações (Worklog Manual)</div>
-          <span style="font-size: 12px; color: var(--text-muted);">Registro de comandos e ações manuais executadas pelos operadores</span>
+        <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+          <div class="panel-title" id="incidentAuditNotebookTitle"><span>📝</span> Caderno de Auditoria & Trilha de Operações (Worklog Manual)</div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <button type="button" class="btn-secondary" id="btnShowAllWorklogs" style="font-size: 11px; padding: 4px 10px; display: none;" onclick="showAllIncidentWorklogs()">
+              <i class="fas fa-list"></i> Exibir Todos os Registros
+            </button>
+            <span style="font-size: 12px; color: var(--text-muted);">Registro de comandos e ações manuais executadas pelos operadores</span>
+          </div>
         </div>
         <div class="table-responsive">
           <table>

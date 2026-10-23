@@ -105,11 +105,30 @@ function renderNetworkLinkTable() {
     }
 
     tableBody.innerHTML = filtered.map(m => {
-        const isCrit = m.status === "critico";
-        const isWarn = m.status === "alerta";
-        const badgeColor = isCrit ? "#ef4444" : (isWarn ? "#facc15" : "#10b981");
-        const badgeBg = isCrit ? "rgba(239, 68, 68, 0.15)" : (isWarn ? "rgba(250, 204, 21, 0.15)" : "rgba(16, 185, 129, 0.15)");
-        const badgeClass = isCrit ? "badge badge-red" : (isWarn ? "badge badge-yellow" : "badge badge-green");
+        const isCrit = m.status === "critico" || m.drain_time_minutes > 25;
+        const isHighLoss = m.packet_loss_pct > 1.0;
+        const isWarn = !isCrit && (m.status === "alerta" || m.drain_time_minutes > 18 || isHighLoss);
+        
+        // Fim do "Mar de Verde": Destaque real de anomalias
+        let badgeClass = "badge badge-green";
+        let statusLabel = "🟢 EXCELENTE";
+
+        if (isCrit) {
+            badgeClass = "badge badge-red";
+            statusLabel = "🚨 CRÍTICO (GARGALO WAN)";
+        } else if (isHighLoss) {
+            badgeClass = "badge badge-yellow";
+            statusLabel = `⚠️ ATENÇÃO (PERDA ${m.packet_loss_pct}%)`;
+        } else if (isWarn) {
+            badgeClass = "badge badge-yellow";
+            statusLabel = "🟡 ATENÇÃO (ESCOAMENTO)";
+        }
+
+        // Buffer Gauge Visual de Escoamento (Teto Operacional de 25 min)
+        const pctDrain = Math.min(100, Math.round((m.drain_time_minutes / 25.0) * 100));
+        const gaugeColor = isCrit ? "#ef4444" : (isWarn ? "#facc15" : "#10b981");
+
+        const needsAttention = isCrit || isWarn || isHighLoss;
 
         return `
             <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
@@ -119,7 +138,9 @@ function renderNetworkLinkTable() {
                 </td>
                 <td>
                     <span style="font-size: 12px; color: #e2e8f0;"><i class="fas fa-network-wired text-blue"></i> ${m.operadora}</span>
-                    <div style="font-size: 11px; color: var(--text-muted);">Ping: ${m.ping_ms} ms • Perda: ${m.packet_loss_pct}%</div>
+                    <div style="font-size: 11px; color: ${isHighLoss ? '#f87171; font-weight: 700;' : 'var(--text-muted);'}">
+                        Ping: ${m.ping_ms} ms • Perda: ${m.packet_loss_pct}% ${isHighLoss ? '⚠️' : ''}
+                    </div>
                 </td>
                 <td>
                     <span class="badge" style="background: rgba(255,255,255,0.06); color: #cbd5e1; font-size: 11px;">
@@ -139,14 +160,16 @@ function renderNetworkLinkTable() {
                     </strong>
                 </td>
                 <td>
-                    <div style="font-weight: 700; color: ${m.drain_time_minutes > 25 ? '#ef4444' : (m.drain_time_minutes > 18 ? '#facc15' : '#10b981')};">
-                        ${m.drain_time_minutes.toFixed(1)} min
+                    <div style="font-weight: 700; color: ${gaugeColor}; font-size: 12px; margin-bottom: 3px;">
+                        ${m.drain_time_minutes.toFixed(1)} min <span style="font-size: 10px; color: var(--text-muted); font-weight: normal;">(${pctDrain}% do teto)</span>
                     </div>
-                    <div style="font-size: 10px; color: var(--text-muted);">Teto Máx: 25.0 min</div>
+                    <div style="width: 105px; height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden;">
+                        <div style="width: ${pctDrain}%; height: 100%; background: ${gaugeColor}; border-radius: 3px;"></div>
+                    </div>
                 </td>
                 <td>
                     <span class="${badgeClass}" style="font-size: 10px; font-weight: 700;">
-                        ${m.status_label}
+                        ${statusLabel}
                     </span>
                     ${m.pending_files_count > 0 ? `
                         <div style="font-size: 11px; color: #f87171; margin-top: 2px;">
@@ -155,9 +178,18 @@ function renderNetworkLinkTable() {
                     ` : ''}
                 </td>
                 <td>
-                    <button class="btn-primary" style="padding: 5px 10px; font-size: 11px; background: linear-gradient(135deg, #0284c7, #2563eb); font-weight: 700; white-space: nowrap;" onclick="openNetworkAiModal('${m.praca}', ${m.cs}, '${m.hostname}')">
-                        <i class="fas fa-brain"></i> IA Diagnóstico
-                    </button>
+                    ${needsAttention ? `
+                        <button class="btn-primary" style="padding: 5px 12px; font-size: 11px; background: linear-gradient(135deg, #0284c7, #2563eb); font-weight: 700; white-space: nowrap;" onclick="openNetworkAiModal('${m.praca}', ${m.cs}, '${m.hostname}')">
+                            <i class="fas fa-brain"></i> IA Diagnóstico
+                        </button>
+                    ` : `
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <span style="color: #64748b; font-size: 11px; font-weight: 600;">✓ Nominal</span>
+                            <button class="btn-secondary" style="padding: 3px 6px; font-size: 10px; color: var(--text-muted);" title="Diagnóstico preventivo de rotina" onclick="openNetworkAiModal('${m.praca}', ${m.cs}, '${m.hostname}')">
+                                <i class="fas fa-stethoscope"></i>
+                            </button>
+                        </div>
+                    `}
                 </td>
             </tr>
         `;

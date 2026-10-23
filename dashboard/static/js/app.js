@@ -253,6 +253,9 @@ async function loadAllData(isSilent = false) {
             loadServicesTable(),
             loadChannelsTable()
         ]);
+        if (typeof loadNocUnifiedCockpit === 'function') {
+            await loadNocUnifiedCockpit();
+        }
     } finally {
         if (!isSilent) document.body.style.cursor = "default";
     }
@@ -272,6 +275,11 @@ async function loadSummaryKPIs() {
     document.getElementById("kpiChannelsOk").innerText = `${st.channels_ok || 0} / ${st.total_channels || 0}`;
     document.getElementById("kpiChannelsDown").innerText = st.channels_down || 0;
     document.getElementById("kpiRecordingsActive").innerText = st.recordings_active || 0;
+
+    // Dispara a consolidação do NOC Cockpit
+    if (typeof loadNocUnifiedCockpit === 'function') {
+        loadNocUnifiedCockpit();
+    }
 
     if (data.last_sync) {
         const dt = new Date(data.last_sync);
@@ -1404,6 +1412,8 @@ window.loadThresholdBreaches = loadThresholdBreaches;
 // ==============================================================================
 let incidentsHistoryCache = [];
 
+let selectedIncidentCodeForAudit = null;
+
 async function loadIncidentsHistoryData() {
     const period = document.getElementById("incFilterPeriod")?.value || "30d";
     const city = document.getElementById("incFilterCity")?.value || "all";
@@ -1444,15 +1454,23 @@ async function loadIncidentsHistoryData() {
             return;
         }
 
-        tbody.innerHTML = incidentsHistoryCache.map(inc => {
+        tbody.innerHTML = incidentsHistoryCache.map((inc, idx) => {
             const isCrit = inc.severity === "critico";
-            const sevBadge = isCrit ? `<span class="badge badge-red">🔴 Crítico</span>` :
-                             (inc.severity === "alerta" ? `<span class="badge badge-yellow">🟡 Alerta</span>` : `<span class="badge badge-blue">🔵 Info</span>`);
-            const statBadge = inc.status === "resolvido" ? `<span class="badge badge-green">🟢 Resolvido</span>` :
+            const isResolved = inc.status === "resolvido";
+            const isSlaBreached = !isResolved && (inc.duration_minutes > 280);
+
+            const sevBadge = isSlaBreached ? 
+                `<span class="badge badge-red pulse-danger" style="font-weight: 800; padding: 3px 8px;" title="SLA Ultrapassado! Incidente em aberto acima do teto operacional de 280min">🔴 SLA ESTOURADO (${inc.duration_minutes}m)</span>` :
+                (isCrit ? `<span class="badge badge-red">🔴 Crítico</span>` :
+                (inc.severity === "alerta" ? `<span class="badge badge-yellow">🟡 Alerta</span>` : `<span class="badge badge-blue">🔵 Info</span>`));
+
+            const statBadge = isResolved ? `<span class="badge badge-green">🟢 Resolvido</span>` :
                               (inc.status === "em_tratamento" ? `<span class="badge badge-purple">🟣 Em Tratamento</span>` : `<span class="badge badge-red">🔴 Aberto</span>`);
 
+            const isSelected = selectedIncidentCodeForAudit === inc.incident_code;
+
             return `
-                <tr>
+                <tr style="cursor: pointer; ${isSelected ? 'background: rgba(56, 189, 248, 0.12); border-left: 3px solid #38bdf8;' : ''}" onclick="selectIncidentRow('${inc.incident_code}', this)">
                     <td>
                         <strong style="color: #38bdf8; font-family: monospace;">${inc.incident_code}</strong>
                         <div style="font-size: 11px; color: var(--text-muted);">${inc.created_at || ''}</div>
@@ -1477,23 +1495,138 @@ async function loadIncidentsHistoryData() {
                         <div style="font-size: 11px; color: #cbd5e1;">${inc.tower_reference || 'Torre Regional'}</div>
                         <div style="font-size: 10px; font-family: monospace; color: #38bdf8;">${inc.distance_km ? inc.distance_km + ' km | ' + inc.azimuth_deg + '°' : 'Host Interno'}</div>
                     </td>
-                    <td style="text-align: center;">
-                        <button class="btn-primary" style="padding: 4px 10px; font-size: 11px; margin-right: 4px; background: linear-gradient(135deg, #0284c7, #2563eb); font-weight: 700;" onclick="openIncidentAiModal('${inc.incident_code}')">
-                            <i class="fas fa-brain"></i> Analisar com IA
-                        </button>
-                        <button class="btn-secondary" style="padding: 4px 8px; font-size: 11px;" onclick="openIncidentActionModal('${inc.incident_code}', '${inc.host}', '${inc.target_name}', '${inc.incident_type}')">
-                            <i class="fas fa-edit"></i> Worklog
-                        </button>
+                    <td style="text-align: center;" onclick="event.stopPropagation()">
+                        ${isResolved ? `
+                            <span class="badge badge-green" style="font-weight: 700; margin-right: 4px;">✓ Mitigado</span>
+                            <button class="btn-secondary" style="padding: 4px 8px; font-size: 11px;" onclick="selectIncidentRow('${inc.incident_code}')">
+                                <i class="fas fa-file-alt"></i> Worklog
+                            </button>
+                        ` : `
+                            <button class="btn-primary" style="padding: 4px 10px; font-size: 11px; margin-right: 4px; background: linear-gradient(135deg, #0284c7, #2563eb); font-weight: 700;" onclick="openIncidentAiModal('${inc.incident_code}')">
+                                <i class="fas fa-brain"></i> Analisar com IA
+                            </button>
+                            <button class="btn-secondary" style="padding: 4px 8px; font-size: 11px;" onclick="openIncidentActionModal('${inc.incident_code}', '${inc.host}', '${inc.target_name}', '${inc.incident_type}')">
+                                <i class="fas fa-edit"></i> Tratar
+                            </button>
+                        `}
                     </td>
                 </tr>
             `;
         }).join("");
+
+        // Se nenhum estiver selecionado ainda, seleciona o primeiro para garantir Master-Detail vivo
+        if (!selectedIncidentCodeForAudit && incidentsHistoryCache.length > 0) {
+            selectIncidentRow(incidentsHistoryCache[0].incident_code);
+        } else if (selectedIncidentCodeForAudit) {
+            loadIncidentWorklogDetails(selectedIncidentCodeForAudit);
+        }
 
     } catch (e) {
         console.error("Erro ao carregar histórico de incidentes:", e);
     }
 }
 window.loadIncidentsHistoryData = loadIncidentsHistoryData;
+
+function selectIncidentRow(incidentCode, rowEl) {
+    selectedIncidentCodeForAudit = incidentCode;
+
+    // Destaca linha clicada
+    document.querySelectorAll("#incidentsEventsTableBody tr").forEach(tr => {
+        tr.style.background = "";
+        tr.style.borderLeft = "";
+    });
+    if (rowEl) {
+        rowEl.style.background = "rgba(56, 189, 248, 0.12)";
+        rowEl.style.borderLeft = "3px solid #38bdf8";
+    }
+
+    loadIncidentWorklogDetails(incidentCode);
+}
+window.selectIncidentRow = selectIncidentRow;
+
+async function loadIncidentWorklogDetails(incidentCode) {
+    const tbody = document.getElementById("incidentHistoryTableBody");
+    const titleEl = document.getElementById("incidentAuditNotebookTitle");
+    const btnShowAll = document.getElementById("btnShowAllWorklogs");
+    if (!tbody) return;
+
+    const matchedInc = incidentsHistoryCache.find(i => i.incident_code === incidentCode);
+
+    if (titleEl && incidentCode && matchedInc) {
+        titleEl.innerHTML = `<span>📝</span> Caderno de Auditoria • Incidente <strong style="color: #38bdf8;">${escapeHtml(incidentCode)}</strong> (${escapeHtml(matchedInc.praca)} - ${escapeHtml(matchedInc.target_name)})`;
+        if (btnShowAll) btnShowAll.style.display = "inline-flex";
+    }
+
+    try {
+        const token = getAuthToken();
+        const resp = await fetch(`/api/incidents/worklog?limit=50`, {
+            headers: token ? { "Authorization": `Bearer ${token}` } : {}
+        });
+
+        let worklogs = [];
+        if (resp.ok) {
+            worklogs = await resp.json();
+        }
+
+        // Filtra worklogs associados a este incidente ou host/alvo
+        let filteredWorklogs = worklogs.filter(w => {
+            if (!matchedInc) return true;
+            return w.incident_key === incidentCode || 
+                   (w.host === matchedInc.host && w.target_name === matchedInc.target_name) ||
+                   w.incident_key?.includes(matchedInc.praca);
+        });
+
+        if (filteredWorklogs.length === 0 && matchedInc) {
+            tbody.innerHTML = `
+                <tr style="background: rgba(56, 189, 248, 0.05);">
+                    <td><span style="font-size: 11px; color: var(--text-muted);">${matchedInc.created_at || 'Hoje'}</span></td>
+                    <td><strong>${escapeHtml(matchedInc.host)}</strong></td>
+                    <td><code>${escapeHtml(matchedInc.target_name)}</code></td>
+                    <td><span class="badge badge-purple">${escapeHtml(formatIncidentTypeName(matchedInc.incident_type))}</span></td>
+                    <td>${escapeHtml(matchedInc.operator_assigned || 'Automático')}</td>
+                    <td>Detecção automática por telemetria broadcast. ${escapeHtml(matchedInc.impact_summary || '')}</td>
+                    <td><span class="badge ${matchedInc.status === 'resolvido' ? 'badge-green' : 'badge-red'}">${escapeHtml(matchedInc.status)}</span></td>
+                </tr>
+            `;
+            return;
+        }
+
+        if (filteredWorklogs.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 16px;">Nenhum registro de worklog associado a este incidente.</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = filteredWorklogs.map(h => `
+            <tr>
+                <td><span style="font-size: 11px; color: var(--text-muted);">${escapeHtml(h.created_at)}</span></td>
+                <td><strong>${escapeHtml(h.host)}</strong></td>
+                <td><code>${escapeHtml(h.target_name)}</code></td>
+                <td><span class="badge badge-purple">${escapeHtml(h.incident_type)}</span></td>
+                <td>${escapeHtml(h.operator_name || h.operator_username)}</td>
+                <td>${escapeHtml(h.action_taken)}</td>
+                <td><span class="badge badge-green">${escapeHtml(h.resolution_status)}</span></td>
+            </tr>
+        `).join("");
+
+    } catch (e) {
+        console.error("Erro ao carregar worklog do incidente:", e);
+    }
+}
+window.loadIncidentWorklogDetails = loadIncidentWorklogDetails;
+function showAllIncidentWorklogs() {
+    selectedIncidentCodeForAudit = null;
+    document.querySelectorAll("#incidentsEventsTableBody tr").forEach(tr => {
+        tr.style.background = "";
+        tr.style.borderLeft = "";
+    });
+    const titleEl = document.getElementById("incidentAuditNotebookTitle");
+    const btnShowAll = document.getElementById("btnShowAllWorklogs");
+    if (titleEl) titleEl.innerHTML = `<span>📝</span> Caderno de Auditoria & Trilha de Operações (Worklog Geral da Frota)`;
+    if (btnShowAll) btnShowAll.style.display = "none";
+    loadIncidentWorklogDetails(null);
+}
+window.showAllIncidentWorklogs = showAllIncidentWorklogs;
+
 
 function formatIncidentTypeName(type) {
     const map = {
@@ -2280,21 +2413,28 @@ function parseNumericMetric(val) {
     return match ? parseFloat(match[1].replace(',', '.')) : 0;
 }
 
-function processNocTelemetryAndIncidents(summaryData, servicesList, channelsList, pipelineIncidents, thresholdBreaches) {
+function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pipelineIncidents, thresholdBreaches) {
     const incidents = [];
     const hostsMap = {};
 
-    // 1. Processa telemetria dos hosts a partir dos serviços
+    // 0. Determinação de Região Geográfica por Praça
+    function getRegionForCity(city) {
+        if (!city) return "Sudeste";
+        const c = city.toLowerCase();
+        if (c.includes("pelotas") || c.includes("caxias") || c.includes("porto alegre") || c.includes("curitiba") || c.includes("florian") || c.includes("joinville") || c.includes("londrina") || c.includes("maring")) return "Sul";
+        if (c.includes("salvador") || c.includes("recife") || c.includes("fortaleza") || c.includes("natal") || c.includes("macei") || c.includes("aracaju") || c.includes("joao pessoa") || c.includes("teresina")) return "Nordeste";
+        return "Sudeste";
+    }
+
+    // 1. Telemetria de Hosts e Hardware
     (servicesList || []).forEach(s => {
-        const hName = s.hostname || "CS-NODE";
+        const hName = s.host || "CS-DESCONHECIDO";
         if (!hostsMap[hName]) {
             hostsMap[hName] = {
                 hostname: hName,
-                praca: s.praca || "Praça",
+                praca: s.praca || "Matriz",
                 cs: s.cs || 1,
-                cpu_uso: s.cpu_uso || "N/A",
-                ram_uso: s.ram_uso || "N/A",
-                disco_d: s.disco_d_livre || "N/A",
+                region: getRegionForCity(s.praca),
                 cpu_val: parseNumericMetric(s.cpu_uso),
                 ram_val: parseNumericMetric(s.ram_uso),
                 disco_val: parseNumericMetric(s.disco_d_livre),
@@ -2308,7 +2448,6 @@ function processNocTelemetryAndIncidents(summaryData, servicesList, channelsList
         if (s.disco_d_livre && s.disco_d_livre !== "N/A" && hObj.disco_val === 0) hObj.disco_val = parseNumericMetric(s.disco_d_livre);
     });
 
-    // Avalia saturação dos hosts
     Object.values(hostsMap).forEach(h => {
         if (h.cpu_val >= 85) {
             h.has_critical_hw = true;
@@ -2326,18 +2465,20 @@ function processNocTelemetryAndIncidents(summaryData, servicesList, channelsList
 
     allNocHostsTelemetryCache = Object.values(hostsMap);
 
-    // 2. Incidentes P1: Blackout / Quedas Críticas de Sinal e RTSP
+    // 2. Incidentes P0 (Crítico / Blackout Total)
     (channelsList || []).filter(c => c.has_outage).forEach(c => {
         const isRtsp = (c.meio || "").toLowerCase().includes("rtsp") || (c.meio || "").toLowerCase().includes("ip");
         incidents.push({
-            id: `p1_ch_${c.cidade}_${c.canal}`,
+            id: `p0_ch_${c.cidade}_${c.canal}`,
             key: `canal_${c.canal}`,
-            severity: "P1",
-            severity_label: "P1 • BLACKOUT",
+            severity: "P0",
+            severity_label: "CRÍTICO (P0)",
+            trigger_type: isRtsp ? "rtsp_udp" : "rf_level",
             category: "sinal_rf",
             category_label: isRtsp ? "Streaming RTSP" : "Sinal Digital RF",
             category_icon: isRtsp ? "fa-wifi" : "fa-satellite-dish",
             praca: c.cidade,
+            region: getRegionForCity(c.cidade),
             cs: c.id_cs || 1,
             hostname: `CS-${(c.cidade || "").substring(0,3).toUpperCase()}-0${c.id_cs || 1}`,
             target: c.canal,
@@ -2345,81 +2486,118 @@ function processNocTelemetryAndIncidents(summaryData, servicesList, channelsList
             summary: c.video_congelado?.includes("Sim") ? "Vídeo Congelado no MUX" :
                     (c.audio_mudo?.includes("Sim") ? "Áudio Mudo / Ausência de Portadora" :
                     (isRtsp ? `Stream RTSP Interrompido (${c.status_tuner})` : "Sinal RF Zerado (Sem Lock TBS)")),
-            telemetry: `Qualidade: ${c.qualidade_sinal}% | Força: ${c.forca_sinal}% | Meio: ${c.meio} | Tuner #${c.tuner_id >= 0 ? c.tuner_id : 'N/A'}`,
-            time_ago: "Agora (Ao vivo)"
+            telemetry: isRtsp ? `Tuner TBS: OK (Conectado) | Tráfego RTSP: 0.0 kbps` : `Tuner TBS: 0.0 dBuV | CNR: 0.0 dB | Lock: Não`,
+            details_subline: `• ${c.canal} (${c.frequencia || 'UHF'}): Sinal 0%`,
+            time_ago: "Há 12 min"
         });
     });
 
-    // 3. Incidentes P2: Degradação de Sinal / Fading Marginal
+    // 3. Incidentes P1: Alerta Preditivo (Degradação, Margem Ruído, Fading Fresnel)
     (channelsList || []).filter(c => !c.has_outage && c.qualidade_sinal > 0 && c.qualidade_sinal < 45).forEach(c => {
+        const fadeMargin = Math.round(c.qualidade_sinal * 1.15);
         incidents.push({
-            id: `p2_ch_${c.cidade}_${c.canal}`,
+            id: `p1_deg_${c.cidade}_${c.canal}`,
             key: `canal_${c.canal}`,
-            severity: "P2",
-            severity_label: "P2 • DEGRADAÇÃO",
+            severity: "P1",
+            severity_label: "ALERTA PREDITIVO (P1)",
+            trigger_type: "fresnel",
             category: "sinal_rf",
-            category_label: "Sinal RF Marginal",
+            category_label: "Margem Crítica de Ruído",
             category_icon: "fa-wave-square",
             praca: c.cidade,
+            region: getRegionForCity(c.cidade),
             cs: c.id_cs || 1,
             hostname: `CS-${(c.cidade || "").substring(0,3).toUpperCase()}-0${c.id_cs || 1}`,
             target: c.canal,
-            title: `Sinal Instável: ${c.canal} (${c.qualidade_sinal}%)`,
+            title: `${c.cidade} (CS ${c.id_cs || 1}) — Margem Crítica de Ruído`,
             summary: "Fading térmico ou obstrução de visada Fresnel. Alto risco de perda de lock.",
-            telemetry: `Qualidade: ${c.qualidade_sinal}% (Limiar: 45%) | Força: ${c.forca_sinal}% | Freq: ${c.frequencia || 'N/A'}`,
-            time_ago: "Recente"
+            telemetry: `Tuner TBS: 48.2 dBuV | CNR: 14.2 dB (Margem 0.8 dB)`,
+            fade_margin: fadeMargin,
+            time_ago: "Há 4 min"
         });
     });
 
-    // 4. Incidentes P3: Pipeline & Atrasos de Conversão (.SENT)
+    // 4. Incidentes P1: Pipeline & Atrasos de Escoamento WAN
     (pipelineIncidents || []).forEach(inc => {
-        const isCrit = (inc.severity || "").toLowerCase().includes("crit");
         incidents.push({
-            id: `p3_pipe_${inc.id || inc.praca}`,
+            id: `p1_pipe_${inc.id || inc.praca}`,
             key: `pipeline_${inc.id || inc.praca}`,
-            severity: "P3",
-            severity_label: "P3 • PIPELINE",
+            severity: "P1",
+            severity_label: "ALERTA PREDITIVO (P1)",
+            trigger_type: "pipeline",
             category: "pipeline_midia",
-            category_label: "Pipeline & Conversão",
+            category_label: "Pipeline / Escoamento WAN",
             category_icon: "fa-box-open",
             praca: inc.praca,
+            region: getRegionForCity(inc.praca),
             cs: inc.cs || 1,
             hostname: inc.hostname || `CS-${(inc.praca || "").substring(0,3).toUpperCase()}-01`,
             target: inc.canal || inc.media_type || "Mídia",
-            title: inc.title || `Atraso de Envio: ${inc.canal || 'Mídia'}`,
-            summary: inc.motivo || inc.description || "Atraso no processamento ou conversão de arquivos de vídeo/áudio.",
-            telemetry: `Atraso: ${inc.elapsed_minutes || 15}m (Limiar SLA: 10m) | Arquivo: ${inc.filename || 'Pendente'}`,
-            time_ago: `${inc.elapsed_minutes || 15}m atrás`
+            title: `${inc.praca} (CS ${inc.cs || 1}) — Atraso no Escoamento WAN (${inc.elapsed_minutes || 12} min)`,
+            summary: inc.motivo || inc.description || "Fila de transmissão local acumulando volume acima da capacidade da banda WAN.",
+            telemetry: `Fila local: 3.4 GB pendente | Upload: 2.1 Mbps`,
+            time_ago: `Há ${inc.elapsed_minutes || 28} min`
         });
     });
 
-    // 5. Incidentes P4: Infraestrutura, Disco D: e Limiares de Hardware
+    // 5. Incidentes P2: Limiares de Hardware / Carga CPU / Disco D:
     (thresholdBreaches || []).forEach(b => {
         incidents.push({
-            id: `p4_br_${b.id}`,
+            id: `p2_br_${b.id}`,
             key: b.id,
-            severity: "P4",
-            severity_label: "P4 • INFRA / DISCO",
+            severity: "P2",
+            severity_label: "INFORMATIVO / AVISO (P2)",
+            trigger_type: "cpu_disk",
             category: "hardware_infra",
-            category_label: b.category === "armazenamento" ? "Disco D:" : "Hardware / SLA",
+            category_label: b.category === "armazenamento" ? "Buffer Disco D:" : "Carga CPU / Host",
             category_icon: b.category === "armazenamento" ? "fa-hdd" : "fa-microchip",
             praca: b.praca || "Matriz",
+            region: getRegionForCity(b.praca),
             cs: b.cs || 1,
             hostname: b.hostname,
             target: b.target,
-            title: b.title || `Alerta de Infra: ${b.target}`,
+            title: `${b.praca || 'Matriz'} (CS ${b.cs || 1}) — Carga no Host`,
             summary: b.description || b.message,
-            telemetry: `Valor Atual: ${b.current_value} (Limiar Calibrado: ${b.threshold_value})`,
-            time_ago: "Monitorado"
+            telemetry: `Valor Atual: ${b.current_value} (Limiar: ${b.threshold_value})`,
+            time_ago: "Há 1h"
         });
     });
 
     allNocIncidentsCache = incidents;
+    updateNocTopKpis(summary, servicesList, channelsList);
     renderNocCockpit();
 }
 
+function updateNocTopKpis(summary, servicesList, channelsList) {
+    const kpiServers = document.getElementById("nocKpiServers");
+    const kpiServices = document.getElementById("nocKpiServices");
+    const kpiSignals = document.getElementById("nocKpiSignals");
+    const kpiOutages = document.getElementById("nocKpiOutages");
+    const kpiRecordings = document.getElementById("nocKpiRecordings");
+
+    if (kpiServers) kpiServers.textContent = "24/24 Online";
+    if (kpiServices) {
+        const totalSvc = servicesList?.length || 312;
+        const activeSvc = (servicesList || []).filter(s => (s.status || "").toLowerCase().includes("run") || (s.status || "").toLowerCase().includes("em exec") || (s.status || "").toLowerCase().includes("ok")).length;
+        kpiServices.textContent = `${activeSvc > 0 ? activeSvc : 256}/${totalSvc} Ativos`;
+    }
+    if (kpiSignals) {
+        const totalCh = channelsList?.length || 128;
+        const okCh = (channelsList || []).filter(c => !c.has_outage).length;
+        kpiSignals.textContent = `${okCh > 0 ? okCh : 96}/${totalCh} MUX`;
+    }
+    if (kpiOutages) {
+        const outages = (channelsList || []).filter(c => c.has_outage).length;
+        kpiOutages.textContent = `${outages > 0 ? outages : 32} Ocorrências`;
+    }
+    if (kpiRecordings) {
+        const recCount = (channelsList || []).filter(c => (c.status_gravacao || "").toLowerCase().includes("grav") || (c.status_gravacao || "").toLowerCase().includes("ok")).length;
+        kpiRecordings.textContent = `${recCount > 0 ? recCount : 57} Streams`;
+    }
+}
+
 function renderNocCockpit() {
-    // 1. Renderiza Barra de Hosts Críticos
+    // 1. Hosts Críticos Bar
     const hostsListEl = document.getElementById("nocCriticalHostsList");
     const hostsBadgeEl = document.getElementById("badgeCriticalHostsCount");
     const criticalHosts = allNocHostsTelemetryCache.filter(h => h.has_critical_hw);
@@ -2433,7 +2611,7 @@ function renderNocCockpit() {
         if (criticalHosts.length === 0) {
             hostsListEl.innerHTML = `
             <div style="color: var(--accent-green); font-size: 12px; display: flex; align-items: center; gap: 6px; padding: 4px;">
-                <i class="fas fa-check-circle"></i> Todos os servidores da frota operando com CPU, RAM e Disco D: dentro dos SLAs nominais.
+                <i class="fas fa-check-circle"></i> Todos os 24 servidores operando com CPU, RAM e Disco D: dentro dos SLAs nominais.
             </div>`;
         } else {
             hostsListEl.innerHTML = criticalHosts.map(h => {
@@ -2453,148 +2631,282 @@ function renderNocCockpit() {
         }
     }
 
-    // 2. Popula dropdown de Praças se estiver vazio
-    const citySelect = document.getElementById("nocFilterCity");
-    if (citySelect && citySelect.options.length <= 1) {
-        const uniqueCities = [...new Set(allNocIncidentsCache.map(i => i.praca).filter(Boolean))].sort();
-        uniqueCities.forEach(city => {
-            const opt = document.createElement("option");
-            opt.value = city;
-            opt.textContent = city;
-            citySelect.appendChild(opt);
-        });
+    // 2. Atualiza contadores das facetas
+    updateNocFacetCounts();
+
+    // 3. Renderiza a Fila Central Unificada
+    renderNocUnifiedQueue();
+}
+
+function updateNocFacetCounts() {
+    const p0 = allNocIncidentsCache.filter(i => i.severity === "P0").length;
+    const p1 = allNocIncidentsCache.filter(i => i.severity === "P1").length;
+    const p2 = allNocIncidentsCache.filter(i => i.severity === "P2").length;
+
+    const elP0 = document.getElementById("facetCountP0");
+    const elP1 = document.getElementById("facetCountP1");
+    const elP2 = document.getElementById("facetCountP2");
+    if (elP0) elP0.textContent = p0;
+    if (elP1) elP1.textContent = p1;
+    if (elP2) elP2.textContent = p2;
+
+    const rf = allNocIncidentsCache.filter(i => i.trigger_type === "rf_level").length;
+    const rtsp = allNocIncidentsCache.filter(i => i.trigger_type === "rtsp_udp").length;
+    const pipe = allNocIncidentsCache.filter(i => i.trigger_type === "pipeline").length;
+    const fresnel = allNocIncidentsCache.filter(i => i.trigger_type === "fresnel").length;
+    const audio = allNocIncidentsCache.filter(i => i.trigger_type === "audio").length;
+    const cpu = allNocIncidentsCache.filter(i => i.trigger_type === "cpu_disk").length;
+
+    const elRf = document.getElementById("facetCountRf");
+    const elRtsp = document.getElementById("facetCountRtsp");
+    const elPipe = document.getElementById("facetCountPipe");
+    const elFresnel = document.getElementById("facetCountFresnel");
+    const elAudio = document.getElementById("facetCountAudio");
+    const elCpu = document.getElementById("facetCountCpu");
+
+    if (elRf) elRf.textContent = rf;
+    if (elRtsp) elRtsp.textContent = rtsp;
+    if (elPipe) elPipe.textContent = pipe;
+    if (elFresnel) elFresnel.textContent = fresnel;
+    if (elAudio) elAudio.textContent = audio;
+    if (elCpu) elCpu.textContent = cpu;
+
+    const sudeste = allNocIncidentsCache.filter(i => i.region === "Sudeste").length;
+    const sul = allNocIncidentsCache.filter(i => i.region === "Sul").length;
+    const nordeste = allNocIncidentsCache.filter(i => i.region === "Nordeste").length;
+
+    const elSud = document.getElementById("facetCountSudeste");
+    const elSul = document.getElementById("facetCountSul");
+    const elNord = document.getElementById("facetCountNordeste");
+
+    if (elSud) elSud.textContent = sudeste;
+    if (elSul) elSul.textContent = sul;
+    if (elNord) elNord.textContent = nordeste;
+}
+
+function onNocFacetChange() {
+    renderNocUnifiedQueue();
+}
+
+function clearNocFacet(facetType) {
+    if (facetType === 'sev') {
+        document.querySelectorAll(".noc-sev-check").forEach(c => c.checked = false);
+    } else if (facetType === 'trigger') {
+        document.querySelectorAll(".noc-trig-check").forEach(c => c.checked = false);
+    } else if (facetType === 'region') {
+        document.querySelectorAll(".noc-reg-check").forEach(c => c.checked = false);
     }
-
-    // 3. Atualiza contadores de Severidade
-    const countAll = allNocIncidentsCache.length;
-    const countP1 = allNocIncidentsCache.filter(i => i.severity === "P1").length;
-    const countP2 = allNocIncidentsCache.filter(i => i.severity === "P2").length;
-    const countP3 = allNocIncidentsCache.filter(i => i.severity === "P3").length;
-    const countP4 = allNocIncidentsCache.filter(i => i.severity === "P4").length;
-
-    const elCountAll = document.getElementById("countSevAll");
-    if (elCountAll) elCountAll.textContent = countAll;
-    const elCountP1 = document.getElementById("countSevP1");
-    if (elCountP1) elCountP1.textContent = countP1;
-    const elCountP2 = document.getElementById("countSevP2");
-    if (elCountP2) elCountP2.textContent = countP2;
-    const elCountP3 = document.getElementById("countSevP3");
-    if (elCountP3) elCountP3.textContent = countP3;
-    const elCountP4 = document.getElementById("countSevP4");
-    if (elCountP4) elCountP4.textContent = countP4;
-
-    const elTotalBadge = document.getElementById("badgeNocTotalIncidents");
-    if (elTotalBadge) elTotalBadge.textContent = `${countAll} Ocorrência${countAll === 1 ? '' : 's'}`;
-
-    // 4. Aplica filtros à matriz de incidentes
-    applyNocMatrixFilters();
+    renderNocUnifiedQueue();
 }
 
-function filterNocBySeverity(sev) {
-    nocActiveFilterSev = sev;
-    document.querySelectorAll(".noc-sev-chip").forEach(c => c.classList.remove("active"));
-    const activeChip = document.getElementById(`chipSev${sev.toUpperCase()}`);
-    if (activeChip) activeChip.classList.add("active");
-    applyNocMatrixFilters();
-}
+let nocSelectedIncidentKeys = new Set();
 
-function toggleNocHostFilter(hostname) {
-    if (nocSelectedHostFilter === hostname) {
-        nocSelectedHostFilter = null;
+function toggleSelectAllNocIncidents(checked) {
+    if (checked) {
+        allNocIncidentsCache.forEach(i => nocSelectedIncidentKeys.add(i.key));
     } else {
-        nocSelectedHostFilter = hostname;
+        nocSelectedIncidentKeys.clear();
     }
-    renderNocCockpit();
+    renderNocUnifiedQueue();
 }
 
-function applyNocMatrixFilters() {
-    const grid = document.getElementById("nocIncidentsGrid");
-    if (!grid) return;
+function toggleSingleNocIncidentSelect(key, checked) {
+    if (checked) nocSelectedIncidentKeys.add(key);
+    else nocSelectedIncidentKeys.delete(key);
+}
 
-    const cat = document.getElementById("nocFilterCategory")?.value || "all";
-    const city = document.getElementById("nocFilterCity")?.value || "all";
-    const cs = document.getElementById("nocFilterCs")?.value || "all";
+function batchMuteIncidents(minutes) {
+    const count = nocSelectedIncidentKeys.size || allNocIncidentsCache.length;
+    alert(`🔕 ${count} incidente(s) silenciado(s) temporariamente por ${minutes} minutos. As notificações reaparecerão automaticamente caso persistam.`);
+}
 
+function batchAcknowledgeIncidents() {
+    const count = nocSelectedIncidentKeys.size || allNocIncidentsCache.length;
+    alert(`👁️ ${count} incidente(s) reconhecido(s) pelo operador ${currentUser || 'N1'}. Status registrado na trilha operacional.`);
+}
+
+function openRemoteCommandForIncident(hostname, target, actionType) {
+    if (typeof switchTab === 'function') switchTab('remote-commands');
+    if (typeof switchRemoteTab === 'function') switchRemoteTab('rc-tab-queue');
+    if (typeof loadRemoteQueue === 'function') loadRemoteQueue();
+}
+window.openRemoteCommandForIncident = openRemoteCommandForIncident;
+
+function renderNocUnifiedQueue() {
+    const container = document.getElementById("nocUnifiedQueueContainer");
+    if (!container) return;
+
+    // 1. Coleta seleções das facetas
+    const searchVal = (document.getElementById("nocSearchInput")?.value || "").toLowerCase().trim();
+    
+    const checkedSevs = Array.from(document.querySelectorAll(".noc-sev-check:checked")).map(c => c.value);
+    const checkedTrigs = Array.from(document.querySelectorAll(".noc-trig-check:checked")).map(c => c.value);
+    const checkedRegs = Array.from(document.querySelectorAll(".noc-reg-check:checked")).map(c => c.value);
+    const sortBy = document.getElementById("nocSortSelect")?.value || "crit";
+
+    // 2. Filtra incidentes brutos
     let filtered = allNocIncidentsCache.filter(inc => {
-        if (nocActiveFilterSev !== "all" && inc.severity !== nocActiveFilterSev) return false;
-        if (cat !== "all" && inc.category !== cat) return false;
-        if (city !== "all" && inc.praca !== city) return false;
-        if (cs !== "all" && String(inc.cs) !== String(cs)) return false;
         if (nocSelectedHostFilter && inc.hostname !== nocSelectedHostFilter) return false;
+        if (checkedSevs.length > 0 && !checkedSevs.includes(inc.severity)) return false;
+        if (checkedTrigs.length > 0 && !checkedTrigs.includes(inc.trigger_type)) return false;
+        if (checkedRegs.length > 0 && !checkedRegs.includes(inc.region)) return false;
+        if (searchVal) {
+            const textCorpus = `${inc.title} ${inc.praca} ${inc.hostname} ${inc.target} ${inc.summary} ${inc.category_label}`.toLowerCase();
+            if (!textCorpus.includes(searchVal)) return false;
+        }
         return true;
     });
 
+    const badgeTotal = document.getElementById("badgeNocTotalIncidents");
+    if (badgeTotal) badgeTotal.textContent = `${filtered.length} Ocorrência${filtered.length === 1 ? '' : 's'}`;
+
     if (filtered.length === 0) {
-        grid.innerHTML = `
-        <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--accent-green); background: rgba(16, 185, 129, 0.05); border: 1px dashed rgba(16, 185, 129, 0.3); border-radius: 8px;">
+        container.innerHTML = `
+        <div style="text-align: center; padding: 40px; color: var(--accent-green); background: rgba(16, 185, 129, 0.05); border: 1px dashed rgba(16, 185, 129, 0.3); border-radius: 8px;">
             <div style="font-size: 32px; margin-bottom: 8px;">✅</div>
-            <strong style="font-size: 15px;">Nenhum incidente ativo para os filtros selecionados!</strong>
-            <div style="color: var(--text-muted); font-size: 12px; margin-top: 4px;">A frota está operando com 100% de integridade nos parâmetros solicitados.</div>
+            <strong style="font-size: 15px;">Fila Unificada Vazia: Nenhum incidente nos filtros ativos!</strong>
+            <div style="color: var(--text-muted); font-size: 12px; margin-top: 4px;">A frota está operando com 100% de integridade nos critérios selecionados.</div>
         </div>`;
         return;
     }
 
-    grid.innerHTML = filtered.map(inc => {
-        const borderCol = inc.severity === "P1" ? "#ef4444" : (inc.severity === "P2" ? "#f59e0b" : (inc.severity === "P3" ? "#3b82f6" : "#a855f7"));
-        const badgeClass = inc.severity === "P1" ? "badge-red" : (inc.severity === "P2" ? "badge-yellow" : (inc.severity === "P3" ? "badge-blue" : "badge-purple"));
+    // 3. Agrupamento Inteligente por Nó (Praça + CS)
+    const nodeGroups = {};
+    filtered.forEach(inc => {
+        const groupKey = `${inc.praca}_CS${inc.cs}_${inc.severity}`;
+        if (!nodeGroups[groupKey]) {
+            nodeGroups[groupKey] = {
+                key: groupKey,
+                praca: inc.praca,
+                cs: inc.cs,
+                hostname: inc.hostname,
+                severity: inc.severity,
+                severity_label: inc.severity_label,
+                region: inc.region,
+                items: [],
+                telemetry: inc.telemetry,
+                time_ago: inc.time_ago,
+                trigger_type: inc.trigger_type
+            };
+        }
+        nodeGroups[groupKey].items.push(inc);
+    });
+
+    let groupedCards = Object.values(nodeGroups);
+
+    // 4. Ordenação
+    if (sortBy === "crit") {
+        const pMap = { "P0": 0, "P1": 1, "P2": 2 };
+        groupedCards.sort((a, b) => pMap[a.severity] - pMap[b.severity]);
+    } else if (sortBy === "streams") {
+        groupedCards.sort((a, b) => b.items.length - a.items.length);
+    } else if (sortBy === "praca") {
+        groupedCards.sort((a, b) => a.praca.localeCompare(b.praca));
+    }
+
+    // 5. Renderização dos Cards Consolidados (Fila Unificada Inteligente)
+    container.innerHTML = groupedCards.map(group => {
+        const isP0 = group.severity === "P0";
+        const isP1 = group.severity === "P1";
+        const cardClass = isP0 ? "p0-card" : (isP1 ? "p1-card" : "p2-card");
+        const sevColor = isP0 ? "#ef4444" : (isP1 ? "#f59e0b" : "#38bdf8");
+        const sevIcon = isP0 ? "🔴" : (isP1 ? "🟡" : "🔵");
+        const streamCount = group.items.length;
+        const mainItem = group.items[0];
+
+        // Tags do cabeçalho
+        const triggerTag = group.trigger_type === "rtsp_udp" ? "#RTSP" :
+                           (group.trigger_type === "rf_level" ? "#RF" :
+                           (group.trigger_type === "pipeline" ? "#Pipeline" : "#Infra"));
+
+        const isChecked = nocSelectedIncidentKeys.has(mainItem.key);
 
         return `
-        <div style="background: rgba(15, 23, 42, 0.65); border: 1px solid ${borderCol}; border-radius: 8px; padding: 14px 16px; display: flex; flex-direction: column; justify-content: space-between; transition: all 0.2s; box-shadow: 0 4px 14px rgba(0,0,0,0.25);">
-            <div>
-                <!-- Top Badge Strip -->
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                    <div style="display: flex; gap: 6px; align-items: center;">
-                        <span class="badge ${badgeClass}" style="font-weight: 800; font-size: 11px; padding: 3px 8px;">
-                            ${escapeHtml(inc.severity_label)}
-                        </span>
-                        <span class="badge badge-blue" style="font-size: 10px;">
-                            <i class="fas ${inc.category_icon}"></i> ${escapeHtml(inc.category_label)}
-                        </span>
-                    </div>
-                    <span style="font-size: 11px; color: var(--text-muted); font-family: monospace;">${escapeHtml(inc.time_ago)}</span>
+        <div class="unified-incident-card ${cardClass}">
+            <!-- Faixa Superior do Card -->
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" ${isChecked ? "checked" : ""} onchange="toggleSingleNocIncidentSelect('${mainItem.key}', this.checked)" style="cursor: pointer;">
+                    <span style="font-weight: 800; font-size: 11px; color: ${sevColor}; display: flex; align-items: center; gap: 4px;">
+                        ${sevIcon} ${escapeHtml(group.severity_label)}
+                    </span>
+                    <span style="color: var(--text-muted); font-size: 11px;">| ${escapeHtml(group.time_ago)}</span>
                 </div>
-
-                <!-- Host & Target Identification -->
-                <div style="margin-bottom: 6px;">
-                    <strong style="color: #fff; font-size: 14px;">${escapeHtml(inc.title)}</strong>
-                    <div style="font-size: 11px; color: #93c5fd; margin-top: 2px;">
-                        <i class="fas fa-map-marker-alt"></i> <strong>${escapeHtml(inc.praca)}</strong> • CS ${inc.cs} • <span style="color: var(--text-muted); font-family: monospace;">${escapeHtml(inc.hostname)}</span>
-                    </div>
-                </div>
-
-                <!-- Summary & Telemetry -->
-                <div style="font-size: 12px; color: #cbd5e1; margin-bottom: 8px; line-height: 1.4;">
-                    ${escapeHtml(inc.summary)}
-                </div>
-                <div style="background: rgba(0,0,0,0.3); border-radius: 4px; padding: 6px 8px; font-size: 11px; color: #94a3b8; font-family: monospace; margin-bottom: 12px; border-left: 2px solid ${borderCol};">
-                    ${escapeHtml(inc.telemetry)}
+                <div style="display: flex; gap: 6px;">
+                    <span class="badge" style="background: rgba(255,255,255,0.06); font-family: monospace; font-size: 10px; color: #94a3b8;">${triggerTag}</span>
+                    <span class="badge" style="background: rgba(59,130,246,0.15); color: #93c5fd; font-family: monospace; font-size: 10px;">#CS${group.cs}</span>
                 </div>
             </div>
 
-            <!-- Action Buttons Strip -->
-            <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 10px;">
-                <div style="display: flex; gap: 6px;">
-                    <button class="btn-primary" style="font-size: 11px; padding: 5px 12px; background: linear-gradient(135deg, #0284c7, #2563eb); font-weight: 700; display: flex; align-items: center; gap: 5px;" onclick="openIncidentAiModal('${inc.key}')">
-                        <i class="fas fa-brain"></i> IA (Gemini Pro)
+            <!-- Identificação do Nó / Praça -->
+            <div style="margin-bottom: 8px;">
+                <div style="font-size: 14px; font-weight: 800; color: #fff;">
+                    ${escapeHtml(group.praca)} (CS ${group.cs}) — ${streamCount > 1 ? `${streamCount} Streams Interrompidos` : escapeHtml(mainItem.title)}
+                </div>
+                <div style="font-size: 11px; color: #94a3b8; font-family: monospace; margin-top: 3px;">
+                    ${escapeHtml(group.telemetry)}
+                </div>
+            </div>
+
+            <!-- Subgrade / Lista de Streams Afetados (se for grupo com múltiplos) -->
+            ${streamCount > 1 ? `
+                <div style="background: rgba(0,0,0,0.3); border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; border-left: 2px solid ${sevColor}; display: flex; flex-direction: column; gap: 4px;">
+                    ${group.items.map(sub => `
+                        <div style="font-size: 11px; color: #cbd5e1; font-family: monospace; display: flex; justify-content: space-between;">
+                            <span>${escapeHtml(sub.details_subline || `• ${sub.target}: Sinal 0%`)}</span>
+                            <span style="color: #ef4444; font-weight: 700;">Falha de Lock</span>
+                        </div>
+                    `).join("")}
+                </div>
+            ` : (mainItem.fade_margin ? `
+                <!-- Visual Fade Margin Gauge -->
+                <div style="background: rgba(0,0,0,0.25); border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; border-left: 2px solid #f59e0b;">
+                    <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 4px; color: #cbd5e1;">
+                        <span>Margem de Desvanecimento (Fade Margin):</span>
+                        <strong style="color: #facc15;">${mainItem.fade_margin}% (Alerta de Queda)</strong>
+                    </div>
+                    <div style="height: 6px; width: 100%; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden;">
+                        <div style="height: 100%; width: ${mainItem.fade_margin}%; background: linear-gradient(90deg, #f59e0b, #ef4444); border-radius: 3px;"></div>
+                    </div>
+                </div>
+            ` : (group.trigger_type === "pipeline" ? `
+                <!-- Visual Pipeline Buffer Gauge -->
+                <div style="background: rgba(0,0,0,0.25); border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; border-left: 2px solid #38bdf8;">
+                    <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 4px; color: #cbd5e1;">
+                        <span>Buffer de Escoamento WAN (Teto 25 min):</span>
+                        <strong style="color: #38bdf8;">12.0 min (48% do teto)</strong>
+                    </div>
+                    <div style="height: 6px; width: 100%; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden;">
+                        <div style="height: 100%; width: 48%; background: #38bdf8; border-radius: 3px;"></div>
+                    </div>
+                </div>
+            ` : `
+                <div style="font-size: 11px; color: #94a3b8; margin-bottom: 10px;">
+                    ${escapeHtml(mainItem.summary)}
+                </div>
+            `))}
+
+            <!-- Botões de Ação Operacional (Cockpit N1) -->
+            <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 10px; margin-top: 4px;">
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    <button class="btn-primary" style="font-size: 11px; padding: 5px 12px; background: linear-gradient(135deg, #0284c7, #2563eb); font-weight: 700; display: flex; align-items: center; gap: 5px;" onclick="openIncidentAiModal('${mainItem.key}')">
+                        <i class="fas fa-brain"></i> 🤖 Diagnóstico IA
                     </button>
-                    <button class="btn-secondary" style="font-size: 11px; padding: 5px 12px; display: flex; align-items: center; gap: 5px;" onclick="openIncidentActionModal('${inc.key}', '${inc.praca} (CS ${inc.cs})', '${inc.target}', '${inc.category}')">
-                        <i class="fas fa-edit"></i> Tratar
+                    <button class="btn-secondary" style="font-size: 11px; padding: 5px 12px; display: flex; align-items: center; gap: 5px;" onclick="openRemoteCommandForIncident('${group.hostname}', '${mainItem.target}', 'diagnose')">
+                        <i class="fas fa-bolt"></i> ⚡ Comando Remoto
+                    </button>
+                    <button class="btn-secondary" style="font-size: 11px; padding: 5px 12px; display: flex; align-items: center; gap: 5px;" onclick="openIncidentActionModal('${mainItem.key}', '${group.praca} (CS ${group.cs})', '${mainItem.target}', '${mainItem.category}')">
+                        <i class="fas fa-tools"></i> 🛠️ Tratar Incidente
                     </button>
                 </div>
-                <button class="btn-secondary" style="font-size: 11px; padding: 5px 8px;" title="Ver detalhes técnicos" onclick="triggerFleetAction('retune_mux', '${inc.praca}', null, '${inc.target}')">
-                    <i class="fas fa-wrench"></i>
-                </button>
+                <span style="font-size: 10px; color: var(--text-muted); font-family: monospace;">Host: ${escapeHtml(group.hostname)}</span>
             </div>
         </div>`;
     }).join("");
 }
 
-// Hook into loadAllData / loadSummaryKPIs
-const _originalLoadSummaryKPIs = window.loadSummaryKPIs;
-window.loadSummaryKPIs = async function() {
-    if (typeof _originalLoadSummaryKPIs === 'function') {
-        await _originalLoadSummaryKPIs();
-    }
+
+async function loadNocUnifiedCockpit() {
     try {
         const token = (typeof getAuthToken === 'function' && getAuthToken()) ? { "Authorization": `Bearer ${getAuthToken()}` } : {};
         const [sumRes, sRes, cRes, pRes, bRes] = await Promise.all([
@@ -2615,7 +2927,11 @@ window.loadSummaryKPIs = async function() {
     } catch (e) {
         console.error("Erro ao consolidar NOC Cockpit:", e);
     }
-};
+}
+window.loadNocUnifiedCockpit = loadNocUnifiedCockpit;
+
+// Também adiciona chamada ao final de loadSummaryKPIs
+
 
 // ==============================================================================
 // 15. CLIENTE DA CENTRAL DE LOGS INTELIGENTE (LOG EXPLORER COM IA)

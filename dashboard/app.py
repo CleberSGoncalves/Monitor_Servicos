@@ -452,6 +452,31 @@ async def add_worklog(req: IncidentActionRequest, user: dict = Depends(get_curre
     return {"success": True, "id": rowid}
 
 
+@app.get("/api/incidents/worklog")
+async def list_incident_worklogs(
+    incident_key: Optional[str] = None,
+    limit: int = 50,
+    user: dict = Depends(get_current_user)
+):
+    import sqlite3
+    from config import DATA_DIR
+    db_path = DATA_DIR / "fleet.db"
+    with sqlite3.connect(db_path, timeout=30.0) as conn:
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        if incident_key:
+            c.execute(
+                "SELECT * FROM incident_worklog WHERE incident_key = ? ORDER BY id DESC LIMIT ?",
+                (incident_key, limit)
+            )
+        else:
+            c.execute(
+                "SELECT * FROM incident_worklog ORDER BY id DESC LIMIT ?",
+                (limit,)
+            )
+        return [dict(r) for r in c.fetchall()]
+
+
 
 # ==============================================================================
 # AUDITORIA DE LIMIARES X INCIDENTES (IA) & ANÁLISE AMOSTRAL DE CLUSTERS
