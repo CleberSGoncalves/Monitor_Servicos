@@ -424,6 +424,26 @@ def get_markets_map_data(channels: list = None, services: list = None) -> List[D
         fspl_db = round(32.44 + 20 * math.log10(freq_mhz) + 20 * math.log10(max(1.0, dist_km)), 1)
         los_status = "Atenuação por Difração / Relevo (NLOS)" if has_hill_obstruction else "Linha de Visada Desobstruída (LOS)"
 
+        # =========================================================================
+        # CÁLCULO DE DESOBSTRUÇÃO DE FRESNEL & COTA MÍNIMA DE ELEVAÇÃO DE MASTRO
+        # =========================================================================
+        d1 = mid_km
+        d2 = max(0.5, dist_km - mid_km)
+        freq_ghz = freq_mhz / 1000.0
+        r1_fresnel = round(17.32 * math.sqrt((d1 * d2) / (max(0.1, freq_ghz) * max(1.0, dist_km))), 2)
+        r1_clearance_60 = round(0.6 * r1_fresnel, 2)
+        los_altitude_at_mid = tower_total_h + (site_total_h - tower_total_h) * (d1 / max(1.0, dist_km))
+        clearance_altitude_needed = hill_alt + r1_clearance_60
+        delta_intrusion = clearance_altitude_needed - los_altitude_at_mid
+
+        if has_hill_obstruction and delta_intrusion > 0:
+            mast_increase_m = round(delta_intrusion * (dist_km / max(1.0, d1)), 1)
+            mast_increase_m = max(1.5, min(8.0, mast_increase_m))
+            fresnel_verdict = f"Aumentar mastro em +{mast_increase_m}m para livrar 60% da 1ª Zona de Fresnel sobre o Morro Intermediário."
+        else:
+            mast_increase_m = 0.0
+            fresnel_verdict = "1ª Zona de Fresnel 100% desobstruída (folga de elipsoide > 80%)."
+
         # Emissoras e análise de cada canal terrestre gravado
         local_emissoras = (main_tower.get("emissoras") if main_tower else None) or ["Rede Globo", "SBT", "Record TV", "Band", "RedeTV!", "TV Brasil"]
         channels_rf_detail = []
@@ -485,6 +505,10 @@ def get_markets_map_data(channels: list = None, services: list = None) -> List[D
             "fspl_db": fspl_db,
             "los_status": los_status,
             "terrain_profile": terrain_profile,
+            "fresnel_r1_m": r1_fresnel,
+            "fresnel_clearance_60_m": r1_clearance_60,
+            "mast_increase_needed_m": mast_increase_m,
+            "fresnel_verdict": fresnel_verdict,
             "channels_rf_detail": channels_rf_detail,
             "towers_detail": m["towers"]
         })

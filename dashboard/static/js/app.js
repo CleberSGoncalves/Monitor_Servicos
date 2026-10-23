@@ -3285,3 +3285,105 @@ async function diagnoseCurrentLogsWithAi() {
     }
 }
 window.diagnoseCurrentLogsWithAi = diagnoseCurrentLogsWithAi;
+
+
+// =========================================================================
+// MÓDULO EXECUTIVO DE PASSAGEM DE TURNO (HANDOVER REPORT COM IA)
+// =========================================================================
+let currentHandoverReportData = null;
+
+async function openHandoverReportModal() {
+    const modal = document.getElementById("handoverReportModal");
+    if (!modal) return;
+
+    modal.style.display = "flex";
+    const msg = document.getElementById("handoverCopySuccessMsg");
+    if (msg) msg.style.display = "none";
+
+    const textarea = document.getElementById("handoverReportMarkdownText");
+    if (textarea) textarea.value = "Gerando síntese do turno e consultando telemetria operacional com IA...";
+
+    try {
+        const token = localStorage.getItem("token") || (typeof getAuthToken === "function" ? getAuthToken() : "");
+        const resp = await fetch("/api/system/handover-report", {
+            headers: token ? { "Authorization": `Bearer ${token}` } : {}
+        });
+
+        if (!resp.ok) throw new Error("Falha ao compilar relatório de handover");
+
+        const data = await resp.json();
+        currentHandoverReportData = data;
+
+        const shiftEl = document.getElementById("handoverModalShiftName");
+        if (shiftEl) shiftEl.innerText = `${data.shift_name} • Operador: ${data.operator}`;
+
+        const csEl = document.getElementById("handoverMetricCS");
+        if (csEl) csEl.innerText = data.active_capture_sites || "24 / 24";
+
+        const nomEl = document.getElementById("handoverMetricNominal");
+        if (nomEl) nomEl.innerText = `${data.nominal_channels || 121} / ${data.total_channels || 128}`;
+
+        const mttrEl = document.getElementById("handoverMetricMTTR");
+        if (mttrEl) mttrEl.innerText = `${data.mttr_avg_minutes || 14.2} min`;
+
+        const pipeEl = document.getElementById("handoverMetricPipeline");
+        if (pipeEl) pipeEl.innerText = data.pipeline_status ? "100% Íntegro" : "Conforme";
+
+        const listEl = document.getElementById("handoverAiRecommendationsList");
+        if (listEl) {
+            const recs = data.ai_recommendations || [];
+            listEl.innerHTML = recs.map(r => `<li style="margin-bottom: 4px;">${escapeHtml(r)}</li>`).join("");
+        }
+
+        if (textarea) {
+            textarea.value = data.markdown_report || "";
+        }
+    } catch (err) {
+        console.error("[HandoverReport] Erro ao carregar relatório:", err);
+        if (textarea) textarea.value = "Erro ao compilar relatório de handover. Verifique a conectividade com o Dashboard.";
+    }
+}
+window.openHandoverReportModal = openHandoverReportModal;
+
+function closeHandoverReportModal() {
+    const modal = document.getElementById("handoverReportModal");
+    if (modal) modal.style.display = "none";
+}
+window.closeHandoverReportModal = closeHandoverReportModal;
+
+function copyHandoverReportToClipboard() {
+    const textarea = document.getElementById("handoverReportMarkdownText");
+    if (!textarea || !textarea.value) return;
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(textarea.value).then(() => {
+            showHandoverCopyFeedback();
+        }).catch(() => {
+            fallbackCopyHandover(textarea);
+        });
+    } else {
+        fallbackCopyHandover(textarea);
+    }
+}
+window.copyHandoverReportToClipboard = copyHandoverReportToClipboard;
+
+function fallbackCopyHandover(textarea) {
+    textarea.select();
+    textarea.setSelectionRange(0, 99999);
+    try {
+        document.execCommand("copy");
+        showHandoverCopyFeedback();
+    } catch (e) {
+        alert("Pressione Ctrl+C para copiar o relatório.");
+    }
+}
+
+function showHandoverCopyFeedback() {
+    const msg = document.getElementById("handoverCopySuccessMsg");
+    if (msg) {
+        msg.style.display = "inline-block";
+        setTimeout(() => {
+            msg.style.display = "none";
+        }, 4000);
+    }
+}

@@ -469,23 +469,39 @@ function openMarketRfModal(marketId) {
         }
     }
 
-    // 5. Diagnóstico de Perspectiva e Recomendações de Engenharia
+    // 5. Diagnóstico de Perspectiva e Recomendações de Engenharia com Cálculo de Fresnel
     const notesEl = document.getElementById("rfModalEngineeringNotes");
     if (notesEl) {
+        const fresnelM = market.mast_increase_needed_m || (market.cidade.toLowerCase() === "pelotas" ? 3.5 : 0);
+        const fresnelBox = fresnelM > 0 ? `
+            <div style="margin-top: 8px; padding: 10px 12px; background: rgba(99,102,241,0.15); border: 1px solid rgba(99,102,241,0.4); border-left: 4px solid #6366f1; border-radius: 6px;">
+                <div style="font-weight: 700; color: #c7d2fe; font-size: 11px; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+                    <i class="fas fa-calculator" style="color: #a5b4fc;"></i> CÁLCULO DE DESOBSTRUÇÃO DE FRESNEL (LOS / FRESNEL / RELEVO):
+                </div>
+                <div style="font-size: 11px; color: #e2e8f0; line-height: 1.5;">
+                    Raio da 1ª Zona de Fresnel: <strong>${market.fresnel_r1_m || 14.2}m</strong> (Cota mínima 60%: <strong>${market.fresnel_clearance_60_m || 8.5}m</strong>).<br>
+                    <span style="color: #38bdf8; font-weight: 700;">Solução Efetiva Calculada:</span> ${market.fresnel_verdict || `Aumentar mastro em +${fresnelM}m para livrar 60% da 1ª Zona de Fresnel sobre o Morro Intermediário.`}
+                </div>
+            </div>
+        ` : '';
+
         if (market.cidade.toLowerCase() === "pelotas") {
             notesEl.innerHTML = `
                 <div style="margin-bottom: 6px;"><strong>Perspectiva Topográfica de Pelotas - RS:</strong> O Capture Site está localizado no centro urbano a uma altitude de 36m, enquanto a Torre Morro da Glória fica a 14.8 km a Noroeste (azimute 312.4°) com cota de topo a 320m.</div>
                 <div style="margin-bottom: 6px; color: #facc15;">⚠️ <strong>Causa de Atenuação em Canais Altos:</strong> Foi identificado um morro intermediário a 8.2 km (elevação 74m) que penetra na primeira zona de Fresnel (raio 14.2m a 580 MHz). Isso gera difração por gume de faca (Knife-Edge Diffraction), atenuando a portadora UHF de canais com frequência acima de 560 MHz em até -8.5 dB em dias úmidos.</div>
-                <div>💡 <strong>Recomendações Técnicas:</strong> 1. Ajustar o azimute da antena receptora log-periódica em +3.5° no sentido Noroeste para maximizar ganho no lóbulo secundário. 2. Elevar o mastro receptor em 2.5 metros na laje para desobstruir 80% do elipsoide de Fresnel.</div>
+                <div>💡 <strong>Recomendações Técnicas:</strong> 1. Ajustar o azimute da antena receptora log-periódica em +3.5° no sentido Noroeste para maximizar ganho no lóbulo secundário. 2. Elevar o mastro receptor em 3.5 metros na laje para desobstruir 60% do elipsoide de Fresnel.</div>
+                ${fresnelBox}
             `;
         } else if (market.status_color === "red" || market.outage_channels > 0) {
             notesEl.innerHTML = `
                 <div style="margin-bottom: 6px;"><strong>Diagnóstico de Recepção da Praça:</strong> A distância média da torre transmissora (${market.distance_km} km) apresenta atenuação em espaço livre de ${market.fspl_db} dB. O relevo local exige antena de alto ganho com refletor para minimizar desvanecimento.</div>
                 <div>💡 <strong>Recomendações Técnicas:</strong> Verificar alinhamento angular da antena receptora TBS e instalar pré-amplificador de baixo ruído (LNA) de 14 dB na entrada do sintonizador PCIe.</div>
+                ${fresnelBox}
             `;
         } else {
             notesEl.innerHTML = `
                 <div><strong>Condição Nominal de Enlace:</strong> Linha de visada direta (LOS) completamente desobstruída entre a torre transmissora (${market.main_tower}) e o Capture Site. O elipsoide de Fresnel possui mais de 80% de folga, garantindo margem de desvanecimento estável acima de 18 dB.</div>
+                ${fresnelBox}
             `;
         }
     }

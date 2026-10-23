@@ -28,6 +28,7 @@ let allMosaicSnapshots = [];
 let filteredMosaicSnapshots = [];
 let currentMosaicPage = 1;
 let mosaicPageSize = 30; // NUNCA carrega todos ao mesmo tempo para suportar +1000 veículos
+let mosaicQuickOnlyFailures = false; // Filtro de alta severidade (Apenas falhas/degradação)
 let mosaicAutoRotateTimer = null;
 let mosaicProgressTimer = null;
 let mosaicRotateIntervalSec = 10;
@@ -166,13 +167,17 @@ async function loadMosaicData(isManualRefresh = false) {
         const data = await resp.json();
         allMosaicSnapshots = data.snapshots || [];
 
-        // Atualiza contador de falhas no badge da subaba
-        const failureCount = allMosaicSnapshots.filter(s => s.tipo_falha && s.tipo_falha !== "none" && s.tipo_falha !== "paused").length;
+        // Atualiza contador de falhas no badge da subaba e no botão rápido de severidade
+        const failureCount = allMosaicSnapshots.filter(s => (s.status_color && s.status_color !== "#10b981") || (s.tipo_falha && s.tipo_falha !== "none" && s.tipo_falha !== "paused")).length;
         const badge = document.getElementById("mosaic-failure-count-badge");
         if (badge) {
             badge.innerText = failureCount;
             badge.style.background = failureCount > 0 ? "rgba(239, 68, 68, 0.4)" : "rgba(37, 99, 235, 0.3)";
             badge.style.color = failureCount > 0 ? "#fca5a5" : "#93c5fd";
+        }
+        const quickFailEl = document.getElementById("mosaicQuickFailureCount");
+        if (quickFailEl) {
+            quickFailEl.innerText = failureCount;
         }
 
         if (isManualRefresh) {
@@ -197,6 +202,16 @@ async function loadMosaicData(isManualRefresh = false) {
 window.loadMosaicData = loadMosaicData;
 
 function applyMosaicFilters() {
+    if (mosaicQuickOnlyFailures) {
+        // Modo Rápido de Severidade: exibe imediatamente todos os canais com anomalia/degradação
+        filteredMosaicSnapshots = allMosaicSnapshots.filter(item => {
+            return (item.status_color && item.status_color !== "#10b981") || (item.tipo_falha && item.tipo_falha !== "none" && item.tipo_falha !== "paused");
+        });
+        currentMosaicPage = 1;
+        renderMosaicPage();
+        return;
+    }
+
     const country = document.getElementById("mosaicFilterCountry") ? document.getElementById("mosaicFilterCountry").value : "all";
     const region = document.getElementById("mosaicFilterRegion") ? document.getElementById("mosaicFilterRegion").value : "all";
     const meio = document.getElementById("mosaicFilterMeio") ? document.getElementById("mosaicFilterMeio").value : "all";
@@ -219,6 +234,33 @@ function applyMosaicFilters() {
     renderMosaicPage();
 }
 window.applyMosaicFilters = applyMosaicFilters;
+
+function toggleMosaicQuickSeverityFilter() {
+    mosaicQuickOnlyFailures = !mosaicQuickOnlyFailures;
+    const btn = document.getElementById("btnMosaicQuickSeverityFilter");
+    if (btn) {
+        if (mosaicQuickOnlyFailures) {
+            btn.style.background = "#dc2626";
+            btn.style.borderColor = "#f87171";
+            btn.style.color = "#ffffff";
+            btn.style.boxShadow = "0 0 14px rgba(239, 68, 68, 0.7)";
+            btn.innerHTML = `<i class="fas fa-check-circle" style="font-size: 14px;"></i> <span>🚨 Filtrando Apenas Falhas (${document.getElementById("mosaicQuickFailureCount") ? document.getElementById("mosaicQuickFailureCount").innerText : ""})</span>`;
+            stopMosaicAutoRotation();
+            mosaicPageSize = 128;
+        } else {
+            btn.style.background = "rgba(239, 68, 68, 0.15)";
+            btn.style.borderColor = "rgba(239, 68, 68, 0.4)";
+            btn.style.color = "#fca5a5";
+            btn.style.boxShadow = "none";
+            btn.innerHTML = `<i class="fas fa-exclamation-circle text-red" style="font-size: 14px;"></i> <span>🚨 Apenas Falhas &amp; Degradação (<span id="mosaicQuickFailureCount">${document.getElementById("mosaicQuickFailureCount") ? document.getElementById("mosaicQuickFailureCount").innerText : "0"}</span>)</span>`;
+            const sel = document.getElementById("mosaicPageSizeSelect");
+            mosaicPageSize = sel ? (parseInt(sel.value, 10) || 30) : 30;
+            if (isMosaicRotatePlaying) startMosaicAutoRotation();
+        }
+    }
+    applyMosaicFilters();
+}
+window.toggleMosaicQuickSeverityFilter = toggleMosaicQuickSeverityFilter;
 
 // =========================================================================
 // 3. PAGINAÇÃO E CARROSSEL CONTÍNUO (ROTAÇÃO AUTOMÁTICA A CADA 10S)
@@ -351,7 +393,29 @@ function renderMosaicCardHtml(s) {
         `;
     }
 
-return `
+    // Telemetria de Áudio & Badges de Correlação de Blecaute
+    let audioBadge = '';
+    const audioStat = s.audio_status || (s.audio_mudo === 'Sim' ? 'MUDO' : 'OK');
+    if (audioStat === 'MUDO') {
+        audioBadge = `<span class="badge" style="background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid #ef4444; font-size: 10px; font-weight: 700;"><i class="fas fa-volume-mute"></i> MUDO</span>`;
+    } else if (audioStat === 'LIP_SYNC') {
+        audioBadge = `<span class="badge" style="background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid #f59e0b; font-size: 10px; font-weight: 700;"><i class="fas fa-stopwatch"></i> LIP-SYNC (+${s.lip_sync_delay_ms || 180}ms)</span>`;
+    } else if (s.is_color_bars) {
+        audioBadge = `<span class="badge" style="background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid #f59e0b; font-size: 10px;"><i class="fas fa-wave-square"></i> TOM 1kHz</span>`;
+    } else {
+        audioBadge = `<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); font-size: 10px;"><i class="fas fa-volume-up"></i> -14dB OK</span>`;
+    }
+
+    let correlationBadge = '';
+    if (s.correlation_type === 'tower_blackout') {
+        correlationBadge = `<span class="badge" style="background: rgba(239, 68, 68, 0.25); color: #fca5a5; border: 1px solid #ef4444; font-size: 9px; font-weight: 700;" title="${escapeHtml(s.correlation_desc || '')}"><i class="fas fa-bolt"></i> Blecaute Torre</span>`;
+    } else if (s.correlation_type === 'single_channel') {
+        correlationBadge = `<span class="badge" style="background: rgba(245, 158, 11, 0.2); color: #fcd34d; border: 1px solid #f59e0b; font-size: 9px; font-weight: 600;" title="${escapeHtml(s.correlation_desc || '')}"><i class="fas fa-bullseye"></i> Falha Emissora</span>`;
+    }
+
+    const vuBarH = audioStat === 'MUDO' ? 4 : (s.audio_bars_pct || 72);
+
+    return `
         <div class="panel-card mosaic-card" style="border: 1px solid ${borderCol}; padding: 12px; position: relative; display: flex; flex-direction: column; justify-content: space-between; min-height: 250px; background: rgba(13, 19, 33, 0.95); box-shadow: 0 4px 14px rgba(0,0,0,0.4); border-radius: 8px;">
             <div>
                 <!-- Header do Card -->
@@ -367,7 +431,7 @@ return `
                     </span>
                 </div>
 
-                <!-- Frame de Transmissão / JPEG Real (16:9 Broadcast Proporcional) -->
+                <!-- Frame de Transmissão / JPEG Real com Micro VU Meter Vertical Embutido -->
                 <div style="position: relative; width: 100%; aspect-ratio: 16 / 9; max-height: 220px; background: #000; border-radius: 6px; overflow: hidden; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,0.12); box-shadow: inset 0 0 10px rgba(0,0,0,0.8);">
                     <img class="mosaic-live-thumb"
                          data-base-url="${s.jpeg_url || ('/api/fleet/channels/jpeg?canal=' + encodeURIComponent(s.canal) + '&praca=' + encodeURIComponent(s.praca))}"
@@ -376,6 +440,17 @@ return `
                          style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1;"
                          loading="lazy"
                          onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';" />
+                    
+                    <!-- Micro VU Meter Estéreo Vertical Overlaid na Lateral Direita do Vídeo -->
+                    <div style="position: absolute; right: 6px; top: 24px; bottom: 24px; width: 12px; background: rgba(0,0,0,0.75); border-radius: 3px; border: 1px solid rgba(255,255,255,0.18); display: flex; gap: 2px; padding: 2px; justify-content: center; align-items: flex-end; z-index: 4;" title="Nível L/R: ${s.audio_db || -14} dB (${audioStat})">
+                        <div style="flex: 1; height: 100%; display: flex; align-items: flex-end; background: rgba(255,255,255,0.06); border-radius: 1px;">
+                            <div style="width: 100%; height: ${vuBarH}%; background: linear-gradient(0deg, #10b981 0%, #10b981 70%, #f59e0b 85%, #ef4444 100%); border-radius: 1px; transition: height 0.3s ease;"></div>
+                        </div>
+                        <div style="flex: 1; height: 100%; display: flex; align-items: flex-end; background: rgba(255,255,255,0.06); border-radius: 1px;">
+                            <div style="width: 100%; height: ${Math.max(4, vuBarH - 3)}%; background: linear-gradient(0deg, #10b981 0%, #10b981 70%, #f59e0b 85%, #ef4444 100%); border-radius: 1px; transition: height 0.3s ease;"></div>
+                        </div>
+                    </div>
+
                     <div style="display: none; position: absolute; inset: 0; align-items: center; justify-content: center; z-index: 2; background: rgba(10, 15, 29, 0.95);">
                     ${hasIncident ? `
                         <div style="text-align: center; padding: 10px;">
@@ -391,7 +466,7 @@ return `
                     `}
                     </div>
                     <!-- OSD Inferior -->
-                    <div style="position: absolute; bottom: 4px; left: 8px; right: 8px; display: flex; justify-content: space-between; font-size: 10px; font-family: monospace; color: rgba(255,255,255,0.85); text-shadow: 0 1px 3px rgba(0,0,0,0.9); pointer-events: none; z-index: 3;">
+                    <div style="position: absolute; bottom: 4px; left: 8px; right: 24px; display: flex; justify-content: space-between; font-size: 10px; font-family: monospace; color: rgba(255,255,255,0.85); text-shadow: 0 1px 3px rgba(0,0,0,0.9); pointer-events: none; z-index: 3;">
                         <span class="mosaic-card-timestamp">${s.last_frame_time || "Ao Vivo"} • 320x240</span>
                         <span>${s.meio}</span>
                     </div>
@@ -406,8 +481,12 @@ return `
                 </div>
             ` : ''}
             <!-- Rodapé e Ações do Card -->
-            <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06); display: flex; justify-content: space-between; align-items: center; gap: 8px;">
-                ${signalBars}
+            <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06); display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    ${signalBars}
+                    ${audioBadge}
+                    ${correlationBadge}
+                </div>
                 
                 <div style="display: flex; gap: 6px;">
                     ${hasIncident ? `

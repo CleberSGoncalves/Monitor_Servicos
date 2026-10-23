@@ -1395,6 +1395,7 @@
 
 
 
+      <button type="button" class="btn-secondary" id="btnHandoverReport" onclick="openHandoverReportModal()" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; font-size: 12px; background: rgba(99,102,241,0.18); border: 1px solid rgba(99,102,241,0.45); color: #a5b4fc; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer;" title="Gerar Relatório Executivo de Passagem de Turno (Handover)"><i class="fas fa-clipboard-list"></i> <span>Passagem de Turno</span></button>
       <button type="button" class="btn-secondary" id="btnSystemUpdate" onclick="openSystemUpdateModal()" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; font-size: 12px; background: rgba(37,99,235,0.15); border: 1px solid rgba(37,99,235,0.4); color: #38bdf8; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer;" title="Verificar atualizações do sistema"><i class="fas fa-sync-alt" id="iconSystemUpdate"></i> <span id="labelSystemVersion">v3.9.14</span></button>
         <div class="user-badge">
 
@@ -2429,6 +2430,10 @@
 
 
 
+              <button type="button" id="btnMosaicQuickSeverityFilter" onclick="toggleMosaicQuickSeverityFilter()" class="btn-quick-filter" style="display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; font-size: 12px; font-weight: 700; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #fca5a5; border-radius: var(--radius-sm); cursor: pointer; transition: all 0.2s;" title="Filtrar instantaneamente apenas canais com falhas ou degradação">
+                <i class="fas fa-exclamation-circle text-red" style="font-size: 14px;"></i>
+                <span>🚨 Apenas Falhas &amp; Degradação (<span id="mosaicQuickFailureCount">0</span>)</span>
+              </button>
               <button class="btn-secondary" onclick="loadMosaicData(true)" style="padding: 6px 12px; font-size: 12px;">
 
                 <i class="fas fa-sync-alt"></i> Atualizar Agora
@@ -7159,6 +7164,95 @@
           </button>
         </div>
       </div>
+    </div>
+  </div>
+
+
+  <!-- ========================================================================= -->
+  <!-- MODAL EXECUTIVO DE PASSAGEM DE TURNO (HANDOVER REPORT COM IA)             -->
+  <!-- ========================================================================= -->
+  <div id="handoverReportModal" class="modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 10000; align-items: center; justify-content: center; backdrop-filter: blur(4px);">
+    <div class="panel-card" style="background: #0b1329; border: 1px solid rgba(99,102,241,0.4); border-radius: 12px; width: 95%; max-width: 900px; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 16px 40px rgba(0,0,0,0.7);">
+      
+      <!-- Modal Header -->
+      <div style="padding: 16px 20px; background: linear-gradient(90deg, #1e1b4b 0%, #0f172a 100%); border-bottom: 1px solid rgba(99,102,241,0.3); display: flex; justify-content: space-between; align-items: center;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <div style="width: 38px; height: 38px; border-radius: 8px; background: rgba(99,102,241,0.25); border: 1px solid #6366f1; display: flex; align-items: center; justify-content: center; font-size: 18px; color: #a5b4fc;">
+            📋
+          </div>
+          <div>
+            <h3 style="margin: 0; font-size: 16px; font-weight: 800; color: #fff;">Relatório Executivo de Passagem de Turno (Handover)</h3>
+            <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">
+              Síntese Gerencial Automatizada • NOC &amp; Broadcast Telemetry • <span id="handoverModalShiftName" style="color: #a5b4fc; font-weight: 700;">Turno em Andamento</span>
+            </div>
+          </div>
+        </div>
+        <button type="button" class="btn-secondary" onclick="closeHandoverReportModal()" style="padding: 4px 10px; font-size: 16px; color: var(--text-muted);">&times;</button>
+      </div>
+
+      <!-- Modal Body (Rolagem protegida) -->
+      <div style="padding: 20px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 16px;">
+        
+        <!-- Cartões de Indicadores Rápidos -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px;">
+          <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 12px; text-align: center;">
+            <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Capture Sites</div>
+            <div id="handoverMetricCS" style="font-size: 20px; font-weight: 800; color: #34d399; margin-top: 4px;">24 / 24</div>
+            <div style="font-size: 10px; color: #6ee7b7;">100% de Alcance</div>
+          </div>
+          <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 12px; text-align: center;">
+            <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Canais Nominais</div>
+            <div id="handoverMetricNominal" style="font-size: 20px; font-weight: 800; color: #38bdf8; margin-top: 4px;">121 / 128</div>
+            <div style="font-size: 10px; color: #93c5fd;">94.5% Conforme</div>
+          </div>
+          <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 12px; text-align: center;">
+            <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">MTTR Médio</div>
+            <div id="handoverMetricMTTR" style="font-size: 20px; font-weight: 800; color: #facc15; margin-top: 4px;">14.2 min</div>
+            <div style="font-size: 10px; color: #fde047;">Dentro do SLA (&lt; 20m)</div>
+          </div>
+          <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 12px; text-align: center;">
+            <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">DNA.MediaConverter</div>
+            <div id="handoverMetricPipeline" style="font-size: 20px; font-weight: 800; color: #a78bfa; margin-top: 4px;">100% Íntegro</div>
+            <div style="font-size: 10px; color: #c4b5fd;">MP4 &rarr; ASF sem retenção</div>
+          </div>
+        </div>
+
+        <!-- Parecer Executivo de IA (Gemini Pro) -->
+        <div style="background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.35); border-left: 4px solid #6366f1; border-radius: 8px; padding: 14px;">
+          <div style="font-size: 12px; font-weight: 800; color: #c7d2fe; display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+            <span>🧠</span> SÍNTESE EXECUTIVA DE IA (GOOGLE GEMINI PRO BRIEFING):
+          </div>
+          <ul id="handoverAiRecommendationsList" style="margin: 0; padding-left: 20px; font-size: 12px; color: #e2e8f0; line-height: 1.6;">
+            <li>Carregando recomendações do modelo analítico de IA...</li>
+          </ul>
+        </div>
+
+        <!-- Área de Texto com Markdown Completo para Cópia -->
+        <div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <span style="font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">
+              📄 Conteúdo Formatado para Cópia (Slack / Teams / E-mail):
+            </span>
+            <span id="handoverCopySuccessMsg" style="display: none; font-size: 11px; color: #34d399; font-weight: 700;">
+              ✓ Copiado com sucesso para a Área de Transferência!
+            </span>
+          </div>
+          <textarea id="handoverReportMarkdownText" readonly style="width: 100%; height: 220px; background: #030712; border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; padding: 12px; color: #38bdf8; font-family: monospace; font-size: 11px; line-height: 1.5; resize: none;"></textarea>
+        </div>
+
+      </div>
+
+      <!-- Modal Footer -->
+      <div style="padding: 14px 20px; background: rgba(15, 23, 42, 0.95); border-top: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-size: 11px; color: var(--text-muted);">MediaDNA Incident Cockpit • Handover Engine v3.9.28</span>
+        <div style="display: flex; gap: 10px;">
+          <button type="button" class="btn-secondary" onclick="closeHandoverReportModal()" style="padding: 8px 16px;">Fechar</button>
+          <button type="button" class="btn-primary" onclick="copyHandoverReportToClipboard()" style="padding: 8px 18px; background: linear-gradient(135deg, #4f46e5, #2563eb); font-weight: 700; display: flex; align-items: center; gap: 8px;">
+            <i class="fas fa-copy"></i> Copiar Relatório
+          </button>
+        </div>
+      </div>
+
     </div>
   </div>
 
