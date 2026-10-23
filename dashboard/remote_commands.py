@@ -537,7 +537,26 @@ def simulate_or_execute_on_host(host: str, shell_type: str, script: str) -> str:
     first_cmd = lines[0] if lines else script
     now_str = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
 
-    if "Get-Process" in script or "CPU" in script:
+    if "dtvcapture" in script.lower() or "logs" in script.lower() or "get-content" in script.lower():
+        return f"""[{now_str}] Executando via {shell_type.upper()} em {host}...
+--- Listando arquivos de log mais recentes em D:\MediaDNA_V2\Applications\DTVCapture64\Logs ---
+
+Name                            Length LastWriteTime
+----                            ------ -------------
+DTVCaptureLog_20261023.txt    14582910 {now_str}
+DTVCaptureLog_20261022.txt    28941024 22/10/2026 23:59:58
+DTVCaptureLog_20261021.txt    28812490 21/10/2026 23:59:59
+AtriaService_20261023.log       412098 {now_str}
+
+--- Últimas 15 linhas do log ativo (DTVCaptureLog_20261023.txt) ---
+[{now_str}] [INFO] DirectShow BDA Tuner #0 (TBS6909x) MUX Sintonia OK • BER: 0.0e-7 • MER: 32.4 dB
+[{now_str}] [INFO] Canal Principal (51680) decodificando audio e video normalmente.
+[{now_str}] [INFO] SignalStatistics: Quality=92 Strength=44 CarrierLock=True
+[{now_str}] [INFO] Mp4Writer: Chunk finalizado com 40.8 MB -> D:\MediaDNA_V2\Data\records
+[{now_str}] [INFO] Demuxer: PCR/PTS jitter dentro da margem nominal (< 12ms)
+[{now_str}] [OK] Pipeline de captura Atria 100% operacional no nó {host}."""
+
+    elif "Get-Process" in script or "CPU" in script:
         return f"""[{now_str}] Executando via {shell_type.upper()} em {host}...
 
 Handles  NPM(K)    PM(K)      WS(K)     CPU(s)     Id ProcessName
@@ -900,8 +919,23 @@ def compile_engineering_copilot_prompt(prompt_text: str, selected_hosts: Optiona
     """
     p_lower = prompt_text.lower().strip()
     
-    # 1. Padrão: Checagem de Memória / RAM do Atria + Event Viewer
-    if "memória" in p_lower or "ram" in p_lower or "atria" in p_lower and ("crash" in p_lower or "event" in p_lower or "consum" in p_lower):
+    # 1. Padrão Especializado: Consulta e Leitura de Logs (DTVCapture64 / MediaDNA / Windows)
+    if "log" in p_lower or "logs" in p_lower or "dtvcapture" in p_lower or "pasta" in p_lower or "txt" in p_lower:
+        target_dir = r"D:\MediaDNA_V2\Applications\DTVCapture64\Logs" if any(k in p_lower for k in ["dtv", "capture", "atria"]) else r"D:\MediaDNA_V2\Logs"
+        ps_cmd = (
+            f'Write-Host "--- Listando arquivos de log mais recentes em {target_dir} ---"; '
+            f'Get-ChildItem -Path "{target_dir}\*.*" -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 5 Name, Length, LastWriteTime; '
+            f'Write-Host "--- Últimas 25 linhas do log mais recente ---"; '
+            f'$latest = Get-ChildItem -Path "{target_dir}\*.*" -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1; '
+            f'if ($latest) {{ Get-Content $latest.FullName -Tail 25 }} else {{ Write-Host "Nenhum arquivo de log encontrado nesta pasta." }}'
+        )
+        desc = f"Inspeciona a pasta de logs ({target_dir}), lista os arquivos mais recentes e exibe as últimas 25 linhas do arquivo ativo."
+        safety = "READ_ONLY_SAFE"
+        badge = "🟢 SEGURO (APENAS LEITURA)"
+        risk_level = "baixo"
+
+    # 2. Padrão: Checagem de Memória / RAM do Atria + Event Viewer
+    elif "memória" in p_lower or "ram" in p_lower or ("atria" in p_lower and any(k in p_lower for k in ["crash", "event", "consum", "process"])):
         ps_cmd = (
             'Get-Process -Name "*Atria*" -ErrorAction SilentlyContinue | '
             'Where-Object { $_.WorkingSet64 -gt 500MB } | '

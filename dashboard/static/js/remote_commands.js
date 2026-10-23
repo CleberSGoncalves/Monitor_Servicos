@@ -563,13 +563,13 @@ window.executeTerminalCommand = function() {
         const select = document.getElementById("remote-host-select");
         if (select && select.value) {
             selectedRemoteHosts.push(select.value);
-            updateSelectedHostsUI();
+        } else if (typeof allFleetHostsData !== "undefined" && allFleetHostsData.length > 0) {
+            selectedRemoteHosts.push(allFleetHostsData[0].hostname);
+        } else {
+            const globalCity = document.getElementById("filterCity")?.value;
+            selectedRemoteHosts.push(globalCity ? `CS-${globalCity.substring(0,3).toUpperCase()}-01` : "CS-BRSP-01");
         }
-    }
-
-    if (selectedRemoteHosts.length === 0) {
-        safeToast("Selecione ao menos um Capture Site para executar o comando.", "warning");
-        return;
+        updateSelectedHostsUI();
     }
 
     const activeShellBtn = document.querySelector(".shell-type-btn.active");
@@ -727,16 +727,23 @@ function executeRemoteScript(script, shellType, title) {
         // Habilita botões de exportação
         const exportBtns = document.querySelectorAll(".btn-export-rc");
         exportBtns.forEach(b => b.removeAttribute("disabled"));
-        // Carrega os resultados detalhados
+        // Carrega os resultados detalhados diretamente no Console em tempo real
         loadExecutionResults(currentExecutionId);
-        // Atualiza e navega para a subaba de Fila de Execução & Acompanhamento
+        // Atualiza o contador e a Fila em background (sem forçar troca de aba)
         if (typeof loadRemoteExecutionsQueue === "function") {
             loadRemoteExecutionsQueue();
         }
-        switchRemoteTab("rc-tab-queue");
     })
     .catch(err => {
         safeToast("Falha ao disparar comando: " + err.message, "danger");
+        if (consoleOutput) {
+            consoleOutput.innerHTML = `
+                <div style="padding: 12px 14px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 6px; color: #fca5a5; margin: 10px 0; font-size: 12px;">
+                    <strong style="color: #f87171;"><i class="fas fa-exclamation-triangle"></i> Falha ao disparar comando:</strong>
+                    <div style="margin-top: 4px; font-family: monospace; font-size: 11px; color: #cbd5e1;">${escapeHtml(err.message)}</div>
+                </div>
+            `;
+        }
     })
     .finally(() => {
         if (execBtn) {
@@ -792,8 +799,9 @@ function displayHostTerminalOutput(resultItem) {
     const consoleOutput = document.getElementById("rc-console-output");
     if (!consoleOutput) return;
 
-    let html = `<div class="rc-terminal-meta">`;
-    html += `Host: <strong>${resultItem.host}</strong> (${resultItem.praca || "CS"}) | Status: <span class="text-success">${(resultItem.status || 'OK').toUpperCase()}</span> | Tempo: ${resultItem.duration_ms}ms | Código de Saída: ${resultItem.exit_code}`;
+    let html = `<div class="rc-terminal-meta" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">`;
+    html += `<div>Host: <strong>${escapeHtml(resultItem.host)}</strong> (${escapeHtml(resultItem.praca || "CS")}) | Status: <span class="text-success">${escapeHtml((resultItem.status || 'OK').toUpperCase())}</span> | Tempo: ${resultItem.duration_ms}ms | Código de Saída: ${resultItem.exit_code}</div>`;
+    html += `<div><a href="javascript:void(0)" onclick="switchRemoteTab('rc-tab-queue')" style="color: #38bdf8; font-size: 11px; text-decoration: underline;"><i class="fas fa-tasks"></i> Registrado na Fila (#${currentExecutionId ? currentExecutionId.substring(0,8) : 'OK'})</a></div>`;
     html += `</div>\n`;
     html += `<pre class="rc-terminal-stdout">${escapeHtml(resultItem.stdout || "(Sem saída no console)")}</pre>`;
 
@@ -1315,7 +1323,14 @@ async function compileCopilotPrompt() {
             codeEl.innerText = currentCopilotCompiledCode;
         }
 
-        if (typeof safeToast === "function") safeToast("Comando compilado com sucesso pelo Co-Piloto!", "success");
+        // Aplica automaticamente no editor do terminal para prontidão imediata
+        const termInput = document.getElementById("rc-terminal-input");
+        if (termInput && currentCopilotCompiledCode) {
+            termInput.value = currentCopilotCompiledCode;
+            termInput.setAttribute("data-cmd-title", "Co-Piloto: " + promptText.substring(0, 35));
+        }
+
+        if (typeof safeToast === "function") safeToast("Comando compilado e carregado no terminal pelo Co-Piloto!", "success");
     } catch (err) {
         console.error("[CopilotCompile] Erro:", err);
         if (codeEl) codeEl.innerText = "Falha ao compilar instrução: " + err.message;
@@ -1405,3 +1420,21 @@ async function synthesizeMultiHostOutput() {
     }
 }
 window.synthesizeMultiHostOutput = synthesizeMultiHostOutput;
+
+
+// Executa imediatamente o comando compilado pelo Co-Piloto
+function applyAndExecuteCopilotCommand() {
+    if (!currentCopilotCompiledCode) return;
+    applyCopilotCompiledCommand();
+    executeTerminalCommand();
+}
+window.applyAndExecuteCopilotCommand = applyAndExecuteCopilotCommand;
+
+// Compila a instrução em linguagem natural e já executa em um único clique
+async function compileAndRunCopilotPrompt() {
+    await compileCopilotPrompt();
+    if (currentCopilotCompiledCode) {
+        applyAndExecuteCopilotCommand();
+    }
+}
+window.compileAndRunCopilotPrompt = compileAndRunCopilotPrompt;

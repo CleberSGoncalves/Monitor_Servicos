@@ -1264,7 +1264,7 @@
 
     <div class="nav-user">
       <button type="button" class="btn-secondary" id="btnHandoverReport" onclick="openHandoverReportModal()" style="display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; font-size: 11px; background: rgba(99,102,241,0.18); border: 1px solid rgba(99,102,241,0.45); color: #a5b4fc; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; white-space: nowrap;" title="Gerar Relatório Executivo de Passagem de Turno (Handover)"><i class="fas fa-clipboard-list"></i> <span>Turno</span></button>
-      <button type="button" class="btn-secondary" id="btnSystemUpdate" onclick="openSystemUpdateModal()" style="display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; font-size: 11px; background: rgba(37,99,235,0.15); border: 1px solid rgba(37,99,235,0.4); color: #38bdf8; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; white-space: nowrap;" title="Verificar atualizações do sistema"><i class="fas fa-sync-alt" id="iconSystemUpdate"></i> <span id="labelSystemVersion">v3.9.33</span></button>
+      <button type="button" class="btn-secondary" id="btnSystemUpdate" onclick="openSystemUpdateModal()" style="display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; font-size: 11px; background: rgba(37,99,235,0.15); border: 1px solid rgba(37,99,235,0.4); color: #38bdf8; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; white-space: nowrap;" title="Verificar atualizações do sistema"><i class="fas fa-sync-alt" id="iconSystemUpdate"></i> <span id="labelSystemVersion">v3.9.34</span></button>
       <div class="user-badge" style="padding: 4px 10px; font-size: 11px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;">
         <div class="status-dot"></div>
         <span id="navUserDisplay">Usuário</span>
@@ -5246,17 +5246,25 @@
                 <span style="font-size: 10px; color: var(--text-muted);">Zero Custo • Validação de Blast Radius</span>
               </div>
               <div style="display: flex; gap: 8px;">
-                <input type="text" id="rc-copilot-input" class="form-input" style="flex: 1; font-size: 12px; background: rgba(0,0,0,0.5);" placeholder="Ex: Verifique se o processo da Atria consumiu mais de 2GB de RAM e se há erros no Event Viewer...">
+                <input type="text" id="rc-copilot-input" class="form-input" style="flex: 1; font-size: 12px; background: rgba(0,0,0,0.5);" placeholder="Ex: Verifique se o processo da Atria consumiu mais de 2GB de RAM e se há erros no Event Viewer..." onkeyup="if(event.key==='Enter') compileCopilotPrompt()">
                 <button type="button" class="btn-primary" onclick="compileCopilotPrompt()" style="padding: 6px 14px; font-size: 11px; background: linear-gradient(135deg, #6366f1, #4f46e5); font-weight: 700; white-space: nowrap;">
                   <i class="fas fa-brain"></i> Compilar Comando
+                </button>
+                <button type="button" class="btn-primary" onclick="compileAndRunCopilotPrompt()" style="padding: 6px 14px; font-size: 11px; background: linear-gradient(135deg, #2563eb, #1d4ed8); font-weight: 700; white-space: nowrap;" title="Compilar comando e disparar execução imediatamente">
+                  <i class="fas fa-bolt"></i> ⚡ Compilar &amp; Executar
                 </button>
               </div>
               <div id="rc-copilot-preview-box" style="display: none; margin-top: 8px; padding: 8px 10px; background: rgba(0,0,0,0.4); border-radius: 6px; border: 1px solid rgba(255,255,255,0.08);">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                   <span id="rc-copilot-badge" class="badge" style="font-size: 10px; font-weight: 700; background: rgba(16, 185, 129, 0.2); color: #10b981; border: 1px solid #10b981;">🟢 SEGURO (APENAS LEITURA)</span>
-                  <button type="button" class="btn-secondary" onclick="applyCopilotCompiledCommand()" style="padding: 2px 8px; font-size: 10px; color: #38bdf8; border-color: #38bdf8;">
-                    <i class="fas fa-level-down-alt"></i> Aplicar no Editor
-                  </button>
+                  <div style="display: flex; gap: 6px;">
+                    <button type="button" class="btn-secondary" onclick="applyCopilotCompiledCommand()" style="padding: 2px 8px; font-size: 10px; color: #38bdf8; border-color: #38bdf8;">
+                      <i class="fas fa-level-down-alt"></i> Inserir no Editor
+                    </button>
+                    <button type="button" class="btn-primary" onclick="applyAndExecuteCopilotCommand()" style="padding: 2px 10px; font-size: 10px; background: linear-gradient(135deg, #2563eb, #1d4ed8); font-weight: 700;">
+                      <i class="fas fa-bolt"></i> Executar Agora
+                    </button>
+                  </div>
                 </div>
                 <div id="rc-copilot-desc" style="font-size: 11px; color: #cbd5e1; margin-bottom: 4px;"></div>
                 <pre id="rc-copilot-code" style="margin: 0; font-family: monospace; font-size: 11px; color: #34d399; white-space: pre-wrap; word-break: break-all;"></pre>
