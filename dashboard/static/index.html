@@ -6933,8 +6933,37 @@
         </div>
       </div>
 
-      <!-- Corte Transversal de Relevo e Perfil de Propagação (Canvas) -->
-      <div style="background: #070d18; border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+      <!-- Alternância de Visão: Radar Geográfico vs Corte Transversal de Relevo -->
+      <div style="display: flex; gap: 8px; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 10px;">
+        <button id="btnModalViewRadar" type="button" class="btn-primary" style="font-size: 11px; padding: 6px 14px; font-weight: 700; cursor: pointer;" onclick="switchRfModalView('radar')">
+          <i class="fas fa-satellite-dish"></i> 📍 Mapa Geográfico & Radar das Torres da Praça
+        </button>
+        <button id="btnModalViewFresnel" type="button" class="btn-secondary" style="font-size: 11px; padding: 6px 14px; font-weight: 700; cursor: pointer;" onclick="switchRfModalView('fresnel')">
+          <i class="fas fa-chart-area"></i> 📈 Corte Transversal de Relevo (LOS / Fresnel)
+        </button>
+      </div>
+
+      <!-- VISÃO A: Mapa Geográfico & Radar 2D das Torres da Praça -->
+      <div id="rfRadarViewContainer" style="background: #070d18; border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+          <div style="font-size: 12px; font-weight: 700; color: #38bdf8; text-transform: uppercase; display: flex; align-items: center; gap: 6px;">
+            <i class="fas fa-satellite-dish"></i> Radar Geográfico Local • Posição do Capture Site vs Torres Transmissoras
+          </div>
+          <div style="display: flex; gap: 10px; font-size: 11px;">
+            <span style="color: #38bdf8;">🔵 Capture Site</span>
+            <span style="color: #10b981;">📡 Torre Transmissora</span>
+            <span style="color: #facc15;">⛰️ Elevação / Morro</span>
+          </div>
+        </div>
+        <canvas id="rfMarketRadarCanvas" width="900" height="340" style="width: 100%; height: 340px; display: block; background: #050b14; border-radius: 6px;"></canvas>
+        <div id="rfAtmosphericConditionsNotice" style="font-size: 11px; margin-top: 8px; padding: 8px 12px; border-radius: 4px; background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(56, 189, 248, 0.2); color: #cbd5e1; display: flex; align-items: center; justify-content: space-between;">
+          <div id="rfAtmosphericText">Calculando intempéries e propagação troposférica...</div>
+          <div id="rfAtmosphericBadge" class="badge badge-blue">Telemetria RF</div>
+        </div>
+      </div>
+
+      <!-- VISÃO B: Corte Transversal de Relevo e Perfil de Propagação (Canvas Fresnel) -->
+      <div id="rfFresnelViewContainer" style="display: none; background: #070d18; border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
           <div style="font-size: 12px; font-weight: 700; color: #38bdf8; text-transform: uppercase; display: flex; align-items: center; gap: 6px;">
             <i class="fas fa-chart-area"></i> Corte Transversal de Relevo e Linha de Visada Ótica (LOS / Fresnel)
@@ -6990,14 +7019,14 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=3.9.16"></script>
-  <script src="/static/js/ai_insights.js?v=3.9.16"></script>
-  <script src="/static/js/fleet_ops.js?v=3.9.16"></script>
-  <script src="/static/js/remote_commands.js?v=3.9.16"></script>
-  <script src="/static/js/signals_analysis.js?v=3.9.16"></script>
-  <script src="/static/js/mosaic_wall.js?v=3.9.16"></script>
-  <script src="/static/js/topology_map.js?v=3.9.16"></script>
-  <script src="/static/js/network_link.js?v=3.9.16"></script>
+  <script src="/static/js/app.js?v=3.9.20"></script>
+  <script src="/static/js/ai_insights.js?v=3.9.20"></script>
+  <script src="/static/js/fleet_ops.js?v=3.9.20"></script>
+  <script src="/static/js/remote_commands.js?v=3.9.20"></script>
+  <script src="/static/js/signals_analysis.js?v=3.9.20"></script>
+  <script src="/static/js/mosaic_wall.js?v=3.9.20"></script>
+  <script src="/static/js/topology_map.js?v=3.9.20"></script>
+  <script src="/static/js/network_link.js?v=3.9.20"></script>
 
 
 

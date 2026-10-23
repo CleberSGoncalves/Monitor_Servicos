@@ -1,3 +1,4 @@
+from gemini_service import execute_gemini_prompt, get_ai_settings
 import os
 import re
 import time
@@ -17,7 +18,12 @@ CACHE_TTL_SECONDS = 30.0
 
 DATA_DIRS = [
     Path(r"D:\MediaDNA_V2\Data"),
-    Path(r"E:\MediaDNA_V2\Data")
+    Path(r"E:\MediaDNA_V2\Data"),
+    Path(r"C:\MediaDNA_V2\Data"),
+    Path(r"C:\MediaDNA_V2\data"),
+    Path(r"D:\MediaDNA_V2\data"),
+    Path(r"E:\MediaDNA_V2\data"),
+    Path(r"C:\c_BKP")
 ]
 
 
@@ -35,11 +41,18 @@ def scan_local_pipeline_media(threshold_sent_delay_min: float = 10.0) -> List[Di
             continue
 
         search_paths = [
-            (base_dir / "Video" / "Registered", "MP4 (Vídeo)"),
+            (base_dir / "Video" / "Registered", "MP4/ASF (Vídeo)"),
+            (base_dir / "video" / "registered", "MP4/ASF (Vídeo)"),
+            (base_dir / "Video_BKP" / "Registered", "MP4 (BKP ATRIA)"),
+            (base_dir / "video_bkp" / "registered", "MP4 (BKP ATRIA)"),
+            (base_dir / "registered", "BKP ATRIA / MediaConverter"),
+            (base_dir / "Envia_video" / "registered", "MP4 (Buffer Envio)"),
             (base_dir / "Video", "MP4 (Vídeo Buffer)"),
             (base_dir / "Audio" / "Registered", "MP3 (Áudio)"),
+            (base_dir / "audio" / "registered", "MP3 (Áudio)"),
             (base_dir / "Audio", "MP3 (Áudio Buffer)"),
-            (base_dir / "JPEG", "JPEG (Thumbnail)")
+            (base_dir / "JPEG", "JPEG (Thumbnail)"),
+            (base_dir / "jpeg", "JPEG (Thumbnail)")
         ]
 
         for folder, media_type in search_paths:
@@ -66,7 +79,7 @@ def scan_local_pipeline_media(threshold_sent_delay_min: float = 10.0) -> List[Di
                         is_sent = "_sent" in lower_name
                         
                         # Extrai PV (Código do canal) e CS do padrão MediaDNA: H{Host}_PV{Canal}_{DataInicio}_{Slot}_{DataFim}_{Flags}_SZ{Size}_{CS}.ext
-                        pv_match = re.search(r'PV(\d+)', name, re.IGNORECASE)
+                        pv_match = re.search(r'(?:PV|V)(\d+)', name, re.IGNORECASE)
                         cs_match = re.search(r'CS(\d+)', name, re.IGNORECASE)
                         pv_code = pv_match.group(1) if pv_match else "N/A"
                         cs_id = int(cs_match.group(1)) if cs_match else 1
@@ -74,10 +87,15 @@ def scan_local_pipeline_media(threshold_sent_delay_min: float = 10.0) -> List[Di
                         # Identifica se o arquivo está com atraso de transmissão (não mudou para .SENT após o limiar)
                         is_delayed = (not is_sent) and (age_min > threshold_sent_delay_min)
 
+                        # Se for ASF (gerado pelo DNA.MediaConverter a partir do BKP MP4 do ATRIA)
+                        effective_media_type = media_type
+                        if lower_name.endswith(".asf"):
+                            effective_media_type = "ASF (BKP Convertido - DNA.MediaConverter)"
+
                         results.append({
                             "filename": name,
                             "path": entry.path,
-                            "media_type": media_type,
+                            "media_type": effective_media_type,
                             "pv_code": pv_code,
                             "cs_id": cs_id,
                             "size_mb": size_mb,
@@ -113,28 +131,36 @@ def get_fleet_pipeline_incidents(services: list = None, channels: list = None, t
 
     incidents = []
 
-    # 1. Avalia arquivos locais em disco
+    # 1. Avalia arquivos locais em disco (Filtra apenas arquivos ativos da janela operacional atual <= 120min)
     local_files = scan_local_pipeline_media(threshold_delay_min)
-    delayed_local = [f for f in local_files if f["is_delayed"]]
+    delayed_local = [f for f in local_files if f["is_delayed"] and f["age_minutes"] <= 120.0]
     for f in delayed_local:
         severity = "critico" if f["age_minutes"] > 25.0 else "alerta"
+        is_asf = f["filename"].lower().endswith(".asf")
+        media_desc = "ASF (DNA.MediaConverter BKP)" if is_asf else f["media_type"]
+        delay_min_rounded = round(f["age_minutes"])
         incidents.append({
             "id": f"delay_local_{f['filename']}",
             "type": "atraso_envio_sent",
+            "incident_type": "sent_delay",
             "category": "pipeline_midia",
             "severity": severity,
-            "badge_label": f"ATRASO .SENT ({f['age_minutes']:.0f}min)" if severity == "critico" else f"PENDENTE .SENT ({f['age_minutes']:.0f}min)",
-            "title": f"Atraso de Transmissão .SENT • {f['media_type']}",
+            "badge_label": f"ATRASO .SENT ({delay_min_rounded}min)",
+            "title": f"Atraso de Transmissão .SENT • {media_desc}",
             "praca": "Pelotas",
-            "hostname": "BRRS-PLT-DT01",
+            "hostname": "BRRS-PLT-DT01" if f["cs_id"] == 1 else "BRRS-PLT-DT02",
             "cs": f["cs_id"],
-            "target": f"PV{f['pv_code']} ({f['media_type']})",
+            "canal": f"PV{f['pv_code']}",
+            "media_type": media_desc,
+            "target": f"PV{f['pv_code']} ({media_desc})",
             "filename": f["filename"],
             "size_mb": f["size_mb"],
             "elapsed_minutes": f["age_minutes"],
+            "delay_minutes": delay_min_rounded,
             "threshold_minutes": threshold_delay_min,
-            "description": f"Arquivo de gravação de 30 minutos gerado com {f['size_mb']} MB há {f['age_minutes']:.0f} min ainda não foi marcado como .SENT pelo FileTransferSVC.",
-            "recommended_action": "Reiniciar DNA.FiletransferSVC ou verificar uploadspot.aspx e rota de internet do Capture Site."
+            "motivo": f"Arquivo {media_desc} ({f['size_mb']} MB) gerado há {delay_min_rounded} min sem marcação .SENT.",
+            "description": f"Arquivo de gravação de 30 minutos gerado com {f['size_mb']} MB há {delay_min_rounded} min ainda não foi marcado como .SENT pelo FileTransferSVC.",
+            "recommended_action": "Verificar serviço DNA.MediaConverter / FileTransferSVC e rota de upload."
         })
 
     # 2. Avalia a frota remota baseada na telemetria dos serviços de transferência e gravação
@@ -338,7 +364,8 @@ def get_link_monitoring_metrics(services: list = None, channels: list = None) ->
 def diagnose_link_and_pipeline_with_ai(praca: str, cs: int = 1, hostname: str = None) -> Dict[str, Any]:
     """
     Diagnóstico profundo com IA do link de internet e pipeline de envio de arquivos para o CS selecionado.
-    Avalia a compatibilidade de upload, gargalos de rede, DNS e integridade do serviço FileTransferSVC.
+    Avalia a compatibilidade de upload, gargalos de rede, DNS, DNA.MediaConverter (.ASF) e integridade do serviço FileTransferSVC.
+    Enriquece com o Google Gemini Pro para parecer de rede em tempo real.
     """
     metrics = get_link_monitoring_metrics()
     p_lower = praca.lower()
@@ -354,6 +381,7 @@ def diagnose_link_and_pipeline_with_ai(praca: str, cs: int = 1, hostname: str = 
     operadora = matched["operadora"]
     loss = matched["packet_loss_pct"]
     ping = matched["ping_ms"]
+    host_target = hostname or matched["hostname"]
 
     is_bottleneck = drain > 25.0 or loss > 1.5
 
@@ -373,7 +401,7 @@ def diagnose_link_and_pipeline_with_ai(praca: str, cs: int = 1, hostname: str = 
         script = (
             f"# Teste de Throughput de Upload e Reset de Conexao FileTransfer ({praca} CS {cs})\n"
             f"Test-NetConnection -ComputerName 'media.kantaribopemedia.com' -Port 80;\n"
-            f"Get-Service -Name '*FileTransfer*' | Restart-Service -Force;\n"
+            f"Get-Service -Name '*FileTransfer*', 'DNA.MediaConverterSVC' -ErrorAction SilentlyContinue | Restart-Service -Force;\n"
             f"Get-ChildItem -Path 'D:\\MediaDNA_V2\\Data\\*\\Registered' -Filter '*_SENT.*' | Measure-Object -Property Length -Sum;"
         )
         status_diag = "CRÍTICO"
@@ -394,10 +422,34 @@ def diagnose_link_and_pipeline_with_ai(praca: str, cs: int = 1, hostname: str = 
         )
         status_diag = "ESTÁVEL"
 
+    # Enriquecimento com Gemini se habilitado
+    try:
+        ai_cfg = get_ai_settings()
+        if ai_cfg.get("enabled"):
+            p_text = (
+                f"Engenharia MediaDNA/Kantar IBOPE (Monitor de Links e Pipeline):\n"
+                f"Capture Site {praca} ({host_target}, CS {cs}):\n"
+                f"- Volume por bloco de 30min: {vol} MB\n"
+                f"- Upload necessário: {req_mbps} Mbps vs Medido: {real_mbps} Mbps ({operadora})\n"
+                f"- Tempo de escoamento: {drain:.1f} min (Teto: 25 min) | Perda de pacotes: {loss}% | Ping: {ping} ms\n"
+                f"- Arquitetura: Gravações .MP4 / DNA.MediaConverter .ASF (BKP na CS02) e transmissão FileTransfer .SENT\n\n"
+                f"Emita um parecer em 1 parágrafo com causa-raiz física de rede e se haverá represamento no fechamento do bloco."
+            )
+            gemini_diag = execute_gemini_prompt(
+                p_text,
+                module="network_link_pipeline",
+                target=f"{praca} CS{cs} • Link",
+                operator="suportesmme"
+            )
+            if gemini_diag:
+                causa_raiz = f"[Google Gemini Pro AI Insight]: {gemini_diag}"
+    except Exception:
+        pass
+
     return {
         "praca": praca,
         "cs": cs,
-        "hostname": matched["hostname"],
+        "hostname": host_target,
         "operadora": operadora,
         "status_diagnostico": status_diag,
         "volume_mb_30min": vol,

@@ -431,7 +431,9 @@ function openMarketRfModal(marketId) {
     document.getElementById("rfModalSiteElevation").innerText = `${market.site_elevation_m || 36} m acima do nível do mar`;
     document.getElementById("rfModalMastHeight").innerText = `${market.rx_antenna_height_m || 24} m (Mastro de Edificação)`;
 
-    // 3. Renderiza o Canvas de Perfil de Elevação / Corte Transversal
+    // 3. Renderiza Visão de Radar Geográfico das Torres e Corte de Relevo
+    switchRfModalView('radar');
+    renderMarketRadarCanvas(market);
     renderTerrainCanvas(market);
 
     // 4. Popula Tabela de Emissoras Terrestres
@@ -675,3 +677,331 @@ function renderTerrainCanvas(market) {
     ctx.fillText(`${distKm.toFixed(1)} km • ${hasObstacle ? 'Obstrução Fresnel' : 'Visada Direta'}`, xMid, yMid + 2);
     ctx.textAlign = "left";
 }
+
+
+// ==============================================================================
+// ALTERNÂNCIA DE VISÃO DO MODAL DE TOPOGRAFIA (RADAR vs FRESNEL)
+// ==============================================================================
+let currentRfModalView = 'radar';
+
+function switchRfModalView(view) {
+    currentRfModalView = view;
+    const radarContainer = document.getElementById("rfRadarViewContainer");
+    const fresnelContainer = document.getElementById("rfFresnelViewContainer");
+    const btnRadar = document.getElementById("btnModalViewRadar");
+    const btnFresnel = document.getElementById("btnModalViewFresnel");
+
+    if (view === 'radar') {
+        if (radarContainer) radarContainer.style.display = "block";
+        if (fresnelContainer) fresnelContainer.style.display = "none";
+        if (btnRadar) { btnRadar.className = "btn-primary"; btnRadar.style.background = "#0284c7"; }
+        if (btnFresnel) { btnFresnel.className = "btn-secondary"; btnFresnel.style.background = "transparent"; }
+        if (selectedMarket) renderMarketRadarCanvas(selectedMarket);
+    } else {
+        if (radarContainer) radarContainer.style.display = "none";
+        if (fresnelContainer) fresnelContainer.style.display = "block";
+        if (btnRadar) { btnRadar.className = "btn-secondary"; btnRadar.style.background = "transparent"; }
+        if (btnFresnel) { btnFresnel.className = "btn-primary"; btnFresnel.style.background = "#0284c7"; }
+        if (selectedMarket) renderTerrainCanvas(selectedMarket);
+    }
+}
+window.switchRfModalView = switchRfModalView;
+
+// ==============================================================================
+// CANVAS DO MAPA GEOGRÁFICO & RADAR LOCAL DAS TORRES DA PRAÇA
+// ==============================================================================
+function renderMarketRadarCanvas(market) {
+    const canvas = document.getElementById("rfMarketRadarCanvas");
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+
+    // Fundo escuro de radar militar/telecom
+    const bgGrad = ctx.createRadialGradient(w / 2, h / 2, 20, w / 2, h / 2, Math.max(w, h));
+    bgGrad.addColorStop(0, "#081325");
+    bgGrad.addColorStop(0.7, "#050b14");
+    bgGrad.addColorStop(1, "#020617");
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, w, h);
+
+    const cx = w / 2;
+    const cy = h / 2;
+    const maxRadarKm = 25.0; // Alcance máximo padrão de 25 km
+    const maxRadiusPx = Math.min(w / 2 - 60, h / 2 - 30);
+
+    function kmToRadius(km) {
+        return (Math.min(km, maxRadarKm) / maxRadarKm) * maxRadiusPx;
+    }
+
+    // 1. Círculos concêntricos de distância (5km, 10km, 15km, 20km, 25km)
+    const rings = [5, 10, 15, 20, 25];
+    ctx.lineWidth = 1;
+    rings.forEach((rKm, idx) => {
+        const rPx = kmToRadius(rKm);
+        ctx.beginPath();
+        ctx.arc(cx, cy, rPx, 0, Math.PI * 2);
+        ctx.strokeStyle = idx === rings.length - 1 ? "rgba(56, 189, 248, 0.35)" : "rgba(56, 189, 248, 0.15)";
+        ctx.setLineDash(idx % 2 === 1 ? [4, 4] : []);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Rótulo da distância
+        ctx.fillStyle = "rgba(148, 163, 184, 0.65)";
+        ctx.font = "9px Inter, monospace";
+        ctx.fillText(`${rKm} km`, cx + 6, cy - rPx + 11);
+    });
+
+    // 2. Radiais dos 8 Pontos Cardeais (N, NE, E, SE, S, SW, W, NW)
+    const radials = [
+        { label: "N (0°)", angle: -Math.PI / 2 },
+        { label: "NE (45°)", angle: -Math.PI / 4 },
+        { label: "L / E (90°)", angle: 0 },
+        { label: "SE (135°)", angle: Math.PI / 4 },
+        { label: "S (180°)", angle: Math.PI / 2 },
+        { label: "SO / SW (225°)", angle: (3 * Math.PI) / 4 },
+        { label: "O / W (270°)", angle: Math.PI },
+        { label: "NO / NW (315°)", angle: -(3 * Math.PI) / 4 }
+    ];
+
+    radials.forEach(rad => {
+        const xEdge = cx + Math.cos(rad.angle) * maxRadiusPx;
+        const yEdge = cy + Math.sin(rad.angle) * maxRadiusPx;
+
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(xEdge, yEdge);
+        ctx.strokeStyle = "rgba(56, 189, 248, 0.12)";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        // Rótulo do ponto cardeal
+        const xLabel = cx + Math.cos(rad.angle) * (maxRadiusPx + 18);
+        const yLabel = cy + Math.sin(rad.angle) * (maxRadiusPx + 18);
+        ctx.fillStyle = "#38bdf8";
+        ctx.font = "bold 9px Inter, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(rad.label, xLabel, yLabel);
+    });
+
+    // 3. Elementos Topográficos de Relevo (Morros / Serras conhecidas da praça)
+    const isPelotas = market.cidade.toLowerCase() === "pelotas";
+    const isCaxias = market.cidade.toLowerCase().includes("caxias");
+    const isFlorianopolis = market.cidade.toLowerCase().includes("florian");
+
+    if (isPelotas) {
+        // Morro da Glória a 14.8 km azimute 312° (NO)
+        const azRadGloria = ((312.4 - 90) * Math.PI) / 180;
+        const rGloria = kmToRadius(14.8);
+        const xGloria = cx + Math.cos(azRadGloria) * rGloria;
+        const yGloria = cy + Math.sin(azRadGloria) * rGloria;
+
+        // Zona de elevação do Morro da Glória (320m)
+        ctx.beginPath();
+        ctx.arc(xGloria, yGloria, 28, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(234, 179, 8, 0.08)";
+        ctx.fill();
+        ctx.strokeStyle = "rgba(234, 179, 8, 0.35)";
+        ctx.setLineDash([3, 3]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.fillStyle = "#facc15";
+        ctx.font = "bold 10px Inter, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("⛰️ Morro da Glória (320m)", xGloria, yGloria - 16);
+
+        // Morro Intermediário a 8.2 km (74m de altitude - Difração de Fresnel)
+        const rInterm = kmToRadius(8.2);
+        const xInterm = cx + Math.cos(azRadGloria) * rInterm;
+        const yInterm = cy + Math.sin(azRadGloria) * rInterm;
+
+        ctx.beginPath();
+        ctx.arc(xInterm, yInterm, 16, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(239, 68, 68, 0.12)";
+        ctx.fill();
+        ctx.strokeStyle = "rgba(239, 68, 68, 0.4)";
+        ctx.stroke();
+
+        ctx.fillStyle = "#f87171";
+        ctx.font = "9px Inter, sans-serif";
+        ctx.fillText("⚠️ Morro Redentor (74m)", xInterm + 42, yInterm + 2);
+        ctx.fillText("[Difração de Fresnel]", xInterm + 42, yInterm + 13);
+    } else if (isCaxias) {
+        // Crista da Serra Gaúcha
+        ctx.fillStyle = "#facc15";
+        ctx.font = "bold 10px Inter, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("⛰️ Serra Gaúcha (Cota 760m)", cx - 120, cy - 90);
+    } else if (isFlorianopolis) {
+        // Morro da Cruz
+        ctx.fillStyle = "#facc15";
+        ctx.font = "bold 10px Inter, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("⛰️ Morro da Cruz (285m)", cx + 80, cy - 80);
+    }
+
+    // 4. Plota os Canais e Torres Transmissoras da Praça
+    const channels = market.channels_rf_detail || [];
+    channels.forEach((c, idx) => {
+        const azDeg = c.azimuth_deg || (312.4 + idx * 8);
+        const distKm = c.distance_km || 14.8;
+        // Ângulo matemático: 0° azimute é Norte (topo = -90° radianos)
+        const mathAngleRad = ((azDeg - 90) * Math.PI) / 180;
+        const rPx = kmToRadius(distKm);
+
+        const xTower = cx + Math.cos(mathAngleRad) * rPx;
+        const yTower = cy + Math.sin(mathAngleRad) * rPx;
+
+        // Linha vetorial de conexão entre o Capture Site e a Torre
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(xTower, yTower);
+        ctx.strokeStyle = c.rx_level_measured_pct >= 60 ? "rgba(16, 185, 129, 0.4)" : "rgba(239, 68, 68, 0.4)";
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 3]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Rótulo da distância sobre a linha
+        const xDistLabel = cx + Math.cos(mathAngleRad) * (rPx * 0.6);
+        const yDistLabel = cy + Math.sin(mathAngleRad) * (rPx * 0.6);
+        ctx.fillStyle = "#0f172a";
+        ctx.fillRect(xDistLabel - 24, yDistLabel - 7, 48, 14);
+        ctx.strokeStyle = "rgba(56, 189, 248, 0.4)";
+        ctx.lineWidth = 0.8;
+        ctx.strokeRect(xDistLabel - 24, yDistLabel - 7, 48, 14);
+
+        ctx.fillStyle = "#38bdf8";
+        ctx.font = "9px Inter, monospace";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(`${distKm.toFixed(1)}km`, xDistLabel, yDistLabel);
+
+        // Ícone / Pin da Torre Transmissora
+        const statusColor = c.rx_level_measured_pct >= 60 ? "#10b981" : (c.rx_level_measured_pct >= 40 ? "#facc15" : "#ef4444");
+        ctx.beginPath();
+        ctx.arc(xTower, yTower, 8, 0, Math.PI * 2);
+        ctx.fillStyle = statusColor;
+        ctx.fill();
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // Rótulo com Emissora e Canal Físico
+        ctx.fillStyle = "#fff";
+        ctx.font = "bold 10px Inter, sans-serif";
+        ctx.textAlign = xTower > cx ? "left" : "right";
+        const xText = xTower > cx ? xTower + 12 : xTower - 12;
+        ctx.fillText(`${c.emissora} (${c.canal_fisico})`, xText, yTower - 4);
+
+        ctx.fillStyle = "rgba(148, 163, 184, 0.9)";
+        ctx.font = "9px Inter, monospace";
+        ctx.fillText(`Az ${azDeg.toFixed(1)}° • ${c.rx_level_measured_pct}% • ${c.erp_kw || 25}kW`, xText, yTower + 8);
+    });
+
+    // 5. Centro: Posição do Capture Site
+    // Aura de radar piscante
+    ctx.beginPath();
+    ctx.arc(cx, cy, 14, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(56, 189, 248, 0.25)";
+    ctx.fill();
+    ctx.strokeStyle = "#38bdf8";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+    ctx.fillStyle = "#0284c7";
+    ctx.fill();
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Rótulo do Capture Site
+    ctx.fillStyle = "#38bdf8";
+    ctx.font = "bold 11px Inter, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(`📡 CAPTURE SITE • ${market.cidade.toUpperCase()}`, cx, cy + 24);
+    ctx.fillStyle = "#94a3b8";
+    ctx.font = "9px Inter, monospace";
+    ctx.fillText(`Alt: ${market.site_elevation_m || 36}m + ${market.rx_antenna_height_m || 24}m | Coord: ${market.lat.toFixed(4)}, ${market.lng.toFixed(4)}`, cx, cy + 36);
+
+    // 6. Atualiza o aviso de Condições Atmosféricas e Intempéries
+    const atmNoticeEl = document.getElementById("rfAtmosphericText");
+    const atmBadgeEl = document.getElementById("rfAtmosphericBadge");
+    if (atmNoticeEl) {
+        if (isPelotas) {
+            atmNoticeEl.innerHTML = `<strong>🌫️ Condições Atmosféricas & Intempéries:</strong> Neblina densa matinal e inversão térmica registradas na bacia do Canal São Gonçalo. Atenuação troposférica estimada: <strong>+3.4 dB</strong> no Canal 33 UHF (difração no Morro Redentor).`;
+            if (atmBadgeEl) { atmBadgeEl.className = "badge badge-yellow"; atmBadgeEl.innerText = "Atenuação Térmica +3.4 dB"; }
+        } else if (isCaxias) {
+            atmNoticeEl.innerHTML = `<strong>🌫️ Nevoeiro Orográfico & Chuva Fina:</strong> Alta umidade na Serra Gaúcha eleva perda de inserção no cabo coaxial e atenua sinal de canais acima de 550 MHz em até <strong>+4.1 dB</strong>.`;
+            if (atmBadgeEl) { atmBadgeEl.className = "badge badge-yellow"; atmBadgeEl.innerText = "Nevoeiro da Serra +4.1 dB"; }
+        } else if (isFlorianopolis) {
+            atmNoticeEl.innerHTML = `<strong>🌊 Maresia e Propagação Marítima:</strong> Duto troposférico marinho gerando reflexões secundárias sobre a baía sul. Atenuação nominal com margem de desvanecimento de <strong>14 dB</strong>.`;
+            if (atmBadgeEl) { atmBadgeEl.className = "badge badge-green"; atmBadgeEl.innerText = "Enlace Estável"; }
+        } else {
+            atmNoticeEl.innerHTML = `<strong>☀️ Propagação Nominal em Espaço Livre:</strong> Céu limpo e baixa umidade relativa. Desvanecimento plano estável abaixo de <strong>1.0 dB</strong> sem impacto na recepção dos Muxes.`;
+            if (atmBadgeEl) { atmBadgeEl.className = "badge badge-green"; atmBadgeEl.innerText = "Propagação Nominal"; }
+        }
+    }
+}
+window.renderMarketRadarCanvas = renderMarketRadarCanvas;
+
+// ==============================================================================
+// SUPORTE A ZOOM POR RODA DO MOUSE E ARRASTAR (PAN) PARA 120+ CIDADES
+// ==============================================================================
+function setupTopologyInteractions() {
+    const container = document.getElementById("topologyMapSvgContainer");
+    if (!container || container._interactionsBound) return;
+    container._interactionsBound = true;
+
+    // Zoom via roda do mouse
+    container.addEventListener("wheel", function(e) {
+        e.preventDefault();
+        if (e.deltaY < 0) {
+            zoomTopologyMap('in');
+        } else {
+            zoomTopologyMap('out');
+        }
+    }, { passive: false });
+
+    // Arrastar e mover (Pan) quando ampliado
+    let isDragging = false;
+    let startX = 0, startY = 0;
+
+    container.addEventListener("mousedown", function(e) {
+        if (customZoomScale > 1.0) {
+            isDragging = true;
+            startX = e.clientX - customPanOffsetX;
+            startY = e.clientY - customPanOffsetY;
+            container.style.cursor = "grabbing";
+        }
+    });
+
+    window.addEventListener("mousemove", function(e) {
+        if (isDragging) {
+            customPanOffsetX = e.clientX - startX;
+            customPanOffsetY = e.clientY - startY;
+            renderTopologyMap();
+        }
+    });
+
+    window.addEventListener("mouseup", function() {
+        if (isDragging) {
+            isDragging = false;
+            container.style.cursor = customZoomScale > 1.0 ? "grab" : "default";
+        }
+    });
+}
+
+// Inicializa interações assim que a topologia for carregada
+const origLoadTopology = window.loadTopologyMapData;
+window.loadTopologyMapData = async function() {
+    if (origLoadTopology) await origLoadTopology();
+    setupTopologyInteractions();
+};

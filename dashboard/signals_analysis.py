@@ -587,6 +587,7 @@ def diagnose_channel_with_ai(praca: str, canal: str, period: str = "24h", cs: Op
             raw_status = "CRÍTICO" if "pelotas" in p_lower or issue["status_atual"].lower().startswith("crítico") else "ALERTA"
             acoes = [line.strip() for line in issue["solucao_estipulada"].split("\n") if line.strip()]
             
+            diag_text = f"[Google Gemini Pro Insight]: {gemini_insight}" if gemini_insight else issue["diagnostico_ia"]
             return {
                 "praca": praca,
                 "canal": canal,
@@ -604,8 +605,8 @@ def diagnose_channel_with_ai(praca: str, canal: str, period: str = "24h", cs: Op
                 "tuner_modelo": issue["tuner"],
                 "snr_mer_estimado": "0.0 dB (Falha de Ingestão)" if raw_status == "CRÍTICO" else "18.2 dB (Marginal)",
                 "taxa_ber_estimada": "1.0e-1 (Crítica)" if raw_status == "CRÍTICO" else "4.8e-3 (Degradada)",
-                "diagnostico_tecnico": issue["diagnostico_ia"],
-                "causa_raiz": issue["diagnostico_ia"],
+                "diagnostico_tecnico": diag_text,
+                "causa_raiz": diag_text,
                 "solucao_estipulada": issue["solucao_estipulada"],
                 "acoes_recomendadas": acoes,
                 "script_auto_healing": issue["comando_auto_cura"],

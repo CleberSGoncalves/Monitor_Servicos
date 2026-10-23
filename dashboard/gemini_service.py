@@ -388,3 +388,72 @@ def get_ai_metrics_and_history(limit: int = 50) -> Dict[str, Any]:
             },
             "history": history
         }
+
+
+import threading
+
+_proactive_thread = None
+
+def run_proactive_fleet_audit_task(force: bool = False):
+    """Executa auditoria proativa periódica da frota chamando o Gemini quando o Modo Fluido estiver ativo."""
+    settings = get_ai_settings()
+    if not settings.get("enabled"):
+        return None
+    if settings.get("operational_mode") != "fluido" and not force:
+        return None
+
+    if not force:
+        try:
+            with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT timestamp FROM ai_usage_audit 
+                    WHERE module = 'fluido_proativo_fleet' 
+                    ORDER BY id DESC LIMIT 1
+                """)
+                row = cursor.fetchone()
+                if row and row[0]:
+                    last_dt = datetime.fromisoformat(row[0].replace('Z', '+00:00'))
+                    elapsed = (datetime.now(timezone.utc) - last_dt).total_seconds()
+                    if elapsed < 600:
+                        return None
+        except Exception:
+            pass
+
+    prompt = (
+        "Auditoria Pró-Ativa Contínua MediaDNA Broadcast (Modo Fluido):\n"
+        "Analise a frota ativa de 24 Capture Sites (Pelotas, Caxias do Sul, Porto Alegre, Juiz de Fora, Florianópolis, etc.). "
+        "Considere: sintonizadores TBS PCIe (ISDB-Tb), fluxos de RTSP/UDP IP, placas Sonifex de Rádio, "
+        "serviços Atria DigitalTVReceiver vs MediaRecorder, conversor DNA.MediaConverter (.ASF) e throughput de upload FileTransfer. "
+        "Emita parecer conciso de 2 frases avaliando a estabilidade da ingestão e 1 recomendação técnica de plantão."
+    )
+    sys_instruction = (
+        "Você é o Supervisor de IA do Sistema de Governança MediaDNA Broadcast. "
+        "Emita avaliações de engenharia técnicas, objetivas e de alto valor operacional."
+    )
+    resp = execute_gemini_prompt(
+        prompt, 
+        module="fluido_proativo_fleet", 
+        target="FLEET_HEALTH_MONITOR", 
+        operator="ai_fluido_daemon", 
+        system_instruction=sys_instruction
+    )
+    return resp
+
+
+def _proactive_worker_loop():
+    time.sleep(5)
+    while True:
+        try:
+            run_proactive_fleet_audit_task()
+        except Exception:
+            pass
+        time.sleep(60)
+
+
+def start_ai_proactive_runner():
+    """Inicia a thread daemon que audita a frota continuamente quando o modo fluido estiver ativo."""
+    global _proactive_thread
+    if _proactive_thread is None or not _proactive_thread.is_alive():
+        _proactive_thread = threading.Thread(target=_proactive_worker_loop, daemon=True, name="GeminiProactiveDaemon")
+        _proactive_thread.start()

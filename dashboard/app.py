@@ -42,7 +42,7 @@ from thresholds_manager import get_all_thresholds, update_threshold, get_active_
 from geo_topology import get_markets_map_data
 from gemini_service import (
     get_ai_settings, update_ai_settings, test_gemini_connection,
-    get_ai_metrics_and_history, execute_gemini_prompt
+    get_ai_metrics_and_history, execute_gemini_prompt, start_ai_proactive_runner
 )
 from media_pipeline_monitor import (
     get_fleet_pipeline_incidents, get_link_monitoring_metrics,
@@ -1068,3 +1068,10 @@ async def apply_system_update_endpoint(request: Request, restart_service: bool =
         res['message'] += ' O servico do Dashboard esta sendo reiniciado automaticamente agora.'
     return res
 
+
+
+# Inicializa thread proativa de IA em segundo plano (Modo Fluido)
+try:
+    start_ai_proactive_runner()
+except Exception as e:
+    logger.warning(f"Nao foi possivel iniciar runner proativo de IA: {e}")
