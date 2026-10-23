@@ -116,8 +116,16 @@ def sync_fleet_data():
             
             # Meio de Transmissão e CS
             meio_str = str(f.get("MeiodeTransmiss_x00e3_o", "Digital Terrestre"))
-            is_rtsp = "rtsp" in meio_str.lower() or "udp" in meio_str.lower() or "ip" in meio_str.lower()
-            is_digital = "digital" in meio_str.lower() or "terrestre" in meio_str.lower()
+            is_rtsp = any(x in meio_str.lower() for x in ["rtsp", "udp", "ip", "stream"])
+            is_digital = any(x in meio_str.lower() for x in ["digital", "terrestre"])
+            is_radio = (
+                "radio" in meio_str.lower()
+                or "fm" in meio_str.lower()
+                or "mp3" in meio_str.lower()
+                or "rádio" in ch_name.lower()
+                or "radio" in ch_name.lower()
+                or " fm" in ch_name.lower()
+            )
             id_cs = f.get("IDCS", 1)
             parsed_cs = int(float(id_cs or 1))
             p_lower = praca.strip().lower()
@@ -130,33 +138,59 @@ def sync_fleet_data():
             if is_converter_node and ("sem arquivos" in rec_mp4.lower() or "travado" in rec_mp4.lower()):
                 rec_mp4 = "Gravando (.ASF BKP)"
 
+            rec_mp3 = f.get("GravandoMP3", "Não")
+            is_rec_mp4 = any(w in rec_mp4.lower() for w in ["sim", "gravando", "asf"]) and ("⚠️" not in rec_mp4)
+            is_rec_mp3 = any(w in str(rec_mp3).lower() for w in ["sim", "gravando"])
+            is_recording = is_rec_mp3 if is_radio else (is_rec_mp4 or is_rec_mp3)
+
+            t_lower = str(tuner_stat).lower()
+            tuner_ok = any(w in t_lower for w in ["working", "ready", "connected", "lock", "ok"])
+
             # Classificação Preditiva de Falha e Queda
             has_outage = False
+            is_degraded = False
             motivo = "Estável"
 
             if is_frozen:
                 has_outage = True
                 motivo = "Vídeo Congelado"
-            elif is_mute:
+            elif is_mute and not is_radio and not is_rec_mp3:
                 has_outage = True
                 motivo = "Áudio Mudo"
-            elif "falha" in str(tuner_stat).lower() or "security" in str(tuner_stat).lower() or "500" in str(tuner_stat).lower() or "api" in str(tuner_stat).lower():
+            elif any(err in t_lower for err in ["falha", "security", "500"]):
                 has_outage = True
-                motivo = "Falha API Atria (Porta 9000)" if ("api" in str(tuner_stat).lower() or "500" in str(tuner_stat).lower() or "security" in str(tuner_stat).lower()) else "Falha no Sintonizador TBS"
+                motivo = "Falha API Atria (Porta 9000)" if ("api" in t_lower or "500" in t_lower or "security" in t_lower) else "Falha no Sintonizador TBS"
+            elif "⚠️" in rec_mp4:
+                has_outage = True
+                motivo = "Erro de Gravação (Pasta / Arquivo Inacessível)"
             elif is_rtsp:
-                # Streams IP / RTSP: sinal vem nil="true", saúde é medida por status e gravação
-                t_lower = str(tuner_stat).lower()
-                if t_lower not in ["connected_working", "working", "connected", "lock", "n/a", ""] or "⚠️" in rec_mp4:
+                # Streams IP / RTSP / UDP: sinal vem nil="true", saúde é aferida por conexão do tuner e gravação
+                if not tuner_ok and not is_recording:
                     has_outage = True
-                    motivo = f"Stream RTSP Interrompido ({tuner_stat})"
+                    motivo = f"Stream Interrompido ({tuner_stat})"
+                elif not is_recording:
+                    has_outage = True
+                    motivo = f"Stream Sem Gravação Ativa ({tuner_stat})"
             elif is_digital:
                 # Sinal Digital Terrestre
-                if (sig_q == 0 or sig_q is None) and (sig_s == 0 or sig_s is None):
+                if (sig_q == 0 or sig_q is None) and (sig_s == 0 or sig_s is None) and not is_recording:
                     has_outage = True
-                    motivo = "Sinal RF Zerado"
+                    motivo = "Sinal RF Zerado e Sem Gravação"
+                elif (sig_q == 0 or sig_q is None) and not is_recording:
+                    has_outage = True
+                    motivo = "Sem Sinal RF e Sem Gravação"
                 elif sig_q is not None and 0 < sig_q < 45:
+                    if not is_recording:
+                        has_outage = True
+                        motivo = f"Sinal RF Degradado ({sig_q}%) e Sem Gravação"
+                    else:
+                        is_degraded = True
+                        motivo = f"Sinal RF Degradado ({sig_q}%) - Margem Crítica"
+            else:
+                # Outros meios (Analógico, etc.)
+                if not is_recording and not tuner_ok:
                     has_outage = True
-                    motivo = f"Sinal RF Degradado / Instável ({sig_q}%) - Risco de Perda de Lock"
+                    motivo = f"Canal Inativo ({tuner_stat})" 
 
             ch_item = {
                 "id": it.get("id"),
@@ -182,7 +216,8 @@ def sync_fleet_data():
                 "url_stream": f.get("UrlStreaming", "N/A"),
                 "device_analog": f.get("SourceAnalogico", "N/A"),
                 "atualizacao": f.get("Atualizacao", ""),
-                "has_outage": has_outage
+                "has_outage": has_outage,
+                "is_degraded": is_degraded
             }
             channels_list.append(ch_item)
             
@@ -218,25 +253,29 @@ def sync_fleet_data():
                 if (now - last_dt).total_seconds() > 3600 * 2: # Mais de 2 horas offline
                     hosts_offline += 1
 
-        services_stopped = sum(1 for s in services_list if s["status_servico"] in ["Parado", "Inexistente"])
+        services_stopped = sum(1 for s in services_list if s["status_servico"] == "Parado")
+        services_inexistent = sum(1 for s in services_list if s["status_servico"] in ["Inexistente", "Não Encontrado"])
         services_crashloop = sum(1 for s in services_list if "crash-loop" in s["status_servico"].lower() or "crash-loop" in s["status_atualizacao"].lower())
         services_updating = sum(1 for s in services_list if s["status_atualizacao"] in ["Em Progresso", "Atualizando"])
         channels_down = sum(1 for c in channels_list if c["has_outage"])
-        recordings_critical = sum(1 for c in channels_list if "⚠️" in c["gravando_mp4"])
+        channels_degraded = sum(1 for c in channels_list if c.get("is_degraded", False))
+        recordings_critical = sum(1 for c in channels_list if "⚠️" in str(c.get("gravando_mp4", "")))
 
         stats = {
             "total_hosts": len(unique_hosts),
             "hosts_online": len(unique_hosts) - hosts_offline,
             "hosts_offline": hosts_offline,
             "total_services": len(services_list),
-            "services_running": len(services_list) - services_stopped,
+            "services_running": sum(1 for s in services_list if s["status_servico"] == "Em Execução"),
             "services_stopped": services_stopped,
+            "services_inexistent": services_inexistent,
             "services_crashloop": services_crashloop,
             "services_updating": services_updating,
             "total_channels": len(channels_list),
             "channels_ok": len(channels_list) - channels_down,
             "channels_down": channels_down,
-            "recordings_active": sum(1 for c in channels_list if "sim" in c["gravando_mp4"].lower() or "gravando" in c["gravando_mp4"].lower() or "asf" in c["gravando_mp4"].lower()),
+            "channels_degraded": channels_degraded,
+            "recordings_active": sum(1 for c in channels_list if "sim" in str(c.get("gravando_mp4", "")).lower() or "gravando" in str(c.get("gravando_mp4", "")).lower() or "asf" in str(c.get("gravando_mp4", "")).lower() or "sim" in str(c.get("gravando_mp3", "")).lower()),
             "recordings_critical": recordings_critical
         }
 

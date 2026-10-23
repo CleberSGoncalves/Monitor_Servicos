@@ -1333,15 +1333,28 @@ def get_markets_map_data(channels: list = None, services: list = None) -> List[D
         outage_ch = sum(1 for c in m_channels if c.get("has_outage"))
         degraded_ch = sum(
             1 for c in channels_rf_detail
-            if c.get("rx_quality_pct", 100) < 45 or c.get("rx_level_measured_pct", 100) < 15
+            if (0 < c.get("rx_quality_pct", 100) < 45) or (c.get("rx_quality_pct", 100) < 60 and 0 < c.get("rx_level_measured_pct", 100) < 15)
         )
         stable_ch = max(0, total_ch - degraded_ch)
 
         m_services = [s for s in services if _match_city(s.get("praca", ""), m)]
-        stopped_svc = sum(1 for s in m_services if s.get("status_servico") in ["Parado", "Inexistente", "Não Encontrado"])
-        crash_svc = sum(1 for s in m_services if "crash" in str(s.get("status_servico", "")).lower())
+        stopped_svc = sum(1 for s in m_services if s.get("status_servico") == "Parado")
+        
+        # Identificação de falha real em serviços essenciais de gravação/captura (ignora Inexistente/FastMatching)
+        core_capture_svcs = ["dna.mediarecorder", "atria capture", "dtvcapture"]
+        core_service_failed = False
+        crash_svc = 0
+        for s in m_services:
+            s_name = str(s.get("nome_servico", "")).lower()
+            s_stat = str(s.get("status_servico", ""))
+            s_cs = int(float(s.get("cs", 1) or 1))
+            if "crash-loop" in s_stat.lower() or "crash-loop" in str(s.get("status_atualizacao", "")).lower():
+                crash_svc += 1
+            elif s_stat == "Parado":
+                if any(k in s_name for k in core_capture_svcs) and s_cs == 1:
+                    core_service_failed = True
 
-        if outage_ch > 0 or stopped_svc > 0 or crash_svc > 0:
+        if outage_ch > 0 or core_service_failed or crash_svc > 0:
             status_color = "red"
             status_label = "Crítico (Falhas Pendentes)"
         elif degraded_ch > 0:
