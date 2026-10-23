@@ -3154,7 +3154,20 @@ window.loadNocUnifiedCockpit = loadNocUnifiedCockpit;
 // ==============================================================================
 let cachedCurrentLogs = [];
 
+function onLogFilterSourceChange() {
+    const source = document.getElementById("logFilterSource")?.value || "atria";
+    const atriaCard = document.getElementById("atriaForensicCard");
+    if (atriaCard) {
+        atriaCard.style.display = (source === "atria") ? "block" : "none";
+    }
+    const drawer = document.getElementById("logAiDiagnosisDrawer");
+    if (drawer) drawer.style.display = "none";
+}
+window.onLogFilterSourceChange = onLogFilterSourceChange;
+
+
 async function loadFleetLogs() {
+    onLogFilterSourceChange();
     const outputEl = document.getElementById("logConsoleOutput");
     const filePathEl = document.getElementById("logViewerFilePath");
     if (!outputEl) return;
@@ -3226,6 +3239,10 @@ async function diagnoseCurrentLogsWithAi() {
     }
 
     drawer.style.display = "block";
+    const selEl = document.getElementById("logFilterSource");
+    const selText = selEl?.options[selEl.selectedIndex]?.text || "Serviço";
+    const badgeEl = document.getElementById("logAiDiagnosisServiceBadge");
+    if (badgeEl) badgeEl.textContent = `• ${selText}`;
     content.innerHTML = `<div style="text-align: center; padding: 25px; color: #c084fc;"><i class="fas fa-spinner fa-spin fa-2x"></i><div style="margin-top: 10px;">O Google Gemini Pro está analisando os logs de telemetria e integridade do Capture Site...</div></div>`;
 
     const source = document.getElementById("logFilterSource")?.value || "atria";
