@@ -110,7 +110,77 @@ function zoomTopologyMap(action) {
 }
 window.zoomTopologyMap = zoomTopologyMap;
 
+function ensureTopologyMapStyles() {
+    if (document.getElementById("topologyMapInjectedStyles")) return;
+    const styleEl = document.createElement("style");
+    styleEl.id = "topologyMapInjectedStyles";
+    styleEl.textContent = `
+        /* Efeito de Foco / Spotlight para Cidades no Mapa de Topologia */
+        .map-city-node {
+            cursor: pointer;
+            transition: opacity 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        /* Quando qualquer cidade está sob o mouse (hover), esmaece todas as outras cidades da frota */
+        #svgPinsLayer.has-hover .map-city-node:not(.is-hovered) {
+            opacity: 0.22 !important;
+            filter: grayscale(0.35) brightness(0.75);
+        }
+        /* Cidade em foco ativo (hover) */
+        .map-city-node.is-hovered {
+            opacity: 1 !important;
+            filter: drop-shadow(0 0 10px rgba(56, 189, 248, 0.65)) !important;
+        }
+        .map-city-node.is-hovered .city-marker-glow {
+            r: 30px !important;
+            opacity: 0.95 !important;
+        }
+        .map-city-node.is-hovered .city-focus-ring {
+            r: 13px !important;
+            opacity: 1 !important;
+            stroke: #38bdf8 !important;
+            stroke-width: 2.5px !important;
+        }
+        .map-city-node.is-hovered .city-marker-dot {
+            r: 8.5px !important;
+            stroke: #ffffff !important;
+            stroke-width: 2.5px !important;
+        }
+        .map-city-node.is-hovered .city-pill-rect {
+            fill: #0f172a !important;
+            stroke: #38bdf8 !important;
+            stroke-width: 2px !important;
+            filter: drop-shadow(0 2px 8px rgba(56, 189, 248, 0.55)) !important;
+        }
+        .map-city-node.is-hovered .city-pill-text {
+            fill: #ffffff !important;
+            font-weight: 800 !important;
+        }
+        .map-city-node.is-hovered .city-leader-line {
+            stroke: #38bdf8 !important;
+            stroke-width: 1.5px !important;
+            stroke-dasharray: none !important;
+        }
+        /* Cidade selecionada */
+        .map-city-node.is-selected .city-focus-ring {
+            opacity: 1 !important;
+            stroke: #ffffff !important;
+            stroke-width: 2.5px !important;
+        }
+        .map-city-node.is-selected .city-pill-rect {
+            fill: #1e293b !important;
+            stroke: #38bdf8 !important;
+            stroke-width: 1.8px !important;
+        }
+        .map-city-node.is-selected .city-pill-text {
+            fill: #ffffff !important;
+            font-weight: 800 !important;
+        }
+    `;
+    document.head.appendChild(styleEl);
+}
+
 function renderTopologyMap() {
+    ensureTopologyMapStyles();
     const container = document.getElementById("topologyMapSvgContainer");
     if (!container) return;
 
@@ -256,39 +326,10 @@ function renderTopologyMap() {
                 <path d="${neDividerD}" fill="none" stroke="rgba(56, 189, 248, 0.35)" stroke-width="1.2" stroke-dasharray="4,4"/>
             </g>
 
-            <!-- Linhas de Enlace Vetorial de RF entre Praças e TODAS as Torres Transmissoras da Praça -->
-            <g id="svgLinksLayer">
+            <!-- Camada de Enlaces (Livre de poluição visual na visão macro de frota - canais detalhados exibidos no Radar / Modal) -->
+            <g id="svgLinksLayer"></g>
+            <g id="svgPinsLayer">
     `;
-
-    filtered.forEach(m => {
-        const pt = projectCoords(m.lat, m.lng);
-        const isSel = selectedMarket && selectedMarket.id === m.id;
-        
-        if (m.towers_detail && m.towers_detail.length > 0) {
-            m.towers_detail.forEach((tw, tIdx) => {
-                const twPt = projectCoords(tw.lat, tw.lng);
-                const azRad = (((tw.azimuth_deg || 0) - 90) * Math.PI) / 180;
-                const minVisualDist = isSel ? 18 : 12;
-                const actualDistPx = Math.hypot(twPt.x - pt.x, twPt.y - pt.y);
-                const dx = actualDistPx < minVisualDist ? Math.round(pt.x + Math.cos(azRad) * minVisualDist) : twPt.x;
-                const dy = actualDistPx < minVisualDist ? Math.round(pt.y + Math.sin(azRad) * minVisualDist) : twPt.y;
-                
-                const chColor = CHANNEL_COLORS[tIdx % CHANNEL_COLORS.length].stroke;
-                const strokeColor = isSel ? chColor : (
-                    m.status_color === "red" ? "rgba(239, 68, 68, 0.75)" :
-                    (m.status_color === "yellow" ? "rgba(250, 204, 21, 0.65)" : "rgba(56, 189, 248, 0.55)")
-                );
-                
-                svgHtml += `
-                    <line x1="${pt.x}" y1="${pt.y}" x2="${dx}" y2="${dy}"
-                          stroke="${strokeColor}" stroke-width="${isSel ? 2.5 : 1.3}" stroke-dasharray="${isSel ? 'none' : '4,3'}" />
-                    <circle cx="${dx}" cy="${dy}" r="${isSel ? 5 : 3.5}" fill="${chColor}" stroke="#070d18" stroke-width="1.5" />
-                `;
-            });
-        }
-    });
-
-    svgHtml += `</g><g id="svgPinsLayer">`;
 
     filtered.forEach(m => {
         const pt = projectCoords(m.lat, m.lng);
@@ -308,29 +349,44 @@ function renderTopologyMap() {
         const pillY = labelY - 11;
 
         svgHtml += `
-            <g class="map-city-node" style="cursor: pointer;" onclick="selectMarket('${m.id}', true)" filter="url(#shadowGlow)">
-                <line x1="${pt.x}" y1="${pt.y}" x2="${labelX}" y2="${labelY - 1}" 
-                      stroke="rgba(255,255,255,0.25)" stroke-width="1" stroke-dasharray="2,2"/>
+            <g id="city-node-${m.id}"
+               class="map-city-node ${isSel ? 'is-selected' : ''}"
+               data-market-id="${m.id}"
+               style="cursor: pointer;"
+               onclick="selectMarket('${m.id}', true)"
+               onmouseenter="handleCityHover('${m.id}', event)"
+               onmousemove="handleCityMouseMove(event)"
+               onmouseleave="handleCityLeave('${m.id}', event)"
+               filter="url(#shadowGlow)">
 
-                <circle cx="${pt.x}" cy="${pt.y}" r="${isSel ? 26 : 18}" fill="url(#${glowId})" opacity="${isSel ? 0.95 : 0.65}">
+                <!-- Área expandida de captura de mouse para interação estável e sem tremulação -->
+                <circle cx="${pt.x}" cy="${pt.y}" r="22" fill="transparent" style="pointer-events: all;"/>
+
+                <line class="city-leader-line" x1="${pt.x}" y1="${pt.y}" x2="${labelX}" y2="${labelY - 1}" 
+                      stroke="${isSel ? '#38bdf8' : 'rgba(255,255,255,0.25)'}" stroke-width="${isSel ? 1.5 : 1}" stroke-dasharray="${isSel ? 'none' : '2,2'}"/>
+
+                <!-- Halo Luminoso de Status -->
+                <circle class="city-marker-glow" cx="${pt.x}" cy="${pt.y}" r="${isSel ? 26 : 18}" fill="url(#${glowId})" opacity="${isSel ? 0.95 : 0.65}">
                     ${m.status_color === "red" ? `
                         <animate attributeName="r" values="16;28;16" dur="2s" repeatCount="indefinite"/>
                         <animate attributeName="opacity" values="0.85;0.2;0.85" dur="2s" repeatCount="indefinite"/>
                     ` : ''}
                 </circle>
 
-                ${isSel ? `
-                    <circle cx="${pt.x}" cy="${pt.y}" r="12" fill="none" stroke="#fff" stroke-width="2.5"/>
-                ` : ''}
+                <!-- Anel Externo de Seleção / Foco -->
+                <circle class="city-focus-ring" cx="${pt.x}" cy="${pt.y}" r="${isSel ? 12 : 9}" fill="none" 
+                        stroke="${isSel ? '#ffffff' : 'rgba(56, 189, 248, 0.4)'}" stroke-width="${isSel ? 2.5 : 1}" opacity="${isSel ? 1 : 0}"/>
 
-                <circle cx="${pt.x}" cy="${pt.y}" r="${isSel ? 8 : 6}" fill="${color}" stroke="#070d18" stroke-width="2"/>
+                <!-- Bolinha Central da Cidade -->
+                <circle class="city-marker-dot" cx="${pt.x}" cy="${pt.y}" r="${isSel ? 8 : 6}" fill="${color}" stroke="#070d18" stroke-width="2"/>
 
-                <rect x="${pillX}" y="${pillY}" width="${textLen}" height="18" rx="4"
+                <!-- Pill com o Nome da Cidade -->
+                <rect class="city-pill-rect" x="${pillX}" y="${pillY}" width="${textLen}" height="18" rx="4"
                       fill="${isSel ? '#1e293b' : 'rgba(7, 13, 24, 0.94)'}"
                       stroke="${isSel ? '#38bdf8' : (m.status_color === 'red' ? '#ef4444' : 'rgba(56, 189, 248, 0.45)')}"
                       stroke-width="${isSel ? 1.6 : 1}" />
 
-                <text x="${labelX}" y="${labelY + 2}" text-anchor="${anchor}"
+                <text class="city-pill-text" x="${labelX}" y="${labelY + 2}" text-anchor="${anchor}"
                       fill="${isSel ? '#ffffff' : (m.status_color === 'red' ? '#fca5a5' : '#e2e8f0')}"
                       font-family="Inter, -apple-system, sans-serif" font-size="${isSel ? '12px' : '11px'}" font-weight="${isSel ? '800' : '700'}">
                     ${m.cidade}
@@ -340,7 +396,11 @@ function renderTopologyMap() {
     });
 
     svgHtml += `</g></svg>`;
-    container.innerHTML = svgHtml;
+
+    const tooltipHtml = `
+        <div id="topologyCityTooltip" style="display: none; position: absolute; pointer-events: none; z-index: 100; min-width: 270px; max-width: 330px; background: rgba(15, 23, 42, 0.96); backdrop-filter: blur(12px); border: 1px solid rgba(56, 189, 248, 0.45); border-radius: 8px; box-shadow: 0 16px 36px rgba(0, 0, 0, 0.85); padding: 12px 14px; font-family: Inter, -apple-system, sans-serif; color: #e2e8f0;"></div>
+    `;
+    container.innerHTML = svgHtml + tooltipHtml;
 
     const svgEl = document.getElementById("topologySvgEl");
     if (svgEl) {
@@ -352,13 +412,133 @@ function renderTopologyMap() {
     }
 }
 
-function selectMarket(marketId, openModal = false) {
+function handleCityHover(marketId, event) {
+    if (!topologyMarketsData || topologyMarketsData.length === 0) return;
     const market = topologyMarketsData.find(m => m.id === marketId);
     if (!market) return;
 
-    selectedMarket = market;
-    window.selectedMarket = market;
-    renderTopologyMap();
+    // 1. Efeito de Foco / Spotlight: esmaece todas as outras cidades
+    const pinsLayer = document.getElementById("svgPinsLayer");
+    if (pinsLayer) pinsLayer.classList.add("has-hover");
+
+    const nodeEl = document.getElementById(`city-node-${marketId}`);
+    if (nodeEl) {
+        nodeEl.classList.add("is-hovered");
+        // Em SVG, mover para o final do container traz o elemento para frente de todos os outros
+        nodeEl.parentNode.appendChild(nodeEl);
+    }
+
+    // 2. Atualização imediata do painel lateral (preview em tempo real)
+    updateMarketDetailPanel(market);
+
+    // 3. Tooltip Flutuante Inteligente
+    const tooltip = document.getElementById("topologyCityTooltip");
+    if (tooltip) {
+        const badgeBg = market.status_color === "red" ? "rgba(239, 68, 68, 0.2)" : 
+                        (market.status_color === "yellow" ? "rgba(250, 204, 21, 0.2)" : "rgba(16, 185, 129, 0.2)");
+        const badgeColor = market.status_color === "red" ? "#f87171" : 
+                           (market.status_color === "yellow" ? "#facc15" : "#34d399");
+        const badgeBorder = market.status_color === "red" ? "rgba(239, 68, 68, 0.4)" : 
+                            (market.status_color === "yellow" ? "rgba(250, 204, 21, 0.4)" : "rgba(16, 185, 129, 0.4)");
+
+        const outageText = (market.outage_channels > 0)
+            ? `<span style="color: #f87171; font-weight: 700;"><i class="fas fa-exclamation-triangle"></i> ${market.outage_channels} falha(s)</span>`
+            : `<span style="color: #34d399; font-weight: 600;"><i class="fas fa-check-circle"></i> 100% OK</span>`;
+
+        let towersText = market.main_tower || "Torre Única";
+        if (market.towers_detail && market.towers_detail.length > 1) {
+            towersText = `${market.towers_detail.length} torres distintas`;
+        }
+
+        const distVal = market.distance_km ? Number(market.distance_km).toFixed(1) : "0.0";
+        const azVal = market.azimuth_deg ? Number(market.azimuth_deg).toFixed(0) : "0";
+
+        tooltip.innerHTML = `
+            <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px; margin-bottom: 8px;">
+                <div style="font-size: 13px; font-weight: 800; color: #ffffff; display: flex; align-items: center; gap: 6px;">
+                    <i class="fas fa-city" style="color: #38bdf8;"></i>
+                    ${escapeHtml(market.cidade)} <span style="font-size: 11px; color: #94a3b8; font-weight: 600;">(${escapeHtml(market.uf)})</span>
+                </div>
+                <span style="font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px; background: ${badgeBg}; color: ${badgeColor}; border: 1px solid ${badgeBorder}; text-transform: uppercase;">
+                    ${escapeHtml(market.status_label || "Normal")}
+                </span>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 11px; margin-bottom: 8px;">
+                <div style="background: rgba(0,0,0,0.35); padding: 6px 8px; border-radius: 5px; border: 1px solid rgba(255,255,255,0.05);">
+                    <div style="font-size: 9px; color: #94a3b8; text-transform: uppercase;">Canais Monitorados</div>
+                    <div style="font-size: 12px; font-weight: 700; color: #fff;">${market.total_channels || 0} canais</div>
+                </div>
+                <div style="background: rgba(0,0,0,0.35); padding: 6px 8px; border-radius: 5px; border: 1px solid rgba(255,255,255,0.05);">
+                    <div style="font-size: 9px; color: #94a3b8; text-transform: uppercase;">Saúde do Sinal</div>
+                    <div style="font-size: 12px;">${outageText}</div>
+                </div>
+            </div>
+
+            <div style="font-size: 11px; color: #cbd5e1; line-height: 1.5; margin-bottom: 8px; background: rgba(0,0,0,0.25); padding: 7px 9px; border-radius: 5px; border: 1px solid rgba(255,255,255,0.04);">
+                <div><i class="fas fa-broadcast-tower" style="color: #38bdf8; width: 14px;"></i> <strong>Torre:</strong> ${escapeHtml(towersText)}</div>
+                <div><i class="fas fa-ruler-horizontal" style="color: #38bdf8; width: 14px;"></i> <strong>Distância:</strong> ${distVal} km (${azVal}°)</div>
+                <div><i class="fas fa-eye" style="color: #10b981; width: 14px;"></i> <strong>Visada:</strong> <span style="color: ${(market.los_status && market.los_status.includes('NLOS')) ? '#facc15' : '#10b981'}">${escapeHtml(market.los_status || 'Desobstruída (LOS)')}</span></div>
+            </div>
+
+            <div style="font-size: 9.5px; color: #38bdf8; font-weight: 600; text-align: center; border-top: 1px dashed rgba(56,189,248,0.25); padding-top: 6px;">
+                <i class="fas fa-mouse-pointer"></i> Clique para abrir Radar & Perfil de Relevo RF
+            </div>
+        `;
+
+        tooltip.style.display = "block";
+        positionCityTooltip(event);
+    }
+}
+
+function positionCityTooltip(event) {
+    const tooltip = document.getElementById("topologyCityTooltip");
+    if (!tooltip || tooltip.style.display === "none") return;
+    const container = document.getElementById("topologyMapSvgContainer");
+    if (!container) return;
+
+    const rect = container.getBoundingClientRect();
+    let x = (event.clientX - rect.left) + 16;
+    let y = (event.clientY - rect.top) + 16;
+
+    const ttW = tooltip.offsetWidth || 270;
+    const ttH = tooltip.offsetHeight || 170;
+
+    if (x + ttW > rect.width - 12) {
+        x = (event.clientX - rect.left) - ttW - 16;
+    }
+    if (y + ttH > rect.height - 12) {
+        y = (event.clientY - rect.top) - ttH - 16;
+    }
+    if (x < 10) x = 10;
+    if (y < 10) y = 10;
+
+    tooltip.style.left = `${Math.round(x)}px`;
+    tooltip.style.top = `${Math.round(y)}px`;
+}
+
+function handleCityMouseMove(event) {
+    positionCityTooltip(event);
+}
+
+function handleCityLeave(marketId, event) {
+    const pinsLayer = document.getElementById("svgPinsLayer");
+    if (pinsLayer) pinsLayer.classList.remove("has-hover");
+
+    const nodeEl = document.getElementById(`city-node-${marketId}`);
+    if (nodeEl) nodeEl.classList.remove("is-hovered");
+
+    const tooltip = document.getElementById("topologyCityTooltip");
+    if (tooltip) tooltip.style.display = "none";
+
+    // Restaura o painel lateral para a cidade selecionada anteriormente
+    if (selectedMarket) {
+        updateMarketDetailPanel(selectedMarket);
+    }
+}
+
+function updateMarketDetailPanel(market) {
+    if (!market) return;
 
     const nameEl = document.getElementById("mapDetailCityName");
     if (nameEl) nameEl.textContent = `${market.cidade} (${market.uf})`;
@@ -367,13 +547,15 @@ function selectMarket(marketId, openModal = false) {
     if (badge) {
         badge.className = market.status_color === "red" ? "badge badge-red" :
                           (market.status_color === "yellow" ? "badge badge-yellow" : "badge badge-green");
-        badge.textContent = market.status_label;
+        badge.textContent = market.status_label || "Normal";
     }
 
     const coordsEl = document.getElementById("mapDetailCoords");
     if (coordsEl) {
+        const latVal = typeof market.lat === "number" ? market.lat.toFixed(4) : market.lat;
+        const lngVal = typeof market.lng === "number" ? market.lng.toFixed(4) : market.lng;
         const bairroInfo = market.site_bairro ? ` • ${market.site_bairro}` : "";
-        coordsEl.textContent = `Lat: ${market.lat.toFixed(4)} | Lng: ${market.lng.toFixed(4)}${bairroInfo}`;
+        coordsEl.textContent = `Lat: ${latVal} | Lng: ${lngVal}${bairroInfo}`;
     }
     
     const twNameEl = document.getElementById("mapDetailTowerName");
@@ -381,7 +563,7 @@ function selectMarket(marketId, openModal = false) {
         if (market.towers_detail && market.towers_detail.length > 1) {
             twNameEl.textContent = `${market.towers_detail.length} Torres Distintas (${market.towers_detail.map(t => t.bairro || t.name.split('-')[0].trim()).join(' / ')})`;
         } else {
-            twNameEl.textContent = market.main_tower;
+            twNameEl.textContent = market.main_tower || "Torre de Transmissão";
         }
     }
     
@@ -391,7 +573,8 @@ function selectMarket(marketId, openModal = false) {
             const dists = market.channels_rf_detail.map(c => `${c.emissora.split(' ')[0]}: ${c.distance_km}km`).join(" | ");
             distEl.textContent = dists;
         } else {
-            distEl.textContent = `${market.distance_km.toFixed(2)} km (${market.distance_m ? market.distance_m.toLocaleString('pt-BR') : Math.round(market.distance_km*1000)} m)`;
+            const distKm = Number(market.distance_km) || 0;
+            distEl.textContent = `${distKm.toFixed(2)} km (${market.distance_m ? market.distance_m.toLocaleString('pt-BR') : Math.round(distKm*1000)} m)`;
         }
     }
     
@@ -400,7 +583,8 @@ function selectMarket(marketId, openModal = false) {
         if (market.channels_rf_detail && market.channels_rf_detail.length > 1) {
             azEl.textContent = market.channels_rf_detail.map(c => `${c.azimuth_deg}° (${c.cardinal || ''})`).join(" • ");
         } else {
-            azEl.textContent = `${market.azimuth_deg.toFixed(1)}°`;
+            const azDeg = Number(market.azimuth_deg) || 0;
+            azEl.textContent = `${azDeg.toFixed(1)}°`;
         }
     }
     
@@ -414,15 +598,39 @@ function selectMarket(marketId, openModal = false) {
     if (fsplEl) fsplEl.textContent = `${market.fspl_db || 100} dB`;
 
     const totChEl = document.getElementById("mapDetailTotalChannels");
-    if (totChEl) totChEl.textContent = market.total_channels;
+    if (totChEl) totChEl.textContent = market.total_channels || 0;
     
     const outChEl = document.getElementById("mapDetailOutageChannels");
-    if (outChEl) outChEl.textContent = market.outage_channels;
+    if (outChEl) outChEl.textContent = market.outage_channels || 0;
+}
+
+function selectMarket(marketId, openModal = false) {
+    const market = topologyMarketsData.find(m => m.id === marketId);
+    if (!market) return;
+
+    selectedMarket = market;
+    window.selectedMarket = market;
+
+    // Atualiza a seleção visual das cidades no mapa
+    document.querySelectorAll(".map-city-node").forEach(el => {
+        if (el.getAttribute("data-market-id") === market.id) {
+            el.classList.add("is-selected");
+        } else {
+            el.classList.remove("is-selected");
+        }
+    });
+
+    updateMarketDetailPanel(market);
 
     if (openModal) {
         openMarketRfModal(marketId);
     }
 }
+window.handleCityHover = handleCityHover;
+window.handleCityMouseMove = handleCityMouseMove;
+window.handleCityLeave = handleCityLeave;
+window.positionCityTooltip = positionCityTooltip;
+window.updateMarketDetailPanel = updateMarketDetailPanel;
 window.selectMarket = selectMarket;
 
 function escapeHtml(text) {

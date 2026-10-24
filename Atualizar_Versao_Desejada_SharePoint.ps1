@@ -4,7 +4,7 @@
 # ==============================================================================
 param(
     [string]$ServiceName = "DNA.MonitorServiceSVC",
-    [string]$NewVersion = "1.0.13.1"
+    [string]$NewVersion = "1.0.17.0"
 )
 
 Add-Type -AssemblyName System.Security

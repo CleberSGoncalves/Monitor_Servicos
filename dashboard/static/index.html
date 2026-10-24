@@ -27,8 +27,63 @@
 
 
   <style>
-
-
+    /* Topology Map - Foco Spotlight & Anti-Poluição Visual */
+    .map-city-node {
+      cursor: pointer;
+      transition: opacity 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    #svgPinsLayer.has-hover .map-city-node:not(.is-hovered) {
+      opacity: 0.22 !important;
+      filter: grayscale(0.35) brightness(0.75);
+    }
+    .map-city-node.is-hovered {
+      opacity: 1 !important;
+      filter: drop-shadow(0 0 10px rgba(56, 189, 248, 0.65)) !important;
+    }
+    .map-city-node.is-hovered .city-marker-glow {
+      r: 30px !important;
+      opacity: 0.95 !important;
+    }
+    .map-city-node.is-hovered .city-focus-ring {
+      r: 13px !important;
+      opacity: 1 !important;
+      stroke: #38bdf8 !important;
+      stroke-width: 2.5px !important;
+    }
+    .map-city-node.is-hovered .city-marker-dot {
+      r: 8.5px !important;
+      stroke: #ffffff !important;
+      stroke-width: 2.5px !important;
+    }
+    .map-city-node.is-hovered .city-pill-rect {
+      fill: #0f172a !important;
+      stroke: #38bdf8 !important;
+      stroke-width: 2px !important;
+      filter: drop-shadow(0 2px 8px rgba(56, 189, 248, 0.55)) !important;
+    }
+    .map-city-node.is-hovered .city-pill-text {
+      fill: #ffffff !important;
+      font-weight: 800 !important;
+    }
+    .map-city-node.is-hovered .city-leader-line {
+      stroke: #38bdf8 !important;
+      stroke-width: 1.5px !important;
+      stroke-dasharray: none !important;
+    }
+    .map-city-node.is-selected .city-focus-ring {
+      opacity: 1 !important;
+      stroke: #ffffff !important;
+      stroke-width: 2.5px !important;
+    }
+    .map-city-node.is-selected .city-pill-rect {
+      fill: #1e293b !important;
+      stroke: #38bdf8 !important;
+      stroke-width: 1.8px !important;
+    }
+    .map-city-node.is-selected .city-pill-text {
+      fill: #ffffff !important;
+      font-weight: 800 !important;
+    }
 
     /* Critical Remote Command & Subtab Styles (Anti-Cache Guaranteed) */
 
