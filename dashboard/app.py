@@ -929,6 +929,7 @@ class FiscalizacaoAuditRequest(BaseModel):
     target_date: Optional[str] = None
     start_time: str = "14:00"
     end_time: str = "15:00"
+    symptom: Optional[str] = "none"
     case_question: str = ""
     custom_idpv: Optional[str] = None
     nas_username: Optional[str] = None
@@ -962,6 +963,7 @@ async def auditar_range_fiscalizacao(req: FiscalizacaoAuditRequest, user: dict =
         target_date=req.target_date,
         start_time=req.start_time,
         end_time=req.end_time,
+        symptom=req.symptom or "none",
         case_question=req.case_question,
         custom_idpv=req.custom_idpv,
         user_creds=creds

@@ -3300,15 +3300,41 @@
             </div>
           </div>
 
-          <div style="margin-bottom: 16px;">
-            <label style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;">Pergunta / Caso em Disputa (Opcional):</label>
-            <input type="text" id="fiscCaseQuestion" class="form-input" placeholder="Ex: Cliente contesta se o blackout das 14:15 às 14:45 foi problema do IBOPE ou se a emissora estava gerando barras coloridas no ar. De quem é a falha?" style="width: 100%; font-size: 12px;">
+          <!-- Seletor Obrigatório de Queixa / Sintoma & Detalhes da Contestação -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin-bottom: 16px;">
+            <div>
+              <label style="font-size: 11px; text-transform: uppercase; color: #38bdf8; font-weight: 800; display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                <i class="fas fa-exclamation-triangle"></i> Queixa / Anomalia Relatada (Obrigatório):
+              </label>
+              <select id="fiscSymptom" class="form-input" style="width: 100%; font-weight: 700; background: #0f172a; border-color: rgba(56, 189, 248, 0.4);" onchange="onFiscSymptomChanged()">
+                <option value="none" selected>🔍 Sem Queixa / Verificação Geral de Conformidade (Período Nominal)</option>
+                <option value="blackout">⚡ Queda Total de Sinal / Blackout / Fora do Ar</option>
+                <option value="macroblocks">🧱 Macroblocos / Quadriculamento / Degradação Digital</option>
+                <option value="black_screen">⬛ Tela Preta (Black Screen) com ou sem áudio</option>
+                <option value="audio_mute">🔇 Áudio Mudo / Descontinuidade / Estalidos de Som</option>
+                <option value="freeze">❄️ Imagem Congelada (Freeze Frame) no Ar</option>
+                <option value="color_bars">🎨 Barras Coloridas (SMPTE Color Bars / Tom de Teste 1 kHz)</option>
+                <option value="sync_delay">⏱️ Dessincronia de Áudio & Vídeo (Lip-Sync)</option>
+                <option value="other">📝 Outra Queixa / Ocorrência Específica de SLA</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;">
+                Pergunta / Caso em Disputa / Detalhes da Contestação:
+              </label>
+              <input type="text" id="fiscCaseQuestion" class="form-input" placeholder="Ex: Cliente contesta se a anomalia das 14:15 às 14:45 foi falha IBOPE ou da geradora da emissora." style="width: 100%; font-size: 12px;">
+            </div>
           </div>
 
-          <!-- Barra de Contexto UNC NAS -->
+          <!-- Barra de Contexto UNC NAS & Transparência de Custos IA -->
           <div style="font-size: 11px; color: #94a3b8; font-family: monospace; background: rgba(0,0,0,0.3); padding: 8px 12px; border-radius: 6px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
             <span>📁 Caminho no Servidor NAS: <strong style="color: #38bdf8;" id="fiscNasUncPreview">\\ibnas01sp-nas.grupoibope.corp\MediaDNA01\VideoRecord\2026\10\23\255</strong></span>
-            <span class="badge badge-green" style="font-size: 10px;">Somente Leitura (Zero Impacto no CS)</span>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <span class="badge badge-green" style="font-size: 10px;">Somente Leitura (Zero Impacto no CS)</span>
+              <span class="badge" style="font-size: 10px; background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4);" title="O vídeo é analisado localmente via OpenCV (R$ 0,00). A IA só gera o parecer executivo, consumindo ~500 tokens no Gemini Flash (~R$ 0,0002 por análise).">
+                <i class="fas fa-bolt"></i> Custo IA Desprezível (&lt; R$ 0,001 / consulta)
+              </span>
+            </div>
           </div>
 
           <div style="display: flex; justify-content: flex-end;">

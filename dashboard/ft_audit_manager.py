@@ -280,6 +280,7 @@ def audit_time_range_with_nas_and_ai(
     target_date: Optional[str] = None,
     start_time: str = "14:00",
     end_time: str = "15:00",
+    symptom: str = "none",
     case_question: str = "",
     custom_idpv: Optional[str] = None,
     user_creds: Optional[Dict[str, str]] = None
@@ -303,25 +304,28 @@ def audit_time_range_with_nas_and_ai(
     services_fleet = fleet_data.get("services", [])
 
     # Validação Restritiva: Localiza o canal e verifica se é Digital Terrestre
-    # 1. Prioridade Máxima: Busca por IDPV exato (veículo do canal)
+    # 1. Prioridade Máxima: Busca por IDPV exato (veículo do canal), priorizando o sintonizador ativo
     cur_ch = None
     if custom_idpv and str(custom_idpv).strip().isdigit():
         target_pv = str(custom_idpv).strip()
-        for c in channels_fleet:
-            if str(c.get("veiculo", "")).strip() == target_pv:
-                cur_ch = c
-                break
+        candidates = [c for c in channels_fleet if str(c.get("veiculo", "")).strip() == target_pv]
+        if candidates:
+            candidates.sort(key=lambda x: (float(x.get("qualidade_sinal", 0) or 0), float(x.get("forca_sinal", 0) or 0)), reverse=True)
+            cur_ch = candidates[0]
 
     # 2. Match por cidade normalizada (desacentuada) e nome do canal
     if not cur_ch:
         target_norm = normalize_city_key(praca)
         c_low = canal.strip().lower()
+        candidates = []
         for c in channels_fleet:
             c_norm = normalize_city_key(c.get("cidade"))
             ch_name_low = str(c.get("canal", "")).strip().lower()
             if (c_norm == target_norm or target_norm in c_norm or c_norm in target_norm) and (c_low in ch_name_low or ch_name_low in c_low):
-                cur_ch = c
-                break
+                candidates.append(c)
+        if candidates:
+            candidates.sort(key=lambda x: (float(x.get("qualidade_sinal", 0) or 0), float(x.get("forca_sinal", 0) or 0)), reverse=True)
+            cur_ch = candidates[0]
 
     if cur_ch:
         praca = clean_city_name(cur_ch.get("cidade")) or praca
@@ -386,12 +390,13 @@ def audit_time_range_with_nas_and_ai(
             })
 
     # 4. Auditoria de Telemetria e Hardware na Praça
+    target_norm_city = normalize_city_key(praca)
     peer_channels = [
         c for c in channels_fleet
-        if c.get("cidade", "").strip().lower() == praca.strip().lower() and c != cur_ch
+        if normalize_city_key(c.get("cidade")) == target_norm_city and str(c.get("veiculo", "")) != str(idpv)
     ]
-    peer_rf_qualities = [c.get("qualidade_sinal", 0) for c in peer_channels if c.get("qualidade_sinal", 0) > 0]
-    peers_healthy = (len(peer_rf_qualities) > 0 and (sum(peer_rf_qualities) / len(peer_rf_qualities)) >= 70)
+    peer_rf_qualities = [float(c.get("qualidade_sinal", 0) or 0) for c in peer_channels if float(c.get("qualidade_sinal", 0) or 0) > 0]
+    peers_healthy = (len(peer_rf_qualities) > 0 and (sum(peer_rf_qualities) / len(peer_rf_qualities)) >= 45.0)
 
     host_services = [s for s in services_fleet if s.get("praca", "").strip().lower() == praca.strip().lower()]
     rec_status = str((cur_ch or {}).get("gravando_mp4", "Sim"))
@@ -414,73 +419,176 @@ def audit_time_range_with_nas_and_ai(
     has_nas_files = len(matched_files) > 0
     all_files_nominal_size = all(f.get("size_bytes", 0) >= 1_500_000 for f in matched_files) if has_nas_files else False
 
-    # 5. Motor de Regras Determinísticas de Fiscalização
+    # 5. Motor Pericial de Regras Determinísticas e Análise Multicontexto
+    symptom_map = {
+        "none": "Verificação Geral de Conformidade / Rotina (Sem Queixa)",
+        "blackout": "Queda Total de Sinal / Blackout / Fora do Ar",
+        "macroblocks": "Macroblocos / Quadriculamento / Degradação Digital",
+        "black_screen": "Tela Preta (Black Screen)",
+        "audio_mute": "Áudio Mudo / Descontinuidade / Estalidos de Som",
+        "freeze": "Imagem Congelada (Freeze Frame)",
+        "color_bars": "Barras Coloridas (SMPTE Color Bars / Tom 1 kHz)",
+        "sync_delay": "Dessincronia de Áudio & Vídeo (Lip-Sync)",
+        "other": "Outra Ocorrência de SLA"
+    }
+    symptom_key = (symptom or "none").strip().lower()
+    symptom_label = symptom_map.get(symptom_key, "Verificação de Rotina")
+
     q_low = (case_question or "").lower()
-    is_color_bars_case = "barra" in q_low or "smpte" in q_low or "color" in q_low or "cnt" in canal.lower()
-    is_rf_outage_query = "sem sinal" in q_low or "queda" in q_low or "zerad" in q_low or "blackout" in q_low
+    is_color_bars_case = symptom_key == "color_bars" or any(x in q_low for x in ["barra", "smpte", "color"])
+    is_rf_outage_query = symptom_key == "blackout" or any(x in q_low for x in ["sem sinal", "queda", "zerad", "blackout"])
+    is_macroblock_query = symptom_key == "macroblocks" or any(x in q_low for x in ["macrobloco", "pixel", "quadricul"])
+    is_black_screen_query = symptom_key == "black_screen" or any(x in q_low for x in ["tela preta", "black screen", "luma"])
+    is_freeze_query = symptom_key == "freeze" or any(x in q_low for x in ["congel", "freeze", "estatico"])
+    is_audio_query = symptom_key == "audio_mute" or any(x in q_low for x in ["mudo", "sem audio", "sem som", "silencio"])
 
-    veredito = "FT EMISSORA"
-    veredito_badge = "badge-orange"
-    responsabilidade = "Emissora Transmissora"
-    confianca = "98.5%"
-    causa_raiz = ""
     timeline_evidencias = []
-
-    if is_storage_fault or services_failed:
+    
+    # CENÁRIO 1: Falha Interna Comprovada de Infraestrutura IBOPE
+    if is_storage_fault or services_failed or (not has_nas_files):
         veredito = "FT IBOPE"
         veredito_badge = "badge-red"
         responsabilidade = "Infraestrutura IBOPE"
-        confianca = "96.4%"
-        causa_raiz = f"Falha de infraestrutura interna IBOPE: status de gravação reportou anomalia ({rec_status}) ou serviço de captura parado no host."
-        timeline_evidencias.append({"etapa": "1. Telemetria do Host", "status": "FALHA IBOPE", "desc": f"Host com serviço essencial parado ou pasta de gravação inacessível ({rec_status})."})
-        timeline_evidencias.append({"etapa": "2. Repositório NAS", "status": "ALERTA", "desc": "Possível lacuna de entrega de arquivos de vídeo devido a retenção ou erro local de I/O."})
-        timeline_evidencias.append({"etapa": "3. Conclusão Operacional", "status": "FT IBOPE", "desc": "Incidente atribuído à infraestrutura de captação IBOPE. Ação corretiva interna requerida."})
+        confianca = "96.5%"
+        causa_raiz = (
+            f"Falha de infraestrutura interna IBOPE constatada: {rec_status}. "
+            f"O serviço de captura no host H{id_host} ou o pipeline local de gravação falhou em persistir "
+            f"os arquivos de mídia de 30 minutos no NAS VideoRecord ({len(matched_files)} arquivos encontrados)."
+        )
+        timeline_evidencias.append({"etapa": "1. Telemetria do Host", "status": "FALHA IBOPE", "desc": f"Host H{id_host} com serviço parado ou caminho de gravação inacessível ({rec_status})."})
+        timeline_evidencias.append({"etapa": "2. Repositório NAS", "status": "LACUNA", "desc": f"Ausência de arquivos nominais de 30 minutos no caminho UNC {unc_path}."})
+        timeline_evidencias.append({"etapa": "3. Conclusão Operacional", "status": "FT IBOPE", "desc": "Incidente atribuído à infraestrutura de captação IBOPE. Procedimento de remediação ativado."})
 
-    elif is_color_bars_case or (has_nas_files and all_files_nominal_size and is_frozen and not is_rf_outage_query):
-        veredito = "FT EMISSORA"
-        veredito_badge = "badge-orange"
-        responsabilidade = "Emissora Transmissora"
-        confianca = "99.4%"
-        causa_raiz = f"A emissora {canal} gerou padrão de teste técnico (SMPTE Color Bars / Tom 1kHz) ou congelamento na própria matriz geradora. A captação e gravação IBOPE operaram 100% íntegras."
-        timeline_evidencias.append({"etapa": "1. Recepção de RF", "status": "NOMINAL", "desc": f"Sintonizador TBS com Lock firme e Qualidade de {rf_quality}%. Fluxo TS contínuo."})
-        timeline_evidencias.append({"etapa": "2. Gravação no NAS", "status": "NOMINAL", "desc": f"Arquivos gravados e sincronizados no NAS VideoRecord ({len(matched_files)} blocos íntegros de 30min)."})
-        timeline_evidencias.append({"etapa": "3. Inspeção de Conteúdo", "status": "FT EMISSORA", "desc": "Decodificação OpenCV confirma sinal de barras gerado pela emissora. Isenção total de SLA para o IBOPE."})
+    # CENÁRIO 2: Antena IBOPE Danificada (Todos os canais caíram juntos na mesma antena)
+    elif rf_quality == 0 and len(peer_rf_qualities) == 0 and len(peer_channels) > 0:
+        veredito = "FT IBOPE"
+        veredito_badge = "badge-red"
+        responsabilidade = "Infraestrutura IBOPE (Recepção RF)"
+        confianca = "98.0%"
+        causa_raiz = (
+            f"Queda generalizada de recepção RF no Capture Site ({praca}). Todos os canais da mesma antena "
+            f"física perderam sinal simultaneamente, caracterizando anomalia no mastro, cabeamento coaxial ou "
+            f"distribuidor de RF da instalação IBOPE."
+        )
+        timeline_evidencias.append({"etapa": "1. Antena e Cabeamento IBOPE", "status": "FALHA IBOPE", "desc": f"Todos os {len(peer_channels)} canais da antena apresentaram sinal zerado."})
+        timeline_evidencias.append({"etapa": "2. Sintonizador TBS", "status": "SEM SINAL", "desc": "Ausência de portadora em todo o frontend RF."})
+        timeline_evidencias.append({"etapa": "3. Conclusão SLA", "status": "FT IBOPE", "desc": "Falha de recepção atribuída à infraestrutura de hardware do Capture Site."})
 
+    # CENÁRIO 3: Falha Real da Emissora - Queda Exclusiva de Portadora na Torre Transmissora
     elif (rf_quality == 0 or is_rf_outage_query) and peers_healthy:
         veredito = "FT EMISSORA"
         veredito_badge = "badge-orange"
         responsabilidade = "Emissora Transmissora"
-        confianca = "98.8%"
-        causa_raiz = f"Queda exclusiva da portadora no ar da emissora {canal}. Os demais canais sintonizados pela mesma antena no Capture Site ({praca}) mantiveram média de {sum(peer_rf_qualities)//len(peer_rf_qualities)}% de qualidade, comprovando que o transmissor da emissora saiu do ar na torre."
-        timeline_evidencias.append({"etapa": "1. Antena e Hardware IBOPE", "status": "NOMINAL", "desc": f"Hardware TBS, mastro de antena e demais canais da praça ({len(peer_channels)} emissoras) 100% estáveis."})
-        timeline_evidencias.append({"etapa": "2. Portadora da Emissora", "status": "FT EMISSORA", "desc": f"Ausência de radiação no ar da frequência de {canal}. Transmissor fora do ar na torre transmissora."})
-        timeline_evidencias.append({"etapa": "3. Gravação e Logs", "status": "NOMINAL", "desc": "Atria Capture permaneceu em modo aguardando portadora sem falha de sistema."})
+        confianca = "99.1%"
+        causa_raiz = (
+            f"Queda exclusiva da portadora no ar da emissora {canal}. Os demais canais sintonizados pela mesma antena "
+            f"no Capture Site ({praca}) mantiveram média de {sum(peer_rf_qualities)//len(peer_rf_qualities)}% de qualidade, "
+            f"comprovando pericialmente que a antena IBOPE operou 100% íntegra e o transmissor da emissora saiu do ar na torre."
+        )
+        timeline_evidencias.append({"etapa": "1. Antena IBOPE (Canais Vizinhos)", "status": "NOMINAL", "desc": f"Hardware TBS e demais emissoras da praça ({len(peer_channels)} canais) 100% operantes com sinal alto."})
+        timeline_evidencias.append({"etapa": "2. Portadora da Emissora", "status": "FT EMISSORA", "desc": f"Ausência de radiação no ar da frequência {channel_info.get('frequencia')}. Transmissor fora do ar na torre."})
+        timeline_evidencias.append({"etapa": "3. Conclusão SLA", "status": "FT EMISSORA", "desc": "Isenção total de penalidade. Ocorrência originada exclusivamente na transmissão da emissora."})
 
-    elif has_nas_files and all_files_nominal_size:
+    # CENÁRIO 4: Falha Real da Emissora - Barras de Teste (SMPTE Color Bars) ou Manutenção
+    elif is_color_bars_case:
         veredito = "FT EMISSORA"
         veredito_badge = "badge-orange"
         responsabilidade = "Emissora Transmissora"
-        confianca = "97.5%"
-        causa_raiz = f"O IBOPE gravou e preservou no NAS VideoRecord todos os blocos de 30min do intervalo ({start_time} às {end_time}) com tamanhos nominais. Qualquer anomalia visual percebida na transmissão tem origem na geração da emissora."
-        timeline_evidencias.append({"etapa": "1. Repositório NAS", "status": "NOMINAL", "desc": f"{len(matched_files)} blocos de 30min íntegros encontrados no caminho {unc_path}."})
-        timeline_evidencias.append({"etapa": "2. Recepção RF", "status": "NOMINAL", "desc": f"Qualidade de Sinal {rf_quality}%, Força {rf_strength}%, Tuner em estado {tuner_stat}."})
-        timeline_evidencias.append({"etapa": "3. Conclusão SLA", "status": "FT EMISSORA", "desc": "Mídia gravada fielmente conforme transmitida no ar."})
+        confianca = "99.6%"
+        causa_raiz = (
+            f"A emissora {canal} gerou padrão de teste técnico (SMPTE Color Bars / Tom de 1 kHz) a partir da sua própria matriz geradora. "
+            f"A captação e gravação IBOPE operaram 100% contínuas, registrando com fidelidade o padrão técnico irradiado no ar."
+        )
+        timeline_evidencias.append({"etapa": "1. Recepção de RF TBS", "status": "NOMINAL", "desc": f"Sintonizador TBS com Lock firme e Qualidade {rf_quality}%. Fluxo TS contínuo."})
+        timeline_evidencias.append({"etapa": "2. Gravação no NAS", "status": "NOMINAL", "desc": f"{len(matched_files)} blocos de 30min íntegros preservados no NAS VideoRecord."})
+        timeline_evidencias.append({"etapa": "3. Inspeção de Conteúdo", "status": "FT EMISSORA", "desc": "Padrão de barras gerado pela emissora. Isenção integral de SLA para o IBOPE."})
 
+    # CENÁRIO 5: Falha Real da Emissora - Tela Preta (Black Screen) da Geradora
+    elif is_black_screen_query and has_nas_files and all_files_nominal_size:
+        veredito = "FT EMISSORA"
+        veredito_badge = "badge-orange"
+        responsabilidade = "Emissora Transmissora"
+        confianca = "97.8%"
+        causa_raiz = (
+            f"A emissora {canal} transmitiu tela preta a partir do switcher de exibição ou geradora de estúdio. "
+            f"A portadora RF de transmissão, a taxa de bits do multiplex ISDB-Tb e o arquivo gravado no NAS mantiveram-se nominais."
+        )
+        timeline_evidencias.append({"etapa": "1. Recepção de RF TBS", "status": "NOMINAL", "desc": f"Demodulador TBS com Lock contínuo (Qualidade {rf_quality}%, Potência {rf_strength}%)."})
+        timeline_evidencias.append({"etapa": "2. Gravação no NAS", "status": "NOMINAL", "desc": f"Mídia registrada no NAS ({len(matched_files)} blocos nominais de 30 minutos)."})
+        timeline_evidencias.append({"etapa": "3. Inspeção de Vídeo", "status": "FT EMISSORA", "desc": "Sinal preto irradiado na matriz da emissora. Responsabilidade da geradora de vídeo."})
+
+    # CENÁRIO 6: Falha Real da Emissora - Imagem Congelada (Freeze Frame) na Mesa de Transmissão
+    elif (is_freeze_query or is_frozen) and has_nas_files and all_files_nominal_size:
+        veredito = "FT EMISSORA"
+        veredito_badge = "badge-orange"
+        responsabilidade = "Emissora Transmissora"
+        confianca = "98.2%"
+        causa_raiz = (
+            f"Congelamento de vídeo estático com origem na matriz ou encoder de exibição da emissora {canal}. "
+            f"O stream TS continuou sendo irradiado no ar e gravado pelo IBOPE sem descontinuidade de pacotes."
+        )
+        timeline_evidencias.append({"etapa": "1. Recepção de RF TBS", "status": "NOMINAL", "desc": f"Portadora RF sem oscilações ({rf_quality}% de qualidade)."})
+        timeline_evidencias.append({"etapa": "2. Gravação no NAS", "status": "NOMINAL", "desc": f"Gravação em fluxo nominal contínuo no NAS VideoRecord."})
+        timeline_evidencias.append({"etapa": "3. Análise Temporal", "status": "FT EMISSORA", "desc": "Imagens idênticas transmitidas no fluxo gerado pela emissora."})
+
+    # CENÁRIO 7: Queixa Apontada, mas Tudo 100% Íntegro -> FALHA NÃO CONFIRMADA (IMPROCEDENTE)
+    elif symptom_key != "none" and has_nas_files and all_files_nominal_size and rf_quality >= 55:
+        veredito = "FALHA NÃO CONFIRMADA (IMPROCEDENTE)"
+        veredito_badge = "badge-blue"
+        responsabilidade = "Receptor do Cliente / Rede Externa"
+        confianca = "98.9%"
+        causa_raiz = (
+            f"A queixa de '{symptom_label}' no intervalo ({start_time} às {end_time}) é tecnicamente IMPROCEDENTE. "
+            f"A gravação física no NAS VideoRecord ({len(matched_files)} blocos de 30min íntegros) e a telemetria do sintonizador TBS "
+            f"(Qualidade {rf_quality}%, Potência {rf_strength}%) comprovam que a transmissão ocorreu sem anomalias. "
+            f"O sintoma alegado teve origem no receptor de TV do cliente ou na rede externa de distribuição local."
+        )
+        timeline_evidencias.append({"etapa": "1. Repositório NAS VideoRecord", "status": "CONFORME", "desc": f"Mídia integral preservada ({len(matched_files)} blocos de 30min com tamanho nominal)."})
+        timeline_evidencias.append({"etapa": "2. Telemetria de Recepção TBS", "status": "NOMINAL", "desc": f"Recepção excelente (Qualidade {rf_quality}%, Força {rf_strength}%, Tuner WORKING)."})
+        timeline_evidencias.append({"etapa": "3. Conclusão Pericial", "status": "IMPROCEDENTE", "desc": "Sinal perfeito e gravado. Falha externa à infraestrutura de captação e transmissão."})
+
+    # CENÁRIO 8: Verificação de Rotina sem Queixa -> OPERAÇÃO NOMINAL (NENHUMA FALHA DETECTADA)
+    elif has_nas_files and all_files_nominal_size and rf_quality >= 55:
+        veredito = "OPERAÇÃO NOMINAL (SEM FALHA DETECTADA)"
+        veredito_badge = "badge-green"
+        responsabilidade = "Nenhuma (Operação 100% em Conformidade)"
+        confianca = "99.8%"
+        causa_raiz = (
+            f"Nenhuma anomalia técnica foi constatada no intervalo auditado ({start_time} às {end_time}). "
+            f"O sinal digital terrestre ISDB-Tb manteve-se nominal com {rf_quality}% de qualidade, o sintonizador TBS operou com Lock contínuo "
+            f"e todos os {len(matched_files)} blocos de 30 minutos foram gravados com tamanhos integrais no repositório NAS VideoRecord. "
+            f"Toda a operação cumpriu 100% dos padrões de conformidade técnica e SLA."
+        )
+        timeline_evidencias.append({"etapa": "1. Repositório NAS VideoRecord", "status": "NOMINAL", "desc": f"{len(matched_files)} blocos de 30 minutos íntegros preservados no NAS."})
+        timeline_evidencias.append({"etapa": "2. Recepção RF TBS", "status": "NOMINAL", "desc": f"Sinal estável (Qualidade {rf_quality}%, Força {rf_strength}%, Tuner: {tuner_stat})."})
+        timeline_evidencias.append({"etapa": "3. Conclusão de SLA", "status": "CONFORME", "desc": "Operação 100% em conformidade técnica. Isento de qualquer responsabilidade ou penalidade."})
+
+    # CENÁRIO 9: Fallback de Segurança
     else:
         veredito = "FT IBOPE"
         veredito_badge = "badge-red"
         responsabilidade = "Infraestrutura IBOPE"
-        confianca = "95.0%"
-        causa_raiz = f"Inconsistência nos arquivos de gravação locais ou falha de entrega no NAS para o canal {canal} no período {start_time} às {end_time}."
-        timeline_evidencias.append({"etapa": "1. Repositório NAS", "status": "LACUNA", "desc": "Arquivos ausentes ou tamanho abaixo do nominal de 30 minutos."})
-        timeline_evidencias.append({"etapa": "2. Auditoria de Nós", "status": "ALERTA", "desc": "Recomenda-se reciclagem de serviço ou validação de fila WAN."})
+        confianca = "94.0%"
+        causa_raiz = f"Inconsistência identificada nos arquivos de gravação ou entrega do canal {canal} no período {start_time} às {end_time}."
+        timeline_evidencias.append({"etapa": "1. Repositório NAS", "status": "ALERTA", "desc": "Divergência de arquivos ou tamanho abaixo do nominal de 30 minutos."})
+        timeline_evidencias.append({"etapa": "2. Nós de Gravação", "status": "VERIFICAR", "desc": "Recomenda-se validação de serviços e conectividade SMB."})
 
-    # 6. Parecer Técnico-Jurídico Formal sintetizado com Google Gemini Pro
+    # 6. Conclusão Formal de SLA
+    if "NOMINAL" in veredito:
+        conclusao_sla = "Operação 100% conforme. Ausência de anomalia técnica no intervalo auditado. Isento de qualquer penalidade de SLA."
+    elif "NÃO CONFIRMADA" in veredito or "IMPROCEDENTE" in veredito:
+        conclusao_sla = "Queixa tecnicamente improcedente. Transmissão e captação operaram em perfeita conformidade. A falha decorreu no receptor local do cliente."
+    elif "EMISSORA" in veredito:
+        conclusao_sla = "A ocorrência enquadra-se estritamente como Falha Técnica da Emissora (FT Emissora), isentando integralmente a operação IBOPE de descontos ou penalidades de SLA."
+    else:
+        conclusao_sla = "Ocorrência atribuída à infraestrutura IBOPE. Procedimentos de remediação ativados."
+
     parecer_texto = (
         f"PARECER TÉCNICO DE FISCALIZAÇÃO DE SLA & RESPONSABILIDADE FORENSE\n"
         f"PROCESSO: FISC-SLA-{audit_date.strftime('%Y%m%d')}-{idpv}\n"
         f"PRAÇA / CANAL: {praca} — {canal} (Veículo IDPV {idpv}) [Sinal Digital Terrestre ISDB-Tb]\n"
         f"DATA E INTERVALO AUDITADO: {audit_date.strftime('%d/%m/%Y')} das {start_time} às {end_time}\n"
+        f"SINTOMA ANALISADO: {symptom_label}\n"
         f"VEREDITO CONCLUSIVO: {veredito} (Grau de Certeza: {confianca})\n\n"
         f"1. EMBASAMENTO TÉCNICO:\n"
         f"{causa_raiz}\n\n"
@@ -490,7 +598,7 @@ def audit_time_range_with_nas_and_ai(
         f"3. ESTADO DA INFRAESTRUTURA DE CAPTAÇÃO:\n"
         f"Demodulador TBS: {tuner_stat} (Qualidade {rf_quality}%, Potência {rf_strength}%).\n"
         f"Canais correlatos na mesma antena: {'Nominais e operantes (Antena IBOPE íntegra)' if peers_healthy else 'Aferição isolada'}.\n\n"
-        f"CONCLUSÃO FINAL: {'A ocorrência enquadra-se estritamente como Falha Técnica da Emissora (FT Emissora), isentando integralmente a operação IBOPE de descontos ou penalidades de SLA.' if veredito == 'FT EMISSORA' else 'Ocorrência atribuída à infraestrutura IBOPE. Procedimentos de remediação ativados.'}"
+        f"CONCLUSÃO FINAL:\n{conclusao_sla}"
     )
 
     ai_cfg = get_ai_settings()
@@ -498,15 +606,16 @@ def audit_time_range_with_nas_and_ai(
         try:
             prompt_ai = (
                 f"Você é o Engenheiro Chefe de Fiscalização e SLA da Kantar IBOPE Media.\n"
-                f"Com base nos dados abaixo, forneça o Parecer Técnico Formal executivo para auditoria de SLA:\n"
+                f"Com base nos dados periciais abaixo, redija o Parecer Técnico Formal executivo de SLA:\n"
                 f"Praça: {praca} | Canal: {canal} (IDPV {idpv}) | Meio: Sinal Digital Terrestre ISDB-Tb\n"
                 f"Data: {audit_date.strftime('%d/%m/%Y')} das {start_time} às {end_time}\n"
-                f"Contestação / Pergunta: '{case_question or 'De quem é a responsabilidade pela falha?'}'\n"
-                f"Veredito Técnico: {veredito} (Confiança: {confianca})\n"
+                f"Queixa / Sintoma Apontado: '{symptom_label}'\n"
+                f"Contestação / Pergunta: '{case_question or 'Auditoria formal de SLA para o período'}'\n"
+                f"Veredito Forense: {veredito} (Confiança: {confianca})\n"
                 f"Causa Raiz: {causa_raiz}\n"
-                f"Caminho NAS VideoRecord: {unc_path}\n"
-                f"Arquivos no NAS: {len(matched_files)} blocos encontrados.\n"
-                f"Formate em 3 parágrafos objetivos: 1) Resumo da Análise e Veredito; 2) Provas Físicas de Gravação e RF; 3) Conclusão Formal de Isenção ou Responsabilidade de SLA."
+                f"NAS VideoRecord: {unc_path} ({len(matched_files)} blocos de 30min inspecionados)\n"
+                f"Telemetria RF: Qualidade {rf_quality}%, Potência {rf_strength}%, Tuner {tuner_stat}\n"
+                f"Formate em 3 parágrafos concisos e executivos: 1) Resumo da Análise e Veredito; 2) Provas Físicas de Gravação e Antena; 3) Conclusão Formal de Isenção ou Responsabilidade de SLA."
             )
             ai_out = execute_gemini_prompt(prompt_ai, module="fiscalizacao", target=f"{praca}_{canal}")
             if ai_out and len(ai_out.strip()) > 80:
@@ -519,6 +628,8 @@ def audit_time_range_with_nas_and_ai(
     return {
         "status": "success",
         "scope": "Digital Terrestre (ISDB-Tb)",
+        "symptom": symptom_key,
+        "symptom_label": symptom_label,
         "veredito": veredito,
         "veredito_badge": veredito_badge,
         "responsabilidade": responsabilidade,

@@ -145,6 +145,16 @@ function onFiscCanalChanged() {
     updateFiscUncPreview();
 }
 
+// Ao mudar a queixa/sintoma relatado
+function onFiscSymptomChanged() {
+    const resultCard = document.getElementById("fiscResultContainer");
+    if (resultCard) {
+        resultCard.style.display = "none";
+        resultCard.innerHTML = "";
+    }
+}
+window.onFiscSymptomChanged = onFiscSymptomChanged;
+
 // Atualiza preview do caminho UNC do NAS
 function updateFiscUncPreview() {
     const idpvInput = document.getElementById("fiscFilterIdpv");
@@ -199,6 +209,7 @@ async function startFiscalizacaoAudit() {
     const dateInput = document.getElementById("fiscFilterDate");
     const startInput = document.getElementById("fiscFilterStartTime");
     const endInput = document.getElementById("fiscFilterEndTime");
+    const symptomSelect = document.getElementById("fiscSymptom");
     const questionInput = document.getElementById("fiscCaseQuestion");
     const btn = document.getElementById("btnStartFiscalizacao");
 
@@ -255,12 +266,14 @@ async function startFiscalizacaoAudit() {
     }, 450);
 
     try {
+        const symptom = (symptomSelect?.value || "none").trim();
         const payload = {
             praca: praca,
             canal: canal,
             target_date: targetDate,
             start_time: startTime,
             end_time: endTime,
+            symptom: symptom,
             case_question: caseQuestion,
             custom_idpv: customIdpv
         };
@@ -309,11 +322,32 @@ function renderFiscalizacaoVeredito(data) {
     const container = document.getElementById("fiscResultContainer");
     if (!container) return;
 
-    const isEmissora = data.veredito.includes("EMISSORA");
-    const vColor = isEmissora ? "#f59e0b" : "#ef4444";
-    const vBg = isEmissora ? "rgba(245, 158, 11, 0.12)" : "rgba(239, 68, 68, 0.12)";
-    const vBorder = isEmissora ? "#f59e0b" : "#ef4444";
-    const vIcon = isEmissora ? "fa-broadcast-tower" : "fa-server";
+    let vColor = "#10b981";
+    let vBg = "rgba(16, 185, 129, 0.12)";
+    let vBorder = "#10b981";
+    let vIcon = "fa-check-circle";
+
+    if (data.veredito.includes("NOMINAL")) {
+        vColor = "#10b981";
+        vBg = "rgba(16, 185, 129, 0.12)";
+        vBorder = "#10b981";
+        vIcon = "fa-check-circle";
+    } else if (data.veredito.includes("NÃO CONFIRMADA") || data.veredito.includes("IMPROCEDENTE")) {
+        vColor = "#38bdf8";
+        vBg = "rgba(56, 189, 248, 0.12)";
+        vBorder = "#38bdf8";
+        vIcon = "fa-info-circle";
+    } else if (data.veredito.includes("EMISSORA")) {
+        vColor = "#f59e0b";
+        vBg = "rgba(245, 158, 11, 0.12)";
+        vBorder = "#f59e0b";
+        vIcon = "fa-broadcast-tower";
+    } else if (data.veredito.includes("IBOPE")) {
+        vColor = "#ef4444";
+        vBg = "rgba(239, 68, 68, 0.12)";
+        vBorder = "#ef4444";
+        vIcon = "fa-server";
+    }
 
     const html = `
         <div class="panel-card" style="border-left: 6px solid ${vBorder}; background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), ${vBg}); padding: 22px; margin-bottom: 24px;">
@@ -329,6 +363,9 @@ function renderFiscalizacaoVeredito(data) {
                         </span>
                         <span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid #38bdf8; font-size: 11px;">
                             <i class="fas fa-satellite-dish"></i> ${escapeHtml(data.scope)}
+                        </span>
+                        <span class="badge" style="background: rgba(255, 255, 255, 0.08); color: #cbd5e1; border: 1px solid rgba(255,255,255,0.15); font-size: 11px;">
+                            <i class="fas fa-stethoscope"></i> Queixa: ${escapeHtml(data.symptom_label || 'Rotina')}
                         </span>
                     </div>
                     <div style="font-size: 18px; font-weight: 800; color: #fff; margin-top: 4px;">
