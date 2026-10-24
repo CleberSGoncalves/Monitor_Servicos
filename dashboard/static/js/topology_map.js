@@ -49,8 +49,7 @@ const CITY_LABEL_CONFIG = {
     "Uberlândia": { dx: -18, dy: 4, anchor: "end", side: "left" },
     "Vitória": { dx: 18, dy: 4, anchor: "start", side: "right" },
     "Aracaju": { dx: 18, dy: 4, anchor: "start", side: "right" },
-    "Itumbiara": { dx: -18, dy: 12, anchor: "end", side: "bottom-left" },
-    "Manaus": { dx: 18, dy: 4, anchor: "start", side: "right" }
+    "Itumbiara": { dx: -18, dy: 12, anchor: "end", side: "bottom-left" }
 };
 
 async function loadTopologyMapData() {

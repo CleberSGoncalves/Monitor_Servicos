@@ -613,126 +613,6 @@ MARKET_TOPOLOGY = [
         ]
     },
     {
-        "id": "BRAM-MAO",
-        "cidade": "Manaus",
-        "aliases": ["manaus", "mao"],
-        "uf": "AM",
-        "pais": "Brasil",
-        "regiao": "Norte",
-        "lat": -3.1019,
-        "lng": -60.0152,
-        "site_location": "Adrianópolis / Vieiralves (Manaus)",
-        "site_elevation_m": 52,
-        "rx_mast_m": 24,
-        "cs_count": 1,
-        "towers": [
-            {
-                "match_keys": ["globo", "amazonica"],
-                "emissora": "Globo HD (Rede Amazônica Manaus)",
-                "nome": "Torre Rede Amazônica • Bairro Aleixo (Leste-Nordeste)",
-                "bairro": "Aleixo / Av. André Araújo",
-                "lat": -3.0915,
-                "lng": -59.9845,
-                "freq_mhz": 497.143,
-                "erp_kw": 30.0,
-                "cota_m": 92,
-                "mastro_m": 90,
-                "has_obstruction": False
-            },
-            {
-                "match_keys": ["record"],
-                "emissora": "Record HD (Record Manaus)",
-                "nome": "Torre Record • Aleixo Sul (Sudeste)",
-                "bairro": "Aleixo Sul / São Francisco",
-                "lat": -3.1085,
-                "lng": -59.9980,
-                "freq_mhz": 509.143,
-                "erp_kw": 25.0,
-                "cota_m": 88,
-                "mastro_m": 85,
-                "has_obstruction": False
-            },
-            {
-                "match_keys": ["band"],
-                "emissora": "BAND HD (Band Amazonas)",
-                "nome": "Torre Band AM • Aleixo Norte (Nordeste)",
-                "bairro": "Aleixo / Coroado",
-                "lat": -3.0840,
-                "lng": -59.9920,
-                "freq_mhz": 527.143,
-                "erp_kw": 22.0,
-                "cota_m": 90,
-                "mastro_m": 80,
-                "has_obstruction": False
-            },
-            {
-                "match_keys": ["sbt"],
-                "emissora": "SBT HD (TV Norte Amazonas)",
-                "nome": "Torre TV Norte SBT • N. Sra. das Graças (Sudoeste)",
-                "bairro": "Nossa Sra. das Graças / Vieiralves",
-                "lat": -3.1140,
-                "lng": -60.0245,
-                "freq_mhz": 557.143,
-                "erp_kw": 22.0,
-                "cota_m": 80,
-                "mastro_m": 80,
-                "has_obstruction": False
-            },
-            {
-                "match_keys": ["rede tv", "redetv"],
-                "emissora": "Rede TV! HD (Inova TV Manaus)",
-                "nome": "Torre Inova TV • Parque 10 de Novembro (Norte)",
-                "bairro": "Parque 10 de Novembro",
-                "lat": -3.0760,
-                "lng": -60.0110,
-                "freq_mhz": 563.143,
-                "erp_kw": 18.0,
-                "cota_m": 85,
-                "mastro_m": 75,
-                "has_obstruction": False
-            },
-            {
-                "match_keys": ["cultura"],
-                "emissora": "TV CULTURA HD (TV Encontro das Águas)",
-                "nome": "Torre Encontro das Águas • São Francisco (Sul-Sudeste)",
-                "bairro": "São Francisco",
-                "lat": -3.1180,
-                "lng": -60.0040,
-                "freq_mhz": 533.143,
-                "erp_kw": 18.0,
-                "cota_m": 82,
-                "mastro_m": 75,
-                "has_obstruction": False
-            },
-            {
-                "match_keys": ["canalgov", "ebc", "brasil"],
-                "emissora": "CanalGov (EBC Manaus)",
-                "nome": "Torre EBC • Bairro Dom Pedro (Oeste)",
-                "bairro": "Dom Pedro",
-                "lat": -3.0960,
-                "lng": -60.0410,
-                "freq_mhz": 617.143,
-                "erp_kw": 16.0,
-                "cota_m": 78,
-                "mastro_m": 70,
-                "has_obstruction": False
-            },
-            {
-                "match_keys": ["gazeta"],
-                "emissora": "Gazeta HD (TV Tiradentes Manaus)",
-                "nome": "Torre TV Tiradentes • Petrópolis (Sul)",
-                "bairro": "Petrópolis",
-                "lat": -3.1245,
-                "lng": -60.0085,
-                "freq_mhz": 491.000,
-                "erp_kw": 16.0,
-                "cota_m": 84,
-                "mastro_m": 70,
-                "has_obstruction": False
-            }
-        ]
-    },
-    {
         "id": "BRGO-IUB",
         "cidade": "Itumbiara",
         "aliases": ["itumbiara", "iub"],
@@ -1131,9 +1011,25 @@ def get_markets_map_data(channels: list = None, services: list = None) -> List[D
             channels = channels or []
             services = services or []
 
+    # Determina o conjunto de praças que possuem monitoramento ativo real
+    active_monitored_pracas = set()
+    if services:
+        for s in services:
+            p = s.get("praca")
+            if p and str(p).strip().lower() not in ("n/a", "não informado", "nao informado"):
+                active_monitored_pracas.add(str(p).strip().lower())
+    if channels:
+        for c in channels:
+            p = c.get("cidade")
+            if p and str(p).strip().lower() not in ("n/a", "não informado", "nao informado"):
+                active_monitored_pracas.add(str(p).strip().lower())
+
     result = []
     for m in MARKET_TOPOLOGY:
         cidade = m["cidade"]
+        # Só inclui no mapa praças que estão ativamente sendo monitoradas
+        if active_monitored_pracas and not any(_match_city(p, m) for p in active_monitored_pracas):
+            continue
         site_lat = m["lat"]
         site_lng = m["lng"]
         site_elevation = m.get("site_elevation_m", 60)

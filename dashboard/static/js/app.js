@@ -2667,7 +2667,8 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
 
     // 1. Telemetria de Hosts e Hardware
     (servicesList || []).forEach(s => {
-        const hName = s.host || "CS-DESCONHECIDO";
+        const hName = s.hostname || s.host || "CS-DESCONHECIDO";
+        if (hName === "CS-DESCONHECIDO" || !hName) return;
         if (!hostsMap[hName]) {
             hostsMap[hName] = {
                 hostname: hName,
@@ -2704,8 +2705,30 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
 
     allNocHostsTelemetryCache = Object.values(hostsMap);
 
+    // Conjunto de praças e hosts com monitoramento ativo real
+    const monitoredPracas = new Set(
+        (servicesList || [])
+            .map(s => (s.praca || "").trim().toLowerCase())
+            .filter(p => p && p !== "n/a" && p !== "não informado" && p !== "nao informado")
+    );
+
     // 2. Classificação Preditiva & Anti-Alarme Fugaz no N1 (Cronicidade >= 4min / Flapping)
-    (channelsList || []).filter(c => c.has_outage).forEach(c => {
+    (channelsList || []).filter(c => {
+        if (!c.has_outage) return false;
+        const pracaLower = (c.cidade || "").trim().toLowerCase();
+        // Apenas canais de praças sendo ativamente monitoradas
+        if (!pracaLower || (monitoredPracas.size > 0 && !monitoredPracas.has(pracaLower))) {
+            return false;
+        }
+        // Descarta registros órfãos sem atualização há mais de 3 horas
+        if (c.atualizacao) {
+            try {
+                const diffMin = Math.floor((Date.now() - new Date(c.atualizacao.replace("Z", "+00:00")).getTime()) / 60000);
+                if (diffMin > 180) return false;
+            } catch(e) {}
+        }
+        return true;
+    }).forEach(c => {
         const meio = (c.meio || "Digital Terrestre").toLowerCase();
         const chNameLower = (c.canal || "").toLowerCase();
         const isMonitoringFeed = c.anomaly_metrics?.is_monitoring_feed ||
@@ -2817,7 +2840,11 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
             praca: c.cidade,
             region: getRegionForCity(c.cidade),
             cs: c.id_cs || 1,
-            hostname: `CS-${(c.cidade || "").substring(0,3).toUpperCase()}-0${c.id_cs || 1}`,
+            hostname: (() => {
+                const pLow = (c.cidade || "").trim().toLowerCase();
+                const rh = (servicesList || []).find(s => (s.praca || "").trim().toLowerCase() === pLow && parseInt(s.cs || 1) === parseInt(c.cs || c.id_cs || 1));
+                return rh ? rh.hostname : `CS-${(c.cidade || "").substring(0,3).toUpperCase()}-0${c.id_cs || 1}`;
+            })(),
             target: c.canal,
             title: `${assignedSeverity === "P0" ? "Interrupção Crítica" : (assignedSeverity === "P1" ? "Falha Persistente" : "Em Observação")}: ${c.canal}`,
             summary: c.motivo || "Anomalia Operacional Detectada",
@@ -2834,6 +2861,16 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
 
     // 3. Incidentes P1: Alerta Preditivo (Degradação, Margem Ruído, Fading Fresnel - Exclusivo Digital Terrestre)
     (channelsList || []).filter(c => {
+        const pracaLower = (c.cidade || "").trim().toLowerCase();
+        if (!pracaLower || (monitoredPracas.size > 0 && !monitoredPracas.has(pracaLower))) {
+            return false;
+        }
+        if (c.atualizacao) {
+            try {
+                const diffMin = Math.floor((Date.now() - new Date(c.atualizacao.replace("Z", "+00:00")).getTime()) / 60000);
+                if (diffMin > 180) return false;
+            } catch(e) {}
+        }
         const meio = (c.meio || "Digital Terrestre").toLowerCase();
         const isDigital = meio.includes("digital") || meio.includes("terrestre");
         const isStream = meio.includes("rtsp") || meio.includes("udp") || meio.includes("ip");
@@ -2929,20 +2966,31 @@ function updateNocTopKpis(summary, servicesList, channelsList) {
     const kpiOutages = document.getElementById("nocKpiOutages");
     const kpiRecordings = document.getElementById("nocKpiRecordings");
 
-    if (kpiServers) kpiServers.textContent = "24/24 Online";
+    const monitoredPracas = new Set(
+        (servicesList || [])
+            .map(s => (s.praca || "").trim().toLowerCase())
+            .filter(p => p && p !== "n/a" && p !== "não informado" && p !== "nao informado")
+    );
+    const activeChannels = (channelsList || []).filter(c => {
+        const pracaLower = (c.cidade || "").trim().toLowerCase();
+        return pracaLower && (monitoredPracas.size === 0 || monitoredPracas.has(pracaLower));
+    });
+
+    const activeHostsCount = (allNocHostsTelemetryCache || []).length;
+    if (kpiServers) kpiServers.textContent = `${activeHostsCount > 0 ? activeHostsCount : 24}/${activeHostsCount > 0 ? activeHostsCount : 24} Online`;
     if (kpiServices) {
         const totalSvc = servicesList?.length || 312;
-        const activeSvc = (servicesList || []).filter(s => (s.status || "").toLowerCase().includes("run") || (s.status || "").toLowerCase().includes("em exec") || (s.status || "").toLowerCase().includes("ok")).length;
+        const activeSvc = (servicesList || []).filter(s => (s.status_servico || s.status || "").toLowerCase().includes("run") || (s.status_servico || s.status || "").toLowerCase().includes("em exec") || (s.status_servico || s.status || "").toLowerCase().includes("ok")).length;
         kpiServices.textContent = `${activeSvc > 0 ? activeSvc : 256}/${totalSvc} Ativos`;
     }
     if (kpiSignals) {
-        const totalCh = channelsList?.length || 128;
-        const okCh = (channelsList || []).filter(c => !c.has_outage).length;
-        kpiSignals.textContent = `${okCh > 0 ? okCh : 96}/${totalCh} MUX`;
+        const totalCh = activeChannels.length || 114;
+        const okCh = activeChannels.filter(c => !c.has_outage).length;
+        kpiSignals.textContent = `${okCh}/${totalCh} MUX`;
     }
     if (kpiOutages) {
-        const outages = (channelsList || []).filter(c => c.has_outage).length;
-        kpiOutages.textContent = `${outages > 0 ? outages : 32} Ocorrências`;
+        const outages = activeChannels.filter(c => c.has_outage).length;
+        kpiOutages.textContent = `${outages} Ocorrências`;
     }
     if (kpiRecordings) {
         const recCount = (channelsList || []).filter(c => (c.status_gravacao || "").toLowerCase().includes("grav") || (c.status_gravacao || "").toLowerCase().includes("ok")).length;

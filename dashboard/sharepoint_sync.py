@@ -96,6 +96,13 @@ def sync_fleet_data():
         channels_list = []
         outages = []
 
+        # Identifica praças com monitoramento ativo real (hosts com serviços cadastrados na frota)
+        active_monitored_pracas = set(
+            str(s.get("praca") or "").strip().lower()
+            for s in services_list
+            if s.get("praca") and str(s.get("praca")).strip().lower() not in ("n/a", "não informado", "nao informado")
+        )
+
         # Mapeia praças/CS com DNA.MediaConverter ativo para converter MP4 BKP em ASF
         converter_running_keys = {
             (s.get("praca", "").strip().lower(), int(float(s.get("cs", 1))))
@@ -129,10 +136,26 @@ def sync_fleet_data():
                     "cs": f_temp.get("IDCS", 1)
                 })
         
+        now_utc = datetime.now(timezone.utc)
         for it in raw_channels:
             f = it.get("fields", {})
             ch_name = f.get("Title", "Canal")
             praca = f.get("Cidade", "N/A")
+            p_lower = praca.strip().lower()
+
+            # FILTRO ANTI-SUJEIRA DE BASE: Apenas canais de praças que estão sendo ATIVAMENTE monitoradas
+            if not p_lower or (active_monitored_pracas and p_lower not in active_monitored_pracas):
+                continue  # Descarta cidades desativadas/não monitoradas (ex: Manaus)
+
+            # FILTRO DE TELEMETRIA FRESCA: Descarta registros órfãos sem atualização há mais de 3 horas
+            at_str = str(f.get("Atualizacao", "") or "")
+            if at_str:
+                try:
+                    dt = datetime.fromisoformat(at_str.replace("Z", "+00:00"))
+                    if (now_utc - dt).total_seconds() > 3 * 3600:
+                        continue  # Registro congelado/abandonado
+                except Exception:
+                    pass
             is_frozen = "sim" in str(f.get("VideoCongelado", "")).lower()
             is_mute = "sim" in str(f.get("AudioMudo", "")).lower()
             sig_q = f.get("QualidadeSinal")

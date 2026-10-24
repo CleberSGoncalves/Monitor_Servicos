@@ -206,7 +206,7 @@ def seed_initial_patterns(cursor: sqlite3.Cursor):
             "Múltiplos canais da mesma afiliada perdem portadora exatamente no mesmo minuto, sem anomalia no host local.",
             json.dumps({"multi_channel_same_praca": True, "simultaneous_drop": True}),
             "IA Gemini Pro (Pattern Mining)",
-            now_iso, now_iso, 5, json.dumps(["Manaus", "Recife", "Salvador"]),
+            now_iso, now_iso, 5, json.dumps(["Pelotas", "Caxias do Sul", "Porto Alegre"]),
             "Não atuar no transmissor terrestre local. A falha decorre de atenuação por chuva intensa no uplink de satélite da geradora.",
             0.97, 1, now_iso
         ),
