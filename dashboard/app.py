@@ -1002,6 +1002,18 @@ async def get_classificador_analise_endpoint(user: dict = Depends(get_current_us
     from failure_classifier_service import classify_fleet_quality_failures
     return classify_fleet_quality_failures()
 
+
+@app.get("/api/classificador-falhas/relacao-canal-falha")
+async def get_classificador_relacao_endpoint(
+    praca: Optional[str] = None, 
+    canal: Optional[str] = None, 
+    pattern_id: Optional[str] = None, 
+    limit: int = 200, 
+    user: dict = Depends(get_current_user)
+):
+    from failure_classifier_service import get_failure_channel_traceability
+    return get_failure_channel_traceability(praca=praca, canal=canal, pattern_id=pattern_id, limit=limit)
+
 @app.post("/api/classificador-falhas/aprender-novo-padrao")
 async def aprender_novo_padrao_falha_endpoint(user: dict = Depends(get_current_user)):
     from failure_classifier_service import mine_and_learn_new_failure_pattern

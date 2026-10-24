@@ -67,8 +67,33 @@ def init_classifier_db():
             )
         """)
 
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS failure_incidents_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                timestamp_formatado TEXT NOT NULL,
+                praca TEXT NOT NULL,
+                canal TEXT NOT NULL,
+                cs TEXT,
+                idpv TEXT,
+                meio TEXT NOT NULL,
+                pattern_id TEXT NOT NULL,
+                enum_number INTEGER NOT NULL,
+                pattern_name TEXT NOT NULL,
+                category TEXT NOT NULL,
+                severity TEXT NOT NULL DEFAULT 'Alerta',
+                symptom TEXT,
+                duration_min REAL DEFAULT 0,
+                status TEXT DEFAULT 'Ativa'
+            )
+        """)
+
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_ftc_active ON failure_taxonomy_catalog (is_active)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_fll_time ON failure_learning_log (created_at)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_fih_canal ON failure_incidents_history (canal)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_fih_praca ON failure_incidents_history (praca)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_fih_pattern ON failure_incidents_history (pattern_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_fih_time ON failure_incidents_history (timestamp)")
 
         seed_taxonomy_if_empty(cursor)
         conn.commit()
@@ -283,6 +308,7 @@ def classify_fleet_quality_failures() -> Dict[str, Any]:
 
     # Tipo Nominal
     nominal_channels: List[Dict[str, Any]] = []
+    ocorrencias_rastreabilidade: List[Dict[str, Any]] = []
 
     # Consolidação por Praça
     by_praca: Dict[str, Dict[str, Any]] = {}
@@ -405,10 +431,49 @@ def classify_fleet_quality_failures() -> Dict[str, Any]:
         }
 
         if assigned_pattern and assigned_pattern in classified_types:
+            pat_data = classified_types[assigned_pattern]
             channel_entry["pattern_id"] = assigned_pattern
-            channel_entry["pattern_name"] = classified_types[assigned_pattern]["name"]
+            channel_entry["pattern_name"] = pat_data["name"]
+            channel_entry["enum_number"] = pat_data["enum_number"]
+            channel_entry["category"] = pat_data["category"]
+            channel_entry["color"] = pat_data["color"]
+            channel_entry["icon"] = pat_data["icon"]
             classified_types[assigned_pattern]["channels"].append(channel_entry)
             classified_types[assigned_pattern]["count"] += 1
+
+            # Rastreabilidade Detalhada da Ocorrência (Falha X Canal)
+            severity_str = "Crítica" if pat_data["enum_number"] in [1, 5, 6, 8] else ("Atenção" if pat_data["enum_number"] in [2, 7] else "Alerta")
+            now_dt = datetime.now()
+            occ_entry = {
+                "id": f"{praca}_{ch_name}_{assigned_pattern}",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp_formatado": now_dt.strftime("%d/%m %H:%M"),
+                "hora_curta": now_dt.strftime("%H:%M"),
+                "praca": praca,
+                "canal": ch_name,
+                "cs": cs,
+                "idpv": idpv,
+                "meio": meio_tipo,
+                "is_digital_rf": is_digital_rf,
+                "is_analog_yuan": is_analog,
+                "pattern_id": assigned_pattern,
+                "enum_number": pat_data["enum_number"],
+                "pattern_num": f"#{pat_data['enum_number']:02d}",
+                "pattern_name": pat_data["name"],
+                "category": pat_data["category"],
+                "scope_meio": pat_data["scope_meio"],
+                "icon": pat_data["icon"],
+                "color": pat_data["color"],
+                "badge_class": pat_data["badge_class"],
+                "severity": severity_str,
+                "qualidade_sinal": sig_q,
+                "forca_sinal": sig_s,
+                "status_tuner": tuner_stat,
+                "duration_min": duration_min,
+                "symptom": symptom_detail,
+                "status": "Ativa"
+            }
+            ocorrencias_rastreabilidade.append(occ_entry)
         else:
             nominal_channels.append(channel_entry)
 
@@ -472,6 +537,59 @@ def classify_fleet_quality_failures() -> Dict[str, Any]:
     # Ordena os tipos de falha por número enumerado
     active_types_list = sorted(list(classified_types.values()), key=lambda x: x["enum_number"])
 
+    # Persiste ocorrências ativas em failure_incidents_history para rastreabilidade histórica
+    try:
+        with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
+            cur = conn.cursor()
+            for occ in ocorrencias_rastreabilidade:
+                # Evita duplicatas idênticas gravadas na mesma hora
+                cur.execute("""
+                    SELECT id FROM failure_incidents_history 
+                    WHERE canal = ? AND praca = ? AND pattern_id = ? 
+                    ORDER BY id DESC LIMIT 1
+                """, (occ["canal"], occ["praca"], occ["pattern_id"]))
+                last_row = cur.fetchone()
+                if not last_row:
+                    cur.execute("""
+                        INSERT INTO failure_incidents_history 
+                        (timestamp, timestamp_formatado, praca, canal, cs, idpv, meio, pattern_id, enum_number, pattern_name, category, severity, symptom, duration_min, status)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        occ["timestamp"], occ["timestamp_formatado"], occ["praca"], occ["canal"],
+                        occ["cs"], occ["idpv"], occ["meio"], occ["pattern_id"], occ["enum_number"],
+                        occ["pattern_name"], occ["category"], occ["severity"], occ["symptom"],
+                        occ["duration_min"], occ["status"]
+                    ))
+            conn.commit()
+    except Exception as e:
+        logger.warning(f"Erro ao persistir histórico de ocorrências de falhas: {e}")
+
+    # Consolida métricas de rastreabilidade (Falha X Canal)
+    unique_channels_with_fails = len(set(o["canal"] for o in ocorrencias_rastreabilidade))
+    unique_pracas_with_fails = len(set(o["praca"] for o in ocorrencias_rastreabilidade))
+    
+    counts_by_pattern: Dict[str, int] = {}
+    for o in ocorrencias_rastreabilidade:
+        p_name = f"#{o['enum_number']:02d} {o['pattern_name'].split('/')[0].strip()}"
+        counts_by_pattern[p_name] = counts_by_pattern.get(p_name, 0) + 1
+    most_frequent_pattern = max(counts_by_pattern.items(), key=lambda x: x[1])[0] if counts_by_pattern else "Nenhuma"
+    
+    counts_by_praca: Dict[str, int] = {}
+    for o in ocorrencias_rastreabilidade:
+        counts_by_praca[o["praca"]] = counts_by_praca.get(o["praca"], 0) + 1
+    most_impacted_praca = max(counts_by_praca.items(), key=lambda x: x[1])[0] if counts_by_praca else "Nenhuma"
+
+    totais_rastreabilidade = {
+        "total_ocorrencias": len(ocorrencias_rastreabilidade),
+        "canais_unicos_afetados": unique_channels_with_fails,
+        "pracas_unicas_afetadas": unique_pracas_with_fails,
+        "falha_mais_recorrente": most_frequent_pattern,
+        "praca_mais_impactada": most_impacted_praca
+    }
+
+    # Ordena ocorrências por severidade e praça
+    sorted_ocorrencias = sorted(ocorrencias_rastreabilidade, key=lambda x: (0 if x["severity"] == "Crítica" else (1 if x["severity"] == "Atenção" else 2), x["praca"], x["canal"]))
+
     return {
         "status": "success",
         "total_canais_auditados": total_evaluated,
@@ -484,6 +602,8 @@ def classify_fleet_quality_failures() -> Dict[str, Any]:
         "tipos_falha_catalogados": active_types_list,
         "pracas_resumo": sorted_pracas,
         "total_tipos_mapeados": len(active_types_list),
+        "ocorrencias_rastreabilidade": sorted_ocorrencias,
+        "totais_rastreabilidade": totais_rastreabilidade,
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
@@ -593,4 +713,51 @@ RESPONDA ESTRITAMENTE NO SEGUINTE FORMATO JSON (SEM NENHUM TEXTO ADICIONAL):
         "enum_number": next_enum,
         "pattern": new_pat,
         "message": f"Tipo de Falha #{next_enum:02d} ('{new_pat['name']}') catalogado e aprendido com sucesso!"
+    }
+
+
+def get_failure_channel_traceability(praca: Optional[str] = None, 
+                                     canal: Optional[str] = None, 
+                                     pattern_id: Optional[str] = None, 
+                                     limit: int = 200) -> Dict[str, Any]:
+    """
+    Retorna o histórico persistente de ocorrências para rastreabilidade de falhas por canal e praça.
+    """
+    init_classifier_db()
+    query = """
+        SELECT id, timestamp, timestamp_formatado, praca, canal, cs, idpv, meio, 
+               pattern_id, enum_number, pattern_name, category, severity, symptom, 
+               duration_min, status 
+        FROM failure_incidents_history 
+        WHERE 1=1
+    """
+    params = []
+    if praca and praca != "all":
+        query += " AND praca = ?"
+        params.append(praca)
+    if canal:
+        query += " AND canal LIKE ?"
+        params.append(f"%{canal}%")
+    if pattern_id and pattern_id != "all":
+        query += " AND pattern_id = ?"
+        params.append(pattern_id)
+        
+    query += " ORDER BY id DESC LIMIT ?"
+    params.append(limit)
+    
+    records = []
+    try:
+        with sqlite3.connect(DB_PATH, timeout=20.0) as conn:
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+            cur.execute(query, params)
+            for r in cur.fetchall():
+                records.append(dict(r))
+    except Exception as e:
+        logger.error(f"Erro ao buscar rastreabilidade de falhas: {e}")
+
+    return {
+        "status": "success",
+        "total": len(records),
+        "ocorrencias": records
     }
