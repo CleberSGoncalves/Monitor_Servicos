@@ -969,6 +969,23 @@ async def auditar_range_fiscalizacao(req: FiscalizacaoAuditRequest, user: dict =
         user_creds=creds
     )
 
+# =============================================================
+# Auditoria Realtime de Blocos de 30min (Alta Escala 500+ Canais)
+# =============================================================
+class RealtimePracaAiRequest(BaseModel):
+    praca: str
+    block_slot: Optional[str] = None
+
+@app.get("/api/fiscalizacao/realtime-blocks")
+async def get_realtime_blocks_audit_endpoint(force: bool = False, user: dict = Depends(get_current_user)):
+    from realtime_block_auditor import audit_realtime_30min_blocks
+    return audit_realtime_30min_blocks(force_refresh=force)
+
+@app.post("/api/fiscalizacao/realtime-ai-praca-summary")
+async def get_realtime_ai_praca_summary_endpoint(req: RealtimePracaAiRequest, user: dict = Depends(get_current_user)):
+    from realtime_block_auditor import diagnose_praca_cluster_with_ai
+    return diagnose_praca_cluster_with_ai(req.praca, req.block_slot)
+
 # ==========================================
 # Feature Flags & Kill-Switch Operacional
 # ==========================================

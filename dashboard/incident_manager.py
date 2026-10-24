@@ -864,3 +864,226 @@ def correlate_root_cause_and_suppress_storms(raw_incidents: List[Dict[str, Any]]
         "total_consolidated": len(master_incidents),
         "root_cause_summary": f"{total_suppressed} alertas duplicados foram silenciados e consolidados em incidentes mestres de causa-raiz."
     }
+
+
+# =========================================================================
+# Rastreamento de Anomalias & Cronicidade de Canais (Anti-Alarme Fugaz)
+# =========================================================================
+
+def init_anomaly_telemetry_db():
+    """Garante a existência da tabela de telemetria histórica de anomalias."""
+    with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS channel_anomaly_telemetry (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                channel_key TEXT NOT NULL,
+                praca TEXT NOT NULL,
+                canal TEXT NOT NULL,
+                cs INTEGER DEFAULT 1,
+                anomaly_type TEXT NOT NULL,
+                first_seen TEXT NOT NULL,
+                last_seen TEXT NOT NULL,
+                resolved_at TEXT,
+                duration_seconds REAL DEFAULT 0,
+                consecutive_cycles INTEGER DEFAULT 1,
+                is_active INTEGER DEFAULT 1,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_cat_active ON channel_anomaly_telemetry(channel_key, anomaly_type, is_active)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_cat_time ON channel_anomaly_telemetry(channel_key, anomaly_type, first_seen)")
+        conn.commit()
+
+
+def track_channel_anomalies_cycle(channels_list: List[Dict[str, Any]]) -> None:
+    """
+    Rastreia a evolução temporal de anomalias em cada canal da frota:
+    - Diferencia micro-oscilações passageiras (< 4 min) de incidentes crônicos.
+    - Mede duração ininterrupta e frequência de repetições (flapping) na última hora e 24h.
+    - Injeta 'anomaly_metrics' em cada canal para tomada de decisão no N1 Cockpit e IA.
+    """
+    if not channels_list:
+        return
+
+    init_anomaly_telemetry_db()
+    now_dt = datetime.now()
+    now_str = now_dt.isoformat()
+    one_hour_ago = (now_dt - timedelta(hours=1)).isoformat()
+    one_day_ago = (now_dt - timedelta(hours=24)).isoformat()
+
+    with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
+        cursor = conn.cursor()
+
+        for ch in channels_list:
+            praca = ch.get("cidade", "Geral")
+            canal = ch.get("canal", "Canal")
+            cs = int(ch.get("id_cs", 1) or 1)
+            ch_low = canal.lower()
+
+            is_frozen = (ch.get("video_congelado") or "").lower() == "sim"
+            is_mute = (ch.get("audio_mudo") or "").lower() == "sim"
+            rec_status = str(ch.get("gravando_mp4", "Sim"))
+            is_storage_fault = "⚠️" in rec_status or "inacessível" in rec_status.lower()
+            is_rf_outage = (float(ch.get("qualidade_sinal", 0) or 0) == 0 and "não" in rec_status.lower())
+
+            # Detecta feeds de teste e monitoramento interno (não comerciais)
+            is_monitoring_feed = any(k in ch_low for k in ["obs", "teste", "monitoramento", "stream_obs"])
+
+            # Chave normalizada para o canal
+            norm_key = re.sub(r"[^a-z0-9]", "_", f"{praca.lower()}_{ch_low}_{cs}").strip("_")
+
+            anomaly_types = []
+            if is_frozen:
+                anomaly_types.append("video_congelado")
+            if is_mute:
+                anomaly_types.append("audio_mudo")
+            if is_storage_fault:
+                anomaly_types.append("storage_fault")
+            if is_rf_outage:
+                anomaly_types.append("rf_outage")
+
+            # 1. Atualiza registros ativos para anomalias presentes
+            main_anom = anomaly_types[0] if anomaly_types else None
+            current_duration_sec = 0.0
+            consec_cycles = 0
+
+            if main_anom:
+                cursor.execute("""
+                    SELECT id, first_seen, consecutive_cycles FROM channel_anomaly_telemetry
+                    WHERE channel_key = ? AND anomaly_type = ? AND is_active = 1
+                    ORDER BY id DESC LIMIT 1
+                """, (norm_key, main_anom))
+                row_act = cursor.fetchone()
+
+                if row_act:
+                    anom_id, fs_str, cycles = row_act
+                    try:
+                        fs_dt = datetime.fromisoformat(fs_str)
+                    except Exception:
+                        fs_dt = now_dt
+                    current_duration_sec = (now_dt - fs_dt).total_seconds()
+                    consec_cycles = cycles + 1
+
+                    cursor.execute("""
+                        UPDATE channel_anomaly_telemetry
+                        SET last_seen = ?, duration_seconds = ?, consecutive_cycles = ?
+                        WHERE id = ?
+                    """, (now_str, current_duration_sec, consec_cycles, anom_id))
+                else:
+                    # Nova anomalia detectada agora
+                    consec_cycles = 1
+                    current_duration_sec = 30.0
+                    cursor.execute("""
+                        INSERT INTO channel_anomaly_telemetry
+                        (channel_key, praca, canal, cs, anomaly_type, first_seen, last_seen, duration_seconds, consecutive_cycles, is_active)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                    """, (norm_key, praca, canal, cs, main_anom, now_str, now_str, 30.0, 1))
+
+            # 2. Fecha anomalias que foram normalizadas neste ciclo
+            all_known = ["video_congelado", "audio_mudo", "storage_fault", "rf_outage"]
+            for a_type in all_known:
+                if a_type not in anomaly_types:
+                    cursor.execute("""
+                        SELECT id, first_seen FROM channel_anomaly_telemetry
+                        WHERE channel_key = ? AND anomaly_type = ? AND is_active = 1
+                    """, (norm_key, a_type))
+                    rows_close = cursor.fetchall()
+                    for r_close in rows_close:
+                        c_id, fs_str = r_close
+                        try:
+                            fs_dt = datetime.fromisoformat(fs_str)
+                            dur_close = (now_dt - fs_dt).total_seconds()
+                        except Exception:
+                            dur_close = 60.0
+                        cursor.execute("""
+                            UPDATE channel_anomaly_telemetry
+                            SET is_active = 0, resolved_at = ?, duration_seconds = ?
+                            WHERE id = ?
+                        """, (now_str, dur_close, c_id))
+
+            # 3. Consulta histórico de repetições nas últimas 1h e 24h
+            cursor.execute("""
+                SELECT COUNT(*) FROM channel_anomaly_telemetry
+                WHERE channel_key = ? AND first_seen >= ?
+            """, (norm_key, one_hour_ago))
+            episodes_1h = cursor.fetchone()[0] or 0
+
+            cursor.execute("""
+                SELECT COUNT(*), COALESCE(SUM(duration_seconds), 0) FROM channel_anomaly_telemetry
+                WHERE channel_key = ? AND first_seen >= ?
+            """, (norm_key, one_day_ago))
+            ep_24h_row = cursor.fetchone()
+            episodes_24h = ep_24h_row[0] or 0
+            downtime_sec_24h = ep_24h_row[1] or 0.0
+
+            cur_dur_min = round(current_duration_sec / 60.0, 1)
+
+            # 4. Avaliação de Cronicidade (Anti-Alarme Fugaz)
+            is_active = len(anomaly_types) > 0
+            is_chronic = is_active and (cur_dur_min >= 4.0 or episodes_1h >= 3 or cur_dur_min >= 15.0)
+            is_efemero = is_active and (cur_dur_min < 4.0 and episodes_1h <= 1)
+
+            if not is_active:
+                chron_level = "normal"
+                chron_badge = "🟢 Operação Nominal"
+            elif cur_dur_min >= 15.0 or episodes_1h >= 5:
+                chron_level = "critico_cronico"
+                chron_badge = f"🔴 Crítico Persistente ({cur_dur_min} min)"
+            elif cur_dur_min >= 4.0:
+                chron_level = "persistente"
+                chron_badge = f"⏱️ Persistente ({cur_dur_min} min contínuos)"
+            elif episodes_1h >= 3:
+                chron_level = "flapping_recorrente"
+                chron_badge = f"🔁 Crônico: {episodes_1h}x na última hora (Flapping)"
+            else:
+                chron_level = "efemero"
+                chron_badge = f"🟡 Recente ({cur_dur_min} min) • Em Observação"
+
+            ch["anomaly_metrics"] = {
+                "channel_key": norm_key,
+                "has_anomaly": is_active,
+                "anomaly_types": anomaly_types,
+                "current_duration_min": cur_dur_min,
+                "consecutive_cycles": consec_cycles,
+                "episodes_1h": episodes_1h,
+                "episodes_24h": episodes_24h,
+                "downtime_min_24h": round(downtime_sec_24h / 60.0, 1),
+                "is_chronic": is_chronic,
+                "is_efemero": is_efemero,
+                "is_monitoring_feed": is_monitoring_feed,
+                "chronicity_level": chron_level,
+                "chronicity_badge": chron_badge
+            }
+
+        conn.commit()
+
+
+def get_channel_anomaly_history_summary(channel_key: str, period: str = "24h") -> Dict[str, Any]:
+    """Retorna sumário completo do histórico de anomalias para enriquecer o diagnóstico de IA."""
+    init_anomaly_telemetry_db()
+    now_dt = datetime.now()
+    since_dt = (now_dt - timedelta(hours=24)).isoformat() if period == "24h" else (now_dt - timedelta(days=7)).isoformat()
+
+    with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT anomaly_type, first_seen, resolved_at, duration_seconds, is_active
+            FROM channel_anomaly_telemetry
+            WHERE channel_key = ? AND first_seen >= ?
+            ORDER BY id DESC LIMIT 50
+        """, (channel_key, since_dt))
+        rows = cursor.fetchall()
+
+    events = [dict(r) for r in rows]
+    total_events = len(events)
+    total_downtime_sec = sum(r.get("duration_seconds", 0) for r in events)
+
+    return {
+        "channel_key": channel_key,
+        "period": period,
+        "total_events": total_events,
+        "total_downtime_minutes": round(total_downtime_sec / 60.0, 1),
+        "events": events
+    }

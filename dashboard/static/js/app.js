@@ -2702,9 +2702,15 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
 
     allNocHostsTelemetryCache = Object.values(hostsMap);
 
-    // 2. Incidentes P0 (Crítico / Blackout Total)
+    // 2. Classificação Preditiva & Anti-Alarme Fugaz no N1 (Cronicidade >= 4min / Flapping)
     (channelsList || []).filter(c => c.has_outage).forEach(c => {
         const meio = (c.meio || "Digital Terrestre").toLowerCase();
+        const chNameLower = (c.canal || "").toLowerCase();
+        const isMonitoringFeed = c.anomaly_metrics?.is_monitoring_feed ||
+                                 chNameLower.includes("obs") || chNameLower.includes("streaming_obs") ||
+                                 chNameLower.includes("feed") || chNameLower.includes("redund") ||
+                                 meio.includes("stream") || meio.includes("obs");
+
         const isRtsp = meio.includes("rtsp") || meio.includes("udp") || meio.includes("ip") || meio.includes("stream");
         const isAnalog = meio.includes("analóg") || meio.includes("analog") || meio.includes("directshow");
         const isStorageErr = (c.gravando_mp4 || "").includes("⚠️") || (c.motivo || "").includes("Pasta") || (c.motivo || "").includes("Gravação");
@@ -2750,18 +2756,58 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
 
         // Tempo decorrido real
         let timeAgo = "Recentemente";
+        let diffMin = 1;
         if (c.atualizacao) {
             try {
-                const diffMin = Math.max(1, Math.floor((Date.now() - new Date(c.atualizacao.replace("Z", "+00:00")).getTime()) / 60000));
+                diffMin = Math.max(1, Math.floor((Date.now() - new Date(c.atualizacao.replace("Z", "+00:00")).getTime()) / 60000));
                 timeAgo = diffMin < 60 ? `Há ${diffMin} min` : `Há ${Math.floor(diffMin/60)}h ${diffMin%60}m`;
             } catch(e) {}
         }
 
+        // Métricas de Cronicidade da Telemetria SQLite (Anti-Alarme Fugaz)
+        const anom = c.anomaly_metrics || {};
+        const curDurMin = anom.current_duration_min || diffMin;
+        const ep1h = anom.episodes_1h || 1;
+        const isChronic = anom.is_chronic || (curDurMin >= 4.0 || ep1h >= 3);
+        const isEfemero = anom.is_efemero || (curDurMin < 4.0 && ep1h <= 1);
+        let chronBadge = anom.chronicity_badge || "";
+
+        // Regra de Severidade Refinada
+        let assignedSeverity = "P0";
+        let assignedSeverityLabel = "CRÍTICO (P0)";
+
+        if (isMonitoringFeed) {
+            // Feeds de OBS / Streams internos nunca são P0/P1
+            assignedSeverity = "P2";
+            assignedSeverityLabel = "FEED MONITORAMENTO (P2)";
+            chronBadge = chronBadge || "📡 Feed Interno de Apoio (Sem Impacto Broadcast)";
+        } else if (isEfemero) {
+            // Anti-Alarme Fugaz: Micro-ocorrências transitórias (< 4 min) não disparam P0 no N1
+            assignedSeverity = "P2";
+            assignedSeverityLabel = "EM OBSERVAÇÃO (P2)";
+            chronBadge = chronBadge || `🟡 Recente (${curDurMin} min) • N1 aguarda cronicidade (>= 4 min)`;
+        } else if (isChronic) {
+            // Falha crônica comprovada: persistente >= 4 min ou flapping
+            if (curDurMin >= 15.0 || ep1h >= 5) {
+                assignedSeverity = "P0";
+                assignedSeverityLabel = "CRÍTICO PERSISTENTE (P0)";
+                chronBadge = chronBadge || `🔴 Crítico Persistente (${curDurMin} min contínuos)`;
+            } else if (ep1h >= 3) {
+                assignedSeverity = "P1";
+                assignedSeverityLabel = "CRÔNICO / FLAPPING (P1)";
+                chronBadge = chronBadge || `🔁 Crônico / Flapping (${ep1h}x na última hora)`;
+            } else {
+                assignedSeverity = "P1";
+                assignedSeverityLabel = "PERSISTENTE (P1)";
+                chronBadge = chronBadge || `⏱️ Persistente (${curDurMin} min contínuos)`;
+            }
+        }
+
         incidents.push({
-            id: `p0_ch_${c.cidade}_${c.canal}`,
+            id: `${assignedSeverity.toLowerCase()}_ch_${c.cidade}_${c.canal}`,
             key: `canal_${c.canal}`,
-            severity: "P0",
-            severity_label: "CRÍTICO (P0)",
+            severity: assignedSeverity,
+            severity_label: assignedSeverityLabel,
             trigger_type: triggerType,
             category: "sinal_rf",
             category_label: catLabel,
@@ -2771,12 +2817,16 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
             cs: c.id_cs || 1,
             hostname: `CS-${(c.cidade || "").substring(0,3).toUpperCase()}-0${c.id_cs || 1}`,
             target: c.canal,
-            title: `Interrupção Operacional: ${c.canal}`,
+            title: `${assignedSeverity === "P0" ? "Interrupção Crítica" : (assignedSeverity === "P1" ? "Falha Persistente" : "Em Observação")}: ${c.canal}`,
             summary: c.motivo || "Anomalia Operacional Detectada",
             telemetry: telStr,
             details_subline: detailSubline,
             statusBadgeText: statusBadgeText,
-            time_ago: timeAgo
+            time_ago: timeAgo,
+            chronicity_badge: chronBadge,
+            is_chronic: isChronic,
+            is_efemero: isEfemero,
+            is_monitoring_feed: isMonitoringFeed
         });
     });
 
@@ -3134,7 +3184,8 @@ function renderNocUnifiedQueue() {
                     </span>
                     <span style="color: var(--text-muted); font-size: 11px;">| ${escapeHtml(group.time_ago)}</span>
                 </div>
-                <div style="display: flex; gap: 6px;">
+                <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+                    ${mainItem.chronicity_badge ? `<span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #fde047; border: 1px solid rgba(245, 158, 11, 0.4); font-size: 10px; font-weight: 700;">${escapeHtml(mainItem.chronicity_badge)}</span>` : ''}
                     <span class="badge" style="background: rgba(255,255,255,0.06); font-family: monospace; font-size: 10px; color: #94a3b8;">${triggerTag}</span>
                     <span class="badge" style="background: rgba(59,130,246,0.15); color: #93c5fd; font-family: monospace; font-size: 10px;">#CS${group.cs}</span>
                 </div>
@@ -3154,11 +3205,14 @@ function renderNocUnifiedQueue() {
             ${streamCount > 1 ? `
                 <div style="background: rgba(0,0,0,0.3); border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; border-left: 2px solid ${sevColor}; display: flex; flex-direction: column; gap: 4px;">
                     ${group.items.map(sub => `
-                        <div style="font-size: 11px; color: #cbd5e1; font-family: monospace; display: flex; justify-content: space-between; align-items: center;">
+                        <div style="font-size: 11px; color: #cbd5e1; font-family: monospace; display: flex; justify-content: space-between; align-items: center; gap: 8px;">
                             <span>${escapeHtml(sub.details_subline || `• ${sub.target}`)}</span>
-                            <span style="color: #ef4444; font-weight: 700; font-size: 10px; background: rgba(239, 68, 68, 0.1); padding: 2px 6px; border-radius: 4px;">
-                                ${escapeHtml(sub.statusBadgeText || 'Anomalia')}
-                            </span>
+                            <div style="display: flex; gap: 4px; align-items: center;">
+                                ${sub.chronicity_badge ? `<span style="color: #fde047; font-size: 9px; background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.3); padding: 1px 5px; border-radius: 4px;">${escapeHtml(sub.chronicity_badge)}</span>` : ''}
+                                <span style="color: #ef4444; font-weight: 700; font-size: 10px; background: rgba(239, 68, 68, 0.1); padding: 2px 6px; border-radius: 4px;">
+                                    ${escapeHtml(sub.statusBadgeText || 'Anomalia')}
+                                </span>
+                            </div>
                         </div>
                     `).join("")}
                 </div>

@@ -343,6 +343,12 @@ def sync_fleet_data():
             "recordings_critical": recordings_critical
         }
 
+        try:
+            from incident_manager import track_channel_anomalies_cycle
+            track_channel_anomalies_cycle(channels_list)
+        except Exception as anom_err:
+            print(f"[AnomalyTracker Error] {anom_err}", flush=True)
+
         with _cache_lock:
             _cached_data["last_sync"] = datetime.now().isoformat()
             _cached_data["services"] = services_list

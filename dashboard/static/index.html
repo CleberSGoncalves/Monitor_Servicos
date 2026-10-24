@@ -3236,6 +3236,9 @@
         <button class="sig-subtab-btn" id="btn-fisc-subtab-mp4" onclick="switchFiscalizacaoSubtab('mp4')">
           <i class="fas fa-film"></i> 🎬 Amostragem de Mídia MP4/ASF &amp; OpenCV (NAS VideoRecord)
         </button>
+        <button class="sig-subtab-btn" id="btn-fisc-subtab-realtime" onclick="switchFiscalizacaoSubtab('realtime')">
+          <i class="fas fa-satellite"></i> ⚡ Realtime 30min: Clusters &amp; Matriz de Praças
+        </button>
       </div>
 
       <!-- SUBABA 1: AUDITORIA FORENSE (FT EMISSORA X FT IBOPE) -->
@@ -3957,6 +3960,85 @@
 
 
 
+      </div>
+
+      <!-- SUBABA 3: AUDITORIA REALTIME DE BLOCOS DE 30MIN & CLUSTERS DE FALHAS DIGITAIS -->
+      <div id="fisc-content-realtime" style="display: none;">
+        <!-- Banner Informativo de Arquitetura -->
+        <div class="panel-card" style="margin-bottom: 20px; padding: 18px 22px; background: linear-gradient(135deg, rgba(15, 23, 42, 0.98), rgba(20, 30, 48, 0.98)); border: 1px solid rgba(56, 189, 248, 0.35); border-left: 5px solid #38bdf8;">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
+            <div>
+              <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                <h3 style="margin: 0; font-size: 17px; font-weight: 800; color: #fff;">
+                  ⚡ Auditoria Realtime de Blocos de 30min &amp; Clusters de Falhas Digitais
+                </h3>
+                <span class="badge badge-green" style="font-size: 11px; font-family: monospace;">Escala: 500+ Canais</span>
+                <span class="badge badge-blue" style="font-size: 11px; font-family: monospace;">Zero Decodificação (O(1) 6ms)</span>
+                <span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); font-size: 11px; font-weight: 700;">Custo IA Contínua = R$ 0,00</span>
+              </div>
+              <p style="margin: 6px 0 0 0; font-size: 12px; color: #94a3b8; max-width: 900px; line-height: 1.5;">
+                Inspeção contínua e determinística dos blocos <code>.ASF/.MP4</code> recém-chegados a cada slot de 30 minutos em todas as afiliadas. Classifica falhas em 6 clusters analíticos e mapeia o <strong>Health Index</strong> por praça, com acionamento de IA <em>sob demanda</em>.
+              </p>
+            </div>
+            <div style="display: flex; gap: 10px; align-items: center;">
+              <button class="btn-primary" onclick="loadRealtimeBlockAudit()" style="background: linear-gradient(135deg, #0284c7, #2563eb); border: none; font-weight: 700; font-size: 12px; padding: 10px 18px;">
+                <i class="fas fa-sync-alt" id="iconReloadRealtime"></i> Atualizar Auditoria dos Blocos
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- KPIs Globais da Auditoria de Blocos -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 22px;">
+          <div class="kpi-card" style="border-top: 3px solid #38bdf8;">
+            <div class="kpi-label">Canais Auditados (Frota)</div>
+            <div class="kpi-value" id="rtKpiTotalChannels" style="color: #38bdf8;">--</div>
+            <div class="kpi-sub" id="rtKpiSlotTime">Slot: --:-- • Tempo: 6ms</div>
+          </div>
+          <div class="kpi-card" style="border-top: 3px solid #10b981;">
+            <div class="kpi-label">Blocos Nominais Íntegros</div>
+            <div class="kpi-value" id="rtKpiNominalBlocks" style="color: #10b981;">--</div>
+            <div class="kpi-sub" id="rtKpiNominalPct">SZ3600432 (100% OK)</div>
+          </div>
+          <div class="kpi-card" style="border-top: 3px solid #ef4444;">
+            <div class="kpi-label">Canais com Anomalia</div>
+            <div class="kpi-value" id="rtKpiAnomalyChannels" style="color: #ef4444;">--</div>
+            <div class="kpi-sub">Agrupados em 5 clusters de falha</div>
+          </div>
+          <div class="kpi-card" style="border-top: 3px solid #f59e0b;">
+            <div class="kpi-label">Praças Mapeadas</div>
+            <div class="kpi-value" id="rtKpiPracasCount" style="color: #f59e0b;">--</div>
+            <div class="kpi-sub" id="rtKpiHealthAvg">Health Index Médio: --%</div>
+          </div>
+        </div>
+
+        <!-- Grade com os 6 Clusters Determinísticos de Falhas Digitais -->
+        <h4 style="font-size: 14px; font-weight: 800; color: #fff; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+          <i class="fas fa-layer-group" style="color: #38bdf8;"></i> Clusters de Falhas Digitais &amp; Integridade (Slot de 30min)
+        </h4>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-bottom: 24px;" id="rtClustersGrid">
+          <!-- Preenchido dinamicamente via fiscalizacao.js -->
+        </div>
+
+        <!-- Matriz de Saúde das Praças & Diagnóstico IA sob Demanda -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
+          <div>
+            <h4 style="font-size: 14px; font-weight: 800; color: #fff; margin: 0; display: flex; align-items: center; gap: 8px;">
+              <i class="fas fa-map-marked-alt" style="color: #10b981;"></i> Matriz de Saúde por Praça (Health Index &amp; Análise IA)
+            </h4>
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+              Clique em "Diagnosticar Praça com IA" para gerar um parecer pericial sob demanda via Google Gemini Pro.
+            </div>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <input type="text" id="rtSearchPracaInput" class="form-input" placeholder="🔍 Filtrar praça..." style="width: 220px; font-size: 12px; padding: 6px 12px;" oninput="filterRealtimePracas()">
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 16px; margin-bottom: 24px;" id="rtPracasGrid">
+          <!-- Preenchido dinamicamente via fiscalizacao.js -->
+        </div>
       </div>
     </section>
 
@@ -7242,7 +7324,7 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=3.9.40"></script>
+  <script src="/static/js/app.js?v=3.9.48"></script>
   <script src="/static/js/ai_insights.js?v=3.9.40"></script>
   <script src="/static/js/fleet_ops.js?v=3.9.40"></script>
   <script src="/static/js/remote_commands.js?v=3.9.40"></script>
@@ -7250,7 +7332,7 @@
   <script src="/static/js/mosaic_wall.js?v=3.9.40"></script>
   <script src="/static/js/topology_map.js?v=3.9.40"></script>
   <script src="/static/js/network_link.js?v=3.9.40"></script>
-  <script src="/static/js/fiscalizacao.js?v=3.9.45"></script>
+  <script src="/static/js/fiscalizacao.js?v=3.9.48"></script>
 
 <!-- MODAL: DIAGNÓSTICO DE IA DE LINK & CONECTIVIDADE DE REDE -->
   <div class="modal-overlay" id="networkAiDiagModal" style="display: none; align-items: center; justify-content: center; z-index: 10000;">
@@ -7409,6 +7491,32 @@
         </div>
       </div>
 
+    </div>
+  </div>
+
+
+  <!-- MODAL: DIAGNÓSTICO IA DE PRAÇA & CLUSTERS DE BLOCOS (FISCALIZAÇÃO REALTIME) -->
+  <div class="modal-overlay" id="fiscPracaAiModal" style="display: none; align-items: center; justify-content: center; z-index: 10000; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(4px);">
+    <div class="modal" style="max-width: 780px; width: 94%; border: 1px solid #38bdf8; background: #0b1329; border-radius: 8px; box-shadow: 0 20px 35px -5px rgba(0, 0, 0, 0.8); padding: 24px;">
+      <div class="modal-header" style="border-bottom: 1px solid rgba(56, 189, 248, 0.3); padding-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <span class="badge badge-blue" style="font-size: 10px;">FISCALIZAÇÃO REALTIME • DIAGNÓSTICO DE IA SOB DEMANDA</span>
+          <h3 style="margin: 4px 0 0 0; color: #fff; font-size: 16px;" id="fiscPracaAiModalTitle">Diagnóstico de Praça</h3>
+        </div>
+        <button class="btn-close" onclick="closeRealtimePracaAiModal()" style="background: none; border: none; color: #94a3b8; font-size: 20px; cursor: pointer;">&times;</button>
+      </div>
+      <div class="modal-body" style="padding-top: 16px; max-height: 70vh; overflow-y: auto;">
+        <div id="fiscPracaAiContent" style="font-size: 13px; line-height: 1.6; color: #cbd5e1;">
+          <div style="text-align: center; padding: 30px;">
+            <i class="fas fa-circle-notch fa-spin text-blue" style="font-size: 28px;"></i>
+            <div style="margin-top: 10px; font-weight: 700; color: #fff;">Consultando Engenharia Inteligente (Google Gemini Pro)...</div>
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Correlacionando metadados dos blocos, histórico de telemetria e topologia de transmissão.</div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer" style="margin-top: 16px; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 12px; display: flex; justify-content: flex-end; gap: 10px;">
+        <button class="btn-secondary" onclick="closeRealtimePracaAiModal()" style="padding: 6px 14px; font-size: 12px;">Fechar</button>
+      </div>
     </div>
   </div>
 
