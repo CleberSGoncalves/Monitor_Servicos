@@ -1,47 +1,53 @@
 # dashboard/realtime_block_auditor.py
 """
-Módulo de Auditoria em Tempo Real de Blocos de 30 Minutos (Kantar IBOPE Media).
-Projetado para Alta Escala (500+ Canais Simultâneos) com Zero Sobrecarga:
-- Inspeção ultraleve de metadados O(1) de arquivos no NAS VideoRecord (tamanho nominal SZ3600432).
-- Classificação determinística em Clusters de Falhas Digitais sem decodificação pesada de vídeo.
-- Custo de IA = R$ 0,00 no monitoramento contínuo (IA somente sob demanda por praça).
+Motor de Descoberta e Auditoria de Blocos de 30 Minutos (Zero Decodificação / O(1) Metadados).
+
+Regras de Engenharia Broadcast:
+1. Canais Analógicos (Placa Yuan / TW6802 PCI DirectShow), Streaming IP e Rádios FM
+   NÃO possuem sintonizador TBS ISDB-Tb nem portadora UHF.
+   NUNCA são avaliados como 'Queda de Portadora RF'. Se estiverem gravando, estão 100% NOMINAIS.
+2. Análise de Escoamento WAN no Bloco Consolidado T-2:
+   O slot que acabou de fechar (T-1) está em pleno processo de upload/transmissão pelas afiliadas.
+   A auditoria de conformidade inspeciona o bloco ANTERIOR (T-2, 30 a 60 min atrás),
+   garantindo tempo hábil suficiente para todas as praças terem concluído o envio para o NAS.
+3. Classificação e Aprendizado de Máquina (Machine Learning Pattern Discovery):
+   Classifica e enumera cada tipo de falha digital catalogada (canônica ou aprendida pela IA),
+   separando anomalias emergentes para mineração contínua de padrões técnicos.
 """
 
 import os
-import re
-import json
 import time
+from datetime import datetime, timezone, timedelta
+from typing import Dict, List, Any, Optional
 from pathlib import Path
-from datetime import datetime, timedelta, timezone
-from typing import Dict, Any, List, Optional
 
-from config import DATA_DIR
 from sharepoint_sync import get_cached_data
-from gemini_service import execute_gemini_prompt, get_ai_settings
+from failure_pattern_learner import get_all_active_patterns, register_emergent_anomaly, get_learning_stats
 
-# Cache em memória da última auditoria de bloco para resposta instantânea
-_LAST_BLOCK_AUDIT_CACHE: Dict[str, Any] = {}
+_BLOCK_CACHE_TTL_SECONDS = 60
+_LAST_BLOCK_AUDIT_CACHE: Optional[Dict[str, Any]] = None
 _LAST_BLOCK_AUDIT_TIMESTAMP: float = 0.0
-_BLOCK_CACHE_TTL_SECONDS: int = 25  # Reutiliza por 25s para zero I/O duplicado
 
 
 def get_current_and_previous_30min_slots(ref_dt: Optional[datetime] = None) -> Dict[str, Any]:
     """
-    Calcula os slots de 30 minutos:
-    - Bloco em formação atual (ex: 04:00 - 04:30)
-    - Último bloco fechado recém-entregue (ex: 03:30 - 04:00)
-    - Bloco anterior (ex: 03:00 - 03:30)
+    Calcula os slots de 30 minutos com isolamento de janela WAN:
+    - forming_slot: Bloco em formação atual (ex: 05:00 às 05:30)
+    - transit_slot (T-1): Bloco recém-fechado em trânsito de upload WAN (ex: 04:30 às 05:00)
+    - audit_slot (T-2): Bloco Consolidado Auditável com transmissão concluída (ex: 04:00 às 04:30)
     """
     now = ref_dt or datetime.now()
     cur_m = 0 if now.minute < 30 else 30
     forming_start = now.replace(minute=cur_m, second=0, microsecond=0)
     forming_end = forming_start + timedelta(minutes=30)
 
-    last_closed_end = forming_start
-    last_closed_start = last_closed_end - timedelta(minutes=30)
+    # T-1: Bloco recém-fechado (em transmissão pelas afiliadas)
+    transit_end = forming_start
+    transit_start = transit_end - timedelta(minutes=30)
 
-    prev_closed_end = last_closed_start
-    prev_closed_start = prev_closed_end - timedelta(minutes=30)
+    # T-2: Bloco Consolidado Auditável (tempo de transmissão WAN já transcorrido)
+    audit_end = transit_start
+    audit_start = audit_end - timedelta(minutes=30)
 
     def _fmt_slot(st: datetime, en: datetime) -> str:
         return f"{st.strftime('%H:%M')} às {en.strftime('%H:%M')}"
@@ -51,20 +57,19 @@ def get_current_and_previous_30min_slots(ref_dt: Optional[datetime] = None) -> D
 
     return {
         "forming_slot": _fmt_slot(forming_start, forming_end),
-        "last_closed_slot": _fmt_slot(last_closed_start, last_closed_end),
-        "last_closed_code": _fmt_code(last_closed_start, last_closed_end),
-        "last_closed_date": last_closed_start.strftime("%Y-%m-%d"),
-        "prev_closed_slot": _fmt_slot(prev_closed_start, prev_closed_end),
-        "prev_closed_code": _fmt_code(prev_closed_start, prev_closed_end),
-        "prev_closed_date": prev_closed_start.strftime("%Y-%m-%d"),
+        "transit_slot": _fmt_slot(transit_start, transit_end),
+        "audit_slot": _fmt_slot(audit_start, audit_end),
+        "audit_code": _fmt_code(audit_start, audit_end),
+        "audit_date": audit_start.strftime("%Y-%m-%d"),
         "reference_time": now.strftime("%H:%M:%S")
     }
 
 
 def audit_realtime_30min_blocks(force_refresh: bool = False) -> Dict[str, Any]:
     """
-    Executa a varredura e agrupamento em clusters de falhas para todos os canais da frota (500+ canais).
-    Utiliza heurística de metadados, telemetria de recepção e status de gravação.
+    Executa a varredura e taxonomia de falhas para toda a frota (500+ canais).
+    - Zero decodificação de vídeo (O(1) 1ms de CPU).
+    - Custo IA contínua = R$ 0,00.
     """
     global _LAST_BLOCK_AUDIT_CACHE, _LAST_BLOCK_AUDIT_TIMESTAMP
     now_ts = time.time()
@@ -75,71 +80,41 @@ def audit_realtime_30min_blocks(force_refresh: bool = False) -> Dict[str, Any]:
     start_audit_time = time.time()
     fleet_data = get_cached_data()
     channels = fleet_data.get("channels", [])
-    services = fleet_data.get("services", [])
     slots = get_current_and_previous_30min_slots()
 
-    # Clusters de Falhas Digitais
-    clusters = {
-        "nominal": {
-            "id": "nominal",
-            "name": "Blocos Nominais (100% Íntegros)",
-            "icon": "fa-check-circle",
-            "badge_class": "badge-green",
-            "color": "#10b981",
-            "description": "Gravação preservada com tamanho nominal SZ3600432 (~3.5 MB), portadora RF nominal e fluxo contínuo.",
-            "count": 0,
-            "channels": []
-        },
-        "rf_outage": {
-            "id": "rf_outage",
-            "name": "Ausência de Portadora RF / Queda na Torre",
-            "icon": "fa-broadcast-tower",
-            "badge_class": "badge-orange",
-            "color": "#f59e0b",
-            "description": "Demodulador TBS com Qualidade 0% ou perda de Lock ISDB-Tb durante o bloco de 30 minutos.",
-            "count": 0,
-            "channels": []
-        },
-        "gop_freeze": {
-            "id": "gop_freeze",
-            "name": "Congelamento Crônico (GOP / PTS Stall)",
-            "icon": "fa-snowflake",
-            "badge_class": "badge-yellow",
-            "color": "#eab308",
-            "description": "Vídeo permaneceu com PTS estático ou quadros idênticos por tempo prolongado no bloco.",
-            "count": 0,
-            "channels": []
-        },
-        "audio_mute": {
-            "id": "audio_mute",
-            "name": "Descontinuidade / Áudio Mudo",
-            "icon": "fa-volume-mute",
-            "badge_class": "badge-purple",
-            "color": "#a855f7",
-            "description": "Ausência de portadora sonora (-inf dB) ou falha no descodificador de áudio durante o bloco.",
-            "count": 0,
-            "channels": []
-        },
-        "truncated": {
-            "id": "truncated",
-            "name": "Truncamento de Bloco / Perda de Pacotes (SZ Reduzido)",
-            "icon": "fa-file-excel",
-            "badge_class": "badge-red",
-            "color": "#ef4444",
-            "description": "Arquivo gravado no NAS com tamanho abaixo do nominal (< 2.5 MB), indicando corte ou perda de pacotes.",
-            "count": 0,
-            "channels": []
-        },
-        "delayed": {
-            "id": "delayed",
-            "name": "Atraso de Escoamento / Arquivo Ausente no NAS",
-            "icon": "fa-clock",
-            "badge_class": "badge-blue",
-            "color": "#38bdf8",
-            "description": "O bloco de 30min fechou, mas o arquivo ainda não foi entregue no repositório VideoRecord (fila WAN ou serviço parado).",
+    # 1. Carrega Catálogo Dinâmico de Falhas Digitais (Base Canônica + Aprendidos por IA)
+    active_patterns = get_all_active_patterns()
+    clusters: Dict[str, Dict[str, Any]] = {}
+    
+    for pat in active_patterns:
+        p_id = pat["pattern_id"]
+        clusters[p_id] = {
+            "id": p_id,
+            "name": pat["pattern_name"],
+            "icon": pat.get("icon", "fa-exclamation-triangle"),
+            "badge_class": pat.get("badge_class", "badge-yellow"),
+            "color": pat.get("color", "#f59e0b"),
+            "category": pat.get("pattern_category", "Geral"),
+            "description": pat.get("description", ""),
+            "discovered_by": pat.get("discovered_by", "Sistema"),
+            "mitigation_playbook": pat.get("mitigation_playbook", ""),
             "count": 0,
             "channels": []
         }
+
+    # Cluster Dinâmico de Falhas Emergentes (Machine Learning Pattern Mining)
+    clusters["emergent_anomaly"] = {
+        "id": "emergent_anomaly",
+        "name": "✨ Falhas Emergentes (Padrões em Aprendizado)",
+        "icon": "fa-brain",
+        "badge_class": "badge-purple",
+        "color": "#c084fc",
+        "category": "Descoberta ML",
+        "description": "Anomalias atípicas identificadas que não pertencem a clusters conhecidos e estão em mineração para aprendizado contínuo.",
+        "discovered_by": "Motor de Descoberta Contínua",
+        "mitigation_playbook": "Disparar mineração de padrões com Gemini Pro para catalogar a causa raiz.",
+        "count": 0,
+        "channels": []
     }
 
     by_praca: Dict[str, Dict[str, Any]] = {}
@@ -151,58 +126,108 @@ def audit_realtime_30min_blocks(force_refresh: bool = False) -> Dict[str, Any]:
         cs = ch.get("id_cs", 1) or 1
         idpv = str(ch.get("veiculo", "") or "").strip()
         meio = str(ch.get("meio", "Digital Terrestre")).lower()
-        is_stream = any(x in meio for x in ["rtsp", "udp", "ip", "stream"])
-        is_radio = any(x in meio for x in ["radio", "fm", "mp3"])
-
-        # Identifica canais de monitoramento / teste internos
+        dev_analog = (str(ch.get("device_analog", "") or "") + " " + str(ch.get("SourceAnalogico", "") or "")).lower()
         ch_low = ch_name.lower()
+
+        # Classificação Estrita de Meio de Transmissão
+        is_analog = any(x in meio for x in ["analóg", "analog", "directshow", "yuan"]) or any(x in dev_analog for x in ["tw6802", "yuan", "analog", "directshow", "capture"])
+        is_stream = any(x in meio for x in ["rtsp", "udp", "ip", "stream"]) or "rtsp" in str(ch.get("url_stream", "")).lower()
+        is_radio = any(x in meio for x in ["radio", "fm", "mp3", "am", "rádio"]) or any(x in ch_low for x in [" fm", " am", "rádio", "radio"])
         is_monitoring = any(k in ch_low for k in ["obs", "teste", "monitoramento", "stream_obs"])
+        is_digital_rf = not is_analog and not is_stream and not is_radio
 
         sig_q = float(ch.get("qualidade_sinal", 0) or 0)
         sig_s = float(ch.get("forca_sinal", 0) or 0)
-        tuner_stat = ch.get("status_tuner", "WORKING")
+        tuner_stat = str(ch.get("status_tuner", "WORKING"))
         rec_status = str(ch.get("gravando_mp4", "Sim"))
+        is_recording = any(k in rec_status.lower() for k in ["sim", "grav", "asf", "mp4"]) and not any(k in rec_status.lower() for k in ["não", "⚠️", "erro", "inativo"])
+        
         is_frozen = (ch.get("video_congelado") or "").lower() == "sim"
         is_mute = (ch.get("audio_mudo") or "").lower() == "sim"
         is_storage_fault = "⚠️" in rec_status or "inacessível" in rec_status.lower()
 
-        # Metadados de Anomalia Acumulada
+        # Telemetria de Cronicidade
         anomaly_m = ch.get("anomaly_metrics") or {}
         is_chronic_freeze = anomaly_m.get("is_chronic", False) and is_frozen
         duration_min = anomaly_m.get("current_duration_min", 0.0)
 
-        # Classificação Determinística nos Clusters
+        # =========================================================================
+        # CLASSIFICAÇÃO ADAPTATIVA & INTELIGENTE (REGRAS FORENSES MEDIA DNA)
+        # =========================================================================
         assigned_cluster = "nominal"
-        anomaly_detail = "Tamanho nominal SZ3600432 (3.5 MB) • Sinal estável"
+        anomaly_detail = "SZ3600432 nominal • Gravação íntegra"
+        meio_tipo = "Digital Terrestre (ISDB-Tb)" if is_digital_rf else ("Analógico Yuan/TW6802" if is_analog else ("Streaming IP" if is_stream else "Rádio FM/AM"))
 
-        if is_storage_fault or ("não" in rec_status.lower() and not is_stream and not is_radio):
-            assigned_cluster = "delayed"
-            anomaly_detail = f"Entrega pendente no NAS ({rec_status})"
-        elif is_stream and "desconectado" in tuner_stat.lower():
-            assigned_cluster = "delayed"
-            anomaly_detail = f"Fluxo de streaming inativo ({tuner_stat})"
-        elif not is_stream and not is_radio and sig_q == 0:
-            assigned_cluster = "rf_outage"
-            anomaly_detail = f"Ausência de radiação UHF (Qualidade 0% • {tuner_stat})"
-        elif is_chronic_freeze or (is_frozen and duration_min >= 4.0):
-            assigned_cluster = "gop_freeze"
-            anomaly_detail = f"Imagem congelada crônica ({duration_min} min contínuos)"
-        elif is_mute and not is_radio:
-            assigned_cluster = "audio_mute"
-            anomaly_detail = "Áudio mudo no multiplex (-inf dB)"
-        elif not is_stream and not is_radio and sig_q < 40 and sig_q > 0:
-            assigned_cluster = "truncated"
-            anomaly_detail = f"Margem de ruído degradada ({sig_q}%) com risco de perda de pacotes"
+        # 1. CANAIS NÃO-RF (Analógico Yuan, Streaming IP, Rádio FM)
+        if not is_digital_rf:
+            if is_recording:
+                assigned_cluster = "nominal"
+                anomaly_detail = f"Operação nominal via {meio_tipo} ({rec_status})"
+            elif is_storage_fault or "não" in rec_status.lower():
+                assigned_cluster = "delayed"
+                anomaly_detail = f"Entrega pendente de {meio_tipo} no NAS ({rec_status})"
+            else:
+                assigned_cluster = "nominal"
+                anomaly_detail = f"Conformidade {meio_tipo} ({rec_status})"
+
+        # 2. CANAIS DIGITAL TERRESTRE (ISDB-Tb)
         else:
+            # Caso A: Falha Silenciosa de Pipeline MUX (Atria Demuxer Stall)
+            if sig_q >= 70 and ("work" in tuner_stat.lower() or "connect" in tuner_stat.lower()) and not is_recording and not is_frozen and not is_mute:
+                assigned_cluster = "desync_silencioso_atria" if "desync_silencioso_atria" in clusters else "delayed"
+                anomaly_detail = f"Tuner sintonizado ({sig_q}%) mas Atria Demuxer travou gravação"
+
+            # Caso B: Ruído de Borda / Intermodulação 5G Adjacente
+            elif sig_s >= 65 and 0 < sig_q < 45:
+                assigned_cluster = "interferencia_5g_borda" if "interferencia_5g_borda" in clusters else "truncated"
+                anomaly_detail = f"Força alta ({sig_s}%) com SNR instável ({sig_q}%) • Assinatura ruído 5G"
+
+            # Caso C: Queda de Portadora RF na Torre (Somente Digital Terrestre sem sinal e sem gravação)
+            elif sig_q == 0 and not is_recording:
+                assigned_cluster = "rf_outage"
+                anomaly_detail = f"Ausência de portadora UHF (Qualidade 0% • {tuner_stat})"
+
+            # Caso D: Congelamento Crônico de Vídeo (GOP Stall >= 4 min)
+            elif is_chronic_freeze or (is_frozen and duration_min >= 4.0):
+                assigned_cluster = "gop_freeze"
+                anomaly_detail = f"Imagem congelada crônica ({duration_min} min contínuos)"
+
+            # Caso E: Áudio Mudo na Portadora
+            elif is_mute:
+                assigned_cluster = "audio_mute"
+                anomaly_detail = "Áudio mudo no multiplex ISDB-Tb (-inf dB)"
+
+            # Caso F: Margem de Ruído Crítica / Truncamento
+            elif 0 < sig_q < 40 and not is_recording:
+                assigned_cluster = "truncated"
+                anomaly_detail = f"Margem de ruído degradada ({sig_q}%) com perda de pacotes"
+
+            # Caso G: Atraso de Escoamento Consolidado no Bloco T-2
+            elif not is_recording:
+                assigned_cluster = "delayed"
+                anomaly_detail = f"Bloco T-2 consolidado ausente no NAS ({rec_status})"
+
+            # Caso H: Nominal ISDB-Tb
+            else:
+                assigned_cluster = "nominal"
+                anomaly_detail = f"SZ3600432 nominal • Qualidade {sig_q}% • TBS Lock"
+
+        # Proteção defensiva de existência de cluster
+        if assigned_cluster not in clusters:
             assigned_cluster = "nominal"
-            anomaly_detail = f"SZ3600432 nominal • Qualidade {sig_q}% • Gravação contínua"
+
+        expected_filename = f"H{ch.get('id_host', 1)}_PV{idpv}_{slots['audit_date'].replace('-','')}{slots['audit_code'].split('_')[0]}_SZ3600432_CS{cs}.ASF"
 
         channel_entry = {
             "praca": praca,
             "canal": ch_name,
             "cs": cs,
             "idpv": idpv,
-            "meio": ch.get("meio", "Digital Terrestre"),
+            "meio": meio_tipo,
+            "is_digital_rf": is_digital_rf,
+            "is_analog_yuan": is_analog,
+            "is_stream": is_stream,
+            "is_radio": is_radio,
             "frequencia": ch.get("frequencia", "N/A"),
             "qualidade_sinal": sig_q,
             "forca_sinal": sig_s,
@@ -212,7 +237,8 @@ def audit_realtime_30min_blocks(force_refresh: bool = False) -> Dict[str, Any]:
             "cluster": assigned_cluster,
             "detail": anomaly_detail,
             "duration_min": duration_min,
-            "expected_file": f"H{ch.get('id_host', 1)}_PV{idpv}_{slots['last_closed_date'].replace('-','')}{slots['last_closed_code'].split('_')[0]}_SZ3600432_CS{cs}.ASF"
+            "expected_file": expected_filename,
+            "audit_slot": slots["audit_slot"]
         }
 
         clusters[assigned_cluster]["channels"].append(channel_entry)
@@ -226,20 +252,28 @@ def audit_realtime_30min_blocks(force_refresh: bool = False) -> Dict[str, Any]:
                 "total_canais": 0,
                 "nominais": 0,
                 "anomalias": 0,
+                "canais_rf_digital": 0,
+                "canais_analog_stream": 0,
                 "health_pct": 100.0,
                 "status_praca": "100% Íntegra",
                 "status_badge": "badge-green",
                 "canais_com_falha": []
             }
 
-        by_praca[praca]["total_canais"] += 1
-        if assigned_cluster == "nominal":
-            by_praca[praca]["nominais"] += 1
+        p_ref = by_praca[praca]
+        p_ref["total_canais"] += 1
+        if is_digital_rf:
+            p_ref["canais_rf_digital"] += 1
         else:
-            by_praca[praca]["anomalias"] += 1
-            by_praca[praca]["canais_com_falha"].append(channel_entry)
+            p_ref["canais_analog_stream"] += 1
 
-    # Calcula health index de cada praça
+        if assigned_cluster == "nominal":
+            p_ref["nominais"] += 1
+        else:
+            p_ref["anomalias"] += 1
+            p_ref["canais_com_falha"].append(channel_entry)
+
+    # Health Index por Praça
     for p_name, p_data in by_praca.items():
         tot = p_data["total_canais"]
         nom = p_data["nominais"]
@@ -256,107 +290,29 @@ def audit_realtime_30min_blocks(force_refresh: bool = False) -> Dict[str, Any]:
             p_data["status_praca"] = "Alerta de Infraestrutura"
             p_data["status_badge"] = "badge-red"
 
-    # Ordena praças por maior criticidade (menor health index)
     sorted_pracas = sorted(list(by_praca.values()), key=lambda x: (x["health_pct"], x["praca"]))
 
-    elapsed_ms = int((time.time() - start_audit_time) * 1000)
-    nominal_total = clusters["nominal"]["count"]
-    nominal_pct = round((nominal_total / total_evaluated * 100.0), 1) if total_evaluated > 0 else 100.0
+    nominal_total = clusters.get("nominal", {}).get("count", 0)
+    conformidade_bloco_pct = round((nominal_total / total_evaluated * 100.0), 1) if total_evaluated > 0 else 100.0
+    exec_ms = max(1, int((time.time() - start_audit_time) * 1000))
+
+    learning_stats = get_learning_stats()
 
     result = {
         "status": "success",
         "slots": slots,
+        "audit_slot_consolidated": slots["audit_slot"],
         "total_canais_auditados": total_evaluated,
-        "capacidade_maxima_suportada": "500+ Canais em Tempo Real (Zero Impacto no NAS)",
-        "taxa_conformidade_bloco_pct": nominal_pct,
-        "tempo_processamento_ms": elapsed_ms,
+        "capacidade_maxima_suportada": 500,
+        "taxa_conformidade_bloco_pct": conformidade_bloco_pct,
+        "tempo_processamento_ms": exec_ms,
         "clusters": clusters,
         "pracas_resumo": sorted_pracas,
-        "timestamp": datetime.now().isoformat()
+        "learning_stats": learning_stats,
+        "total_patterns_cataloged": len(clusters),
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
     _LAST_BLOCK_AUDIT_CACHE = result
     _LAST_BLOCK_AUDIT_TIMESTAMP = now_ts
     return result
-
-
-def diagnose_praca_cluster_with_ai(praca: str, block_slot: Optional[str] = None) -> Dict[str, Any]:
-    """
-    Diagnóstico executivo de IA (Google Gemini Pro) sob demanda para uma praça específica.
-    Analisa os clusters de falha observados no bloco de 30min e recomenda ações corretivas de engenharia.
-    """
-    audit_data = audit_realtime_30min_blocks()
-    pracas_list = audit_data.get("pracas_resumo", [])
-    praca_info = next((p for p in pracas_list if p["praca"].lower() == praca.lower()), None)
-
-    if not praca_info:
-        return {
-            "status": "error",
-            "message": f"Praça '{praca}' não encontrada na auditoria de blocos."
-        }
-
-    falhas = praca_info.get("canais_com_falha", [])
-    slot_label = block_slot or audit_data.get("slots", {}).get("last_closed_slot", "Último Bloco de 30min")
-
-    if not falhas:
-        return {
-            "status": "success",
-            "praca": praca,
-            "block_slot": slot_label,
-            "health_pct": 100.0,
-            "parecer_ia": (
-                f"AUDITORIA OPERACIONAL NOMINAL ({praca} — {slot_label})\n\n"
-                f"Todos os {praca_info.get('total_canais', 0)} canais da praça entregaram blocos de 30 minutos com "
-                f"tamanhos nominais SZ3600432 no repositório NAS VideoRecord. A telemetria de recepção dos sintonizadores TBS "
-                f"operou com 100% de Lock e estabilidade de RF. Não há ação corretiva necessária."
-            ),
-            "recomendacoes": [
-                "Manter rotina padrão de monitoramento de blocos.",
-                "SLA de gravação e entrega em 100% de conformidade."
-            ]
-        }
-
-    # Prepara prompt resumido (baixo custo em tokens) para o Gemini
-    falhas_resumo = []
-    for f in falhas[:10]:
-        falhas_resumo.append(f"- {f['canal']} (CS {f['cs']}): {f['cluster']} -> {f['detail']}")
-
-    prompt = (
-        f"Você é o Engenheiro Chefe de Broadcast da Kantar IBOPE Media.\n"
-        f"Analise o comportamento operacional da praça {praca} no bloco de 30 minutos ({slot_label}):\n"
-        f"Total de Canais: {praca_info['total_canais']} | Canais com Falha: {len(falhas)} | Índice de Conformidade: {praca_info['health_pct']}%\n"
-        f"Ocorrências no Bloco:\n" + "\n".join(falhas_resumo) + "\n\n"
-        f"Forneça: 1) Diagnóstico de Causa-Raiz (diferenciando se é torre da emissora, antena do IBOPE ou serviço local); "
-        f"2) Parecer de Risco de SLA; 3) Três ações recomendadas de engenharia."
-    )
-
-    ai_text = (
-        f"DIAGNÓSTICO PREVENTIVO DE ENGENHARIA ({praca} — {slot_label})\n\n"
-        f"A praça apresentou índice de conformidade de {praca_info['health_pct']}% com {len(falhas)} canal(is) "
-        f"fora do padrão nominal no último bloco de 30 minutos.\n\n"
-        f"Recomenda-se verificação de integridade no sintonizador TBS e inspeção do serviço Atria Capture."
-    )
-
-    ai_cfg = get_ai_settings()
-    if ai_cfg.get("enabled"):
-        try:
-            res_ai = execute_gemini_prompt(prompt, module="realtime_block_auditor", target=f"praca_{praca}")
-            if res_ai and len(res_ai.strip()) > 80:
-                ai_text = res_ai.strip()
-        except Exception as e:
-            print(f"[RealtimeBlockAuditor AI Error] {e}")
-
-    return {
-        "status": "success",
-        "praca": praca,
-        "block_slot": slot_label,
-        "health_pct": praca_info["health_pct"],
-        "falhas_count": len(falhas),
-        "falhas": falhas,
-        "parecer_ia": ai_text,
-        "recomendacoes": [
-            "Validar telemetria dos canais correlatos da mesma antena.",
-            "Reciclar serviços de captura se houver atraso de entrega.",
-            "Consultar histórico de repetições nas últimas 24 horas."
-        ]
-    }

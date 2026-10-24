@@ -167,6 +167,8 @@ function setupTabNavigation() {
                 loadUsersList();
                 if (typeof loadRefreshIntervalConfig === "function") loadRefreshIntervalConfig();
                 if (typeof loadFeatureFlagsUI === "function") loadFeatureFlagsUI();
+            } else if (tabName === "classificador") {
+                if (typeof loadClassificadorFalhas === "function") loadClassificadorFalhas();
             } else if (tabName === "fiscalizacao") {
                 if (typeof initFiscalizacao === "function") initFiscalizacao();
             } else if (tabName === "remote-commands") {

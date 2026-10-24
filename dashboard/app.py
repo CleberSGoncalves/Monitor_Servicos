@@ -986,6 +986,44 @@ async def get_realtime_ai_praca_summary_endpoint(req: RealtimePracaAiRequest, us
     from realtime_block_auditor import diagnose_praca_cluster_with_ai
     return diagnose_praca_cluster_with_ai(req.praca, req.block_slot)
 
+# ==============================================================================
+# CLASSIFICADOR DE FALHAS & BASE DE CONHECIMENTO BROADCAST (MACHINE LEARNING)
+# ==============================================================================
+@app.get("/api/classificador-falhas/catalogo")
+async def get_classificador_catalogo_endpoint(user: dict = Depends(get_current_user)):
+    from failure_classifier_service import get_failure_catalog
+    return {
+        "status": "success",
+        "catalogo": get_failure_catalog()
+    }
+
+@app.get("/api/classificador-falhas/analise-frota")
+async def get_classificador_analise_endpoint(user: dict = Depends(get_current_user)):
+    from failure_classifier_service import classify_fleet_quality_failures
+    return classify_fleet_quality_failures()
+
+@app.post("/api/classificador-falhas/aprender-novo-padrao")
+async def aprender_novo_padrao_falha_endpoint(user: dict = Depends(get_current_user)):
+    from failure_classifier_service import mine_and_learn_new_failure_pattern
+    operator = user.get("username", "engenharia")
+    return mine_and_learn_new_failure_pattern(operator=operator)
+
+
+@app.get("/api/fiscalizacao/learned-patterns")
+async def get_learned_patterns_endpoint(user: dict = Depends(get_current_user)):
+    from failure_pattern_learner import get_all_active_patterns, get_learning_stats
+    return {
+        "status": "success",
+        "patterns": get_all_active_patterns(),
+        "stats": get_learning_stats()
+    }
+
+@app.post("/api/fiscalizacao/mine-patterns-ai")
+async def mine_patterns_ai_endpoint(user: dict = Depends(get_current_user)):
+    from failure_pattern_learner import mine_new_patterns_with_ai
+    operator = user.get("username", "engenharia")
+    return mine_new_patterns_with_ai(operator=operator)
+
 # ==========================================
 # Feature Flags & Kill-Switch Operacional
 # ==========================================

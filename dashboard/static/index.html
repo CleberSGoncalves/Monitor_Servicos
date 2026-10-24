@@ -1308,6 +1308,7 @@
       <button class="nav-btn" data-tab="signals"><span>📈</span> Análise RF</button>
       <button class="nav-btn" data-tab="mosaic"><span>🖼️</span> Mosaico Live</button>
       <button class="nav-btn" data-tab="map"><span>🗺️</span> Topologia RF</button>
+      <button class="nav-btn" data-tab="classificador"><span>🏷️</span> Classificador de Falhas</button>
       <button class="nav-btn" data-tab="fiscalizacao"><span>⚖️</span> Fiscalização</button>
       <button class="nav-btn" data-tab="incidents"><span>📋</span> Worklog</button>
       <button class="nav-btn" data-tab="network"><span>🌐</span> Link WAN</button>
@@ -3200,6 +3201,143 @@
     <!-- ============================================================================== -->
     <!-- TAB: FISCALIZAÇÃO - FT EMISSORA X FT IBOPE (EXCLUSIVO DIGITAL TERRESTRE)       -->
     <!-- ============================================================================== -->
+    <!-- ============================================================================== -->
+    <!-- TAB: CLASSIFICADOR DE FALHAS & BASE DE CONHECIMENTO BROADCAST (MACHINE LEARNING)  -->
+    <!-- ============================================================================== -->
+    <section class="content-section" id="tab-classificador">
+      <!-- Header do Módulo -->
+      <div class="panel-card" style="margin-bottom: 18px; padding: 16px 20px; background: linear-gradient(135deg, rgba(15, 23, 42, 0.98), rgba(20, 30, 48, 0.98)); border: 1px solid rgba(168, 85, 247, 0.35); border-left: 5px solid #a855f7;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+          <div>
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <h3 style="margin: 0; font-size: 17px; font-weight: 800; color: #fff;">
+                🏷️ Classificador de Falhas &amp; Base de Conhecimento Broadcast
+              </h3>
+              <span class="badge badge-purple" style="font-size: 10px; font-weight: 700;">Repositório Central do Dashboard</span>
+              <span class="badge badge-green" style="font-size: 10px; font-family: monospace;">Zero Ruído de Escoamento WAN</span>
+              <span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); font-size: 10px; font-weight: 700;">Machine Learning Ativo</span>
+            </div>
+            <p style="margin: 4px 0 0 0; font-size: 12px; color: #94a3b8; max-width: 950px; line-height: 1.4;">
+              Repositório canônico e vivo de tipos de falhas de qualidade broadcast, suas causas raízes e playbooks de mitigação. Canais analógicos (placa Yuan TW6802 DirectShow) e streaming são tratados em seu escopo próprio.
+            </p>
+          </div>
+          <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+            <button class="btn-secondary" onclick="loadClassificadorFalhas()" style="font-size: 11px; padding: 6px 12px;">
+              <i class="fas fa-sync-alt" id="iconReloadClassificador"></i> Atualizar Frota
+            </button>
+            <button class="btn-primary" onclick="triggerMineFailurePattern()" style="background: linear-gradient(135deg, #7c3aed, #2563eb); border: none; font-weight: 700; font-size: 11px; padding: 6px 14px; display: flex; align-items: center; gap: 6px;">
+              <i class="fas fa-brain"></i> ✨ Minerar Falhas &amp; Aprender com IA
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- KPIs Globais do Classificador -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 18px;">
+        <div class="kpi-card" style="padding: 12px 16px; border-top: 3px solid #10b981;">
+          <div class="kpi-label" style="font-size: 10px;">Taxa de Conformidade</div>
+          <div class="kpi-value" id="clfKpiNominalPct" style="color: #10b981; font-size: 22px;">--%</div>
+          <div class="kpi-sub" id="clfKpiNominalCount" style="font-size: 10px;">-- canais nominais</div>
+        </div>
+        <div class="kpi-card" style="padding: 12px 16px; border-top: 3px solid #38bdf8;">
+          <div class="kpi-label" style="font-size: 10px;">Canais Mapeados (Frota)</div>
+          <div class="kpi-value" id="clfKpiTotalChannels" style="color: #38bdf8; font-size: 22px;">--</div>
+          <div class="kpi-sub" id="clfKpiSplitMeios" style="font-size: 10px;">-- Digital RF • -- Yuan Analógico • -- Stream/FM</div>
+        </div>
+        <div class="kpi-card" style="padding: 12px 16px; border-top: 3px solid #a855f7;">
+          <div class="kpi-label" style="font-size: 10px;">Tipos de Falha Catalogados</div>
+          <div class="kpi-value" id="clfKpiTotalPatterns" style="color: #c084fc; font-size: 22px;">--</div>
+          <div class="kpi-sub" id="clfKpiEnumRange" style="font-size: 10px;">Enumerados #01 a #09 (Canônicos + ML)</div>
+        </div>
+        <div class="kpi-card" style="padding: 12px 16px; border-top: 3px solid #ef4444;">
+          <div class="kpi-label" style="font-size: 10px;">Falhas de Qualidade Ativas</div>
+          <div class="kpi-value" id="clfKpiTotalFailures" style="color: #ef4444; font-size: 22px;">--</div>
+          <div class="kpi-sub" id="clfKpiActiveTypesCount" style="font-size: 10px;">distribuídas em -- tipos</div>
+        </div>
+      </div>
+
+      <!-- SEÇÃO 1: CATÁLOGO DE TIPOS DE FALHAS ENUMERADOS (#01 a #N) -->
+      <div class="panel-card" style="margin-bottom: 18px; padding: 16px 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+          <div>
+            <h4 style="margin: 0; font-size: 14px; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 8px;">
+              <i class="fas fa-book-open" style="color: #a855f7;"></i> Catálogo Enumerado de Tipos de Falha Broadcast (#01 a #N)
+            </h4>
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+              Repositório taxonômico que serve de base de conhecimento para todos os módulos do dashboard.
+            </div>
+          </div>
+          <div style="display: flex; gap: 6px;">
+            <select id="clfFilterCategory" class="form-input" style="font-size: 11px; padding: 4px 8px;" onchange="filterClassificadorCatalog()">
+              <option value="all">Todas as Categorias</option>
+              <option value="Transmissão RF">Transmissão RF</option>
+              <option value="Codificação / MUX">Codificação / MUX</option>
+              <option value="Áudio Broadcast">Áudio Broadcast</option>
+              <option value="Hardware Analógico">Hardware Analógico Yuan</option>
+              <option value="Pipeline Capture">Pipeline Capture</option>
+              <option value="Satélite Uplink">Satélite Uplink</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="table-responsive" style="max-height: 380px; overflow-y: auto;">
+          <table style="width: 100%; font-size: 11px; border-collapse: collapse;">
+            <thead>
+              <tr style="border-bottom: 1px solid rgba(255,255,255,0.08); color: var(--text-muted); text-transform: uppercase; font-size: 10px;">
+                <th style="padding: 8px 10px; text-align: center; width: 45px;">#</th>
+                <th style="padding: 8px 10px; text-align: left;">Tipo de Falha / Nome Técnico</th>
+                <th style="padding: 8px 10px; text-align: left; width: 130px;">Categoria</th>
+                <th style="padding: 8px 10px; text-align: left; width: 140px;">Escopo / Meio</th>
+                <th style="padding: 8px 10px; text-align: left;">Assinatura Heurística</th>
+                <th style="padding: 8px 10px; text-align: center; width: 90px;">Incidência</th>
+                <th style="padding: 8px 10px; text-align: center; width: 120px;">Origem</th>
+                <th style="padding: 8px 10px; text-align: center; width: 85px;">Ação</th>
+              </tr>
+            </thead>
+            <tbody id="clfCatalogTableBody">
+              <!-- Preenchido dinamicamente via classificador_falhas.js -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- SEÇÃO 2: MATRIZ DE PRAÇAS & SAÚDE OPERACIONAL (COMPACTA) -->
+      <div class="panel-card" style="padding: 16px 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+          <div>
+            <h4 style="margin: 0; font-size: 14px; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 8px;">
+              <i class="fas fa-map-marked-alt" style="color: #10b981;"></i> Matriz de Falhas &amp; Saúde por Afiliada
+            </h4>
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+              Panorama conciso por praça, discriminando canais digitais terrestres TBS de canais analógicos Yuan TW6802.
+            </div>
+          </div>
+          <div style="display: flex; gap: 6px;">
+            <input type="text" id="clfSearchPracaInput" class="form-input" placeholder="🔍 Buscar praça..." style="width: 180px; font-size: 11px; padding: 4px 8px;" oninput="filterClassificadorPracasTable()">
+          </div>
+        </div>
+
+        <div class="table-responsive" style="max-height: 340px; overflow-y: auto;">
+          <table style="width: 100%; font-size: 11px; border-collapse: collapse;">
+            <thead>
+              <tr style="border-bottom: 1px solid rgba(255,255,255,0.08); color: var(--text-muted); text-transform: uppercase; font-size: 10px;">
+                <th style="padding: 7px 10px; text-align: left;">Praça / Afiliada</th>
+                <th style="padding: 7px 10px; text-align: center; width: 90px;">Total</th>
+                <th style="padding: 7px 10px; text-align: center; width: 140px;">Digital RF / Yuan</th>
+                <th style="padding: 7px 10px; text-align: center; width: 130px;">Health Index</th>
+                <th style="padding: 7px 10px; text-align: center; width: 110px;">Status</th>
+                <th style="padding: 7px 10px; text-align: left;">Falhas Detectadas</th>
+                <th style="padding: 7px 10px; text-align: center; width: 85px;">Ação</th>
+              </tr>
+            </thead>
+            <tbody id="clfPracasTableBody">
+              <!-- Preenchido dinamicamente via classificador_falhas.js -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
     <section class="content-section" id="tab-fiscalizacao">
       <!-- Header do Módulo -->
       <div class="panel-card" style="margin-bottom: 20px; padding: 18px 22px; background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.95)); border: 1px solid rgba(245, 158, 11, 0.35); border-left: 5px solid #f59e0b;">
@@ -3235,9 +3373,6 @@
         </button>
         <button class="sig-subtab-btn" id="btn-fisc-subtab-mp4" onclick="switchFiscalizacaoSubtab('mp4')">
           <i class="fas fa-film"></i> 🎬 Amostragem de Mídia MP4/ASF &amp; OpenCV (NAS VideoRecord)
-        </button>
-        <button class="sig-subtab-btn" id="btn-fisc-subtab-realtime" onclick="switchFiscalizacaoSubtab('realtime')">
-          <i class="fas fa-satellite"></i> ⚡ Realtime 30min: Clusters &amp; Matriz de Praças
         </button>
       </div>
 
@@ -3962,84 +4097,6 @@
 
       </div>
 
-      <!-- SUBABA 3: AUDITORIA REALTIME DE BLOCOS DE 30MIN & CLUSTERS DE FALHAS DIGITAIS -->
-      <div id="fisc-content-realtime" style="display: none;">
-        <!-- Banner Informativo de Arquitetura -->
-        <div class="panel-card" style="margin-bottom: 20px; padding: 18px 22px; background: linear-gradient(135deg, rgba(15, 23, 42, 0.98), rgba(20, 30, 48, 0.98)); border: 1px solid rgba(56, 189, 248, 0.35); border-left: 5px solid #38bdf8;">
-          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
-            <div>
-              <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-                <h3 style="margin: 0; font-size: 17px; font-weight: 800; color: #fff;">
-                  ⚡ Auditoria Realtime de Blocos de 30min &amp; Clusters de Falhas Digitais
-                </h3>
-                <span class="badge badge-green" style="font-size: 11px; font-family: monospace;">Escala: 500+ Canais</span>
-                <span class="badge badge-blue" style="font-size: 11px; font-family: monospace;">Zero Decodificação (O(1) 6ms)</span>
-                <span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); font-size: 11px; font-weight: 700;">Custo IA Contínua = R$ 0,00</span>
-              </div>
-              <p style="margin: 6px 0 0 0; font-size: 12px; color: #94a3b8; max-width: 900px; line-height: 1.5;">
-                Inspeção contínua e determinística dos blocos <code>.ASF/.MP4</code> recém-chegados a cada slot de 30 minutos em todas as afiliadas. Classifica falhas em 6 clusters analíticos e mapeia o <strong>Health Index</strong> por praça, com acionamento de IA <em>sob demanda</em>.
-              </p>
-            </div>
-            <div style="display: flex; gap: 10px; align-items: center;">
-              <button class="btn-primary" onclick="loadRealtimeBlockAudit()" style="background: linear-gradient(135deg, #0284c7, #2563eb); border: none; font-weight: 700; font-size: 12px; padding: 10px 18px;">
-                <i class="fas fa-sync-alt" id="iconReloadRealtime"></i> Atualizar Auditoria dos Blocos
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- KPIs Globais da Auditoria de Blocos -->
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 22px;">
-          <div class="kpi-card" style="border-top: 3px solid #38bdf8;">
-            <div class="kpi-label">Canais Auditados (Frota)</div>
-            <div class="kpi-value" id="rtKpiTotalChannels" style="color: #38bdf8;">--</div>
-            <div class="kpi-sub" id="rtKpiSlotTime">Slot: --:-- • Tempo: 6ms</div>
-          </div>
-          <div class="kpi-card" style="border-top: 3px solid #10b981;">
-            <div class="kpi-label">Blocos Nominais Íntegros</div>
-            <div class="kpi-value" id="rtKpiNominalBlocks" style="color: #10b981;">--</div>
-            <div class="kpi-sub" id="rtKpiNominalPct">SZ3600432 (100% OK)</div>
-          </div>
-          <div class="kpi-card" style="border-top: 3px solid #ef4444;">
-            <div class="kpi-label">Canais com Anomalia</div>
-            <div class="kpi-value" id="rtKpiAnomalyChannels" style="color: #ef4444;">--</div>
-            <div class="kpi-sub">Agrupados em 5 clusters de falha</div>
-          </div>
-          <div class="kpi-card" style="border-top: 3px solid #f59e0b;">
-            <div class="kpi-label">Praças Mapeadas</div>
-            <div class="kpi-value" id="rtKpiPracasCount" style="color: #f59e0b;">--</div>
-            <div class="kpi-sub" id="rtKpiHealthAvg">Health Index Médio: --%</div>
-          </div>
-        </div>
-
-        <!-- Grade com os 6 Clusters Determinísticos de Falhas Digitais -->
-        <h4 style="font-size: 14px; font-weight: 800; color: #fff; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
-          <i class="fas fa-layer-group" style="color: #38bdf8;"></i> Clusters de Falhas Digitais &amp; Integridade (Slot de 30min)
-        </h4>
-
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-bottom: 24px;" id="rtClustersGrid">
-          <!-- Preenchido dinamicamente via fiscalizacao.js -->
-        </div>
-
-        <!-- Matriz de Saúde das Praças & Diagnóstico IA sob Demanda -->
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
-          <div>
-            <h4 style="font-size: 14px; font-weight: 800; color: #fff; margin: 0; display: flex; align-items: center; gap: 8px;">
-              <i class="fas fa-map-marked-alt" style="color: #10b981;"></i> Matriz de Saúde por Praça (Health Index &amp; Análise IA)
-            </h4>
-            <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
-              Clique em "Diagnosticar Praça com IA" para gerar um parecer pericial sob demanda via Google Gemini Pro.
-            </div>
-          </div>
-          <div style="display: flex; gap: 8px;">
-            <input type="text" id="rtSearchPracaInput" class="form-input" placeholder="🔍 Filtrar praça..." style="width: 220px; font-size: 12px; padding: 6px 12px;" oninput="filterRealtimePracas()">
-          </div>
-        </div>
-
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 16px; margin-bottom: 24px;" id="rtPracasGrid">
-          <!-- Preenchido dinamicamente via fiscalizacao.js -->
-        </div>
-      </div>
     </section>
 
     <!-- ============================================================================== -->
@@ -7324,7 +7381,7 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=3.9.48"></script>
+  <script src="/static/js/app.js?v=3.9.49"></script>
   <script src="/static/js/ai_insights.js?v=3.9.40"></script>
   <script src="/static/js/fleet_ops.js?v=3.9.40"></script>
   <script src="/static/js/remote_commands.js?v=3.9.40"></script>
@@ -7332,7 +7389,7 @@
   <script src="/static/js/mosaic_wall.js?v=3.9.40"></script>
   <script src="/static/js/topology_map.js?v=3.9.40"></script>
   <script src="/static/js/network_link.js?v=3.9.40"></script>
-  <script src="/static/js/fiscalizacao.js?v=3.9.48"></script>
+  <script src="/static/js/fiscalizacao.js?v=3.9.49"></script>
 
 <!-- MODAL: DIAGNÓSTICO DE IA DE LINK & CONECTIVIDADE DE REDE -->
   <div class="modal-overlay" id="networkAiDiagModal" style="display: none; align-items: center; justify-content: center; z-index: 10000;">
@@ -7516,6 +7573,80 @@
       </div>
       <div class="modal-footer" style="margin-top: 16px; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 12px; display: flex; justify-content: flex-end; gap: 10px;">
         <button class="btn-secondary" onclick="closeRealtimePracaAiModal()" style="padding: 6px 14px; font-size: 12px;">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- MODAL: CANAIS AFETADOS POR PADRÃO DE FALHA -->
+  <div class="modal-overlay" id="fiscPatternChannelsModal" style="display: none; align-items: center; justify-content: center; z-index: 10001; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(4px);">
+    <div class="modal" style="max-width: 650px; width: 92%; border: 1px solid #38bdf8; background: #0b1329; border-radius: 8px; box-shadow: 0 20px 35px -5px rgba(0, 0, 0, 0.8); padding: 20px;">
+      <div class="modal-header" style="border-bottom: 1px solid rgba(56, 189, 248, 0.3); padding-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <span class="badge badge-blue" style="font-size: 9px;" id="fiscPatternModalBadge">PADRÃO ENUMERADO</span>
+          <h3 style="margin: 2px 0 0 0; color: #fff; font-size: 15px;" id="fiscPatternModalTitle">Detalhe da Falha</h3>
+        </div>
+        <button class="btn-close" onclick="closePatternChannelsModal()" style="background: none; border: none; color: #94a3b8; font-size: 20px; cursor: pointer;">&times;</button>
+      </div>
+      <div class="modal-body" style="padding-top: 14px; max-height: 60vh; overflow-y: auto;">
+        <div style="font-size: 11px; color: #94a3b8; margin-bottom: 12px; line-height: 1.4;" id="fiscPatternModalDesc">
+          Descrição técnica da assinatura...
+        </div>
+        <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 6px; padding: 10px 14px; margin-bottom: 14px; font-size: 11px; color: #6ee7b7;">
+          <div style="font-weight: 700; margin-bottom: 2px;"><i class="fas fa-wrench"></i> Playbook de Mitigação:</div>
+          <div id="fiscPatternModalPlaybook">Ação recomendada...</div>
+        </div>
+        <div style="font-size: 11px; font-weight: 700; color: #fff; margin-bottom: 6px;">Canais Afetados neste Slot:</div>
+        <div id="fiscPatternModalChannelsList" style="display: flex; flex-direction: column; gap: 4px; max-height: 180px; overflow-y: auto;">
+          <!-- Canais inseridos dinamicamente -->
+        </div>
+      </div>
+      <div class="modal-footer" style="margin-top: 14px; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 10px; display: flex; justify-content: flex-end;">
+        <button class="btn-secondary" onclick="closePatternChannelsModal()" style="padding: 5px 12px; font-size: 11px;">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- MODAL: DETALHES DO TIPO DE FALHA & PLAYBOOK DE MITIGAÇÃO -->
+  <div class="modal-overlay" id="modalFailureDetail" style="display: none; align-items: center; justify-content: center; z-index: 10002; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(4px);">
+    <div class="modal" style="max-width: 680px; width: 94%; border: 1px solid #a855f7; background: #0b1329; border-radius: 8px; box-shadow: 0 20px 35px -5px rgba(0, 0, 0, 0.8); padding: 22px;">
+      <div class="modal-header" style="border-bottom: 1px solid rgba(168, 85, 247, 0.3); padding-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <span class="badge badge-purple" style="font-size: 9px;" id="modalFailBadge">BASE DE CONHECIMENTO BROADCAST</span>
+          <h3 style="margin: 3px 0 0 0; color: #fff; font-size: 16px;" id="modalFailTitle">Tipo de Falha #01</h3>
+        </div>
+        <button class="btn-close" onclick="closeFailureDetailModal()" style="background: none; border: none; color: #94a3b8; font-size: 20px; cursor: pointer;">&times;</button>
+      </div>
+      <div class="modal-body" style="padding-top: 14px; max-height: 65vh; overflow-y: auto;">
+        <!-- Assinatura Técnica Heurística -->
+        <div style="margin-bottom: 14px;">
+          <div style="font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; margin-bottom: 4px;">Assinatura Heurística de Detecção:</div>
+          <div id="modalFailSignature" style="font-size: 12px; color: #cbd5e1; background: rgba(0,0,0,0.3); padding: 8px 12px; border-radius: 6px; border-left: 3px solid #38bdf8; font-family: monospace;">--</div>
+        </div>
+
+        <!-- Principais Causas Raízes -->
+        <div style="margin-bottom: 14px;">
+          <div style="font-size: 10px; font-weight: 700; color: #f59e0b; text-transform: uppercase; margin-bottom: 4px;"><i class="fas fa-search-plus"></i> Principais Causas Raízes Identificadas:</div>
+          <div id="modalFailCauses" style="font-size: 12px; color: #cbd5e1; background: rgba(245, 158, 11, 0.05); border: 1px solid rgba(245, 158, 11, 0.2); padding: 10px 14px; border-radius: 6px; white-space: pre-line; line-height: 1.5;">--</div>
+        </div>
+
+        <!-- Playbook Operacional de Solução -->
+        <div style="margin-bottom: 14px;">
+          <div style="font-size: 10px; font-weight: 700; color: #10b981; text-transform: uppercase; margin-bottom: 4px;"><i class="fas fa-tools"></i> Playbook de Mitigação &amp; Solução:</div>
+          <div id="modalFailPlaybook" style="font-size: 12px; color: #6ee7b7; background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); padding: 10px 14px; border-radius: 6px; white-space: pre-line; line-height: 1.5;">--</div>
+        </div>
+
+        <!-- Canais Afetados Agora na Frota -->
+        <div>
+          <div style="font-size: 10px; font-weight: 700; color: #fff; text-transform: uppercase; margin-bottom: 6px;">Canais Afetados Atualmente na Frota (<span id="modalFailCount">0</span>):</div>
+          <div id="modalFailChannelsList" style="display: flex; flex-direction: column; gap: 4px; max-height: 160px; overflow-y: auto;">
+            <!-- Preenchido dinamicamente -->
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer" style="margin-top: 14px; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 10px; display: flex; justify-content: flex-end;">
+        <button class="btn-secondary" onclick="closeFailureDetailModal()" style="padding: 5px 14px; font-size: 11px;">Fechar</button>
       </div>
     </div>
   </div>
