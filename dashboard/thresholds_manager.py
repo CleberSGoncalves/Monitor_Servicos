@@ -215,10 +215,19 @@ def get_active_threshold_breaches(services: list = None, channels: list = None) 
             except Exception:
                 pass
 
-    # 2. Limiar de Qualidade e Força RF de Canais
+    # 2. Limiar de Qualidade e Força RF de Canais (Exclusivo para Digital Terrestre)
     rf_q_thresh = thresholds.get("rf_signal_quality_min")
     rf_s_thresh = thresholds.get("rf_signal_strength_min")
     for c in channels:
+        meio_str = str(c.get("meio", "Digital Terrestre")).lower()
+        is_digital = any(x in meio_str for x in ["digital", "terrestre"])
+        is_stream = any(x in meio_str for x in ["rtsp", "udp", "ip", "stream"])
+        is_analog = any(x in meio_str for x in ["analóg", "analog", "directshow"])
+        
+        # Ignora canais Streaming, Analógicos ou Rádios para limiares de RF UHF
+        if not is_digital or is_stream or is_analog:
+            continue
+
         q_val = c.get("qualidade_sinal")
         s_val = c.get("forca_sinal")
         ch_name = c.get("canal", "Canal")

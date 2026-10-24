@@ -2702,34 +2702,99 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
 
     // 2. Incidentes P0 (Crítico / Blackout Total)
     (channelsList || []).filter(c => c.has_outage).forEach(c => {
-        const isRtsp = (c.meio || "").toLowerCase().includes("rtsp") || (c.meio || "").toLowerCase().includes("ip");
+        const meio = (c.meio || "Digital Terrestre").toLowerCase();
+        const isRtsp = meio.includes("rtsp") || meio.includes("udp") || meio.includes("ip") || meio.includes("stream");
+        const isAnalog = meio.includes("analóg") || meio.includes("analog") || meio.includes("directshow");
+        const isStorageErr = (c.gravando_mp4 || "").includes("⚠️") || (c.motivo || "").includes("Pasta") || (c.motivo || "").includes("Gravação");
+        const isFrozen = (c.video_congelado || "").toLowerCase().includes("sim");
+        const isMute = (c.audio_mudo || "").toLowerCase().includes("sim");
+
+        const triggerType = isRtsp ? "rtsp_udp" : (isStorageErr ? "storage_io" : (isFrozen ? "video_freeze" : (isMute ? "audio_mute" : "rf_level")));
+        const catLabel = isStorageErr ? "Armazenamento / Disco" : (isRtsp ? "Streaming IP / UDP" : (isAnalog ? "Entrada Analógica" : "Sinal Digital RF"));
+        const catIcon = isStorageErr ? "fa-hdd" : (isRtsp ? "fa-wifi" : (isAnalog ? "fa-sliders-h" : "fa-satellite-dish"));
+
+        let telStr = "";
+        let detailSubline = "";
+        let statusBadgeText = "Anomalia";
+
+        if (isStorageErr) {
+            telStr = `Storage: ${c.gravando_mp4 || 'Inacessível'} | Destino: ${c.pasta_mp4 || 'D:\\MediaDNA_V2\\data\\video'}`;
+            detailSubline = `• ${c.canal}: Pasta/Arquivo Indisponível (${c.gravando_mp4})`;
+            statusBadgeText = "Storage Indisponível";
+        } else if (isFrozen) {
+            telStr = `Vídeo: Congelado (PTS estático) | Tuner: ${c.status_tuner || 'Conectado'}`;
+            detailSubline = `• ${c.canal}: Vídeo Congelado no MUX`;
+            statusBadgeText = "Vídeo Congelado";
+        } else if (isMute) {
+            telStr = `Áudio: Sem Portadora Sonora | Tuner: ${c.status_tuner || 'OK'}`;
+            detailSubline = `• ${c.canal}: Áudio Mudo`;
+            statusBadgeText = "Áudio Mudo";
+        } else if (isRtsp) {
+            telStr = `Meio: Streaming IP (${c.meio}) | Tuner: ${c.status_tuner || 'N/A'} | Gravação: ${c.gravando_mp4 || c.gravando_mp3 || 'Não'}`;
+            detailSubline = `• ${c.canal} (${c.meio}): Fluxo Desconectado`;
+            statusBadgeText = "Stream Desconectado";
+        } else if (isAnalog) {
+            telStr = `Meio: Analógico DirectShow | Tuner: ${c.status_tuner || 'N/A'} | Gravação: ${c.gravando_mp4 || c.gravando_mp3 || 'Não'}`;
+            detailSubline = `• ${c.canal} (Analógico): Entrada Inativa`;
+            statusBadgeText = "Entrada Inativa";
+        } else {
+            const q = c.qualidade_sinal != null ? `${c.qualidade_sinal}%` : "0%";
+            const s = c.forca_sinal != null ? `${c.forca_sinal}%` : "0%";
+            const freq = (c.frequencia && c.frequencia !== "N/A") ? c.frequencia : "UHF";
+            telStr = `Tuner TBS ISDB-Tb | Freq: ${freq} | Qualidade: ${q} | Força: ${s} | Status: ${c.status_tuner || 'N/A'}`;
+            detailSubline = `• ${c.canal} (${freq}): Qualidade ${q} | Força ${s}`;
+            statusBadgeText = (c.qualidade_sinal === 0 || c.qualidade_sinal == null) ? "Sem Portadora RF" : "Sinal Degradado";
+        }
+
+        // Tempo decorrido real
+        let timeAgo = "Recentemente";
+        if (c.atualizacao) {
+            try {
+                const diffMin = Math.max(1, Math.floor((Date.now() - new Date(c.atualizacao.replace("Z", "+00:00")).getTime()) / 60000));
+                timeAgo = diffMin < 60 ? `Há ${diffMin} min` : `Há ${Math.floor(diffMin/60)}h ${diffMin%60}m`;
+            } catch(e) {}
+        }
+
         incidents.push({
             id: `p0_ch_${c.cidade}_${c.canal}`,
             key: `canal_${c.canal}`,
             severity: "P0",
             severity_label: "CRÍTICO (P0)",
-            trigger_type: isRtsp ? "rtsp_udp" : "rf_level",
+            trigger_type: triggerType,
             category: "sinal_rf",
-            category_label: isRtsp ? "Streaming RTSP" : "Sinal Digital RF",
-            category_icon: isRtsp ? "fa-wifi" : "fa-satellite-dish",
+            category_label: catLabel,
+            category_icon: catIcon,
             praca: c.cidade,
             region: getRegionForCity(c.cidade),
             cs: c.id_cs || 1,
             hostname: `CS-${(c.cidade || "").substring(0,3).toUpperCase()}-0${c.id_cs || 1}`,
             target: c.canal,
-            title: `Interrupção de Sinal: ${c.canal}`,
-            summary: c.video_congelado?.includes("Sim") ? "Vídeo Congelado no MUX" :
-                    (c.audio_mudo?.includes("Sim") ? "Áudio Mudo / Ausência de Portadora" :
-                    (isRtsp ? `Stream RTSP Interrompido (${c.status_tuner})` : "Sinal RF Zerado (Sem Lock TBS)")),
-            telemetry: isRtsp ? `Tuner TBS: OK (Conectado) | Tráfego RTSP: 0.0 kbps` : `Tuner TBS: 0.0 dBuV | CNR: 0.0 dB | Lock: Não`,
-            details_subline: `• ${c.canal} (${c.frequencia || 'UHF'}): Sinal 0%`,
-            time_ago: "Há 12 min"
+            title: `Interrupção Operacional: ${c.canal}`,
+            summary: c.motivo || "Anomalia Operacional Detectada",
+            telemetry: telStr,
+            details_subline: detailSubline,
+            statusBadgeText: statusBadgeText,
+            time_ago: timeAgo
         });
     });
 
-    // 3. Incidentes P1: Alerta Preditivo (Degradação, Margem Ruído, Fading Fresnel)
-    (channelsList || []).filter(c => !c.has_outage && c.qualidade_sinal > 0 && c.qualidade_sinal < 45).forEach(c => {
+    // 3. Incidentes P1: Alerta Preditivo (Degradação, Margem Ruído, Fading Fresnel - Exclusivo Digital Terrestre)
+    (channelsList || []).filter(c => {
+        const meio = (c.meio || "Digital Terrestre").toLowerCase();
+        const isDigital = meio.includes("digital") || meio.includes("terrestre");
+        const isStream = meio.includes("rtsp") || meio.includes("udp") || meio.includes("ip");
+        const isAnalog = meio.includes("analóg") || meio.includes("analog");
+        return isDigital && !isStream && !isAnalog && !c.has_outage && c.qualidade_sinal > 0 && c.qualidade_sinal < 45;
+    }).forEach(c => {
         const fadeMargin = Math.round(c.qualidade_sinal * 1.15);
+        let timeAgo = "Recentemente";
+        if (c.atualizacao) {
+            try {
+                const diffMin = Math.max(1, Math.floor((Date.now() - new Date(c.atualizacao.replace("Z", "+00:00")).getTime()) / 60000));
+                timeAgo = diffMin < 60 ? `Há ${diffMin} min` : `Há ${Math.floor(diffMin/60)}h ${diffMin%60}m`;
+            } catch(e) {}
+        }
+        const freq = (c.frequencia && c.frequencia !== "N/A") ? c.frequencia : "UHF";
         incidents.push({
             id: `p1_deg_${c.cidade}_${c.canal}`,
             key: `canal_${c.canal}`,
@@ -2745,10 +2810,10 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
             hostname: `CS-${(c.cidade || "").substring(0,3).toUpperCase()}-0${c.id_cs || 1}`,
             target: c.canal,
             title: `${c.cidade} (CS ${c.id_cs || 1}) — Margem Crítica de Ruído`,
-            summary: "Fading térmico ou obstrução de visada Fresnel. Alto risco de perda de lock.",
-            telemetry: `Tuner TBS: 48.2 dBuV | CNR: 14.2 dB (Margem 0.8 dB)`,
+            summary: `Atenuação na portadora RF (${c.qualidade_sinal}%). Risco iminente de perda de lock demodulador ISDB-Tb.`,
+            telemetry: `Freq: ${freq} | Qualidade RF: ${c.qualidade_sinal}% | Potência: ${c.forca_sinal || 0}%`,
             fade_margin: fadeMargin,
-            time_ago: "Há 4 min"
+            time_ago: timeAgo
         });
     });
 
@@ -3076,20 +3141,22 @@ function renderNocUnifiedQueue() {
             <!-- Identificação do Nó / Praça -->
             <div style="margin-bottom: 8px;">
                 <div style="font-size: 14px; font-weight: 800; color: #fff;">
-                    ${escapeHtml(group.praca)} (CS ${group.cs}) — ${streamCount > 1 ? `${streamCount} Streams Interrompidos` : escapeHtml(mainItem.title)}
+                    ${escapeHtml(group.praca)} (CS ${group.cs}) — ${streamCount > 1 ? `${streamCount} Canais Afetados` : escapeHtml(mainItem.title)}
                 </div>
                 <div style="font-size: 11px; color: #94a3b8; font-family: monospace; margin-top: 3px;">
                     ${escapeHtml(group.telemetry)}
                 </div>
             </div>
 
-            <!-- Subgrade / Lista de Streams Afetados (se for grupo com múltiplos) -->
+            <!-- Subgrade / Lista de Canais Afetados (se for grupo com múltiplos) -->
             ${streamCount > 1 ? `
                 <div style="background: rgba(0,0,0,0.3); border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; border-left: 2px solid ${sevColor}; display: flex; flex-direction: column; gap: 4px;">
                     ${group.items.map(sub => `
-                        <div style="font-size: 11px; color: #cbd5e1; font-family: monospace; display: flex; justify-content: space-between;">
-                            <span>${escapeHtml(sub.details_subline || `• ${sub.target}: Sinal 0%`)}</span>
-                            <span style="color: #ef4444; font-weight: 700;">Falha de Lock</span>
+                        <div style="font-size: 11px; color: #cbd5e1; font-family: monospace; display: flex; justify-content: space-between; align-items: center;">
+                            <span>${escapeHtml(sub.details_subline || `• ${sub.target}`)}</span>
+                            <span style="color: #ef4444; font-weight: 700; font-size: 10px; background: rgba(239, 68, 68, 0.1); padding: 2px 6px; border-radius: 4px;">
+                                ${escapeHtml(sub.statusBadgeText || 'Anomalia')}
+                            </span>
                         </div>
                     `).join("")}
                 </div>

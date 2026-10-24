@@ -102,6 +102,32 @@ def sync_fleet_data():
             for s in services_list
             if "mediaconverter" in str(s.get("nome_servico", "")).lower() and s.get("status_servico") == "Em Execução"
         }
+
+        # Mapeamento prévio de canais com gravação ativa por praça para análise contextual de redundância
+        # Ex: Se SBT já grava ativamente via Streaming UDP em SJC, uma linha de antena Digital Terrestre
+        # com sinal 0 e sem gravação é secundária/não cabeada e NÃO pode gerar alarme crítico P0 de queda!
+        active_recordings_by_praca = {}
+        for it in raw_channels:
+            f_temp = it.get("fields", {})
+            p_temp = f_temp.get("Cidade", "").strip().lower()
+            ch_temp = f_temp.get("Title", "").strip()
+            rec_mp4_t = str(f_temp.get("GravandoMP4", ""))
+            rec_mp3_t = str(f_temp.get("GravandoMP3", ""))
+            m_temp = str(f_temp.get("MeiodeTransmiss_x00e3_o", "")).lower()
+            is_rad_t = any(x in m_temp for x in ["radio", "fm", "mp3"]) or any(x in ch_temp.lower() for x in ["rádio", "radio", " fm"])
+            
+            is_act_rec = (any(w in rec_mp3_t.lower() for w in ["sim", "gravando"])) if is_rad_t else (
+                any(w in rec_mp4_t.lower() for w in ["sim", "gravando", "asf"]) and "⚠️" not in rec_mp4_t
+            )
+            if is_act_rec:
+                if p_temp not in active_recordings_by_praca:
+                    active_recordings_by_praca[p_temp] = []
+                active_recordings_by_praca[p_temp].append({
+                    "canal": ch_temp,
+                    "veiculo": str(f_temp.get("Veiculo", "")).strip(),
+                    "meio": m_temp,
+                    "cs": f_temp.get("IDCS", 1)
+                })
         
         for it in raw_channels:
             f = it.get("fields", {})
@@ -116,12 +142,14 @@ def sync_fleet_data():
             
             # Meio de Transmissão e CS
             meio_str = str(f.get("MeiodeTransmiss_x00e3_o", "Digital Terrestre"))
-            is_rtsp = any(x in meio_str.lower() for x in ["rtsp", "udp", "ip", "stream"])
-            is_digital = any(x in meio_str.lower() for x in ["digital", "terrestre"])
+            m_lower = meio_str.lower()
+            is_rtsp = any(x in m_lower for x in ["rtsp", "udp", "ip", "stream"])
+            is_digital = any(x in m_lower for x in ["digital", "terrestre"])
+            is_analog = any(x in m_lower for x in ["analóg", "analog", "directshow"])
             is_radio = (
-                "radio" in meio_str.lower()
-                or "fm" in meio_str.lower()
-                or "mp3" in meio_str.lower()
+                "radio" in m_lower
+                or "fm" in m_lower
+                or "mp3" in m_lower
                 or "rádio" in ch_name.lower()
                 or "radio" in ch_name.lower()
                 or " fm" in ch_name.lower()
@@ -129,6 +157,7 @@ def sync_fleet_data():
             id_cs = f.get("IDCS", 1)
             parsed_cs = int(float(id_cs or 1))
             p_lower = praca.strip().lower()
+            veic = str(f.get("Veiculo", "")).strip()
 
             # Regra Arquitetural DNA.MediaConverter:
             # Em CS02 ou nós com DNA.MediaConverterSVC ativo, o ATRIA grava BKP em .MP4 e o conversor
@@ -146,7 +175,21 @@ def sync_fleet_data():
             t_lower = str(tuner_stat).lower()
             tuner_ok = any(w in t_lower for w in ["working", "ready", "connected", "lock", "ok"])
 
-            # Classificação Preditiva de Falha e Queda
+            # Validação contextual de redundância na mesma praça
+            has_active_redundancy = False
+            redundancy_note = ""
+            for act in active_recordings_by_praca.get(p_lower, []):
+                act_v = act.get("veiculo", "")
+                act_ch = act.get("canal", "").lower()
+                c_words = [w for w in ch_name.lower().split() if len(w) > 2 and w not in ['rede', 'tv', 'hd', 'digital', 'bkp']]
+                same_veic = (veic and veic != "N/A" and not veic.isalpha() and veic == act_v)
+                same_name = any(w in act_ch for w in c_words)
+                if same_veic or same_name:
+                    has_active_redundancy = True
+                    redundancy_note = f"Gravação Ativa via {act.get('canal')} (Meio: {act.get('meio')})"
+                    break
+
+            # Classificação Preditiva de Falha e Queda baseada no Contexto Operacional Real
             has_outage = False
             is_degraded = False
             motivo = "Estável"
@@ -162,35 +205,54 @@ def sync_fleet_data():
                 motivo = "Falha API Atria (Porta 9000)" if ("api" in t_lower or "500" in t_lower or "security" in t_lower) else "Falha no Sintonizador TBS"
             elif "⚠️" in rec_mp4:
                 has_outage = True
-                motivo = "Erro de Gravação (Pasta / Arquivo Inacessível)"
+                motivo = f"Erro de Gravação ({rec_mp4})"
             elif is_rtsp:
-                # Streams IP / RTSP / UDP: sinal vem nil="true", saúde é aferida por conexão do tuner e gravação
+                # Streams IP / RTSP / UDP: Não possuem sinal RF / UHF. Integridade aferida por conexão e gravação.
                 if not tuner_ok and not is_recording:
-                    has_outage = True
-                    motivo = f"Stream Interrompido ({tuner_stat})"
-                elif not is_recording:
-                    has_outage = True
-                    motivo = f"Stream Sem Gravação Ativa ({tuner_stat})"
+                    if has_active_redundancy:
+                        motivo = f"Stream Secundário Inativo ({redundancy_note})"
+                    else:
+                        has_outage = True
+                        motivo = f"Stream Interrompido ({tuner_stat})"
+                elif not is_recording and not tuner_ok:
+                    if has_active_redundancy:
+                        motivo = f"Stream Secundário Inativo ({redundancy_note})"
+                    else:
+                        has_outage = True
+                        motivo = f"Stream Sem Gravação Ativa ({tuner_stat})"
             elif is_digital:
-                # Sinal Digital Terrestre
-                if (sig_q == 0 or sig_q is None) and (sig_s == 0 or sig_s is None) and not is_recording:
-                    has_outage = True
-                    motivo = "Sinal RF Zerado e Sem Gravação"
-                elif (sig_q == 0 or sig_q is None) and not is_recording:
-                    has_outage = True
-                    motivo = "Sem Sinal RF e Sem Gravação"
+                # Sinal Digital Terrestre: Portadora RF UHF
+                if (sig_q == 0 or sig_q is None) and not is_recording:
+                    if has_active_redundancy:
+                        # Antena UHF sem sinal porque o canal é gravado via Streaming IP ou redundância na mesma praça
+                        motivo = f"Operando via Streaming / Redundância ({redundancy_note})"
+                    else:
+                        has_outage = True
+                        motivo = "Sinal RF Zerado e Sem Gravação"
                 elif sig_q is not None and 0 < sig_q < 45:
                     if not is_recording:
-                        has_outage = True
-                        motivo = f"Sinal RF Degradado ({sig_q}%) e Sem Gravação"
+                        if not has_active_redundancy:
+                            has_outage = True
+                            motivo = f"Sinal RF Degradado ({sig_q}%) e Sem Gravação"
+                        else:
+                            motivo = f"Sinal RF Secundário Degradado ({sig_q}%)"
                     else:
                         is_degraded = True
                         motivo = f"Sinal RF Degradado ({sig_q}%) - Margem Crítica"
-            else:
-                # Outros meios (Analógico, etc.)
+            elif is_analog:
+                # Analógico: Q=0 e S=0 é o comportamento padrão (não há portadora digital ISDB-Tb)
                 if not is_recording and not tuner_ok:
-                    has_outage = True
-                    motivo = f"Canal Inativo ({tuner_stat})" 
+                    if not has_active_redundancy:
+                        has_outage = True
+                        motivo = f"Canal Analógico Inativo ({tuner_stat})"
+                    else:
+                        motivo = f"Analógico Secundário Inativo ({redundancy_note})"
+            else:
+                # Outros meios
+                if not is_recording and not tuner_ok:
+                    if not has_active_redundancy:
+                        has_outage = True
+                        motivo = f"Canal Inativo ({tuner_stat})"
 
             ch_item = {
                 "id": it.get("id"),
@@ -216,6 +278,7 @@ def sync_fleet_data():
                 "url_stream": f.get("UrlStreaming", "N/A"),
                 "device_analog": f.get("SourceAnalogico", "N/A"),
                 "atualizacao": f.get("Atualizacao", ""),
+                "motivo": motivo,
                 "has_outage": has_outage,
                 "is_degraded": is_degraded
             }
@@ -229,7 +292,8 @@ def sync_fleet_data():
                     "cs": id_cs,
                     "tuner_id": ch_item["tuner_id"],
                     "motivo": motivo,
-                    "detalhe": f"Meio: {meio_str} | Status: {tuner_stat} | Qualidade: {ch_item['qualidade_sinal']}% | Força: {ch_item['forca_sinal']}%",
+                    "meio": meio_str,
+                    "detalhe": f"Meio: {meio_str} | Status: {tuner_stat} | Qualidade: {ch_item['qualidade_sinal']}% | Força: {ch_item['forca_sinal']}% | Gravação: {rec_mp4}",
                     "atualizacao": ch_item["atualizacao"]
                 })
 

@@ -155,12 +155,12 @@ def get_channel_live_snapshots(channels: List[Dict[str, Any]], country: Optional
             status_color = "#f59e0b"
             tipo_falha = "lip_sync"
             falha_desc = f"Dessincronismo entre áudio e vídeo detectado (+{lip_sync_delay}ms de defasagem de PTS)."
-        elif qualidade < 45 or "falha" in status_tuner.lower():
+        elif tipo_sinal == "Digital Terrestre (ISDB-Tb)" and (qualidade < 45 or "falha" in status_tuner.lower()):
             visual_status = "DEGRADADO (RF)"
             status_color = "#f59e0b"
             tipo_falha = "rf_drop"
             falha_desc = "Desarmamento de Lock digital no demodulador ISDB-Tb / Atenuação de sinal."
-        elif has_outage or qualidade == 0:
+        elif has_outage or (tipo_sinal == "Digital Terrestre (ISDB-Tb)" and qualidade == 0):
             visual_status = "QUEDA SINAL"
             status_color = "#ef4444"
             tipo_falha = "blackout"
