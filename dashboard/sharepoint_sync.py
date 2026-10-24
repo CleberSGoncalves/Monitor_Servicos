@@ -361,8 +361,16 @@ def sync_fleet_data():
 
 
 def get_cached_data() -> dict:
-    """Retorna os dados da frota em cache com thread safety."""
+    """Retorna os dados da frota em cache com thread safety, com fallback para o cache em disco."""
     with _cache_lock:
+        if not _cached_data.get("channels") and CACHE_FILE.exists():
+            try:
+                with open(CACHE_FILE, "r", encoding="utf-8") as f_disk:
+                    disk_data = json.load(f_disk)
+                    if disk_data.get("channels"):
+                        _cached_data.update(disk_data)
+            except Exception:
+                pass
         return _cached_data.copy()
 
 

@@ -122,6 +122,49 @@ _DEFAULT_FT_CASES = [
 ]
 
 
+def clean_city_name(city: Optional[str]) -> str:
+    """Higieniza e normaliza nomes de cidades com acentos corrompidos na origem."""
+    if not city:
+        return ""
+    c = str(city).strip()
+    c_norm = c.replace(chr(65533), "").lower()
+    if "florian" in c_norm:
+        return "Florianópolis"
+    if "paulo" in c_norm:
+        return "São Paulo"
+    if "campos" in c_norm or "sjc" in c_norm or "jose" in c_norm:
+        return "São José dos Campos"
+    if "ribeir" in c_norm:
+        return "Ribeirão Preto"
+    if "vit" in c_norm and "ria" in c_norm:
+        return "Vitória"
+    if "goi" in c_norm and "nia" in c_norm:
+        return "Goiânia"
+    if "bras" in c_norm and "lia" in c_norm:
+        return "Brasília"
+    if "bel" in c_norm and "m" in c_norm:
+        return "Belém"
+    if "cuiab" in c_norm:
+        return "Cuiabá"
+    if "macei" in c_norm:
+        return "Maceió"
+    return c
+
+
+def normalize_city_key(city: Optional[str]) -> str:
+    """Gera chave alfanumérica desprovida de acentos para matching à prova de falhas."""
+    if not city:
+        return ""
+    import unicodedata
+    s = unicodedata.normalize("NFKD", str(city)).encode("ASCII", "ignore").decode("utf-8").lower().strip()
+    s = re.sub(r"[^a-z0-9]", "", s)
+    if "campos" in s or "sjc" in s or "jose" in s:
+        return "saojosedoscampos"
+    if "florian" in s:
+        return "florianopolis"
+    return s
+
+
 def get_digital_terrestrial_channels_only() -> List[Dict[str, Any]]:
     """
     Retorna estritamente canais de Sinal Digital Terrestre (ISDB-Tb).
@@ -142,7 +185,7 @@ def get_digital_terrestrial_channels_only() -> List[Dict[str, Any]]:
 
         if is_digital and not is_stream and not is_analog and not is_radio:
             digital_channels.append({
-                "praca": c.get("cidade"),
+                "praca": clean_city_name(c.get("cidade")),
                 "canal": c.get("canal"),
                 "veiculo": c.get("veiculo"),
                 "frequencia": c.get("frequencia"),
@@ -260,13 +303,32 @@ def audit_time_range_with_nas_and_ai(
     services_fleet = fleet_data.get("services", [])
 
     # Validação Restritiva: Localiza o canal e verifica se é Digital Terrestre
+    # 1. Prioridade Máxima: Busca por IDPV exato (veículo do canal)
     cur_ch = None
-    for c in channels_fleet:
-        if c.get("cidade", "").strip().lower() == praca.strip().lower() and canal.strip().lower() in c.get("canal", "").strip().lower():
-            cur_ch = c
-            break
+    if custom_idpv and str(custom_idpv).strip().isdigit():
+        target_pv = str(custom_idpv).strip()
+        for c in channels_fleet:
+            if str(c.get("veiculo", "")).strip() == target_pv:
+                cur_ch = c
+                break
+
+    # 2. Match por cidade normalizada (desacentuada) e nome do canal
+    if not cur_ch:
+        target_norm = normalize_city_key(praca)
+        c_low = canal.strip().lower()
+        for c in channels_fleet:
+            c_norm = normalize_city_key(c.get("cidade"))
+            ch_name_low = str(c.get("canal", "")).strip().lower()
+            if (c_norm == target_norm or target_norm in c_norm or c_norm in target_norm) and (c_low in ch_name_low or ch_name_low in c_low):
+                cur_ch = c
+                break
 
     if cur_ch:
+        praca = clean_city_name(cur_ch.get("cidade")) or praca
+        canal = cur_ch.get("canal") or canal
+        if not custom_idpv and cur_ch.get("veiculo"):
+            custom_idpv = str(cur_ch.get("veiculo"))
+
         meio_raw = str(cur_ch.get("meio", "Digital Terrestre")).lower()
         is_stream = any(x in meio_raw for x in ["rtsp", "udp", "ip", "stream"])
         is_analog = any(x in meio_raw for x in ["analóg", "analog", "directshow"])

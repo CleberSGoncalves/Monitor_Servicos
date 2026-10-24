@@ -207,8 +207,22 @@ def resolve_channel_idpv_and_host(praca: str, canal: str, custom_idpv: Optional[
         cache_file = DATA_DIR / "fleet_cache.json"
         if cache_file.exists():
             data = json.loads(cache_file.read_text(encoding="utf-8"))
-            p_low = (praca or "").lower().strip()
+            import unicodedata
+            def _norm_k(s):
+                return re.sub(r'[^a-z0-9]', '', unicodedata.normalize('NFKD', str(s or '')).encode('ASCII', 'ignore').decode('utf-8').lower())
+
+            p_norm = _norm_k(praca)
             c_low = (canal or "").lower().strip()
+
+            # Match prioritário por IDPV se já fornecido
+            if idpv and idpv.isdigit():
+                for ch in data.get("channels", []):
+                    if str(ch.get("veiculo", "")).strip() == idpv:
+                        id_host = int(float(ch.get("id_host", 374) or 374))
+                        id_cs = int(float(ch.get("id_cs", 2) or 2))
+                        frequencia = ch.get("frequencia") or frequencia
+                        gravando_status = ch.get("gravando_mp4") or gravando_status
+                        break
 
             for ch in data.get("channels", []):
                 ch_city = str(ch.get("cidade", "")).lower().strip()

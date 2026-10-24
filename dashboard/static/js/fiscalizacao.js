@@ -101,6 +101,13 @@ function onFiscPracaChanged() {
     const canalSelect = document.getElementById("fiscFilterCanal");
     if (!pracaSelect || !canalSelect) return;
 
+    // Oculta e limpa o card de resultado anterior para evitar inconsistência visual entre praças
+    const resultCard = document.getElementById("fiscResultContainer");
+    if (resultCard) {
+        resultCard.style.display = "none";
+        resultCard.innerHTML = "";
+    }
+
     const praca = pracaSelect.value;
     const channelsInCity = digitalChannelsCache.filter(c => c.praca === praca);
 
@@ -122,6 +129,13 @@ function onFiscCanalChanged() {
     const canalSelect = document.getElementById("fiscFilterCanal");
     const idpvInput = document.getElementById("fiscFilterIdpv");
     if (!canalSelect) return;
+
+    // Oculta e limpa o card de resultado anterior se o operador trocar de canal
+    const resultCard = document.getElementById("fiscResultContainer");
+    if (resultCard) {
+        resultCard.style.display = "none";
+        resultCard.innerHTML = "";
+    }
 
     const opt = canalSelect.options[canalSelect.selectedIndex];
     const idpv = opt ? opt.getAttribute("data-idpv") : "";
@@ -191,7 +205,9 @@ async function startFiscalizacaoAudit() {
     if (!pracaSelect || !canalSelect) return;
     const praca = pracaSelect.value;
     const canal = canalSelect.value;
-    const customIdpv = (idpvInput?.value || "").trim();
+    const opt = canalSelect.options[canalSelect.selectedIndex];
+    const optIdpv = opt ? opt.getAttribute("data-idpv") : "";
+    const customIdpv = (idpvInput?.value || optIdpv || "").trim();
     const targetDate = (dateInput?.value || "").trim();
     const startTime = (startInput?.value || "14:00").trim();
     const endTime = (endInput?.value || "15:00").trim();
