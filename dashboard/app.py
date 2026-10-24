@@ -71,16 +71,33 @@ async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Excecao nao tratada em {request.url.path}: {exc}", exc_info=True)
     return JSONResponse(
         status_code=500,
-        content={"success": False, "detail": f"Erro interno no servidor: {str(exc)}"}
+        content={"success": False, "detail": "Erro interno ao processar a solicitação. Consulte os logs de auditoria do servidor."}
     )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:8092",
+        "https://localhost:8092",
+        "http://127.0.0.1:8092",
+        "https://127.0.0.1:8092",
+        "http://192.168.15.17:8092"
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept"],
 )
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    if request.url.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    return response
 
 # Servir arquivos estáticos
 STATIC_DIR = ROOT_DIR / "static"

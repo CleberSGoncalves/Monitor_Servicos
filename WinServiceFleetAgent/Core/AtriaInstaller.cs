@@ -236,9 +236,10 @@ if ($finalExe -and (Test-Path $finalExe)) {
                 var psPsi = new ProcessStartInfo
                 {
                     FileName = "powershell.exe",
-                    Arguments = $"-ExecutionPolicy Bypass -NoProfile -File \"{runnerScriptPath}\"",
+                    Arguments = "-NoProfile -NonInteractive -Command -",
                     UseShellExecute = false,
                     CreateNoWindow = true,
+                    RedirectStandardInput = true,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true
                 };
@@ -273,6 +274,17 @@ if ($finalExe -and (Test-Path $finalExe)) {
                     psProc.Start();
                     psProc.BeginOutputReadLine();
                     psProc.BeginErrorReadLine();
+                    try
+                    {
+                        using var swIn = new StreamWriter(psProc.StandardInput.BaseStream, new System.Text.UTF8Encoding(false));
+                        await swIn.WriteAsync(scriptContent + "\r\n\r\n");
+                        await swIn.FlushAsync();
+                    }
+                    catch { }
+                    finally
+                    {
+                        try { psProc.StandardInput.Close(); } catch { }
+                    }
 
                     while (!psProc.HasExited)
                     {

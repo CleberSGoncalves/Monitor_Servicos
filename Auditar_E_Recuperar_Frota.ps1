@@ -20,36 +20,10 @@ param(
 Add-Type -AssemblyName System.Security
 
 $doAutoRecover = ($AutoRecover -eq $true -or $AutoRecover -eq "true" -or $AutoRecover -eq 1 -or $AutoRecover -eq "1")
-$doAutoUpdateScript = ($AutoUpdateScript -eq $true -or $AutoUpdateScript -eq "true" -or $AutoUpdateScript -eq 1 -or $AutoUpdateScript -eq "1")
 
-# 0. Sincronizacao / Auto-Update do proprio script do Auditor via GitHub
-if ($doAutoUpdateScript -and $MyInvocation.MyCommand.Path) {
-    try {
-        $rawUrl = "https://raw.githubusercontent.com/CleberSGoncalves/Monitor_Servicos/main/Auditar_E_Recuperar_Frota.ps1"
-        $remoteCode = Invoke-RestMethod -Uri $rawUrl -Headers @{ "User-Agent" = "DNA-Auditor" } -TimeoutSec 8
-        $currentCode = Get-Content -Path $MyInvocation.MyCommand.Path -Raw
-        if ($remoteCode -and $remoteCode.Length -gt 500 -and $remoteCode.Trim() -ne $currentCode.Trim()) {
-            Write-Host "[Self-Update] Nova versao do script do Auditor detectada no GitHub. Atualizando..." -ForegroundColor Yellow
-            [System.IO.File]::WriteAllText($MyInvocation.MyCommand.Path, $remoteCode, [System.Text.Encoding]::UTF8)
-            Write-Host "[Self-Update] Script atualizado com sucesso! Reiniciando execucao com o novo codigo..." -ForegroundColor Green
-            & powershell.exe -ExecutionPolicy Bypass -NoProfile -File $MyInvocation.MyCommand.Path -ServiceName $ServiceName -TargetVersion $TargetVersion -OfflineThresholdHours $OfflineThresholdHours -AutoRecover "true" -AutoUpdateScript "false"
-            exit 0
-        }
-    } catch { }
-}
-
-# 1. Resolucao Automatica da Versao Alvo via GitHub Releases
+# 1. Resolucao Padrao da Versao Homologada (100% SharePoint Corporate Compliance)
 if ([string]::IsNullOrWhiteSpace($TargetVersion) -or $TargetVersion -eq "latest") {
-    try {
-        $ghRepo = if ($ServiceName.Contains("/")) { $ServiceName } else { "CleberSGoncalves/$ServiceName" }
-        $ghApiUrl = "https://api.github.com/repos/$ghRepo/releases/latest"
-        $ghResp = Invoke-RestMethod -Uri $ghApiUrl -Headers @{ "User-Agent" = "DNA-Auditor" } -TimeoutSec 10
-        if ($ghResp.tag_name) {
-            $TargetVersion = $ghResp.tag_name.TrimStart('v', 'V')
-        }
-    } catch {
-        $TargetVersion = "1.0.13.1"
-    }
+    $TargetVersion = "1.0.18.0"
 }
 
 Write-Host "==================================================================" -ForegroundColor Cyan

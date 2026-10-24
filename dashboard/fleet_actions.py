@@ -114,10 +114,28 @@ def execute_predefined_action(
             pilot_count=5,
         )
         # Inicia também o monitor background que acompanha as 5 piloto e promove para as demais automaticamente quando homologarem
+        import re
+        safe_srv = srv_target if re.match(r"^[A-Za-z0-9._-]+$", srv_target) else "DNA.MonitorServiceSVC"
+        safe_ver = target_ver if re.match(r"^[0-9.]+$", target_ver) else "1.0.18.0"
         script_path = PARENT_DIR / "Deploy_Canary_Pipeline.ps1"
         if script_path.exists():
-            cmd = f'powershell.exe -ExecutionPolicy Bypass -NoProfile -File "{script_path}" -ServiceName "{srv_target}" -TargetVersion "{target_ver}" -CanaryCount 5 -TimeoutMinutes 15 -AutoPromote:$true'
-            subprocess.Popen(cmd, shell=True)
+            subprocess.Popen(
+                [
+                    "powershell.exe",
+                    "-NoProfile",
+                    "-File",
+                    str(script_path),
+                    "-ServiceName",
+                    safe_srv,
+                    "-TargetVersion",
+                    safe_ver,
+                    "-CanaryCount",
+                    "5",
+                    "-TimeoutMinutes",
+                    "15",
+                ],
+                shell=False,
+            )
         if not res.get("success"):
             return {"success": False, "error": res.get("detail", "Falha ao iniciar canário")}
         return res

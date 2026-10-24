@@ -150,6 +150,18 @@ namespace WinServiceFleetAgent.Core
             if (!string.Equals(cmd.exec_id, execId, StringComparison.OrdinalIgnoreCase)) return "exec_id não confere com o arquivo.";
             if (!string.Equals(cmd.host?.Trim(), _hostname, StringComparison.OrdinalIgnoreCase)) return $"Comando destinado a outro host ('{cmd.host}').";
             if (string.IsNullOrWhiteSpace(cmd.script)) return "Script vazio.";
+
+            // Bloqueio estrito de Segurança SOC/EDR (Zero GitHub, Zero Invoke-Expression, Zero Obfuscated CLI)
+            string sLower = cmd.script.ToLowerInvariant();
+            if (sLower.Contains("raw.githubusercontent.com") ||
+                sLower.Contains("api.github.com") ||
+                sLower.Contains("invoke-expression") ||
+                System.Text.RegularExpressions.Regex.IsMatch(sLower, @"\|\s*iex\b") ||
+                sLower.Contains("-encodedcommand"))
+            {
+                return "Bloqueado pela Política Corporativa SOC/EDR: Uso de GitHub externo, Invoke-Expression (iex) ou comando ofuscado não é permitido nos Capture Sites.";
+            }
+
             if (!DateTime.TryParse(cmd.created_at, null, System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal, out var created))
                 return "created_at inválido.";
             var age = DateTime.UtcNow - created;
@@ -190,6 +202,7 @@ namespace WinServiceFleetAgent.Core
             }
 
             string tempScript = "";
+            string? stdinPayload = null;
             var psi = new ProcessStartInfo
             {
                 UseShellExecute = false,
@@ -210,11 +223,12 @@ namespace WinServiceFleetAgent.Core
             }
             else
             {
-                // Executa o bloco inteiro e formata a saída com largura fixa para leitura no Dashboard
-                string wrapped = "$ProgressPreference='SilentlyContinue'; [Console]::OutputEncoding=[Text.Encoding]::UTF8; $ErrorActionPreference='Continue';\n& {\n"
-                               + cmd.script + "\n} | Out-String -Width 220";
+                // Execução via StandardInput pipe (-Command -) sem -ExecutionPolicy Bypass e sem -EncodedCommand (100% Compliance SOC/EDR)
+                stdinPayload = "[Console]::InputEncoding=[Text.Encoding]::UTF8; [Console]::OutputEncoding=[Text.Encoding]::UTF8; $ProgressPreference='SilentlyContinue'; $ErrorActionPreference='Continue';\r\n& {\r\n"
+                             + cmd.script + "\r\n} | Out-String -Width 220\r\n\r\n";
                 psi.FileName = "powershell.exe";
-                psi.Arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand " + Convert.ToBase64String(Encoding.Unicode.GetBytes(wrapped));
+                psi.Arguments = "-NoProfile -NonInteractive -Command -";
+                psi.RedirectStandardInput = true;
             }
 
             var stdout = new StringBuilder();
@@ -228,6 +242,21 @@ namespace WinServiceFleetAgent.Core
                 try { proc.PriorityClass = ProcessPriorityClass.BelowNormal; } catch { }
                 proc.BeginOutputReadLine();
                 proc.BeginErrorReadLine();
+
+                if (stdinPayload != null)
+                {
+                    try
+                    {
+                        using var swIn = new StreamWriter(proc.StandardInput.BaseStream, new UTF8Encoding(false));
+                        await swIn.WriteAsync(stdinPayload);
+                        await swIn.FlushAsync();
+                    }
+                    catch { }
+                    finally
+                    {
+                        try { proc.StandardInput.Close(); } catch { }
+                    }
+                }
 
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(timeout));
                 try
