@@ -12,6 +12,9 @@ from mp4_analyzer import (
 from signals_analysis import (
     get_channel_telemetry_history, diagnose_channel_with_ai, get_all_chronic_issues
 )
+from ft_audit_manager import (
+    get_ft_dashboard_kpis, get_digital_terrestrial_channels_only, audit_time_range_with_nas_and_ai
+)
 # dashboard/app.py
 """
 Central de Monitoração Proativa dos Capture Sites (CS Fleet Control Center).
@@ -916,6 +919,53 @@ async def register_mp4_threshold(req: Mp4RegisterThresholdRequest, user: dict = 
         raise HTTPException(status_code=400, detail=res.get("error", "Erro ao cadastrar limiar"))
     return res
 
+
+# ==========================================
+# Central de Fiscalização: FT Emissora x FT IBOPE (Exclusivo Digital Terrestre)
+# ==========================================
+class FiscalizacaoAuditRequest(BaseModel):
+    praca: str
+    canal: str
+    target_date: Optional[str] = None
+    start_time: str = "14:00"
+    end_time: str = "15:00"
+    case_question: str = ""
+    custom_idpv: Optional[str] = None
+    nas_username: Optional[str] = None
+    nas_password: Optional[str] = None
+    nas_domain: str = "grupoibope.corp"
+
+@app.get("/api/fiscalizacao/kpis")
+async def get_fiscalizacao_kpis_endpoint(user: dict = Depends(get_current_user)):
+    return get_ft_dashboard_kpis()
+
+@app.get("/api/fiscalizacao/digital-channels")
+async def get_fiscalizacao_digital_channels(user: dict = Depends(get_current_user)):
+    return {
+        "status": "success",
+        "scope": "Digital Terrestre (ISDB-Tb)",
+        "channels": get_digital_terrestrial_channels_only()
+    }
+
+@app.post("/api/fiscalizacao/auditar-range")
+async def auditar_range_fiscalizacao(req: FiscalizacaoAuditRequest, user: dict = Depends(get_current_user)):
+    token = user.get("token") or f"session_{user.get('username', 'op')}"
+    if req.nas_username and req.nas_password:
+        store_session_nas_credentials(token, req.nas_username, req.nas_password, req.nas_domain)
+    creds = get_session_nas_credentials(token, user.get("username"))
+    if not creds:
+        creds = {"username": user.get("username", "suportesmme"), "password": "", "domain": "grupoibope.corp"}
+    
+    return audit_time_range_with_nas_and_ai(
+        praca=req.praca,
+        canal=req.canal,
+        target_date=req.target_date,
+        start_time=req.start_time,
+        end_time=req.end_time,
+        case_question=req.case_question,
+        custom_idpv=req.custom_idpv,
+        user_creds=creds
+    )
 
 # ==========================================
 # Feature Flags & Kill-Switch Operacional
