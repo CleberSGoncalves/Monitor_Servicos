@@ -26,10 +26,11 @@ const CHANNEL_COLORS = [
 const MAP_BOUNDING_VIEWS = {
     "brasil": { minLng: -74.5, maxLng: -34.0, minLat: -34.0, maxLat: 5.5, label: "Brasil (Nacional)" },
     "sul_sudeste": { minLng: -55.5, maxLng: -41.0, minLat: -33.5, maxLat: -18.5, label: "Hub Sul & Sudeste (Alta Resolução)" },
-    "sudeste": { minLng: -52.5, maxLng: -41.0, minLat: -25.2, maxLat: -18.5, label: "Região Sudeste (SP / RJ / MG / ES)" },
-    "sul": { minLng: -56.0, maxLng: -47.5, minLat: -33.5, maxLat: -24.5, label: "Região Sul (RS / SC / PR)" },
-    "nordeste": { minLng: -46.5, maxLng: -34.0, minLat: -15.5, maxLat: -2.5, label: "Região Nordeste" },
-    "centro_oeste": { minLng: -53.5, maxLng: -45.5, minLat: -19.0, maxLat: -13.5, label: "Região Centro-Oeste" }
+    "sudeste": { minLng: -53.5, maxLng: -39.5, minLat: -25.5, maxLat: -14.0, label: "Região Sudeste (SP / RJ / MG / ES)" },
+    "sul": { minLng: -58.0, maxLng: -47.5, minLat: -34.0, maxLat: -22.5, label: "Região Sul (RS / SC / PR)" },
+    "nordeste": { minLng: -49.0, maxLng: -34.0, minLat: -18.5, maxLat: -2.0, label: "Região Nordeste (BA / PE / CE / RN / SE / AL / PB / MA / PI)" },
+    "centro_oeste": { minLng: -61.0, maxLng: -45.5, minLat: -24.5, maxLat: -10.5, label: "Região Centro-Oeste (MT / MS / GO / DF)" },
+    "norte": { minLng: -74.0, maxLng: -46.0, minLat: -12.5, maxLat: 5.5, label: "Região Norte (AM / PA / RO / AC / TO / AP)" }
 };
 
 // Sistema de Âncoras e Deslocamentos Anti-Colisão (Zero Sobreposição entre Cidades Vizinhas)
@@ -83,6 +84,8 @@ function zoomTopologyRegion(regionKey) {
         else if (regionKey === "sudeste") selState.value = "sudeste";
         else if (regionKey === "sul") selState.value = "sul";
         else if (regionKey === "nordeste") selState.value = "nordeste";
+        else if (regionKey === "centro_oeste" || regionKey === "centro-oeste") selState.value = "centro-oeste";
+        else if (regionKey === "norte") selState.value = "norte";
         else selState.value = "all";
     }
     customZoomScale = 1.0;
@@ -191,11 +194,13 @@ function renderTopologyMap() {
     if (stateFilter === "sudeste") currentMapView = "sudeste";
     else if (stateFilter === "sul") currentMapView = "sul";
     else if (stateFilter === "nordeste") currentMapView = "nordeste";
-    else if (stateFilter === "centro-oeste") currentMapView = "centro_oeste";
+    else if (stateFilter === "centro-oeste" || stateFilter === "centro_oeste") currentMapView = "centro_oeste";
+    else if (stateFilter === "norte") currentMapView = "norte";
     else if (["sp", "rj", "mg", "es"].includes(stateFilter)) currentMapView = "sudeste";
     else if (["rs", "sc", "pr"].includes(stateFilter)) currentMapView = "sul";
-    else if (["ba", "pe", "ce", "se"].includes(stateFilter)) currentMapView = "nordeste";
-    else if (["df", "go"].includes(stateFilter)) currentMapView = "centro_oeste";
+    else if (["ba", "pe", "ce", "rn", "pb", "al", "se", "ma", "pi"].includes(stateFilter)) currentMapView = "nordeste";
+    else if (["df", "go", "mt", "ms"].includes(stateFilter)) currentMapView = "centro_oeste";
+    else if (["am", "pa", "ro", "ac", "to", "ap", "rr"].includes(stateFilter)) currentMapView = "norte";
 
     const view = MAP_BOUNDING_VIEWS[currentMapView] || MAP_BOUNDING_VIEWS["brasil"];
     const isRegionalZoom = currentMapView !== "brasil";
@@ -210,8 +215,10 @@ function renderTopologyMap() {
                 if (!["RS", "SC", "PR"].includes(m.uf)) return false;
             } else if (stateFilter === "nordeste") {
                 if (!["BA", "PE", "CE", "RN", "PB", "AL", "SE", "MA", "PI"].includes(m.uf)) return false;
-            } else if (stateFilter === "centro-oeste") {
+            } else if (stateFilter === "centro-oeste" || stateFilter === "centro_oeste") {
                 if (!["DF", "GO", "MT", "MS"].includes(m.uf)) return false;
+            } else if (stateFilter === "norte") {
+                if (!["AM", "PA", "RO", "AC", "TO", "AP", "RR"].includes(m.uf)) return false;
             } else if (m.uf.toLowerCase() !== stateFilter) {
                 return false;
             }
