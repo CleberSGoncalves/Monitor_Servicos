@@ -2908,8 +2908,12 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
         });
     });
 
-    // 4. Incidentes P1: Pipeline & Atrasos de Escoamento WAN
+    // 4. Incidentes P1: Pipeline & Atrasos de Escoamento WAN (MP3, MP4, ASF)
     (pipelineIncidents || []).forEach(inc => {
+        const mType = inc.media_type || (inc.filename && inc.filename.toLowerCase().endsWith(".asf") ? "ASF" : (inc.filename && inc.filename.toLowerCase().endsWith(".mp3") ? "MP3" : "MP4"));
+        const delayMin = Math.round(inc.elapsed_minutes || inc.delay_minutes || 12);
+        const fName = inc.filename || "Arquivo de mídia";
+        const sizeMb = inc.size_mb ? `${inc.size_mb} MB` : "";
         incidents.push({
             id: `p1_pipe_${inc.id || inc.praca}`,
             key: `pipeline_${inc.id || inc.praca}`,
@@ -2917,17 +2921,19 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
             severity_label: "ALERTA PREDITIVO (P1)",
             trigger_type: "pipeline",
             category: "pipeline_midia",
-            category_label: "Pipeline / Escoamento WAN",
+            category_label: `Atraso Envio ${mType}`,
             category_icon: "fa-box-open",
             praca: inc.praca,
             region: getRegionForCity(inc.praca),
             cs: inc.cs || 1,
             hostname: inc.hostname || `CS-${(inc.praca || "").substring(0,3).toUpperCase()}-01`,
-            target: inc.canal || inc.media_type || "Mídia",
-            title: `${inc.praca} (CS ${inc.cs || 1}) — Atraso no Escoamento WAN (${inc.elapsed_minutes || 12} min)`,
-            summary: inc.motivo || inc.description || "Fila de transmissão local acumulando volume acima da capacidade da banda WAN.",
-            telemetry: `Fila local: 3.4 GB pendente | Upload: 2.1 Mbps`,
-            time_ago: `Há ${inc.elapsed_minutes || 28} min`
+            target: inc.target || `${inc.canal || 'Canal'} (${mType})`,
+            media_type: mType,
+            filename: fName,
+            title: `Atraso no Envio de Mídia ${mType} (.SENT Pendente - ${delayMin} min)`,
+            summary: inc.motivo || inc.description || `Arquivo ${mType} gerado há ${delayMin} min pendente de marcação .SENT pelo FileTransferSVC.`,
+            telemetry: `Arquivo: ${fName} (${mType}${sizeMb ? ' • ' + sizeMb : ''}) | Atraso: ${delayMin} min | Fila local pendente`,
+            time_ago: `Há ${delayMin} min`
         });
     });
 
@@ -3246,7 +3252,12 @@ function renderNocUnifiedQueue() {
             <!-- Identificação do Nó / Praça -->
             <div style="margin-bottom: 8px;">
                 <div style="font-size: 14px; font-weight: 800; color: #fff;">
-                    ${escapeHtml(group.praca)} (CS ${group.cs}) — ${streamCount > 1 ? `${streamCount} Canais Afetados` : escapeHtml(mainItem.title)}
+                    ${(() => {
+                        let cTitle = streamCount > 1 ? `${streamCount} Canais Afetados` : (mainItem.title || '');
+                        const pfx = `${group.praca} (CS ${group.cs}) — `;
+                        if (cTitle.startsWith(pfx)) cTitle = cTitle.substring(pfx.length);
+                        return `${escapeHtml(group.praca)} (CS ${group.cs}) — ${escapeHtml(cTitle)}`;
+                    })()}
                 </div>
                 <div style="font-size: 11px; color: #94a3b8; font-family: monospace; margin-top: 3px;">
                     ${escapeHtml(group.telemetry)}
