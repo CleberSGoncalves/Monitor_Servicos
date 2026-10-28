@@ -249,7 +249,11 @@ function updateRefreshIntervalUI(secs) {
     }
 }
 
+let isRefreshingAllData = false;
+
 async function loadAllData(isSilent = false) {
+    if (isRefreshingAllData) return;
+    isRefreshingAllData = true;
     if (!isSilent) document.body.style.cursor = "wait";
     try {
         await Promise.all([
@@ -260,7 +264,10 @@ async function loadAllData(isSilent = false) {
         if (typeof loadNocUnifiedCockpit === 'function') {
             await loadNocUnifiedCockpit();
         }
+    } catch(e) {
+        console.error("Erro na atualização:", e);
     } finally {
+        isRefreshingAllData = false;
         if (!isSilent) document.body.style.cursor = "default";
     }
 }
@@ -280,10 +287,7 @@ async function loadSummaryKPIs() {
     document.getElementById("kpiChannelsDown").innerText = st.channels_down || 0;
     document.getElementById("kpiRecordingsActive").innerText = st.recordings_active || 0;
 
-    // Dispara a consolidação do NOC Cockpit
-    if (typeof loadNocUnifiedCockpit === 'function') {
-        loadNocUnifiedCockpit();
-    }
+    // (NOC Cockpit acionado de forma unificada em loadAllData para evitar chamadas duplicadas)
 
     if (data.last_sync) {
         const dt = new Date(data.last_sync);
@@ -3449,16 +3453,24 @@ function renderNocUnifiedQueue() {
 async function loadNocUnifiedCockpit() {
     try {
         const token = (typeof getAuthToken === 'function' && getAuthToken()) ? { "Authorization": `Bearer ${getAuthToken()}` } : {};
-        const [sumRes, sRes, cRes, pRes, bRes] = await Promise.all([
+        
+        // Se allCachedServices já foi preenchido por loadServicesTable nesta rodada, reaproveita
+        let services = (Array.isArray(allCachedServices) && allCachedServices.length > 0) ? allCachedServices : null;
+        
+        const promises = [
             fetch("/api/fleet/summary", { headers: token }),
-            fetch("/api/fleet/services", { headers: token }),
+            services ? Promise.resolve(null) : fetch("/api/fleet/services", { headers: token }),
             fetch("/api/fleet/channels", { headers: token }),
             fetch("/api/fleet/media-pipeline/incidents", { headers: token }),
             fetch("/api/thresholds/breaches", { headers: token })
-        ]);
+        ];
+
+        const [sumRes, sRes, cRes, pRes, bRes] = await Promise.all(promises);
 
         const summary = sumRes.ok ? await sumRes.json() : {};
-        const services = sRes.ok ? await sRes.json() : [];
+        if (!services) {
+            services = (sRes && sRes.ok) ? await sRes.json() : [];
+        }
         const channels = cRes.ok ? await cRes.json() : [];
         const pipeline = pRes.ok ? await pRes.json() : [];
         const breaches = bRes.ok ? await bRes.json() : [];

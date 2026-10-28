@@ -21,6 +21,17 @@ _cached_data = {
     "signal_history": {}
 }
 
+# Inicialização imediata do cache em memória a partir do disco para resposta instantânea (<5ms)
+if CACHE_FILE.exists():
+    try:
+        with open(CACHE_FILE, "r", encoding="utf-8") as _f_boot:
+            _disk_boot = json.load(_f_boot)
+            if _disk_boot.get("services"):
+                _cached_data.update(_disk_boot)
+                print(f"[SharePointSync Boot] Cache inicial carregado do disco: {len(_cached_data.get('services', []))} serviços, {len(_cached_data.get('channels', []))} canais, {len(_cached_data.get('stats', {}))} estatísticas.", flush=True)
+    except Exception as _e_boot:
+        print(f"[SharePointSync Boot] Aviso ao carregar cache do disco: {_e_boot}", flush=True)
+
 
 def get_graph_token() -> str:
     """Obtém o token OAuth2 de aplicativo via client_credentials."""
@@ -52,9 +63,13 @@ def fetch_all_items(token: str, list_id: str) -> list:
             try:
                 resp = requests.get(url, headers=headers, timeout=25)
                 if resp.status_code == 429:
-                    retry_wait = int(resp.headers.get("Retry-After", 10))
-                    print(f"[SharePointSync 429] Throttled pela Microsoft. Aguardando {retry_wait + 2}s (Tentativa {attempt+1}/6)...", flush=True)
-                    time.sleep(retry_wait + 2)
+                    raw_wait = int(resp.headers.get("Retry-After", 10))
+                    retry_wait = min(raw_wait, 25)
+                    print(f"[SharePointSync 429] Throttled pela Microsoft (Retry-After: {raw_wait}s). Aguardando {retry_wait}s (Tentativa {attempt+1}/6)...", flush=True)
+                    time.sleep(retry_wait)
+                    if raw_wait > 60 and attempt >= 2:
+                        print(f"[SharePointSync 429] Microsoft Graph com throttling severo ({raw_wait}s). Preservando cache existente e agendando próximo ciclo.", flush=True)
+                        break
                     continue
                 if resp.ok:
                     data = resp.json()
