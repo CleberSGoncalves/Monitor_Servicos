@@ -485,11 +485,15 @@ function renderClassificadorRelacaoTable(ocorrencias) {
         const sevColor = o.severity === "Crítica" ? "#ef4444" : (o.severity === "Atenção" ? "#f59e0b" : "#38bdf8");
         const sevBg = o.severity === "Crítica" ? "rgba(239, 68, 68, 0.15)" : (o.severity === "Atenção" ? "rgba(245, 158, 11, 0.15)" : "rgba(56, 189, 248, 0.15)");
 
-        let meioBadge = `<span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-size: 9px; font-family: monospace;">📡 Digital RF</span>`;
-        if (o.is_analog_yuan) {
-            meioBadge = `<span class="badge" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; font-size: 9px; font-family: monospace;">🔌 Yuan TW6802</span>`;
-        } else if (!o.is_digital_rf) {
-            meioBadge = `<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; font-size: 9px; font-family: monospace;">🌐 Stream/FM</span>`;
+        let meioBadge = `<span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-size: 9px; font-family: monospace;">📡 TBS DTV</span>`;
+        if (o.hardware_tag === "sonifex" || (o.mdo_display && o.mdo_display.includes("Sonifex")) || (o.meio && o.meio.includes("Sonifex"))) {
+            meioBadge = `<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; font-size: 9px; font-family: monospace;" title="${clfSafeEscape(o.hardware_brand || 'Sonifex FM Radcap PCIe')}">📻 Sonifex FM</span>`;
+        } else if (o.hardware_tag === "iei" || (o.mdo_display && o.mdo_display.includes("IEI")) || (o.meio && o.meio.includes("IEI"))) {
+            meioBadge = `<span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-size: 9px; font-family: monospace;" title="${clfSafeEscape(o.hardware_brand || 'IEI IVCE-8784 Video')}">🔌 IEI IVCE</span>`;
+        } else if (o.hardware_tag === "yuan" || o.is_analog_yuan) {
+            meioBadge = `<span class="badge" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; font-size: 9px; font-family: monospace;" title="${clfSafeEscape(o.hardware_brand || 'Yuan TW6802 PCI')}">🔌 Yuan TW6802</span>`;
+        } else if (o.hardware_tag === "stream" || (!o.is_digital_rf && !o.is_analog_yuan)) {
+            meioBadge = `<span class="badge" style="background: rgba(250, 204, 21, 0.15); color: #facc15; font-size: 9px; font-family: monospace;">🌐 Stream IP</span>`;
         }
 
         return `
@@ -499,7 +503,9 @@ function renderClassificadorRelacaoTable(ocorrencias) {
             </td>
             <td style="padding: 8px 10px; white-space: nowrap;">
                 <strong style="color: #fff; font-size: 11px;">📍 ${clfSafeEscape(o.praca)}</strong>
-                <div style="font-size: 9px; color: var(--text-muted); font-family: monospace;">CS ${o.cs}</div>
+                <div style="font-size: 10px; color: #38bdf8; font-family: monospace; font-weight: 700; margin-top: 2px;">
+                    CS ${o.cs} ${o.hostname ? `• <span style="color:#94a3b8; font-weight: 600;">${clfSafeEscape(o.hostname)}</span>` : ''}
+                </div>
             </td>
             <td style="padding: 8px 10px; white-space: nowrap;">
                 <div style="font-weight: 700; color: #38bdf8; font-size: 12px; font-family: monospace;">${clfSafeEscape(o.canal)}</div>
@@ -574,9 +580,16 @@ function renderClassificadorByChannelView(ocorrencias) {
     });
 
     container.innerHTML = Object.values(byChannel).map(ch => {
-        let meioBadge = `<span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-size: 9px;">📡 Digital RF</span>`;
-        if (ch.is_analog_yuan) meioBadge = `<span class="badge" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; font-size: 9px;">🔌 Yuan TW6802</span>`;
-        else if (!ch.is_digital_rf) meioBadge = `<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; font-size: 9px;">🌐 Stream</span>`;
+        let meioBadge = `<span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-size: 9px;">📡 TBS DTV</span>`;
+        if (ch.fails && ch.fails.some(f => f.hardware_tag === "sonifex" || (f.mdo_display && f.mdo_display.includes("Sonifex")))) {
+            meioBadge = `<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; font-size: 9px;">📻 Sonifex FM</span>`;
+        } else if (ch.fails && ch.fails.some(f => f.hardware_tag === "iei" || (f.mdo_display && f.mdo_display.includes("IEI")))) {
+            meioBadge = `<span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-size: 9px;">🔌 IEI IVCE</span>`;
+        } else if (ch.is_analog_yuan) {
+            meioBadge = `<span class="badge" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; font-size: 9px;">🔌 Yuan TW6802</span>`;
+        } else if (!ch.is_digital_rf) {
+            meioBadge = `<span class="badge" style="background: rgba(250, 204, 21, 0.15); color: #facc15; font-size: 9px;">🌐 Stream IP</span>`;
+        }
 
         return `
         <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; justify-content: space-between;">

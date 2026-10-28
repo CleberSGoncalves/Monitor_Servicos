@@ -186,15 +186,15 @@ def seed_taxonomy_if_empty(cursor: sqlite3.Cursor):
         (
             "lock_placa_analogica_yuan",
             6,
-            "Falha de Entrada / Desconexão de Placa Analógica Yuan (TW6802)",
-            "Hardware Analógico",
-            "Analógico DirectShow / Yuan",
+            "Falha de Entrada Hardware / Captura Analógica ou Rádio FM (Sonifex / IEI / Yuan)",
+            "Hardware de Captura",
+            "Analógico / Rádio (DirectShow)",
             "fa-sliders-h",
             "#06b6d4",
             "badge-blue",
-            "Canal analógico com placa Yuan TW6802 PCI inativa ou com ausência de gravação de áudio/vídeo.",
-            "1. Cabo RCA/BNC de entrada de vídeo composto desconectado da placa Yuan.\n2. Saturação de barramento PCI ou driver DirectShow da TW6802 travado.\n3. Receptor de TV a cabo/set-top-box analógico desligado na tomada.",
-            "Verificar conexão física do cabo RCA/BNC na placa Yuan e reiniciar o serviço de captura analógica.",
+            "Canal analógico ou rádio FM com placa de captura (Sonifex Radcap, IEI IVCE ou Yuan TW6802) inativa ou sem gravação.",
+            "1. Entrada física desconectada ou placa de áudio/vídeo DirectShow sem sinal.\n2. Driver da placa de captura (Sonifex / IEI / Yuan) travado no Windows.\n3. Sintonizador FM ou receptor desligado/sem portadora.",
+            "Verificar conexão física do cabo na placa (Sonifex / IEI / Yuan) e reciclar o serviço de captura no host correspondente.",
             "Canônico (Hardware Especializado)",
             0.97, 1, now_iso, now_iso
         ),
@@ -330,6 +330,16 @@ def classify_fleet_quality_failures(force_refresh: bool = False) -> Dict[str, An
     total_analog_yuan = 0
     total_stream_radio = 0
 
+    # Mapeamento dinâmico de Praça + CS para Hostname físico real
+    fleet_services = fleet_data.get("services", [])
+    host_map = {}
+    for s in fleet_services:
+        p_k = str(s.get("praca", "")).strip().lower()
+        cs_k = str(s.get("cs", 1)).strip()
+        h_val = str(s.get("hostname") or s.get("host") or "").strip()
+        if p_k and h_val and (p_k, cs_k) not in host_map:
+            host_map[(p_k, cs_k)] = h_val
+
     for ch in channels:
         ch_name = ch.get("canal", "Canal")
         praca = ch.get("cidade", "Geral")
@@ -339,18 +349,53 @@ def classify_fleet_quality_failures(force_refresh: bool = False) -> Dict[str, An
         dev_analog = (str(ch.get("device_analog", "") or "") + " " + str(ch.get("SourceAnalogico", "") or "")).lower()
         ch_low = ch_name.lower()
 
-        is_analog = any(x in meio for x in ["analóg", "analog", "directshow", "yuan"]) or any(x in dev_analog for x in ["tw6802", "yuan", "analog", "directshow", "capture"])
+        # Resolução exata do Hostname daquele CS naquela praça
+        cs_str = str(int(float(cs))) if str(cs).replace(".", "").isdigit() else str(cs)
+        matched_hostname = host_map.get((praca.strip().lower(), cs_str), "")
+        if not matched_hostname:
+            matched_hostname = str(ch.get("host") or ch.get("hostname") or f"CS-{praca[:3].upper()}-0{cs_str}")
+
+        # Classificação precisa de Meio e Dispositivo Físico Real (Evita carimbar tudo como "Yuan")
+        is_radio = any(x in meio for x in ["radio", "fm", "mp3", "am", "rádio"]) or any(x in ch_low for x in [" fm", " am", "rádio", "radio"]) or str(ch.get("gravando_mp3", "")).lower() in ["sim", "gravando"]
         is_stream = any(x in meio for x in ["rtsp", "udp", "ip", "stream"]) or "rtsp" in str(ch.get("url_stream", "")).lower()
-        is_radio = any(x in meio for x in ["radio", "fm", "mp3", "am", "rádio"]) or any(x in ch_low for x in [" fm", " am", "rádio", "radio"])
-        is_monitoring = any(k in ch_low for k in ["obs", "teste", "monitoramento", "stream_obs"])
+        is_analog = any(x in meio for x in ["analóg", "analog", "directshow", "yuan", "iei", "sonifex", "radcap"]) or any(x in dev_analog for x in ["tw6802", "yuan", "analog", "directshow", "capture", "iei", "ivce", "radcap", "sonifex"])
         is_digital_rf = not is_analog and not is_stream and not is_radio
+
+        # Hardware Físico Real Especificado
+        if "sonifex" in dev_analog or "radcap" in dev_analog or "fm radcap" in dev_analog:
+            hardware_brand = "Sonifex FM Radcap PCIe"
+            hardware_tag = "sonifex"
+            mdo_display = "📻 Sonifex FM"
+        elif "iei" in dev_analog or "ivce" in dev_analog:
+            hardware_brand = "IEI IVCE-8784 Video"
+            hardware_tag = "iei"
+            mdo_display = "🔌 IEI IVCE"
+        elif "tw6802" in dev_analog or "yuan" in dev_analog or "tm6802" in dev_analog:
+            hardware_brand = "Yuan TW6802 PCI"
+            hardware_tag = "yuan"
+            mdo_display = "🔌 Yuan TW6802"
+        elif is_radio:
+            hardware_brand = "Sonifex FM Radcap PCIe"
+            hardware_tag = "sonifex"
+            mdo_display = "📻 Sonifex FM"
+        elif is_stream:
+            hardware_brand = "Interface IP (Stream UDP/RTSP)"
+            hardware_tag = "stream"
+            mdo_display = "🌐 Stream IP"
+        else:
+            hardware_brand = "Demodulador TBS DTV (ISDB-Tb)"
+            hardware_tag = "tbs"
+            mdo_display = "📡 TBS DTV"
 
         if is_digital_rf:
             total_rf_digital += 1
             meio_tipo = "Digital Terrestre (ISDB-Tb)"
+        elif is_radio:
+            total_stream_radio += 1
+            meio_tipo = f"Rádio FM ({hardware_brand})"
         elif is_analog:
             total_analog_yuan += 1
-            meio_tipo = "Analógico Yuan (TW6802)"
+            meio_tipo = f"Analógico ({hardware_brand})"
         else:
             total_stream_radio += 1
             meio_tipo = "Streaming IP / Rádio"
@@ -358,8 +403,19 @@ def classify_fleet_quality_failures(force_refresh: bool = False) -> Dict[str, An
         sig_q = float(ch.get("qualidade_sinal", 0) or 0)
         sig_s = float(ch.get("forca_sinal", 0) or 0)
         tuner_stat = str(ch.get("status_tuner", "WORKING"))
-        rec_status = str(ch.get("gravando_mp4", "Sim"))
-        is_recording = any(k in rec_status.lower() for k in ["sim", "grav", "asf", "mp4"]) and not any(k in rec_status.lower() for k in ["não", "⚠️", "erro", "inativo"])
+
+        # Checagem Definitiva de Gravação: Canais de Rádio gravam em MP3 (.MP3), canais DTV/Analógicos gravam em MP4/ASF
+        rec_mp4 = str(ch.get("gravando_mp4") or "Sim").strip()
+        rec_mp3 = str(ch.get("gravando_mp3") or "").strip()
+        is_mp4_ok = any(k in rec_mp4.lower() for k in ["sim", "grav", "asf", "mp4"]) and not any(k in rec_mp4.lower() for k in ["não", "nao", "⚠️", "erro", "inativo"])
+        is_mp3_ok = any(k in rec_mp3.lower() for k in ["sim", "grav", "mp3"]) and not any(k in rec_mp3.lower() for k in ["não", "nao", "⚠️", "erro", "inativo"])
+
+        if is_radio:
+            is_recording = is_mp3_ok or is_mp4_ok
+            rec_status = f"MP3: {rec_mp3}" if (rec_mp3 and rec_mp3 != "N/A") else rec_mp4
+        else:
+            is_recording = is_mp4_ok or is_mp3_ok
+            rec_status = rec_mp4 if (rec_mp4 and rec_mp4 != "N/A") else (f"MP3: {rec_mp3}" if rec_mp3 else "Sim")
         
         is_frozen = (ch.get("video_congelado") or "").lower() == "sim"
         is_mute = (ch.get("audio_mudo") or "").lower() == "sim"
@@ -375,21 +431,29 @@ def classify_fleet_quality_failures(force_refresh: bool = False) -> Dict[str, An
         # REGRAS DO CLASSIFICADOR PURISTA DE FALHAS DE QUALIDADE BROADCAST
         # =========================================================================
 
-        # 1. CANAIS ANALÓGICOS YUAN (TW6802 PCI)
-        if is_analog:
+        # 1. CANAIS DE RÁDIO FM (Sonifex / Radcap PCIe)
+        if is_radio:
             if not is_recording:
                 assigned_pattern = "lock_placa_analogica_yuan"
-                symptom_detail = f"Placa Yuan TW6802 DirectShow inativa ({rec_status})"
+                symptom_detail = f"Placa {hardware_brand} sem gravação de áudio MP3 ({rec_status})"
+            else:
+                assigned_pattern = None  # Nominal! Rádio gravando perfeitamente
+
+        # 2. CANAIS ANALÓGICOS DE VÍDEO (IEI IVCE / Yuan TW6802)
+        elif is_analog:
+            if not is_recording:
+                assigned_pattern = "lock_placa_analogica_yuan"
+                symptom_detail = f"Placa {hardware_brand} DirectShow inativa ({rec_status})"
             else:
                 assigned_pattern = None  # Nominal
 
-        # 2. CANAIS DE RÁDIO FM/AM OU STREAMING
-        elif is_radio or is_stream:
+        # 3. CANAIS DE STREAMING IP
+        elif is_stream:
             if not is_recording:
-                assigned_pattern = "lock_placa_analogica_yuan" if is_analog else None
-                symptom_detail = f"Fluxo {meio_tipo} sem gravação ({rec_status})"
+                assigned_pattern = None  # Não penaliza stream como falha de placa analógica
+                symptom_detail = f"Fluxo IP sem gravação ({rec_status})"
             else:
-                assigned_pattern = None  # Nominal
+                assigned_pattern = None
 
         # 3. CANAIS DIGITAL TERRESTRE (ISDB-Tb)
         else:
@@ -430,10 +494,14 @@ def classify_fleet_quality_failures(force_refresh: bool = False) -> Dict[str, An
             "praca": praca,
             "canal": ch_name,
             "cs": cs,
+            "hostname": matched_hostname,
             "idpv": idpv,
             "meio": meio_tipo,
+            "hardware_brand": hardware_brand,
+            "hardware_tag": hardware_tag,
+            "mdo_display": mdo_display,
             "is_digital_rf": is_digital_rf,
-            "is_analog_yuan": is_analog,
+            "is_analog_yuan": (hardware_tag == "yuan"),
             "qualidade_sinal": sig_q,
             "forca_sinal": sig_s,
             "status_tuner": tuner_stat,
@@ -464,10 +532,14 @@ def classify_fleet_quality_failures(force_refresh: bool = False) -> Dict[str, An
                 "praca": praca,
                 "canal": ch_name,
                 "cs": cs,
+                "hostname": matched_hostname,
                 "idpv": idpv,
                 "meio": meio_tipo,
+                "hardware_brand": hardware_brand,
+                "hardware_tag": hardware_tag,
+                "mdo_display": mdo_display,
                 "is_digital_rf": is_digital_rf,
-                "is_analog_yuan": is_analog,
+                "is_analog_yuan": (hardware_tag == "yuan"),
                 "pattern_id": assigned_pattern,
                 "enum_number": pat_data["enum_number"],
                 "pattern_num": f"#{pat_data['enum_number']:02d}",
@@ -549,29 +621,43 @@ def classify_fleet_quality_failures(force_refresh: bool = False) -> Dict[str, An
     # Ordena os tipos de falha por número enumerado
     active_types_list = sorted(list(classified_types.values()), key=lambda x: x["enum_number"])
 
-    # Persiste ocorrências ativas em failure_incidents_history para rastreabilidade histórica
+    # Persiste ocorrências ativas em failure_incidents_history e atualiza status de falhas resolvidas
     try:
         with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
             cur = conn.cursor()
+            
+            # Conjunto de chaves de falhas ativas no ciclo atual
+            active_keys = set()
             for occ in ocorrencias_rastreabilidade:
-                # Evita duplicatas idênticas gravadas na mesma hora
+                active_keys.add((occ["canal"], occ["praca"], occ["pattern_id"]))
+                
+                # Evita duplicatas ativas gravadas na mesma hora
                 cur.execute("""
-                    SELECT id FROM failure_incidents_history 
+                    SELECT id, status FROM failure_incidents_history 
                     WHERE canal = ? AND praca = ? AND pattern_id = ? 
                     ORDER BY id DESC LIMIT 1
                 """, (occ["canal"], occ["praca"], occ["pattern_id"]))
                 last_row = cur.fetchone()
-                if not last_row:
+                if not last_row or last_row[1] != "Ativa":
                     cur.execute("""
                         INSERT INTO failure_incidents_history 
-                        (timestamp, timestamp_formatado, praca, canal, cs, idpv, meio, pattern_id, enum_number, pattern_name, category, severity, symptom, duration_min, status)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        (timestamp, timestamp_formatado, praca, canal, cs, hostname, idpv, meio, mdo_display, hardware_tag, pattern_id, enum_number, pattern_name, category, severity, symptom, duration_min, status)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
                         occ["timestamp"], occ["timestamp_formatado"], occ["praca"], occ["canal"],
-                        occ["cs"], occ["idpv"], occ["meio"], occ["pattern_id"], occ["enum_number"],
-                        occ["pattern_name"], occ["category"], occ["severity"], occ["symptom"],
-                        occ["duration_min"], occ["status"]
+                        str(occ.get("cs", "1")), occ.get("hostname", ""), occ.get("idpv", ""),
+                        occ.get("meio", ""), occ.get("mdo_display", ""), occ.get("hardware_tag", ""),
+                        occ["pattern_id"], occ["enum_number"], occ["pattern_name"], occ["category"],
+                        occ["severity"], occ["symptom"], occ["duration_min"], occ["status"]
                     ))
+
+            # Auto-resolução: se um canal estava com falha 'Ativa' no banco mas neste ciclo normalizou, marca como 'Resolvida'
+            cur.execute("SELECT id, canal, praca, pattern_id FROM failure_incidents_history WHERE status = 'Ativa'")
+            for r in cur.fetchall():
+                row_id, r_ch, r_praca, r_pat = r[0], r[1], r[2], r[3]
+                if (r_ch, r_praca, r_pat) not in active_keys:
+                    cur.execute("UPDATE failure_incidents_history SET status = 'Resolvida' WHERE id = ?", (row_id,))
+
             conn.commit()
     except Exception as e:
         logger.warning(f"Erro ao persistir histórico de ocorrências de falhas: {e}")
@@ -741,7 +827,10 @@ def get_failure_channel_traceability(praca: Optional[str] = None,
     """
     init_classifier_db()
     query = """
-        SELECT id, timestamp, timestamp_formatado, praca, canal, cs, idpv, meio, 
+        SELECT id, timestamp, timestamp_formatado, praca, canal, cs, 
+               COALESCE(hostname, '') as hostname, idpv, meio, 
+               COALESCE(mdo_display, '') as mdo_display, 
+               COALESCE(hardware_tag, '') as hardware_tag,
                pattern_id, enum_number, pattern_name, category, severity, symptom, 
                duration_min, status 
         FROM failure_incidents_history 

@@ -406,18 +406,29 @@ def sync_fleet_data():
 
         with _cache_lock:
             _cached_data["last_sync"] = datetime.now().isoformat()
-            # Guarda de integridade: preserva dados caso a busca retorne lista parcial ou vazia
+            
+            # Guarda de integridade estrita para serviços: preserva dados se busca vier parcial ou vazia
             if len(services_list) >= len(_cached_data.get("services", [])) * 0.5 or not _cached_data.get("services"):
                 _cached_data["services"] = services_list
                 _cached_data["stats"] = stats
-            _cached_data["channels"] = channels_list
-            _cached_data["recent_outages"] = outages
+            else:
+                print(f"[SharePointSync Warning] Lista de servicos veio reduzida ({len(services_list)} itens). Preservando anteriores.", flush=True)
+
+            # Guarda de integridade estrita para canais (Anti-Flicker de Incidentes): preserva cache se vier vazio ou reduzido por throttling
+            prev_channels = _cached_data.get("channels", [])
+            if len(channels_list) >= len(prev_channels) * 0.5 or not prev_channels:
+                _cached_data["channels"] = channels_list
+                _cached_data["recent_outages"] = outages
+            else:
+                print(f"[SharePointSync Alert] Busca de canais veio reduzida ({len(channels_list)} canais vs {len(prev_channels)} no cache). Preservando canais anteriores para evitar desaparecimento de incidentes.", flush=True)
 
         try:
-            with open(CACHE_FILE, "w", encoding="utf-8") as f:
-                json.dump(_cached_data, f, ensure_ascii=False, indent=2)
-        except Exception:
-            pass
+            # So grava em disco se houver canais e servicos validos para nunca corromper o cache persistente com listas vazias
+            if _cached_data.get("channels") and len(_cached_data.get("channels", [])) > 20 and _cached_data.get("services"):
+                with open(CACHE_FILE, "w", encoding="utf-8") as f:
+                    json.dump(_cached_data, f, ensure_ascii=False, indent=2)
+        except Exception as e_save:
+            print(f"[SharePointSync Disk Error] {e_save}", flush=True)
 
     except Exception as e:
         print(f"[SharePointSync Error] {e}", flush=True)

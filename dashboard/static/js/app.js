@@ -2869,9 +2869,17 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
                                  chNameLower.includes("feed") || chNameLower.includes("redund") ||
                                  meio.includes("stream") || meio.includes("obs");
 
+        const isRadio = meio.includes("radio") || meio.includes("fm") || meio.includes("mp3") || meio.includes("am") || chNameLower.includes(" fm") || chNameLower.includes(" am");
         const isRtsp = meio.includes("rtsp") || meio.includes("udp") || meio.includes("ip") || meio.includes("stream");
-        const isAnalog = meio.includes("analóg") || meio.includes("analog") || meio.includes("directshow");
-        const isStorageErr = (c.gravando_mp4 || "").includes("⚠️") || (c.motivo || "").includes("Pasta") || (c.motivo || "").includes("Gravação");
+        const isAnalog = (meio.includes("analóg") || meio.includes("analog") || meio.includes("directshow")) && !isRadio;
+        
+        // Para canais de rádio, se gravando_mp3 estiver ativo ("Sim" ou "Gravando"), o canal está 100% nominal
+        const isRadioRecordingOk = isRadio && ((c.gravando_mp3 || "").toLowerCase().includes("sim") || (c.gravando_mp3 || "").toLowerCase().includes("grav"));
+        if (isRadioRecordingOk && !c.video_congelado && !c.audio_mudo) {
+            return; // Rádio nominal, sem incidente!
+        }
+
+        const isStorageErr = !isRadioRecordingOk && ((c.gravando_mp4 || "").includes("⚠️") || (c.motivo || "").includes("Pasta") || (c.motivo || "").includes("Gravação"));
         const isFrozen = (c.video_congelado || "").toLowerCase().includes("sim");
         const isMute = (c.audio_mudo || "").toLowerCase().includes("sim");
 
@@ -3481,7 +3489,15 @@ async function loadNocUnifiedCockpit() {
         if (!services) {
             services = (sRes && sRes.ok) ? await sRes.json() : [];
         }
-        const channels = cRes.ok ? await cRes.json() : [];
+        const rawChannels = cRes.ok ? await cRes.json() : [];
+        // Guarda Anti-Flicker: Se a API de canais retornar vazio em um ciclo transitório, preserva os canais em memória
+        let channels = rawChannels;
+        if (Array.isArray(rawChannels) && rawChannels.length > 0) {
+            window._lastValidChannelsCache = rawChannels;
+        } else if (window._lastValidChannelsCache && window._lastValidChannelsCache.length > 0) {
+            channels = window._lastValidChannelsCache;
+        }
+
         const pipeline = pRes.ok ? await pRes.json() : [];
         const breaches = bRes.ok ? await bRes.json() : [];
 
