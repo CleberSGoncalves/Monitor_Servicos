@@ -444,21 +444,140 @@ async function loadServicesTable() {
     const resp = await fetch(url, { headers: getAuthToken() ? { "Authorization": `Bearer ${getAuthToken()}` } : {} });
     if (!resp.ok) return;
     allCachedServices = await resp.json();
-    populateServiceCitiesDropdown();
+    syncAllPracasAndHostsDropdowns(allCachedServices);
     filterServicesTable();
 }
 
-function populateServiceCitiesDropdown() {
-    const citySelect = document.getElementById("svcFilterCity");
-    if (!citySelect || citySelect.options.length > 1) return;
-    const cities = Array.from(new Set(allCachedServices.map(s => s.praca).filter(Boolean))).sort();
-    cities.forEach(c => {
-        const opt = document.createElement("option");
-        opt.value = c;
-        opt.textContent = c;
-        citySelect.appendChild(opt);
+let lastKnownPracasHash = "";
+
+function syncAllPracasAndHostsDropdowns(servicesList) {
+    if (!Array.isArray(servicesList) || servicesList.length === 0) return;
+
+    const pracaSet = new Set();
+    const hostMap = {};
+
+    servicesList.forEach(s => {
+        const p = (s.praca || "").trim();
+        if (p && !["n/a", "não informado", "nao informado", "indefinida", "geral"].includes(p.toLowerCase())) {
+            pracaSet.add(p);
+        }
+        const h = s.hostname || s.host;
+        if (h && !hostMap[h]) {
+            hostMap[h] = {
+                hostname: h,
+                praca: p || "N/A",
+                cs: s.cs || 1
+            };
+        }
     });
+
+    const sortedPracas = Array.from(pracaSet).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    const hash = sortedPracas.join("|") + "::" + Object.keys(hostMap).sort().join("|");
+    if (hash === lastKnownPracasHash) return;
+    lastKnownPracasHash = hash;
+
+    // 1. Filtro Global da Visão Geral (filterCity)
+    const filterCity = document.getElementById("filterCity");
+    if (filterCity) {
+        const cur = filterCity.value;
+        filterCity.innerHTML = `<option value="">🏙️ Todas as Praças / Cidades (${sortedPracas.length})</option>`;
+        sortedPracas.forEach(p => {
+            const opt = document.createElement("option");
+            opt.value = p;
+            opt.textContent = p;
+            if (p.toLowerCase() === cur.toLowerCase()) opt.selected = true;
+            filterCity.appendChild(opt);
+        });
+    }
+
+    // 2. Filtro da Tabela de Serviços (svcFilterCity)
+    const svcFilterCity = document.getElementById("svcFilterCity");
+    if (svcFilterCity) {
+        const cur = svcFilterCity.value;
+        svcFilterCity.innerHTML = `<option value="all">Todas as Praças (${sortedPracas.length})</option>`;
+        sortedPracas.forEach(p => {
+            const opt = document.createElement("option");
+            opt.value = p;
+            opt.textContent = p;
+            if (p.toLowerCase() === cur.toLowerCase()) opt.selected = true;
+            svcFilterCity.appendChild(opt);
+        });
+    }
+
+    // 3. Filtro da Central de Incidentes (incFilterCity)
+    const incFilterCity = document.getElementById("incFilterCity");
+    if (incFilterCity) {
+        const cur = incFilterCity.value;
+        incFilterCity.innerHTML = `<option value="all">Todas as Praças (${sortedPracas.length})</option>`;
+        sortedPracas.forEach(p => {
+            const opt = document.createElement("option");
+            opt.value = p;
+            opt.textContent = p;
+            if (p.toLowerCase() === cur.toLowerCase()) opt.selected = true;
+            incFilterCity.appendChild(opt);
+        });
+    }
+
+    // 4. Filtro da Central de Logs Inteligente (logFilterHost)
+    const logFilterHost = document.getElementById("logFilterHost");
+    if (logFilterHost) {
+        const cur = logFilterHost.value;
+        const sortedHosts = Object.values(hostMap).sort((a, b) => (a.praca + a.hostname).localeCompare(b.praca + b.hostname, 'pt-BR'));
+        logFilterHost.innerHTML = `<option value="">🏙️ Todas as Praças / Servidores (${sortedHosts.length})</option>`;
+        sortedHosts.forEach(h => {
+            const opt = document.createElement("option");
+            opt.value = h.hostname;
+            opt.textContent = `${h.praca} (CS ${h.cs}) - ${h.hostname}`;
+            if (h.hostname.toLowerCase() === cur.toLowerCase()) opt.selected = true;
+            logFilterHost.appendChild(opt);
+        });
+    }
+
+    // 5. Filtro de Sinais RF (signalsFilterPraca)
+    const signalsFilterPraca = document.getElementById("signalsFilterPraca");
+    if (signalsFilterPraca && signalsFilterPraca.options.length <= 1) {
+        const cur = signalsFilterPraca.value;
+        signalsFilterPraca.innerHTML = `<option value="">Selecione uma Praça (${sortedPracas.length})</option>`;
+        sortedPracas.forEach(p => {
+            const opt = document.createElement("option");
+            opt.value = p;
+            opt.textContent = p;
+            if (p.toLowerCase() === cur.toLowerCase()) opt.selected = true;
+            signalsFilterPraca.appendChild(opt);
+        });
+    }
+
+    // 6. Filtro de Fiscalização (fiscFilterPraca)
+    const fiscFilterPraca = document.getElementById("fiscFilterPraca");
+    if (fiscFilterPraca && fiscFilterPraca.options.length <= 1) {
+        const cur = fiscFilterPraca.value;
+        fiscFilterPraca.innerHTML = `<option value="">Selecione a Praça (${sortedPracas.length})</option>`;
+        sortedPracas.forEach(p => {
+            const opt = document.createElement("option");
+            opt.value = p;
+            opt.textContent = p;
+            if (p.toLowerCase() === cur.toLowerCase()) opt.selected = true;
+            fiscFilterPraca.appendChild(opt);
+        });
+    }
+
+    // 7. Filtro de Relação Falha X Canal (clfRelFilterPraca)
+    const clfRelFilterPraca = document.getElementById("clfRelFilterPraca");
+    if (clfRelFilterPraca) {
+        const cur = clfRelFilterPraca.value;
+        clfRelFilterPraca.innerHTML = `<option value="all">Todas as Praças (${sortedPracas.length})</option>`;
+        sortedPracas.forEach(p => {
+            const opt = document.createElement("option");
+            opt.value = p;
+            opt.textContent = p;
+            if (p.toLowerCase() === cur.toLowerCase()) opt.selected = true;
+            clfRelFilterPraca.appendChild(opt);
+        });
+    }
+
+    console.log(`[FleetDropdowns] Sincronizados com sucesso: ${sortedPracas.length} praças e ${Object.keys(hostMap).length} hosts em todos os módulos.`);
 }
+window.syncAllPracasAndHostsDropdowns = syncAllPracasAndHostsDropdowns;
 
 function filterServicesTable() {
     const cityFilter = (document.getElementById("svcFilterCity")?.value || "all").toLowerCase();
@@ -3344,6 +3463,7 @@ async function loadNocUnifiedCockpit() {
         const pipeline = pRes.ok ? await pRes.json() : [];
         const breaches = bRes.ok ? await bRes.json() : [];
 
+        syncAllPracasAndHostsDropdowns(services);
         processNocTelemetryAndIncidents(summary, services, channels, pipeline, breaches);
     } catch (e) {
         console.error("Erro ao consolidar NOC Cockpit:", e);

@@ -37,7 +37,7 @@ def get_graph_token() -> str:
 
 
 def fetch_all_items(token: str, list_id: str) -> list:
-    """Busca todos os itens de uma lista SharePoint tratando paginacao com retry e backoff 429."""
+    """Busca todos os itens de uma lista SharePoint tratando paginacao com retry e backoff 429 rigoroso."""
     import time
     headers = {
         "Authorization": f"Bearer {token}",
@@ -48,12 +48,13 @@ def fetch_all_items(token: str, list_id: str) -> list:
     
     while url:
         success = False
-        for attempt in range(4):
+        for attempt in range(6):
             try:
-                resp = requests.get(url, headers=headers, timeout=20)
+                resp = requests.get(url, headers=headers, timeout=25)
                 if resp.status_code == 429:
-                    retry_wait = int(resp.headers.get("Retry-After", 5))
-                    time.sleep(min(retry_wait, 15))
+                    retry_wait = int(resp.headers.get("Retry-After", 10))
+                    print(f"[SharePointSync 429] Throttled pela Microsoft. Aguardando {retry_wait + 2}s (Tentativa {attempt+1}/6)...", flush=True)
+                    time.sleep(retry_wait + 2)
                     continue
                 if resp.ok:
                     data = resp.json()
@@ -63,10 +64,11 @@ def fetch_all_items(token: str, list_id: str) -> list:
                     success = True
                     break
                 else:
-                    time.sleep(1)
-            except Exception:
+                    time.sleep(2)
+            except Exception as e:
                 time.sleep(2)
         if not success:
+            print(f"[SharePointSync Warning] Falha ao paginar lista {list_id}. Retornando {len(items)} itens obtidos.", flush=True)
             break
         
     return items
@@ -420,7 +422,7 @@ def get_cached_data() -> dict:
         return _cached_data.copy()
 
 
-def start_background_syncer(interval_seconds: int = 30):
+def start_background_syncer(interval_seconds: int = 60):
     """Inicia thread em segundo plano para manter o cache sempre atualizado."""
     def worker():
         while True:
