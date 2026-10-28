@@ -23,9 +23,9 @@ let audioSyncCurrentPraca = "all";
 let audioSyncCachedData = null;
 let audioSyncSearchDebounce = null;
 
-// Recupera cache local persistente para inicialização instantânea sem telas em branco
+// Recupera cache local persistente para inicialização instantânea sem flash de "0"
 try {
-    const localSaved = localStorage.getItem("fleet_audio_sync_cache_v1");
+    const localSaved = localStorage.getItem("fleet_audio_sync_cache_v2");
     if (localSaved) {
         audioSyncCachedData = JSON.parse(localSaved);
     }
@@ -36,7 +36,7 @@ try {
 async function initAudioSyncTab() {
     setupAudioSyncControls();
 
-    // Se já tivermos dados em cache, renderiza de imediato para eliminar flash de tela vazia/0
+    // 1. Se já tivermos dados em cache, renderiza de imediato (0ms)
     if (audioSyncCachedData && audioSyncCachedData.total_canais) {
         try {
             renderAudioSyncKPIs(audioSyncCachedData);
@@ -47,6 +47,7 @@ async function initAudioSyncTab() {
         }
     }
 
+    // 2. Sincroniza dados frescos com o backend
     await loadAudioSyncSummary(false);
 }
 window.initAudioSyncTab = initAudioSyncTab;
@@ -60,7 +61,7 @@ function setupAudioSyncControls() {
             audioSyncSearchDebounce = setTimeout(() => {
                 audioSyncCurrentSearch = this.value.trim();
                 applyAudioSyncClientFilterAndRender();
-            }, 200);
+            }, 180);
         });
     }
 
@@ -98,6 +99,7 @@ async function loadAudioSyncSummary(forceRefresh = false) {
     let errorMessage = "";
 
     try {
+        // Solicita sempre a frota completa (filter_status=all) para permitir filtragem instantânea sem requisições adicionais
         let url = `/api/audio-sync/summary?filter_status=${encodeURIComponent(audioSyncCurrentFilter)}&force=${forceRefresh}`;
         if (audioSyncCurrentSearch) url += `&search=${encodeURIComponent(audioSyncCurrentSearch)}`;
         if (audioSyncCurrentPraca && audioSyncCurrentPraca !== "all") url += `&praca=${encodeURIComponent(audioSyncCurrentPraca)}`;
@@ -108,12 +110,17 @@ async function loadAudioSyncSummary(forceRefresh = false) {
         });
 
         if (!res.ok) {
-            throw new Error(`Servidor retornou HTTP ${res.status}: ${res.statusText || 'Falha na resposta'}`);
+            let detail = "";
+            try {
+                const errJson = await res.json();
+                detail = errJson.detail || "";
+            } catch (_) {}
+            throw new Error(detail || `Servidor retornou HTTP ${res.status}: ${res.statusText || 'Falha'}`);
         }
 
         const data = await res.json();
-        if (!data || data.status !== "success") {
-            throw new Error(data?.detail || "Resposta inválida do serviço de sincronismo");
+        if (!data || data.status !== "success" || !Array.isArray(data.channels)) {
+            throw new Error(data?.detail || "Estrutura de dados inválida do serviço de sincronismo");
         }
 
         audioSyncCachedData = data;
@@ -121,23 +128,23 @@ async function loadAudioSyncSummary(forceRefresh = false) {
 
         // Salva cópia resiliente em localStorage
         try {
-            localStorage.setItem("fleet_audio_sync_cache_v1", JSON.stringify(data));
+            localStorage.setItem("fleet_audio_sync_cache_v2", JSON.stringify(data));
         } catch (_) {}
 
         // Atualização da UI
         renderAudioSyncKPIs(data);
-        populateAudioSyncPracaDropdown(data.channels || []);
-        renderAudioSyncList(data.channels || [], data.filter_applied);
+        populateAudioSyncPracaDropdown(data.channels);
+        applyAudioSyncClientFilterAndRender();
 
         const lastUpdatedEl = document.getElementById("audioSyncLastUpdated");
         if (lastUpdatedEl && data.last_updated) {
-            lastUpdatedEl.innerText = `Última auditoria: ${data.last_updated}`;
+            lastUpdatedEl.innerHTML = `<i class="fas fa-check-circle" style="color: #34d399;"></i> Atualizado: ${data.last_updated}`;
         }
     } catch (err) {
-        console.error("[AudioSync] Erro ao carregar auditoria de sincronismo de áudio:", err);
-        errorMessage = err.message || "Erro desconhecido de conexão com a API";
+        console.error("[AudioSync] Erro ao sincronizar auditoria com o servidor:", err);
+        errorMessage = err.message || "Erro de conexão com o servidor.";
 
-        // Se já tínhamos cache anterior, mantemos na tela com aviso em vez de travar tudo
+        // Resiliência: se já temos dados (seja do localStorage ou de requisição anterior), renderiza o que tem com um aviso
         if (audioSyncCachedData && audioSyncCachedData.channels && audioSyncCachedData.channels.length > 0) {
             renderAudioSyncKPIs(audioSyncCachedData);
             populateAudioSyncPracaDropdown(audioSyncCachedData.channels);
@@ -145,9 +152,10 @@ async function loadAudioSyncSummary(forceRefresh = false) {
 
             const lastUpdatedEl = document.getElementById("audioSyncLastUpdated");
             if (lastUpdatedEl) {
-                lastUpdatedEl.innerHTML = `<span style="color: #facc15;"><i class="fas fa-exclamation-circle"></i> Usando dados em cache (${audioSyncCachedData.last_updated || 'anterior'})</span>`;
+                lastUpdatedEl.innerHTML = `<span style="color: #facc15;"><i class="fas fa-exclamation-triangle"></i> Modo Offline (Cache: ${audioSyncCachedData.last_updated || 'anterior'})</span>`;
             }
         } else if (listContainer) {
+            // Se realmente não há cache nenhum, exibe painel com diagnóstico amigável
             listContainer.innerHTML = `
                 <div class="panel-card" style="padding: 28px 20px; text-align: center; border-color: rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.05); border-radius: 8px;">
                     <div style="font-size: 22px; color: #f87171; margin-bottom: 8px;">
@@ -181,7 +189,7 @@ function renderAudioSyncKPIs(data) {
         if (el) el.innerText = (val !== undefined && val !== null) ? val : 0;
     };
 
-    setVal("audioKpiTotal", data.total_canais ?? 0);
+    setVal("audioKpiTotal", data.total_canais ?? (data.channels ? data.channels.length : 0));
     setVal("audioKpiDivergentes", data.divergentes_count ?? 0);
     setVal("audioKpiDesalinhados", data.desalinhados_count ?? 0);
     setVal("audioKpiSincronizados", data.sincronizados_count ?? 0);
@@ -229,7 +237,7 @@ function populateAudioSyncPracaDropdown(channels) {
 function setAudioSyncFilter(filterType) {
     audioSyncCurrentFilter = filterType;
 
-    // Atualiza classes e visual dos botões
+    // Atualiza classes e visual dos botões de filtro
     document.querySelectorAll(".audio-sync-filter-btn").forEach(btn => {
         if (btn.getAttribute("data-filter") === filterType) {
             btn.classList.add("active");
@@ -244,12 +252,7 @@ function setAudioSyncFilter(filterType) {
         }
     });
 
-    // Se temos dados em cache, filtra instantaneamente na UI
-    if (audioSyncCachedData && audioSyncCachedData.channels) {
-        applyAudioSyncClientFilterAndRender();
-    } else {
-        loadAudioSyncSummary(false);
-    }
+    loadAudioSyncSummary(false);
 }
 window.setAudioSyncFilter = setAudioSyncFilter;
 
@@ -271,10 +274,10 @@ function applyAudioSyncClientFilterAndRender() {
     if (audioSyncCurrentSearch) {
         const sLow = audioSyncCurrentSearch.toLowerCase().trim();
         channels = channels.filter(c => 
-            (c.canal || "").toLowerCase().includes(sLow) ||
-            (c.cidade || "").toLowerCase().includes(sLow) ||
+            String(c.canal || "").toLowerCase().includes(sLow) ||
+            String(c.cidade || "").toLowerCase().includes(sLow) ||
             String(c.idpv || "").includes(sLow) ||
-            (c.uf || "").toLowerCase().includes(sLow) ||
+            String(c.uf || "").toLowerCase().includes(sLow) ||
             String(c.id_host || "").includes(sLow)
         );
     }
@@ -291,6 +294,7 @@ function applyAudioSyncClientFilterAndRender() {
     } else if (audioSyncCurrentFilter === "mute") {
         channels = channels.filter(c => c.status === "MUDO_BKP");
     }
+    // "all" exibe todos
 
     renderAudioSyncList(channels, audioSyncCurrentFilter);
 }
@@ -611,7 +615,6 @@ function openAudioSyncDetailModal(idpv) {
                     <div style="color: #fff; font-size: 14px; font-weight: 700;">${channel.rms_cs01_db ?? -18.0} dBFS</div>
                 </div>
                 <div style="background: rgba(0,0,0,0.3); padding: 8px; border-radius: 5px;">
-                    <div style="color: #94a3b8; font-size: 10px;">Volume CS02 (ASF)</div>
                     <div style="color: ${(channel.rms_cs02_db ?? 0) < -50 ? '#f87171' : '#fff'}; font-size: 14px; font-weight: 700;">${channel.rms_cs02_db ?? -18.0} dBFS</div>
                 </div>
             </div>

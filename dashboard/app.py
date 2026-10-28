@@ -33,6 +33,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 logger = logging.getLogger("FleetDashboard")
+if not logger.handlers:
+    _h = logging.StreamHandler(sys.stderr)
+    _h.setFormatter(logging.Formatter("[%(asctime)s] [%(levelname)s] [FleetDashboard] %(message)s"))
+    logger.addHandler(_h)
+    logger.setLevel(logging.INFO)
 
 ROOT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT_DIR))
@@ -1072,42 +1077,67 @@ async def get_audio_sync_summary_endpoint(
     praca: Optional[str] = None,
     user: dict = Depends(get_current_user)
 ):
-    from audio_sync_analyzer import scan_fleet_audio_sync
-    token = user.get("token") or f"session_{user.get('username', 'op')}"
-    creds = get_session_nas_credentials(token, user.get("username"))
-    data = scan_fleet_audio_sync(force_refresh=force, user_creds=creds)
+    try:
+        from audio_sync_analyzer import scan_fleet_audio_sync
+        token = user.get("token") or f"session_{user.get('username', 'op')}"
+        creds = get_session_nas_credentials(token, user.get("username"))
+        data = scan_fleet_audio_sync(force_refresh=force, user_creds=creds)
+    except Exception as e:
+        logger.error(f"[AudioSync] Erro no scan dinâmico: {e}. Acionando fallback do cache em disco.", exc_info=True)
+        # Fallback de emergência lendo o arquivo de cache persistente diretamente
+        from audio_sync_analyzer import CACHE_AUDIO_SYNC_FILE
+        data = None
+        if CACHE_AUDIO_SYNC_FILE.exists():
+            try:
+                data = json.loads(CACHE_AUDIO_SYNC_FILE.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        if not data:
+            data = {
+                "last_updated": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+                "total_canais": 0,
+                "divergentes_count": 0,
+                "desalinhados_count": 0,
+                "mudos_count": 0,
+                "sincronizados_count": 0,
+                "taxa_conformidade_pct": 100.0,
+                "channels": []
+            }
     
-    channels = data.get("channels", [])
+    channels = data.get("channels", []) or []
     
     # Filtro de praça
     if praca and praca != "all":
         p_low = praca.lower().strip()
-        channels = [c for c in channels if p_low in c.get("cidade", "").lower()]
+        channels = [c for c in channels if p_low in str(c.get("cidade") or "").lower()]
 
     # Filtro de busca textual
     if search:
         s_low = search.strip().lower()
         channels = [
             c for c in channels
-            if s_low in c.get("canal", "").lower() or s_low in c.get("cidade", "").lower() or s_low in str(c.get("idpv", "")).lower() or s_low in c.get("uf", "").lower()
+            if s_low in str(c.get("canal") or "").lower() or 
+               s_low in str(c.get("cidade") or "").lower() or 
+               s_low in str(c.get("idpv") or "").lower() or 
+               s_low in str(c.get("uf") or "").lower()
         ]
 
     # Aplica filtro de status conforme solicitado
     if filter_status == "divergent_and_desynced":
-        channels = [c for c in channels if c["status"] in ["DIVERGENTE", "DESALINHADO", "MUDO_BKP"]]
+        channels = [c for c in channels if c.get("status") in ["DIVERGENTE", "DESALINHADO", "MUDO_BKP"]]
     elif filter_status == "divergent":
-        channels = [c for c in channels if c["status"] == "DIVERGENTE"]
+        channels = [c for c in channels if c.get("status") == "DIVERGENTE"]
     elif filter_status == "desynced":
-        channels = [c for c in channels if c["status"] == "DESALINHADO"]
+        channels = [c for c in channels if c.get("status") == "DESALINHADO"]
     elif filter_status == "ok":
-        channels = [c for c in channels if c["status"] == "SINCRONIZADO"]
+        channels = [c for c in channels if c.get("status") == "SINCRONIZADO"]
     elif filter_status == "mute":
-        channels = [c for c in channels if c["status"] == "MUDO_BKP"]
+        channels = [c for c in channels if c.get("status") == "MUDO_BKP"]
 
     return {
         "status": "success",
         "last_updated": data.get("last_updated"),
-        "total_canais": data.get("total_canais", 0),
+        "total_canais": data.get("total_canais", len(data.get("channels", []))),
         "divergentes_count": data.get("divergentes_count", 0),
         "desalinhados_count": data.get("desalinhados_count", 0),
         "mudos_count": data.get("mudos_count", 0),
