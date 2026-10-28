@@ -271,12 +271,24 @@ def get_failure_catalog() -> List[Dict[str, Any]]:
     return [dict(r) for r in rows]
 
 
-def classify_fleet_quality_failures() -> Dict[str, Any]:
+_CLASSIFIER_CACHE: Dict[str, Any] = {
+    "timestamp": 0.0,
+    "data": None
+}
+CLASSIFIER_CACHE_TTL_SECONDS = 15.0
+
+
+def classify_fleet_quality_failures(force_refresh: bool = False) -> Dict[str, Any]:
     """
     Analisa todos os canais da frota sob a ótica estrita de falhas de qualidade broadcast.
     - Zero confusão com escoamento WAN.
     - Zero falso positivo em canais analógicos Yuan (TW6802) ou Rádio FM.
     """
+    global _CLASSIFIER_CACHE
+    now_ts = time.time()
+    if not force_refresh and _CLASSIFIER_CACHE["data"] and (now_ts - _CLASSIFIER_CACHE["timestamp"]) < CLASSIFIER_CACHE_TTL_SECONDS:
+        return _CLASSIFIER_CACHE["data"]
+
     init_classifier_db()
     fleet_data = get_cached_data()
     channels = fleet_data.get("channels", [])
@@ -590,7 +602,7 @@ def classify_fleet_quality_failures() -> Dict[str, Any]:
     # Ordena ocorrências por severidade e praça
     sorted_ocorrencias = sorted(ocorrencias_rastreabilidade, key=lambda x: (0 if x["severity"] == "Crítica" else (1 if x["severity"] == "Atenção" else 2), x["praca"], x["canal"]))
 
-    return {
+    final_result = {
         "status": "success",
         "total_canais_auditados": total_evaluated,
         "total_rf_digital": total_rf_digital,
@@ -606,6 +618,10 @@ def classify_fleet_quality_failures() -> Dict[str, Any]:
         "totais_rastreabilidade": totais_rastreabilidade,
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
+
+    _CLASSIFIER_CACHE["timestamp"] = time.time()
+    _CLASSIFIER_CACHE["data"] = final_result
+    return final_result
 
 
 def mine_and_learn_new_failure_pattern(operator: str = "engenharia") -> Dict[str, Any]:
