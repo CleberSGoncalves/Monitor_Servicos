@@ -1060,6 +1060,114 @@ async def get_realtime_ai_praca_summary_endpoint(req: RealtimePracaAiRequest, us
     return diagnose_praca_cluster_with_ai(req.praca, req.block_slot)
 
 # ==============================================================================
+# AUDITORIA DE SINCRONISMO DE ÁUDIO CS01 (MP3/MP4) vs CS02 (ASF BKP) - NAS
+# ==============================================================================
+@app.get("/api/audio-sync/summary")
+async def get_audio_sync_summary_endpoint(
+    force: bool = False,
+    filter_status: str = "divergent_and_desynced",
+    search: Optional[str] = None,
+    praca: Optional[str] = None,
+    user: dict = Depends(get_current_user)
+):
+    from audio_sync_analyzer import scan_fleet_audio_sync
+    token = user.get("token") or f"session_{user.get('username', 'op')}"
+    creds = get_session_nas_credentials(token, user.get("username"))
+    data = scan_fleet_audio_sync(force_refresh=force, user_creds=creds)
+    
+    channels = data.get("channels", [])
+    
+    # Filtro de praça
+    if praca and praca != "all":
+        p_low = praca.lower().strip()
+        channels = [c for c in channels if p_low in c.get("cidade", "").lower()]
+
+    # Filtro de busca textual
+    if search:
+        s_low = search.strip().lower()
+        channels = [
+            c for c in channels
+            if s_low in c.get("canal", "").lower() or s_low in c.get("cidade", "").lower() or s_low in str(c.get("idpv", "")).lower() or s_low in c.get("uf", "").lower()
+        ]
+
+    # Aplica filtro de status conforme solicitado
+    if filter_status == "divergent_and_desynced":
+        channels = [c for c in channels if c["status"] in ["DIVERGENTE", "DESALINHADO", "MUDO_BKP"]]
+    elif filter_status == "divergent":
+        channels = [c for c in channels if c["status"] == "DIVERGENTE"]
+    elif filter_status == "desynced":
+        channels = [c for c in channels if c["status"] == "DESALINHADO"]
+    elif filter_status == "ok":
+        channels = [c for c in channels if c["status"] == "SINCRONIZADO"]
+    elif filter_status == "mute":
+        channels = [c for c in channels if c["status"] == "MUDO_BKP"]
+
+    return {
+        "status": "success",
+        "last_updated": data.get("last_updated"),
+        "total_canais": data.get("total_canais", 0),
+        "divergentes_count": data.get("divergentes_count", 0),
+        "desalinhados_count": data.get("desalinhados_count", 0),
+        "mudos_count": data.get("mudos_count", 0),
+        "sincronizados_count": data.get("sincronizados_count", 0),
+        "taxa_conformidade_pct": data.get("taxa_conformidade_pct", 100.0),
+        "filter_applied": filter_status,
+        "displayed_count": len(channels),
+        "channels": channels
+    }
+
+
+@app.get("/api/audio-sync/channel/{idpv}")
+async def get_audio_sync_channel_detail_endpoint(
+    idpv: str,
+    user: dict = Depends(get_current_user)
+):
+    from audio_sync_analyzer import scan_fleet_audio_sync
+    token = user.get("token") or f"session_{user.get('username', 'op')}"
+    creds = get_session_nas_credentials(token, user.get("username"))
+    data = scan_fleet_audio_sync(force_refresh=False, user_creds=creds)
+    for c in data.get("channels", []):
+        if str(c.get("idpv")) == str(idpv):
+            return {"status": "success", "channel": c}
+    raise HTTPException(status_code=404, detail=f"Veículo IDPV {idpv} não encontrado na auditoria de áudio")
+
+
+@app.post("/api/audio-sync/reanalyze/{idpv}")
+async def reanalyze_audio_sync_channel_endpoint(
+    idpv: str,
+    user: dict = Depends(get_current_user)
+):
+    import json
+    from audio_sync_analyzer import analyze_single_channel_audio_sync, CACHE_AUDIO_SYNC_FILE
+    token = user.get("token") or f"session_{user.get('username', 'op')}"
+    creds = get_session_nas_credentials(token, user.get("username"))
+    ch_meta = {"veiculo": idpv, "canal": "Canal", "cidade": "Praça", "id_host": 374, "id_cs": 2}
+    try:
+        from config import DATA_DIR
+        fc = json.loads((DATA_DIR / "fleet_cache.json").read_text(encoding="utf-8"))
+        for item in fc.get("channels", []):
+            if str(item.get("veiculo")) == str(idpv):
+                ch_meta = item
+                break
+    except Exception:
+        pass
+    res = analyze_single_channel_audio_sync(ch_meta, user_creds=creds)
+    
+    # Atualiza o item correspondente no cache em disco se existir
+    if CACHE_AUDIO_SYNC_FILE.exists():
+        try:
+            cached_data = json.loads(CACHE_AUDIO_SYNC_FILE.read_text(encoding="utf-8"))
+            for i, c in enumerate(cached_data.get("channels", [])):
+                if str(c.get("idpv")) == str(idpv):
+                    cached_data["channels"][i] = res
+                    break
+            CACHE_AUDIO_SYNC_FILE.write_text(json.dumps(cached_data, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+
+    return {"status": "success", "channel": res}
+
+# ==============================================================================
 # CLASSIFICADOR DE FALHAS & BASE DE CONHECIMENTO BROADCAST (MACHINE LEARNING)
 # ==============================================================================
 @app.get("/api/classificador-falhas/catalogo")
