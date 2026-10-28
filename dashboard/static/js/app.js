@@ -2931,8 +2931,10 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
         });
     });
 
-    // 5. Incidentes P2: Limiares de Hardware / Carga CPU / Disco D:
-    (thresholdBreaches || []).forEach(b => {
+    // 5. Incidentes P2: Limiares de Hardware / Carga CPU / Disco D / Autonomia (Exclui RF para evitar falso alarme de 'Matriz')
+    (thresholdBreaches || []).filter(b => b.category !== "sinal_rf").forEach(b => {
+        const pracaName = b.praca || b.hostname || "Matriz";
+        const csNum = parseInt(b.cs || 1);
         incidents.push({
             id: `p2_br_${b.id}`,
             key: b.id,
@@ -2940,14 +2942,14 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
             severity_label: "INFORMATIVO / AVISO (P2)",
             trigger_type: "cpu_disk",
             category: "hardware_infra",
-            category_label: b.category === "armazenamento" ? "Buffer Disco D:" : "Carga CPU / Host",
-            category_icon: b.category === "armazenamento" ? "fa-hdd" : "fa-microchip",
-            praca: b.praca || "Matriz",
-            region: getRegionForCity(b.praca),
-            cs: b.cs || 1,
+            category_label: b.category === "armazenamento" ? "Buffer Disco D:" : (b.category === "gravacao" ? "Autonomia Gravação" : "Carga CPU / Host"),
+            category_icon: b.category === "armazenamento" ? "fa-hdd" : (b.category === "gravacao" ? "fa-clock" : "fa-microchip"),
+            praca: pracaName,
+            region: getRegionForCity(pracaName),
+            cs: csNum,
             hostname: b.hostname,
             target: b.target,
-            title: `${b.praca || 'Matriz'} (CS ${b.cs || 1}) — Carga no Host`,
+            title: `${pracaName} (CS ${csNum}) — ${b.metric || 'Alerta de Infraestrutura'}`,
             summary: b.description || b.message,
             telemetry: `Valor Atual: ${b.current_value} (Limiar: ${b.threshold_value})`,
             time_ago: "Há 1h"

@@ -205,6 +205,8 @@ def get_active_threshold_breaches(services: list = None, channels: list = None) 
                         "category": "armazenamento",
                         "metric": "Espaço Livre no Disco D:",
                         "target": f"{s.get('praca')} (CS {s.get('cs', 1)})",
+                        "praca": s.get("praca", "Matriz"),
+                        "cs": s.get("cs", 1),
                         "hostname": s.get("hostname"),
                         "current_value": f"{val:.1f} GB",
                         "threshold_value": f"{limit_gb:.1f} GB",
@@ -233,6 +235,9 @@ def get_active_threshold_breaches(services: list = None, channels: list = None) 
         ch_name = c.get("canal", "Canal")
         praca = c.get("cidade", "Praça")
         
+        cs_val = c.get("id_cs", 1) or c.get("cs", 1) or 1
+        is_rec = "grav" in str(c.get("status_gravacao", "")).lower() or "ok" in str(c.get("status_gravacao", "")).lower()
+
         if rf_q_thresh and q_val is not None:
             min_q = float(rf_q_thresh["value"])
             if q_val < min_q and not c.get("has_outage"):
@@ -242,6 +247,8 @@ def get_active_threshold_breaches(services: list = None, channels: list = None) 
                     "category": "sinal_rf",
                     "metric": "Qualidade de Sinal RF Degradada",
                     "target": f"{ch_name} ({praca})",
+                    "praca": praca,
+                    "cs": cs_val,
                     "hostname": praca,
                     "current_value": f"{q_val}%",
                     "threshold_value": f"{min_q:.0f}%",
@@ -252,13 +259,16 @@ def get_active_threshold_breaches(services: list = None, channels: list = None) 
                 
         if rf_s_thresh and s_val is not None:
             min_s = float(rf_s_thresh["value"])
-            if s_val < min_s and not c.get("has_outage"):
+            # Anti-Alarme Falso: só acusa força insuficiente se a qualidade estiver degradada (< 45%) ou se o canal não estiver gravando
+            if s_val < min_s and not c.get("has_outage") and (q_val is None or q_val < 45 or not is_rec):
                 breaches.append({
                     "id": f"rf_s_{praca}_{ch_name}",
                     "severity": "alerta",
                     "category": "sinal_rf",
                     "metric": "Força de Sinal RF Insuficiente",
                     "target": f"{ch_name} ({praca})",
+                    "praca": praca,
+                    "cs": cs_val,
                     "hostname": praca,
                     "current_value": f"{s_val}%",
                     "threshold_value": f"{min_s:.0f}%",
@@ -284,6 +294,8 @@ def get_active_threshold_breaches(services: list = None, channels: list = None) 
                         "category": "gravacao",
                         "metric": "Autonomia Crítica de Gravação MP4",
                         "target": f"{s.get('praca')} (CS {s.get('cs', 1)})",
+                        "praca": s.get("praca", "Matriz"),
+                        "cs": s.get("cs", 1),
                         "hostname": s.get("hostname"),
                         "current_value": f"{autonomy_est:.1f} h",
                         "threshold_value": f"{min_hours:.1f} h",
