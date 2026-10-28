@@ -358,21 +358,20 @@ function renderTopologyMap() {
             <g id="city-node-${m.id}"
                class="map-city-node ${isSel ? 'is-selected' : ''}"
                data-market-id="${m.id}"
-               style="cursor: pointer;"
-               onclick="selectMarket('${m.id}', true)"
+               style="cursor: pointer; pointer-events: all;"
+               onclick="handleCityClick('${m.id}', event)"
                onmouseenter="handleCityHover('${m.id}', event)"
                onmousemove="handleCityMouseMove(event)"
-               onmouseleave="handleCityLeave('${m.id}', event)"
-               filter="url(#shadowGlow)">
+               onmouseleave="handleCityLeave('${m.id}', event)">
 
-                <!-- Área expandida de captura de mouse para interação estável e sem tremulação -->
-                <circle cx="${pt.x}" cy="${pt.y}" r="22" fill="transparent" style="pointer-events: all;"/>
+                <!-- Área expandida de captura de clique e mouse (sempre clicável e sem perda de eventos) -->
+                <circle cx="${pt.x}" cy="${pt.y}" r="24" fill="#000000" fill-opacity="0.001" pointer-events="all" style="cursor: pointer;"/>
 
                 <line class="city-leader-line" x1="${pt.x}" y1="${pt.y}" x2="${labelX}" y2="${labelY - 1}" 
-                      stroke="${isSel ? '#38bdf8' : 'rgba(255,255,255,0.25)'}" stroke-width="${isSel ? 1.5 : 1}" stroke-dasharray="${isSel ? 'none' : '2,2'}"/>
+                      stroke="${isSel ? '#38bdf8' : 'rgba(255,255,255,0.25)'}" stroke-width="${isSel ? 1.5 : 1}" stroke-dasharray="${isSel ? 'none' : '2,2'}" style="pointer-events: none;"/>
 
                 <!-- Halo Luminoso de Status -->
-                <circle class="city-marker-glow" cx="${pt.x}" cy="${pt.y}" r="${isSel ? 26 : 18}" fill="url(#${glowId})" opacity="${isSel ? 0.95 : 0.65}">
+                <circle class="city-marker-glow" cx="${pt.x}" cy="${pt.y}" r="${isSel ? 26 : 18}" fill="url(#${glowId})" opacity="${isSel ? 0.95 : 0.65}" style="pointer-events: none;">
                     ${m.status_color === "red" ? `
                         <animate attributeName="r" values="16;28;16" dur="2s" repeatCount="indefinite"/>
                         <animate attributeName="opacity" values="0.85;0.2;0.85" dur="2s" repeatCount="indefinite"/>
@@ -381,20 +380,20 @@ function renderTopologyMap() {
 
                 <!-- Anel Externo de Seleção / Foco -->
                 <circle class="city-focus-ring" cx="${pt.x}" cy="${pt.y}" r="${isSel ? 12 : 9}" fill="none" 
-                        stroke="${isSel ? '#ffffff' : 'rgba(56, 189, 248, 0.4)'}" stroke-width="${isSel ? 2.5 : 1}" opacity="${isSel ? 1 : 0}"/>
+                        stroke="${isSel ? '#ffffff' : 'rgba(56, 189, 248, 0.4)'}" stroke-width="${isSel ? 2.5 : 1}" opacity="${isSel ? 1 : 0}" style="pointer-events: none;"/>
 
                 <!-- Bolinha Central da Cidade -->
-                <circle class="city-marker-dot" cx="${pt.x}" cy="${pt.y}" r="${isSel ? 8 : 6}" fill="${color}" stroke="#070d18" stroke-width="2"/>
+                <circle class="city-marker-dot" cx="${pt.x}" cy="${pt.y}" r="${isSel ? 8 : 6}" fill="${color}" stroke="#070d18" stroke-width="2" pointer-events="all" style="cursor: pointer;"/>
 
                 <!-- Pill com o Nome da Cidade -->
                 <rect class="city-pill-rect" x="${pillX}" y="${pillY}" width="${textLen}" height="18" rx="4"
                       fill="${isSel ? '#1e293b' : 'rgba(7, 13, 24, 0.94)'}"
                       stroke="${isSel ? '#38bdf8' : (m.status_color === 'red' ? '#ef4444' : 'rgba(56, 189, 248, 0.45)')}"
-                      stroke-width="${isSel ? 1.6 : 1}" />
+                      stroke-width="${isSel ? 1.6 : 1}" pointer-events="all" style="cursor: pointer;" />
 
                 <text class="city-pill-text" x="${labelX}" y="${labelY + 2}" text-anchor="${anchor}"
                       fill="${isSel ? '#ffffff' : (m.status_color === 'red' ? '#fca5a5' : '#e2e8f0')}"
-                      font-family="Inter, -apple-system, sans-serif" font-size="${isSel ? '12px' : '11px'}" font-weight="${isSel ? '800' : '700'}">
+                      font-family="Inter, -apple-system, sans-serif" font-size="${isSel ? '12px' : '11px'}" font-weight="${isSel ? '800' : '700'}" pointer-events="all" style="cursor: pointer; user-select: none;">
                     ${m.cidade}
                 </text>
             </g>
@@ -407,6 +406,19 @@ function renderTopologyMap() {
         <div id="topologyCityTooltip" style="display: none; position: absolute; pointer-events: none; z-index: 100; min-width: 270px; max-width: 330px; background: rgba(15, 23, 42, 0.96); backdrop-filter: blur(12px); border: 1px solid rgba(56, 189, 248, 0.45); border-radius: 8px; box-shadow: 0 16px 36px rgba(0, 0, 0, 0.85); padding: 12px 14px; font-family: Inter, -apple-system, sans-serif; color: #e2e8f0;"></div>
     `;
     container.innerHTML = svgHtml + tooltipHtml;
+
+    // Monitoramento global de saída do container para garantir limpeza 100% de efeitos de hover
+    if (!container._leaveBound) {
+        container._leaveBound = true;
+        container.addEventListener("mouseleave", function() {
+            document.querySelectorAll(".map-city-node.is-hovered").forEach(el => el.classList.remove("is-hovered"));
+            const pinsLayer = document.getElementById("svgPinsLayer");
+            if (pinsLayer) pinsLayer.classList.remove("has-hover");
+            const tooltip = document.getElementById("topologyCityTooltip");
+            if (tooltip) tooltip.style.display = "none";
+            if (selectedMarket) updateMarketDetailPanel(selectedMarket);
+        });
+    }
 
     const svgEl = document.getElementById("topologySvgEl");
     if (svgEl) {
@@ -423,15 +435,22 @@ function handleCityHover(marketId, event) {
     const market = topologyMarketsData.find(m => m.id === marketId);
     if (!market) return;
 
-    // 1. Efeito de Foco / Spotlight: esmaece todas as outras cidades
+    // 1. Limpeza defensiva prévia: remove .is-hovered de qualquer outra cidade antes de ativar a atual
+    document.querySelectorAll(".map-city-node.is-hovered").forEach(el => {
+        if (el.id !== `city-node-${marketId}`) {
+            el.classList.remove("is-hovered");
+        }
+    });
+
+    // 2. Efeito de Foco / Spotlight: esmaece todas as outras cidades
     const pinsLayer = document.getElementById("svgPinsLayer");
     if (pinsLayer) pinsLayer.classList.add("has-hover");
 
     const nodeEl = document.getElementById(`city-node-${marketId}`);
     if (nodeEl) {
         nodeEl.classList.add("is-hovered");
-        // Em SVG, mover para o final do container traz o elemento para frente de todos os outros
-        nodeEl.parentNode.appendChild(nodeEl);
+        // ATENÇÃO: NÃO USAR appendChild(nodeEl) aqui! Reparentar elemento sob o cursor no DOM
+        // quebra o ciclo de eventos de clique e mouseleave do Chromium/WebKit.
     }
 
     // 2. Atualização imediata do painel lateral (preview em tempo real)
@@ -531,8 +550,10 @@ function handleCityLeave(marketId, event) {
     const pinsLayer = document.getElementById("svgPinsLayer");
     if (pinsLayer) pinsLayer.classList.remove("has-hover");
 
-    const nodeEl = document.getElementById(`city-node-${marketId}`);
-    if (nodeEl) nodeEl.classList.remove("is-hovered");
+    // Remove .is-hovered de todas as cidades defensivamente
+    document.querySelectorAll(".map-city-node.is-hovered").forEach(el => {
+        el.classList.remove("is-hovered");
+    });
 
     const tooltip = document.getElementById("topologyCityTooltip");
     if (tooltip) tooltip.style.display = "none";
@@ -610,8 +631,28 @@ function updateMarketDetailPanel(market) {
     if (outChEl) outChEl.textContent = market.outage_channels || 0;
 }
 
+function handleCityClick(marketId, event) {
+    if (event) {
+        event.stopPropagation();
+    }
+    selectMarket(marketId, true);
+}
+window.handleCityClick = handleCityClick;
+
 function selectMarket(marketId, openModal = false) {
-    const market = topologyMarketsData.find(m => m.id === marketId);
+    if (!topologyMarketsData || topologyMarketsData.length === 0) return;
+    let market = null;
+    if (marketId) {
+        const idLower = String(marketId).toLowerCase().trim();
+        market = topologyMarketsData.find(m => 
+            m.id.toLowerCase() === idLower ||
+            m.cidade.toLowerCase() === idLower ||
+            idLower.includes(m.id.toLowerCase()) ||
+            m.id.toLowerCase().includes(idLower) ||
+            idLower.includes(m.cidade.toLowerCase())
+        );
+    }
+    if (!market) market = topologyMarketsData[0];
     if (!market) return;
 
     selectedMarket = market;
@@ -629,7 +670,7 @@ function selectMarket(marketId, openModal = false) {
     updateMarketDetailPanel(market);
 
     if (openModal) {
-        openMarketRfModal(marketId);
+        openMarketRfModal(market.id);
     }
 }
 window.handleCityHover = handleCityHover;
@@ -916,13 +957,18 @@ async function openMarketRfModal(marketId) {
         interactiveControlsEl.innerHTML = weatherHtml + whatIfHtml;
     }
 
-    // Renderiza Gráficos e Notas
-    switchRfModalView('radar');
-    renderMarketRadarCanvas(market, selectedRfChannelIndex);
-    renderTerrainCanvas(market, null, selectedRfChannelIndex);
-    updateRfModalEngineeringNotes(market, selectedRfChannelIndex);
-
+    // Exibe o modal imediatamente para o usuário
     modal.style.display = "flex";
+
+    try {
+        // Renderiza Gráficos e Notas
+        switchRfModalView('radar');
+        renderMarketRadarCanvas(market, selectedRfChannelIndex);
+        renderTerrainCanvas(market, null, selectedRfChannelIndex);
+        updateRfModalEngineeringNotes(market, selectedRfChannelIndex);
+    } catch (renderErr) {
+        console.error("Erro ao renderizar dados topográficos do modal RF:", renderErr);
+    }
 }
 window.openMarketRfModal = openMarketRfModal;
 window.openRfTopographyModal = openMarketRfModal;
