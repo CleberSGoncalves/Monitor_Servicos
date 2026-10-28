@@ -35,8 +35,10 @@ from mp4_analyzer import (
     resolve_channel_idpv_and_host
 )
 
+ROOT_DIR = Path(__file__).resolve().parent
 CACHE_AUDIO_SYNC_FILE = DATA_DIR / "audio_sync_cache.json"
-CACHE_TTL_SECONDS = 1800  # 5 minutos
+STATIC_CACHE_FILE = ROOT_DIR / "static" / "data" / "audio_sync_cache.json"
+CACHE_TTL_SECONDS = 1800  # 30 minutos
 
 
 def extract_audio_chunk_via_ffmpeg(
@@ -519,8 +521,11 @@ def scan_fleet_audio_sync(
     }
 
     try:
-        CACHE_AUDIO_SYNC_FILE.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    except Exception:
-        pass
+        data_str = json.dumps(payload, ensure_ascii=False, indent=2)
+        CACHE_AUDIO_SYNC_FILE.write_text(data_str, encoding="utf-8")
+        STATIC_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        STATIC_CACHE_FILE.write_text(data_str, encoding="utf-8")
+    except Exception as save_err:
+        logger.warning(f"[AudioSync] Falha ao persistir cache: {save_err}")
 
     return payload

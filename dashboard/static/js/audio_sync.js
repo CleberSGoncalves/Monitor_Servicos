@@ -33,11 +33,29 @@ try {
     console.warn("[AudioSync] Falha ao ler cache local:", e);
 }
 
+// Pré-carregamento assíncrono proativo do cache estático em segundo plano
+(async function preloadAudioSyncStaticCache() {
+    if (!audioSyncCachedData || !audioSyncCachedData.total_canais) {
+        try {
+            const staticRes = await fetch(`/static/data/audio_sync_cache.json?v=${Date.now()}`);
+            if (staticRes.ok) {
+                const sData = await staticRes.json();
+                if (sData && sData.channels && sData.channels.length > 0) {
+                    audioSyncCachedData = sData;
+                    audioSyncCachedData.status = "success";
+                    localStorage.setItem("fleet_audio_sync_cache_v2", JSON.stringify(sData));
+                    console.log(`[AudioSync] Cache estático pré-carregado com sucesso: ${sData.channels.length} canais.`);
+                }
+            }
+        } catch (_) {}
+    }
+})();
+
 async function initAudioSyncTab() {
     setupAudioSyncControls();
 
-    // 1. Se já tivermos dados em cache, renderiza de imediato (0ms)
-    if (audioSyncCachedData && audioSyncCachedData.total_canais) {
+    // 1. Se já tivermos dados em cache, renderiza de imediato (0ms de latência)
+    if (audioSyncCachedData && audioSyncCachedData.channels && audioSyncCachedData.channels.length > 0) {
         try {
             renderAudioSyncKPIs(audioSyncCachedData);
             populateAudioSyncPracaDropdown(audioSyncCachedData.channels || []);
@@ -47,7 +65,7 @@ async function initAudioSyncTab() {
         }
     }
 
-    // 2. Sincroniza dados frescos com o backend
+    // 2. Sincroniza dados frescos com o backend de forma resiliente
     await loadAudioSyncSummary(false);
 }
 window.initAudioSyncTab = initAudioSyncTab;
@@ -95,36 +113,62 @@ async function loadAudioSyncSummary(forceRefresh = false) {
     const refreshBtn = document.getElementById("btnRefreshAudioSync");
     if (refreshBtn) refreshBtn.classList.add("fa-spin");
 
-    let networkSuccess = false;
-    let errorMessage = "";
+    let data = null;
+    let isOfflineFallback = false;
 
     try {
-        // Solicita sempre a frota completa (filter_status=all) para permitir filtragem instantânea sem requisições adicionais
-        let url = `/api/audio-sync/summary?filter_status=${encodeURIComponent(audioSyncCurrentFilter)}&force=${forceRefresh}`;
+        // Tenta endpoint principal (carrega frota completa para filtragem cliente instantânea)
+        let url = `/api/audio-sync/summary?filter_status=all&force=${forceRefresh}`;
         if (audioSyncCurrentSearch) url += `&search=${encodeURIComponent(audioSyncCurrentSearch)}`;
         if (audioSyncCurrentPraca && audioSyncCurrentPraca !== "all") url += `&praca=${encodeURIComponent(audioSyncCurrentPraca)}`;
 
-        const res = await fetch(url, {
-            headers: getAudioSyncAuthHeaders(),
-            credentials: "same-origin"
-        });
-
-        if (!res.ok) {
-            let detail = "";
-            try {
-                const errJson = await res.json();
-                detail = errJson.detail || "";
-            } catch (_) {}
-            throw new Error(detail || `Servidor retornou HTTP ${res.status}: ${res.statusText || 'Falha'}`);
+        try {
+            const res = await fetch(url, {
+                headers: getAudioSyncAuthHeaders(),
+                credentials: "same-origin"
+            });
+            if (res.ok) {
+                const jsonRes = await res.json();
+                if (jsonRes && jsonRes.status === "success" && Array.isArray(jsonRes.channels) && jsonRes.channels.length > 0) {
+                    data = jsonRes;
+                }
+            }
+        } catch (fetchErr) {
+            console.warn("[AudioSync] Falha na rota dinâmica da API, acionando fallback:", fetchErr);
         }
 
-        const data = await res.json();
-        if (!data || data.status !== "success" || !Array.isArray(data.channels)) {
-            throw new Error(data?.detail || "Estrutura de dados inválida do serviço de sincronismo");
+        // Se a rota dinâmica não retornou dados válidos, recorre ao cache estático do servidor
+        if (!data || !Array.isArray(data.channels) || data.channels.length === 0) {
+            console.warn("[AudioSync] Buscando cache estático /static/data/audio_sync_cache.json...");
+            try {
+                const staticRes = await fetch(`/static/data/audio_sync_cache.json?v=${Date.now()}`);
+                if (staticRes.ok) {
+                    const staticJson = await staticRes.json();
+                    if (staticJson && Array.isArray(staticJson.channels) && staticJson.channels.length > 0) {
+                        data = staticJson;
+                        data.status = "success";
+                        isOfflineFallback = true;
+                    }
+                }
+            } catch (staticErr) {
+                console.warn("[AudioSync] Falha ao carregar cache estático:", staticErr);
+            }
+        }
+
+        // Se ainda não obteve dados, tenta o cache em localStorage
+        if (!data || !Array.isArray(data.channels) || data.channels.length === 0) {
+            if (audioSyncCachedData && Array.isArray(audioSyncCachedData.channels) && audioSyncCachedData.channels.length > 0) {
+                data = audioSyncCachedData;
+                isOfflineFallback = true;
+            }
+        }
+
+        // Validação final dos dados
+        if (!data || !Array.isArray(data.channels) || data.channels.length === 0) {
+            throw new Error("Não foi possível carregar os dados de sincronismo de nenhuma fonte disponível.");
         }
 
         audioSyncCachedData = data;
-        networkSuccess = true;
 
         // Salva cópia resiliente em localStorage
         try {
@@ -137,25 +181,27 @@ async function loadAudioSyncSummary(forceRefresh = false) {
         applyAudioSyncClientFilterAndRender();
 
         const lastUpdatedEl = document.getElementById("audioSyncLastUpdated");
-        if (lastUpdatedEl && data.last_updated) {
-            lastUpdatedEl.innerHTML = `<i class="fas fa-check-circle" style="color: #34d399;"></i> Atualizado: ${data.last_updated}`;
+        if (lastUpdatedEl) {
+            if (isOfflineFallback) {
+                lastUpdatedEl.innerHTML = `<span style="color: #facc15;"><i class="fas fa-database"></i> Cache Persistente (${data.last_updated || 'Offline'})</span>`;
+            } else {
+                lastUpdatedEl.innerHTML = `<i class="fas fa-check-circle" style="color: #34d399;"></i> Atualizado: ${data.last_updated || 'Agora'}`;
+            }
         }
     } catch (err) {
-        console.error("[AudioSync] Erro ao sincronizar auditoria com o servidor:", err);
-        errorMessage = err.message || "Erro de conexão com o servidor.";
+        console.error("[AudioSync] Erro ao carregar auditoria:", err);
 
-        // Resiliência: se já temos dados (seja do localStorage ou de requisição anterior), renderiza o que tem com um aviso
-        if (audioSyncCachedData && audioSyncCachedData.channels && audioSyncCachedData.channels.length > 0) {
+        // Se tivermos cache prévio, renderiza ele e exibe aviso discreto
+        if (audioSyncCachedData && Array.isArray(audioSyncCachedData.channels) && audioSyncCachedData.channels.length > 0) {
             renderAudioSyncKPIs(audioSyncCachedData);
             populateAudioSyncPracaDropdown(audioSyncCachedData.channels);
             applyAudioSyncClientFilterAndRender();
 
             const lastUpdatedEl = document.getElementById("audioSyncLastUpdated");
             if (lastUpdatedEl) {
-                lastUpdatedEl.innerHTML = `<span style="color: #facc15;"><i class="fas fa-exclamation-triangle"></i> Modo Offline (Cache: ${audioSyncCachedData.last_updated || 'anterior'})</span>`;
+                lastUpdatedEl.innerHTML = `<span style="color: #facc15;"><i class="fas fa-exclamation-triangle"></i> Modo Offline (${audioSyncCachedData.last_updated || 'Cache'})</span>`;
             }
         } else if (listContainer) {
-            // Se realmente não há cache nenhum, exibe painel com diagnóstico amigável
             listContainer.innerHTML = `
                 <div class="panel-card" style="padding: 28px 20px; text-align: center; border-color: rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.05); border-radius: 8px;">
                     <div style="font-size: 22px; color: #f87171; margin-bottom: 8px;">
@@ -165,7 +211,7 @@ async function loadAudioSyncSummary(forceRefresh = false) {
                         Não foi possível consultar os dados do repositório NAS VideoRecord.
                     </div>
                     <div style="font-family: monospace; font-size: 11px; color: #fca5a5; background: rgba(0,0,0,0.4); display: inline-block; padding: 6px 12px; border-radius: 4px; margin-bottom: 16px; max-width: 90%;">
-                        ${escapeHtml(errorMessage)}
+                        ${escapeHtml(err.message || "Erro de conexão com o servidor")}
                     </div>
                     <div>
                         <button class="btn-primary" onclick="loadAudioSyncSummary(true)" style="padding: 7px 18px; font-size: 12px; background: #0284c7;">
