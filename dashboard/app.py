@@ -373,6 +373,67 @@ async def get_services(country: Optional[str] = None, city: Optional[str] = None
     return services
 
 
+@app.get("/api/fleet/catalog")
+async def get_fleet_catalog(user: dict = Depends(get_current_user)):
+    """Retorna catalogo consolidado e ultra-rapido de todas as pracas, hosts e canais da frota."""
+    data = get_cached_data()
+    services = data.get("services", [])
+    channels = data.get("channels", [])
+
+    pracas_set = set()
+    hosts_map = {}
+    channels_by_praca = {}
+    outages_by_praca = set()
+
+    for s in services:
+        p = (s.get("praca") or "").strip()
+        if p and p.lower() not in ["n/a", "não informado", "nao informado", "indefinida", "geral"]:
+            pracas_set.add(p)
+        h = s.get("hostname") or s.get("host")
+        if h and h not in hosts_map:
+            hosts_map[h] = {
+                "hostname": h,
+                "praca": p or "N/A",
+                "cs": int(float(s.get("cs", 1) or 1)),
+                "ip": s.get("ip") or s.get("ip_local") or "",
+                "status": s.get("status_servico", "Desconhecido")
+            }
+
+    for c in channels:
+        p = (c.get("cidade") or c.get("praca") or "").strip()
+        if p and p.lower() not in ["n/a", "não informado", "nao informado"]:
+            pracas_set.add(p)
+        if c.get("has_outage"):
+            outages_by_praca.add(p)
+        ch_name = (c.get("canal") or "").strip()
+        if p and ch_name:
+            if p not in channels_by_praca:
+                channels_by_praca[p] = []
+            if ch_name not in [x["canal"] for x in channels_by_praca[p]]:
+                channels_by_praca[p].append({
+                    "canal": ch_name,
+                    "meio": c.get("meio", "Digital Terrestre"),
+                    "cs": int(float(c.get("id_cs") or c.get("cs") or 1)),
+                    "has_outage": bool(c.get("has_outage")),
+                    "qualidade": c.get("qualidade_sinal", 0),
+                    "forca": c.get("forca_sinal", 0),
+                    "tuner_id": c.get("tuner_id", -1)
+                })
+
+    sorted_pracas = sorted(list(pracas_set), key=lambda x: x.lower())
+    sorted_hosts = sorted(hosts_map.values(), key=lambda x: (x["praca"].lower(), x["hostname"].lower()))
+
+    return {
+        "pracas": sorted_pracas,
+        "hosts": sorted_hosts,
+        "channels_by_praca": channels_by_praca,
+        "outages_by_praca": list(outages_by_praca),
+        "total_pracas": len(sorted_pracas),
+        "total_hosts": len(sorted_hosts)
+    }
+
+
+
 @app.get("/api/fleet/channels")
 async def get_channels(city: Optional[str] = None, outage_only: bool = False, user: dict = Depends(get_current_user)):
     data = get_cached_data()

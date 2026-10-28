@@ -346,13 +346,17 @@ function populateRelacaoFilters(tipos, pracas) {
         });
     }
 
-    if (selPraca && selPraca.options.length <= 1) {
-        selPraca.innerHTML = `<option value="all">Todas as Praças</option>`;
-        const sortedPracas = [...pracas].sort((a,b) => a.praca.localeCompare(b.praca));
+    if (selPraca) {
+        const curVal = selPraca.value;
+        const allPracas = (window.FleetCatalog && window.FleetCatalog.pracas && window.FleetCatalog.pracas.length > 0)
+            ? window.FleetCatalog.pracas
+            : (pracas || []).map(p => p.praca || p);
+        selPraca.innerHTML = `<option value="all">Todas as Praças (${allPracas.length})</option>`;
+        const sortedPracas = [...allPracas].sort((a,b) => (a.praca || a).localeCompare(b.praca || b));
         sortedPracas.forEach(p => {
             const opt = document.createElement("option");
-            opt.value = p.praca;
-            opt.textContent = `📍 ${p.praca}`;
+            opt.value = p.praca || p;
+            opt.textContent = `📍 ${p.praca || p}`;
             selPraca.appendChild(opt);
         });
     }

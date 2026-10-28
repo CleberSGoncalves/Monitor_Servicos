@@ -176,7 +176,13 @@ async function loadRemoteCommandHosts() {
     const hostSelect = document.getElementById("remote-host-select");
     if (!hostSelect) return;
 
-    hostSelect.innerHTML = '<option value="">Carregando praças...</option>';
+    const catHosts = (window.FleetCatalog && window.FleetCatalog.hosts && window.FleetCatalog.hosts.length > 0) ? window.FleetCatalog.hosts : [];
+    if (catHosts.length > 0) {
+        hostSelect.innerHTML = `<option value="">Selecione um Host (${catHosts.length} servidores)...</option>` +
+            catHosts.map(h => `<option value="${h.hostname}">${h.praca} (CS ${h.cs}) - ${h.hostname}</option>`).join("");
+    } else {
+        hostSelect.innerHTML = '<option value="">Carregando praças...</option>';
+    }
 
     try {
         const token = getSafeToken();

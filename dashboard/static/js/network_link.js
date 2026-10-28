@@ -69,9 +69,13 @@ function updateNetworkLinkKpis(metrics) {
 
 function populateNetworkPracasDropdown(metrics) {
     const sel = document.getElementById("netFilterCity");
-    if (!sel || sel.children.length > 1) return;
+    if (!sel) return;
+    const curVal = sel.value;
 
-    const uniqueCities = Array.from(new Set(metrics.map(m => m.praca))).sort();
+    const uniqueCities = (window.FleetCatalog && window.FleetCatalog.pracas && window.FleetCatalog.pracas.length > 0)
+        ? window.FleetCatalog.pracas
+        : Array.from(new Set(metrics.map(m => m.praca))).sort();
+    sel.innerHTML = `<option value="all">Todas as Praças (${uniqueCities.length})</option>`;
     uniqueCities.forEach(city => {
         const opt = document.createElement("option");
         opt.value = city;

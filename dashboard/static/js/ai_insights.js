@@ -738,7 +738,9 @@ async function populateMp4Filters() {
             pracasMap[p].push(c);
         });
 
-        const sortedPracas = Object.keys(pracasMap).sort();
+        const sortedPracas = (window.FleetCatalog && window.FleetCatalog.pracas && window.FleetCatalog.pracas.length > 0)
+            ? window.FleetCatalog.pracas
+            : Object.keys(pracasMap).sort();
         pracaSelect.innerHTML = sortedPracas.map(p => `<option value="${p}">${p}</option>`).join("");
 
         if (sortedPracas.length > 0) {

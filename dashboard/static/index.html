@@ -1938,9 +1938,74 @@
             <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
               <div>
                 <span style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; margin-right: 4px;">Praça:</span>
-                <select id="svcFilterCity" class="form-input" style="padding: 4px 8px; font-size: 11px; width: 140px;" onchange="filterServicesTable()">
-                  <option value="all">Todas as Praças</option>
-                </select>
+                <select id="svcFilterCity" class="filter-select" onchange="filterServicesTable()">
+          <option value="all">Todas as Praças (65)</option>
+          <option value="Aracaju">Aracaju</option>
+          <option value="Araçatuba">Araçatuba</option>
+          <option value="Campinas">Campinas</option>
+          <option value="Caxias do Sul">Caxias do Sul</option>
+          <option value="Florianópolis">Florianópolis</option>
+          <option value="Homolog_SP">Homolog_SP</option>
+          <option value="Itumbiara">Itumbiara</option>
+          <option value="Juazeiro">Juazeiro</option>
+          <option value="Juazeiro do Norte">Juazeiro do Norte</option>
+          <option value="Juiz de Fora">Juiz de Fora</option>
+          <option value="Linhares">Linhares</option>
+          <option value="Londrina">Londrina</option>
+          <option value="Luziânia">Luziânia</option>
+          <option value="Macapá">Macapá</option>
+          <option value="Maceió">Maceió</option>
+          <option value="Manaus">Manaus</option>
+          <option value="Marabá">Marabá</option>
+          <option value="Maringá">Maringá</option>
+          <option value="Mogi das Cruzes">Mogi das Cruzes</option>
+          <option value="Montes Claros">Montes Claros</option>
+          <option value="Mossoró">Mossoró</option>
+          <option value="Nacional">Nacional</option>
+          <option value="Natal">Natal</option>
+          <option value="Nova Friburgo">Nova Friburgo</option>
+          <option value="Palmas">Palmas</option>
+          <option value="Paragominas">Paragominas</option>
+          <option value="Paranavaí">Paranavaí</option>
+          <option value="Parauapebas">Parauapebas</option>
+          <option value="Parintins">Parintins</option>
+          <option value="Passo Fundo">Passo Fundo</option>
+          <option value="Pelotas">Pelotas</option>
+          <option value="Ponta Grossa">Ponta Grossa</option>
+          <option value="Ponta Porã">Ponta Porã</option>
+          <option value="Porangatú">Porangatú</option>
+          <option value="Porto Alegre">Porto Alegre</option>
+          <option value="Porto Velho">Porto Velho</option>
+          <option value="Recife">Recife</option>
+          <option value="Redenção">Redenção</option>
+          <option value="Resende">Resende</option>
+          <option value="Ribeirão Preto">Ribeirão Preto</option>
+          <option value="Rio Branco">Rio Branco</option>
+          <option value="Rio de Janeiro">Rio de Janeiro</option>
+          <option value="Rio Grande">Rio Grande</option>
+          <option value="Rio Verde">Rio Verde</option>
+          <option value="Rondonópolis">Rondonópolis</option>
+          <option value="S.J dos Campos">S.J dos Campos</option>
+          <option value="S.J. Rio Preto">S.J. Rio Preto</option>
+          <option value="Salvador">Salvador</option>
+          <option value="Santa Cruz do Sul">Santa Cruz do Sul</option>
+          <option value="Santa Maria">Santa Maria</option>
+          <option value="Santa Rosa">Santa Rosa</option>
+          <option value="Santarém">Santarém</option>
+          <option value="Santos">Santos</option>
+          <option value="Sinop">Sinop</option>
+          <option value="Sorocaba">Sorocaba</option>
+          <option value="São Carlos">São Carlos</option>
+          <option value="São Paulo">São Paulo</option>
+          <option value="Tangará da Serra">Tangará da Serra</option>
+          <option value="Taubaté">Taubaté</option>
+          <option value="Teresina">Teresina</option>
+          <option value="Uberaba">Uberaba</option>
+          <option value="Uberlândia">Uberlândia</option>
+          <option value="Varginha">Varginha</option>
+          <option value="Vitória">Vitória</option>
+          <option value="Vitória da Conquista">Vitória da Conquista</option>
+        </select>
               </div>
               <div>
                 <span style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; margin-right: 4px;">Serviço:</span>
@@ -2666,15 +2731,73 @@
 
 
 
-                <select id="signalsFilterPraca" class="form-input" style="min-width: 220px;" onchange="onSignalsPracaChanged()">
-
-
-
-                  <option value="">Carregando praças...</option>
-
-
-
-                </select>
+                <select id="signalsFilterPraca" class="filter-select" onchange="onSignalsPracaChanged()">
+          <option value="Aracaju" >🚨 Aracaju (Alerta Ativo)</option>
+          <option value="Araçatuba" >🚨 Araçatuba (Alerta Ativo)</option>
+          <option value="Campinas" >📡 Campinas</option>
+          <option value="Caxias do Sul" >📡 Caxias do Sul</option>
+          <option value="Florianópolis" >🚨 Florianópolis (Alerta Ativo)</option>
+          <option value="Homolog_SP" >📡 Homolog_SP</option>
+          <option value="Itumbiara" >📡 Itumbiara</option>
+          <option value="Juazeiro" >📡 Juazeiro</option>
+          <option value="Juazeiro do Norte" >📡 Juazeiro do Norte</option>
+          <option value="Juiz de Fora" >🚨 Juiz de Fora (Alerta Ativo)</option>
+          <option value="Linhares" >🚨 Linhares (Alerta Ativo)</option>
+          <option value="Londrina" >📡 Londrina</option>
+          <option value="Luziânia" >📡 Luziânia</option>
+          <option value="Macapá" >📡 Macapá</option>
+          <option value="Maceió" >📡 Maceió</option>
+          <option value="Manaus" >📡 Manaus</option>
+          <option value="Marabá" >📡 Marabá</option>
+          <option value="Maringá" >🚨 Maringá (Alerta Ativo)</option>
+          <option value="Mogi das Cruzes" >📡 Mogi das Cruzes</option>
+          <option value="Montes Claros" >📡 Montes Claros</option>
+          <option value="Mossoró" >📡 Mossoró</option>
+          <option value="Nacional" >🚨 Nacional (Alerta Ativo)</option>
+          <option value="Natal" >📡 Natal</option>
+          <option value="Nova Friburgo" >🚨 Nova Friburgo (Alerta Ativo)</option>
+          <option value="Palmas" >📡 Palmas</option>
+          <option value="Paragominas" >🚨 Paragominas (Alerta Ativo)</option>
+          <option value="Paranavaí" >📡 Paranavaí</option>
+          <option value="Parauapebas" >📡 Parauapebas</option>
+          <option value="Parintins" >📡 Parintins</option>
+          <option value="Passo Fundo" >🚨 Passo Fundo (Alerta Ativo)</option>
+          <option value="Pelotas" selected>🚨 Pelotas (Alerta Ativo)</option>
+          <option value="Ponta Grossa" >🚨 Ponta Grossa (Alerta Ativo)</option>
+          <option value="Ponta Porã" >📡 Ponta Porã</option>
+          <option value="Porangatú" >📡 Porangatú</option>
+          <option value="Porto Alegre" >📡 Porto Alegre</option>
+          <option value="Porto Velho" >📡 Porto Velho</option>
+          <option value="Recife" >📡 Recife</option>
+          <option value="Redenção" >📡 Redenção</option>
+          <option value="Resende" >📡 Resende</option>
+          <option value="Ribeirão Preto" >📡 Ribeirão Preto</option>
+          <option value="Rio Branco" >📡 Rio Branco</option>
+          <option value="Rio de Janeiro" >🚨 Rio de Janeiro (Alerta Ativo)</option>
+          <option value="Rio Grande" >📡 Rio Grande</option>
+          <option value="Rio Verde" >🚨 Rio Verde (Alerta Ativo)</option>
+          <option value="Rondonópolis" >📡 Rondonópolis</option>
+          <option value="S.J dos Campos" >🚨 S.J dos Campos (Alerta Ativo)</option>
+          <option value="S.J. Rio Preto" >📡 S.J. Rio Preto</option>
+          <option value="Salvador" >🚨 Salvador (Alerta Ativo)</option>
+          <option value="Santa Cruz do Sul" >📡 Santa Cruz do Sul</option>
+          <option value="Santa Maria" >📡 Santa Maria</option>
+          <option value="Santa Rosa" >📡 Santa Rosa</option>
+          <option value="Santarém" >📡 Santarém</option>
+          <option value="Santos" >📡 Santos</option>
+          <option value="Sinop" >📡 Sinop</option>
+          <option value="Sorocaba" >📡 Sorocaba</option>
+          <option value="São Carlos" >🚨 São Carlos (Alerta Ativo)</option>
+          <option value="São Paulo" >📡 São Paulo</option>
+          <option value="Tangará da Serra" >📡 Tangará da Serra</option>
+          <option value="Taubaté" >📡 Taubaté</option>
+          <option value="Teresina" >📡 Teresina</option>
+          <option value="Uberaba" >📡 Uberaba</option>
+          <option value="Uberlândia" >📡 Uberlândia</option>
+          <option value="Varginha" >📡 Varginha</option>
+          <option value="Vitória" >📡 Vitória</option>
+          <option value="Vitória da Conquista" >🚨 Vitória da Conquista (Alerta Ativo)</option>
+        </select>
 
 
 
@@ -3430,9 +3553,74 @@
                 <option value="all">Todos os Tipos de Falha (#01 a #10)</option>
               </select>
 
-              <select id="clfRelFilterPraca" class="form-input" style="font-size: 11px; padding: 5px 8px; min-width: 140px;" onchange="filterClassificadorRelacao()">
-                <option value="all">Todas as Praças</option>
-              </select>
+              <select id="clfRelFilterPraca" class="filter-select" onchange="filterClassificadorRelacao()">
+          <option value="all">Todas as Praças (65)</option>
+          <option value="Aracaju">Aracaju</option>
+          <option value="Araçatuba">Araçatuba</option>
+          <option value="Campinas">Campinas</option>
+          <option value="Caxias do Sul">Caxias do Sul</option>
+          <option value="Florianópolis">Florianópolis</option>
+          <option value="Homolog_SP">Homolog_SP</option>
+          <option value="Itumbiara">Itumbiara</option>
+          <option value="Juazeiro">Juazeiro</option>
+          <option value="Juazeiro do Norte">Juazeiro do Norte</option>
+          <option value="Juiz de Fora">Juiz de Fora</option>
+          <option value="Linhares">Linhares</option>
+          <option value="Londrina">Londrina</option>
+          <option value="Luziânia">Luziânia</option>
+          <option value="Macapá">Macapá</option>
+          <option value="Maceió">Maceió</option>
+          <option value="Manaus">Manaus</option>
+          <option value="Marabá">Marabá</option>
+          <option value="Maringá">Maringá</option>
+          <option value="Mogi das Cruzes">Mogi das Cruzes</option>
+          <option value="Montes Claros">Montes Claros</option>
+          <option value="Mossoró">Mossoró</option>
+          <option value="Nacional">Nacional</option>
+          <option value="Natal">Natal</option>
+          <option value="Nova Friburgo">Nova Friburgo</option>
+          <option value="Palmas">Palmas</option>
+          <option value="Paragominas">Paragominas</option>
+          <option value="Paranavaí">Paranavaí</option>
+          <option value="Parauapebas">Parauapebas</option>
+          <option value="Parintins">Parintins</option>
+          <option value="Passo Fundo">Passo Fundo</option>
+          <option value="Pelotas">Pelotas</option>
+          <option value="Ponta Grossa">Ponta Grossa</option>
+          <option value="Ponta Porã">Ponta Porã</option>
+          <option value="Porangatú">Porangatú</option>
+          <option value="Porto Alegre">Porto Alegre</option>
+          <option value="Porto Velho">Porto Velho</option>
+          <option value="Recife">Recife</option>
+          <option value="Redenção">Redenção</option>
+          <option value="Resende">Resende</option>
+          <option value="Ribeirão Preto">Ribeirão Preto</option>
+          <option value="Rio Branco">Rio Branco</option>
+          <option value="Rio de Janeiro">Rio de Janeiro</option>
+          <option value="Rio Grande">Rio Grande</option>
+          <option value="Rio Verde">Rio Verde</option>
+          <option value="Rondonópolis">Rondonópolis</option>
+          <option value="S.J dos Campos">S.J dos Campos</option>
+          <option value="S.J. Rio Preto">S.J. Rio Preto</option>
+          <option value="Salvador">Salvador</option>
+          <option value="Santa Cruz do Sul">Santa Cruz do Sul</option>
+          <option value="Santa Maria">Santa Maria</option>
+          <option value="Santa Rosa">Santa Rosa</option>
+          <option value="Santarém">Santarém</option>
+          <option value="Santos">Santos</option>
+          <option value="Sinop">Sinop</option>
+          <option value="Sorocaba">Sorocaba</option>
+          <option value="São Carlos">São Carlos</option>
+          <option value="São Paulo">São Paulo</option>
+          <option value="Tangará da Serra">Tangará da Serra</option>
+          <option value="Taubaté">Taubaté</option>
+          <option value="Teresina">Teresina</option>
+          <option value="Uberaba">Uberaba</option>
+          <option value="Uberlândia">Uberlândia</option>
+          <option value="Varginha">Varginha</option>
+          <option value="Vitória">Vitória</option>
+          <option value="Vitória da Conquista">Vitória da Conquista</option>
+        </select>
 
               <select id="clfRelFilterMeio" class="form-input" style="font-size: 11px; padding: 5px 8px;" onchange="filterClassificadorRelacao()">
                 <option value="all">Todos os Meios</option>
@@ -4314,9 +4502,74 @@
           </div>
           <div>
             <label style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;">Cidade / Praça</label>
-            <select id="incFilterCity" class="form-input" style="width: 100%;" onchange="loadIncidentsHistoryData()">
-              <option value="all">Todas as Praças</option>
-            </select>
+            <select id="incFilterCity" class="filter-select" onchange="filterIncidentsTable()">
+          <option value="all">Todas as Praças (65)</option>
+          <option value="Aracaju">Aracaju</option>
+          <option value="Araçatuba">Araçatuba</option>
+          <option value="Campinas">Campinas</option>
+          <option value="Caxias do Sul">Caxias do Sul</option>
+          <option value="Florianópolis">Florianópolis</option>
+          <option value="Homolog_SP">Homolog_SP</option>
+          <option value="Itumbiara">Itumbiara</option>
+          <option value="Juazeiro">Juazeiro</option>
+          <option value="Juazeiro do Norte">Juazeiro do Norte</option>
+          <option value="Juiz de Fora">Juiz de Fora</option>
+          <option value="Linhares">Linhares</option>
+          <option value="Londrina">Londrina</option>
+          <option value="Luziânia">Luziânia</option>
+          <option value="Macapá">Macapá</option>
+          <option value="Maceió">Maceió</option>
+          <option value="Manaus">Manaus</option>
+          <option value="Marabá">Marabá</option>
+          <option value="Maringá">Maringá</option>
+          <option value="Mogi das Cruzes">Mogi das Cruzes</option>
+          <option value="Montes Claros">Montes Claros</option>
+          <option value="Mossoró">Mossoró</option>
+          <option value="Nacional">Nacional</option>
+          <option value="Natal">Natal</option>
+          <option value="Nova Friburgo">Nova Friburgo</option>
+          <option value="Palmas">Palmas</option>
+          <option value="Paragominas">Paragominas</option>
+          <option value="Paranavaí">Paranavaí</option>
+          <option value="Parauapebas">Parauapebas</option>
+          <option value="Parintins">Parintins</option>
+          <option value="Passo Fundo">Passo Fundo</option>
+          <option value="Pelotas">Pelotas</option>
+          <option value="Ponta Grossa">Ponta Grossa</option>
+          <option value="Ponta Porã">Ponta Porã</option>
+          <option value="Porangatú">Porangatú</option>
+          <option value="Porto Alegre">Porto Alegre</option>
+          <option value="Porto Velho">Porto Velho</option>
+          <option value="Recife">Recife</option>
+          <option value="Redenção">Redenção</option>
+          <option value="Resende">Resende</option>
+          <option value="Ribeirão Preto">Ribeirão Preto</option>
+          <option value="Rio Branco">Rio Branco</option>
+          <option value="Rio de Janeiro">Rio de Janeiro</option>
+          <option value="Rio Grande">Rio Grande</option>
+          <option value="Rio Verde">Rio Verde</option>
+          <option value="Rondonópolis">Rondonópolis</option>
+          <option value="S.J dos Campos">S.J dos Campos</option>
+          <option value="S.J. Rio Preto">S.J. Rio Preto</option>
+          <option value="Salvador">Salvador</option>
+          <option value="Santa Cruz do Sul">Santa Cruz do Sul</option>
+          <option value="Santa Maria">Santa Maria</option>
+          <option value="Santa Rosa">Santa Rosa</option>
+          <option value="Santarém">Santarém</option>
+          <option value="Santos">Santos</option>
+          <option value="Sinop">Sinop</option>
+          <option value="Sorocaba">Sorocaba</option>
+          <option value="São Carlos">São Carlos</option>
+          <option value="São Paulo">São Paulo</option>
+          <option value="Tangará da Serra">Tangará da Serra</option>
+          <option value="Taubaté">Taubaté</option>
+          <option value="Teresina">Teresina</option>
+          <option value="Uberaba">Uberaba</option>
+          <option value="Uberlândia">Uberlândia</option>
+          <option value="Varginha">Varginha</option>
+          <option value="Vitória">Vitória</option>
+          <option value="Vitória da Conquista">Vitória da Conquista</option>
+        </select>
           </div>
           <div>
             <label style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;">Tipo de Incidente</label>
@@ -6173,9 +6426,74 @@
           <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
             <div>
               <span style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;">Praça / Cidade:</span>
-              <select id="netFilterCity" class="form-input" style="min-width: 190px;" onchange="applyNetworkFilters()">
-                <option value="all">Todas as Praças</option>
-              </select>
+              <select id="netFilterCity" class="filter-select" onchange="applyNetworkFilters()">
+          <option value="all">Todas as Praças (65)</option>
+          <option value="Aracaju">Aracaju</option>
+          <option value="Araçatuba">Araçatuba</option>
+          <option value="Campinas">Campinas</option>
+          <option value="Caxias do Sul">Caxias do Sul</option>
+          <option value="Florianópolis">Florianópolis</option>
+          <option value="Homolog_SP">Homolog_SP</option>
+          <option value="Itumbiara">Itumbiara</option>
+          <option value="Juazeiro">Juazeiro</option>
+          <option value="Juazeiro do Norte">Juazeiro do Norte</option>
+          <option value="Juiz de Fora">Juiz de Fora</option>
+          <option value="Linhares">Linhares</option>
+          <option value="Londrina">Londrina</option>
+          <option value="Luziânia">Luziânia</option>
+          <option value="Macapá">Macapá</option>
+          <option value="Maceió">Maceió</option>
+          <option value="Manaus">Manaus</option>
+          <option value="Marabá">Marabá</option>
+          <option value="Maringá">Maringá</option>
+          <option value="Mogi das Cruzes">Mogi das Cruzes</option>
+          <option value="Montes Claros">Montes Claros</option>
+          <option value="Mossoró">Mossoró</option>
+          <option value="Nacional">Nacional</option>
+          <option value="Natal">Natal</option>
+          <option value="Nova Friburgo">Nova Friburgo</option>
+          <option value="Palmas">Palmas</option>
+          <option value="Paragominas">Paragominas</option>
+          <option value="Paranavaí">Paranavaí</option>
+          <option value="Parauapebas">Parauapebas</option>
+          <option value="Parintins">Parintins</option>
+          <option value="Passo Fundo">Passo Fundo</option>
+          <option value="Pelotas">Pelotas</option>
+          <option value="Ponta Grossa">Ponta Grossa</option>
+          <option value="Ponta Porã">Ponta Porã</option>
+          <option value="Porangatú">Porangatú</option>
+          <option value="Porto Alegre">Porto Alegre</option>
+          <option value="Porto Velho">Porto Velho</option>
+          <option value="Recife">Recife</option>
+          <option value="Redenção">Redenção</option>
+          <option value="Resende">Resende</option>
+          <option value="Ribeirão Preto">Ribeirão Preto</option>
+          <option value="Rio Branco">Rio Branco</option>
+          <option value="Rio de Janeiro">Rio de Janeiro</option>
+          <option value="Rio Grande">Rio Grande</option>
+          <option value="Rio Verde">Rio Verde</option>
+          <option value="Rondonópolis">Rondonópolis</option>
+          <option value="S.J dos Campos">S.J dos Campos</option>
+          <option value="S.J. Rio Preto">S.J. Rio Preto</option>
+          <option value="Salvador">Salvador</option>
+          <option value="Santa Cruz do Sul">Santa Cruz do Sul</option>
+          <option value="Santa Maria">Santa Maria</option>
+          <option value="Santa Rosa">Santa Rosa</option>
+          <option value="Santarém">Santarém</option>
+          <option value="Santos">Santos</option>
+          <option value="Sinop">Sinop</option>
+          <option value="Sorocaba">Sorocaba</option>
+          <option value="São Carlos">São Carlos</option>
+          <option value="São Paulo">São Paulo</option>
+          <option value="Tangará da Serra">Tangará da Serra</option>
+          <option value="Taubaté">Taubaté</option>
+          <option value="Teresina">Teresina</option>
+          <option value="Uberaba">Uberaba</option>
+          <option value="Uberlândia">Uberlândia</option>
+          <option value="Varginha">Varginha</option>
+          <option value="Vitória">Vitória</option>
+          <option value="Vitória da Conquista">Vitória da Conquista</option>
+        </select>
             </div>
             <div>
               <span style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;">Condição de SLA / Link:</span>
@@ -6332,8 +6650,137 @@
           <div>
             <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 3px;">Praça / Host:</label>
             <select id="logFilterHost" class="filter-select" onchange="loadFleetLogs()">
-              <option value="">🏙️ Todas as Praças / Servidores (Carregando...)</option>
-            </select>
+          <option value="">🏙️ Todas as Praças / Servidores (129)</option>
+          <option value="BRSE-AJU-DT01">Aracaju (CS 1) - BRSE-AJU-DT01</option>
+          <option value="BRSE-AJU-DT02">Aracaju (CS 2) - BRSE-AJU-DT02</option>
+          <option value="BRSP-PPE-DT01">Araçatuba (CS 1) - BRSP-PPE-DT01</option>
+          <option value="BRSP-PPE-DT02">Araçatuba (CS 2) - BRSP-PPE-DT02</option>
+          <option value="BRSP-SRR-DT01">Araçatuba (CS 1) - BRSP-SRR-DT01</option>
+          <option value="BRSP-CAS-ATRIA-">Campinas (CS 1) - BRSP-CAS-ATRIA-</option>
+          <option value="BRRS-CSL-DT01">Caxias do Sul (CS 1) - BRRS-CSL-DT01</option>
+          <option value="BRRS-CSL-DT02">Caxias do Sul (CS 2) - BRRS-CSL-DT02</option>
+          <option value="CS-BRSC-FNS-DT0">Florianópolis (CS 1) - CS-BRSC-FNS-DT0</option>
+          <option value="BRXX-XXX-DT0X">Homolog_SP (CS 1) - BRXX-XXX-DT0X</option>
+          <option value="BRGO-IUB-DT01">Itumbiara (CS 1) - BRGO-IUB-DT01</option>
+          <option value="BRBA-JUO-DT01">Juazeiro (CS 1) - BRBA-JUO-DT01</option>
+          <option value="BRBA-JUO-DT02">Juazeiro (CS 2) - BRBA-JUO-DT02</option>
+          <option value="BRCE-JNE-DT01">Juazeiro do Norte (CS 1) - BRCE-JNE-DT01</option>
+          <option value="BRCE-JNE-DT02">Juazeiro do Norte (CS 2) - BRCE-JNE-DT02</option>
+          <option value="BRMG-JFA-DT1">Juiz de Fora (CS 1) - BRMG-JFA-DT1</option>
+          <option value="BRMG-JFA-DT2">Juiz de Fora (CS 2) - BRMG-JFA-DT2</option>
+          <option value="BRES-LNS-DT01">Linhares (CS 1) - BRES-LNS-DT01</option>
+          <option value="BRES-LNS-DT02">Linhares (CS 2) - BRES-LNS-DT02</option>
+          <option value="BRPR-LDA-DT-01">Londrina (CS 1) - BRPR-LDA-DT-01</option>
+          <option value="BRPR-LDA-DT-02">Londrina (CS 2) - BRPR-LDA-DT-02</option>
+          <option value="BRGO-LZA-DT-02">Luziânia (CS 2) - BRGO-LZA-DT-02</option>
+          <option value="CS-BRGO-LZA-DT-">Luziânia (CS 1) - CS-BRGO-LZA-DT-</option>
+          <option value="BRAP-MPA-DT01">Macapá (CS 1) - BRAP-MPA-DT01</option>
+          <option value="BRAP-MPA-DT02">Macapá (CS 2) - BRAP-MPA-DT02</option>
+          <option value="BRAL-MCO-DT01">Maceió (CS 1) - BRAL-MCO-DT01</option>
+          <option value="BRAL-MCO-DT02">Maceió (CS 2) - BRAL-MCO-DT02</option>
+          <option value="CS-BRAM-MNS-DT-">Manaus (CS 1) - CS-BRAM-MNS-DT-</option>
+          <option value="BRPA-MBA-DT01">Marabá (CS 1) - BRPA-MBA-DT01</option>
+          <option value="BRPA-MBA-DT02">Marabá (CS 2) - BRPA-MBA-DT02</option>
+          <option value="BRPR-MGA-DT01">Maringá (CS 1) - BRPR-MGA-DT01</option>
+          <option value="BRSC-MGA-DT02">Maringá (CS 2) - BRSC-MGA-DT02</option>
+          <option value="BRSP-MCZ-DT01">Mogi das Cruzes (CS 1) - BRSP-MCZ-DT01</option>
+          <option value="BRSP-MZC-DT02">Mogi das Cruzes (CS 2) - BRSP-MZC-DT02</option>
+          <option value="CS-BRMG-MCL-DT-">Montes Claros (CS 2) - CS-BRMG-MCL-DT-</option>
+          <option value="BRRN-MOS-DT1">Mossoró (CS 1) - BRRN-MOS-DT1</option>
+          <option value="BRRN-MOS-DT2">Mossoró (CS 2) - BRRN-MOS-DT2</option>
+          <option value="CS-BRSP-REPUCOM">Nacional (CS 1) - CS-BRSP-REPUCOM</option>
+          <option value="PAYTV-PREM-NET-">Nacional (CS 3) - PAYTV-PREM-NET-</option>
+          <option value="PAYTV-SKY-BL01-">Nacional (CS 3) - PAYTV-SKY-BL01-</option>
+          <option value="PAYTV-SKY-BL02-">Nacional (CS 3) - PAYTV-SKY-BL02-</option>
+          <option value="PAYTV-SKY-BL03-">Nacional (CS 3) - PAYTV-SKY-BL03-</option>
+          <option value="PAYTV-SKY-BL04-">Nacional (CS 3) - PAYTV-SKY-BL04-</option>
+          <option value="PAYTV-SKY-BL05-">Nacional (CS 3) - PAYTV-SKY-BL05-</option>
+          <option value="PAYTV-SKY-BL06-">Nacional (CS 3) - PAYTV-SKY-BL06-</option>
+          <option value="PAYTV-SKY-BL07-">Nacional (CS 3) - PAYTV-SKY-BL07-</option>
+          <option value="PAYTV-SKY-BL08-">Nacional (CS 3) - PAYTV-SKY-BL08-</option>
+          <option value="PAYTV-SKY-BL09-">Nacional (CS 3) - PAYTV-SKY-BL09-</option>
+          <option value="PAYTV-SKY-BL10-">Nacional (CS 3) - PAYTV-SKY-BL10-</option>
+          <option value="BRRN-NTL-DT-01">Natal (CS 1) - BRRN-NTL-DT-01</option>
+          <option value="BRRN-NTL-DT-02">Natal (CS 2) - BRRN-NTL-DT-02</option>
+          <option value="BRRJ-NOF-DT01">Nova Friburgo (CS 1) - BRRJ-NOF-DT01</option>
+          <option value="BRRJ-NOF-DT02">Nova Friburgo (CS 2) - BRRJ-NOF-DT02</option>
+          <option value="COMPUTER-01PR70">Não Informado (CS 1) - COMPUTER-01PR70</option>
+          <option value="BRTO-PMJ-DT-01">Palmas (CS 1) - BRTO-PMJ-DT-01</option>
+          <option value="BRTO-PMJ-DT02">Palmas (CS 2) - BRTO-PMJ-DT02</option>
+          <option value="BRPA-PGN-DT-02">Paragominas (CS 2) - BRPA-PGN-DT-02</option>
+          <option value="BRPA-PGN-DT01">Paragominas (CS 1) - BRPA-PGN-DT01</option>
+          <option value="BRPR-PVA-DT01">Paranavaí (CS 1) - BRPR-PVA-DT01</option>
+          <option value="BRPR-PVA-DT02">Paranavaí (CS 2) - BRPR-PVA-DT02</option>
+          <option value="BRPA-PUP-DT01">Parauapebas (CS 1) - BRPA-PUP-DT01</option>
+          <option value="BRPA-PUP-DT02">Parauapebas (CS 2) - BRPA-PUP-DT02</option>
+          <option value="CS-BRAM-PAR-DT-">Parintins (CS 2) - CS-BRAM-PAR-DT-</option>
+          <option value="BRRS-PAS-DT01">Passo Fundo (CS 1) - BRRS-PAS-DT01</option>
+          <option value="BRRS-PAS-DT02">Passo Fundo (CS 2) - BRRS-PAS-DT02</option>
+          <option value="BRRS-PLT-DT01">Pelotas (CS 1) - BRRS-PLT-DT01</option>
+          <option value="BRRS-PLT-DT02">Pelotas (CS 2) - BRRS-PLT-DT02</option>
+          <option value="BRPR-PGO-DT01">Ponta Grossa (CS 1) - BRPR-PGO-DT01</option>
+          <option value="BRPR-PGO-DT02">Ponta Grossa (CS 2) - BRPR-PGO-DT02</option>
+          <option value="BRMS-PPR-DT01">Ponta Porã (CS 1) - BRMS-PPR-DT01</option>
+          <option value="BRMS-PPR-DT02">Ponta Porã (CS 2) - BRMS-PPR-DT02</option>
+          <option value="BRGO-PGT-DT01">Porangatú (CS 1) - BRGO-PGT-DT01</option>
+          <option value="BRGO-PGT-DT02">Porangatú (CS 2) - BRGO-PGT-DT02</option>
+          <option value="BRRS-PAE-ATRIA-">Porto Alegre (CS 1) - BRRS-PAE-ATRIA-</option>
+          <option value="BRRO-PVO-DT01">Porto Velho (CS 1) - BRRO-PVO-DT01</option>
+          <option value="BRRO-PVO-DT02">Porto Velho (CS 2) - BRRO-PVO-DT02</option>
+          <option value="BRPE-RCE-DT01">Recife (CS 1) - BRPE-RCE-DT01</option>
+          <option value="BRPE-RCE-DT02">Recife (CS 2) - BRPE-RCE-DT02</option>
+          <option value="BRPA-RDO-DT01">Redenção (CS 1) - BRPA-RDO-DT01</option>
+          <option value="BRPA-RDO-DT02">Redenção (CS 2) - BRPA-RDO-DT02</option>
+          <option value="BRRJ-RES-DT01">Resende (CS 1) - BRRJ-RES-DT01</option>
+          <option value="BRRJ-RSD-DT02">Resende (CS 2) - BRRJ-RSD-DT02</option>
+          <option value="BRSP-RPO-DT01">Ribeirão Preto (CS 1) - BRSP-RPO-DT01</option>
+          <option value="BRSP-RPO-DT02">Ribeirão Preto (CS 2) - BRSP-RPO-DT02</option>
+          <option value="BRAC-RBO-DT01">Rio Branco (CS 1) - BRAC-RBO-DT01</option>
+          <option value="BRAC-RBO-DT02">Rio Branco (CS 2) - BRAC-RBO-DT02</option>
+          <option value="BRRJ-RJO-ATRIA-">Rio de Janeiro (CS 2) - BRRJ-RJO-ATRIA-</option>
+          <option value="BRRS-RGR-DT01">Rio Grande (CS 1) - BRRS-RGR-DT01</option>
+          <option value="BRRS-RGR-DT02">Rio Grande (CS 2) - BRRS-RGR-DT02</option>
+          <option value="BRGO-RVD-ATRIA-">Rio Verde (CS 2) - BRGO-RVD-ATRIA-</option>
+          <option value="BRMT-ROI-DT01">Rondonópolis (CS 1) - BRMT-ROI-DT01</option>
+          <option value="BRMT-ROI-DT02">Rondonópolis (CS 2) - BRMT-ROI-DT02</option>
+          <option value="BRSP-SJC-DT01">S.J dos Campos (CS 1) - BRSP-SJC-DT01</option>
+          <option value="BRSP-SJC-DT02">S.J dos Campos (CS 2) - BRSP-SJC-DT02</option>
+          <option value="BRSP-SRR-DT02">S.J. Rio Preto (CS 2) - BRSP-SRR-DT02</option>
+          <option value="BRBA-SDR-DT1">Salvador (CS 1) - BRBA-SDR-DT1</option>
+          <option value="BRBA-SDR-DT2">Salvador (CS 2) - BRBA-SDR-DT2</option>
+          <option value="BRRS-SCR-DT02">Santa Cruz do Sul (CS 2) - BRRS-SCR-DT02</option>
+          <option value="BRRS-SMA-DT01">Santa Maria (CS 1) - BRRS-SMA-DT01</option>
+          <option value="BRRS-SMA-DT02">Santa Maria (CS 2) - BRRS-SMA-DT02</option>
+          <option value="BRRS-SRO-DT01">Santa Rosa (CS 1) - BRRS-SRO-DT01</option>
+          <option value="BRRS-SRO-DT02">Santa Rosa (CS 2) - BRRS-SRO-DT02</option>
+          <option value="BRPA-SRM-DT01">Santarém (CS 1) - BRPA-SRM-DT01</option>
+          <option value="BRPA-SRM-DT02">Santarém (CS 2) - BRPA-SRM-DT02</option>
+          <option value="BRSP-STS-ATRIA-">Santos (CS 2) - BRSP-STS-ATRIA-</option>
+          <option value="BRMT-SNO-DT01">Sinop (CS 1) - BRMT-SNO-DT01</option>
+          <option value="BRMT-SNO-DT02">Sinop (CS 2) - BRMT-SNO-DT02</option>
+          <option value="BRSP-SOR-DT-01">Sorocaba (CS 1) - BRSP-SOR-DT-01</option>
+          <option value="CS-BRSP-SOR-DT0">Sorocaba (CS 2) - CS-BRSP-SOR-DT0</option>
+          <option value="BRSP-SCL-DT1">São Carlos (CS 1) - BRSP-SCL-DT1</option>
+          <option value="BRSP-SCL-DT2">São Carlos (CS 2) - BRSP-SCL-DT2</option>
+          <option value="BRSP-HQ1-DT02">São Paulo (CS 2) - BRSP-HQ1-DT02</option>
+          <option value="BRSP-SPO-DT1-CS">São Paulo (CS 3) - BRSP-SPO-DT1-CS</option>
+          <option value="BRSP-SPO-DT2-CS">São Paulo (CS 3) - BRSP-SPO-DT2-CS</option>
+          <option value="BRSP-SPO-RADIO-">São Paulo (CS 1) - BRSP-SPO-RADIO-</option>
+          <option value="BRMT-TGS-DT-02">Tangará da Serra (CS 2) - BRMT-TGS-DT-02</option>
+          <option value="CS-BRMT-TGS-DT-">Tangará da Serra (CS 1) - CS-BRMT-TGS-DT-</option>
+          <option value="CS-BRSP-TTE-DT0">Taubaté (CS 2) - CS-BRSP-TTE-DT0</option>
+          <option value="BRPI-TSA-DT01">Teresina (CS 1) - BRPI-TSA-DT01</option>
+          <option value="BRPI-TSA-DT02">Teresina (CS 2) - BRPI-TSA-DT02</option>
+          <option value="BRMG-UBA-DT01">Uberaba (CS 2) - BRMG-UBA-DT01</option>
+          <option value="BRMG-ULA-DT01">Uberlândia (CS 1) - BRMG-ULA-DT01</option>
+          <option value="BRMG-ULA-DT02">Uberlândia (CS 2) - BRMG-ULA-DT02</option>
+          <option value="BRMG-VGA-DT01">Varginha (CS 1) - BRMG-VGA-DT01</option>
+          <option value="BRMG-VGA-DT02">Varginha (CS 2) - BRMG-VGA-DT02</option>
+          <option value="BRES-VIT-DT02">Vitória (CS 2) - BRES-VIT-DT02</option>
+          <option value="CS-BRES-VIT-01">Vitória (CS 1) - CS-BRES-VIT-01</option>
+          <option value="BRBA-VCA-DT01">Vitória da Conquista (CS 1) - BRBA-VCA-DT01</option>
+          <option value="BRBA-VCA-DT02">Vitória da Conquista (CS 2) - BRBA-VCA-DT02</option>
+        </select>
           </div>
 
           <div>

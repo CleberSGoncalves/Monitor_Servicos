@@ -114,51 +114,103 @@ async function initSignalsAnalysisTab() {
 window.initSignalsAnalysisTab = initSignalsAnalysisTab;
 
 const SIGNALS_FALLBACK_PRACAS = [
-    "Pelotas", "Caxias do Sul", "Rio de Janeiro", "Juiz de Fora",
-    "São Paulo", "Campinas", "Santos", "S.J dos Campos",
-    "Ribeirão Preto", "Uberlândia", "Vitória"
+    "Aracaju",
+    "Araçatuba",
+    "Campinas",
+    "Caxias do Sul",
+    "Florianópolis",
+    "Homolog_SP",
+    "Itumbiara",
+    "Juazeiro",
+    "Juazeiro do Norte",
+    "Juiz de Fora",
+    "Linhares",
+    "Londrina",
+    "Luziânia",
+    "Macapá",
+    "Maceió",
+    "Manaus",
+    "Marabá",
+    "Maringá",
+    "Mogi das Cruzes",
+    "Montes Claros",
+    "Mossoró",
+    "Nacional",
+    "Natal",
+    "Nova Friburgo",
+    "Palmas",
+    "Paragominas",
+    "Paranavaí",
+    "Parauapebas",
+    "Parintins",
+    "Passo Fundo",
+    "Pelotas",
+    "Ponta Grossa",
+    "Ponta Porã",
+    "Porangatú",
+    "Porto Alegre",
+    "Porto Velho",
+    "Recife",
+    "Redenção",
+    "Resende",
+    "Ribeirão Preto",
+    "Rio Branco",
+    "Rio de Janeiro",
+    "Rio Grande",
+    "Rio Verde",
+    "Rondonópolis",
+    "S.J dos Campos",
+    "S.J. Rio Preto",
+    "Salvador",
+    "Santa Cruz do Sul",
+    "Santa Maria",
+    "Santa Rosa",
+    "Santarém",
+    "Santos",
+    "Sinop",
+    "Sorocaba",
+    "São Carlos",
+    "São Paulo",
+    "Tangará da Serra",
+    "Taubaté",
+    "Teresina",
+    "Uberaba",
+    "Uberlândia",
+    "Varginha",
+    "Vitória",
+    "Vitória da Conquista"
 ];
 
 async function populateSignalsPracaFilter() {
     const pracaSelect = document.getElementById("signalsFilterPraca");
     if (!pracaSelect) return;
 
-    let sortedPracas = [];
-    let pracasMap = {};
-
-    try {
-        const token = getSignalsAuthToken();
-        const resp = await fetch("/api/fleet/channels", {
-            headers: token ? { "Authorization": `Bearer ${token}` } : {}
-        });
-        if (resp.ok) {
-            const channels = await resp.json();
-            if (Array.isArray(channels) && channels.length > 0) {
-                channels.forEach(c => {
-                    const praca = c.cidade || "N/A";
-                    if (!pracasMap[praca]) pracasMap[praca] = [];
-                    pracasMap[praca].push(c);
-                });
-                sortedPracas = Object.keys(pracasMap).sort();
-            }
+    if (!window.FleetCatalog || !window.FleetCatalog.loaded) {
+        if (typeof syncFleetCatalog === "function") {
+            await syncFleetCatalog();
         }
-    } catch (err) {
-        console.warn("[SignalsAnalysis] Erro ao buscar praças via API, usando fallback:", err);
     }
 
-    if (sortedPracas.length === 0) {
-        sortedPracas = [...SIGNALS_FALLBACK_PRACAS];
-    }
+    const cat = window.FleetCatalog;
+    const pracas = (cat && cat.pracas && cat.pracas.length > 0) ? cat.pracas : SIGNALS_FALLBACK_PRACAS;
 
-    pracaSelect.innerHTML = sortedPracas.map(p => {
-        const hasOutage = pracasMap[p] ? pracasMap[p].some(c => c.has_outage) : (p.toLowerCase().includes("pelotas"));
-        const label = hasOutage ? `🚨 ${p} (Alerta Ativo)` : `📡 ${p}`;
-        return `<option value="${p}">${label}</option>`;
+    const cur = pracaSelect.value;
+    pracaSelect.innerHTML = pracas.map(p => {
+        const hasOutage = (cat && cat.outages_by_praca && cat.outages_by_praca.has) ? cat.outages_by_praca.has(p) : false;
+        const hasChannels = cat && cat.channels_by_praca && cat.channels_by_praca[p]?.length > 0;
+        const icon = hasOutage ? "🚨" : (hasChannels ? "📡" : "🖥️");
+        const suffix = hasOutage ? " (Alerta Ativo)" : "";
+        const isSel = cur ? (p.toLowerCase() === cur.toLowerCase()) : (p.toLowerCase().includes("pelotas"));
+        return `<option value="${p}" ${isSel ? 'selected' : ''}>${icon} ${p}${suffix}</option>`;
     }).join("");
 
-    let defaultPraca = sortedPracas.find(p => p.toLowerCase().includes("pelotas")) || sortedPracas[0];
-    pracaSelect.value = defaultPraca;
-    currentSignalsPraca = defaultPraca;
+    if (cur && pracas.includes(cur)) {
+        pracaSelect.value = cur;
+    } else {
+        const defaultPraca = pracas.find(p => p.toLowerCase().includes("pelotas")) || pracas[0];
+        pracaSelect.value = defaultPraca;
+    }
+    currentSignalsPraca = pracaSelect.value;
     await onSignalsPracaChanged();
 }
 

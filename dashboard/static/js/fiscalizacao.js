@@ -55,6 +55,9 @@ async function loadDigitalChannelsList() {
 
         // Extrai praças únicas
         allFiscPracas = Array.from(new Set(digitalChannelsCache.map(c => c.praca))).sort();
+        if (allFiscPracas.length === 0 && window.FleetCatalog && window.FleetCatalog.pracas) {
+            allFiscPracas = [...window.FleetCatalog.pracas];
+        }
 
         // Popula dropdown de Praças
         const pracaSelect = document.getElementById("fiscFilterPraca");
