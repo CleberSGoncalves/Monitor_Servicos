@@ -648,6 +648,18 @@ async def get_network_link_metrics_endpoint(user: dict = Depends(get_current_use
     return get_link_monitoring_metrics(services, channels)
 
 
+@app.get("/api/fleet/download-planilha-frota")
+async def download_planilha_frota_endpoint():
+    xlsx_file = ROOT_DIR / "Controle_Frota_Capture_Sites_400.xlsx"
+    if xlsx_file.exists():
+        return FileResponse(
+            str(xlsx_file),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            filename="Controle_Frota_Capture_Sites_400.xlsx"
+        )
+    return JSONResponse(status_code=404, content={"error": "Planilha não encontrada"})
+
+
 class LinkDiagnoseRequest(BaseModel):
     praca: str
     cs: int = 1
