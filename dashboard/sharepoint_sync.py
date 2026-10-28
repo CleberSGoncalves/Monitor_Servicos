@@ -37,7 +37,8 @@ def get_graph_token() -> str:
 
 
 def fetch_all_items(token: str, list_id: str) -> list:
-    """Busca todos os itens de uma lista SharePoint tratando paginação."""
+    """Busca todos os itens de uma lista SharePoint tratando paginacao com retry e backoff 429."""
+    import time
     headers = {
         "Authorization": f"Bearer {token}",
         "Accept": "application/json"
@@ -46,13 +47,27 @@ def fetch_all_items(token: str, list_id: str) -> list:
     items = []
     
     while url:
-        resp = requests.get(url, headers=headers, timeout=12)
-        if not resp.ok:
+        success = False
+        for attempt in range(4):
+            try:
+                resp = requests.get(url, headers=headers, timeout=20)
+                if resp.status_code == 429:
+                    retry_wait = int(resp.headers.get("Retry-After", 5))
+                    time.sleep(min(retry_wait, 15))
+                    continue
+                if resp.ok:
+                    data = resp.json()
+                    val = data.get("value", [])
+                    items.extend(val)
+                    url = data.get("@odata.nextLink")
+                    success = True
+                    break
+                else:
+                    time.sleep(1)
+            except Exception:
+                time.sleep(2)
+        if not success:
             break
-        data = resp.json()
-        val = data.get("value", [])
-        items.extend(val)
-        url = data.get("@odata.nextLink")
         
     return items
 
@@ -323,7 +338,7 @@ def sync_fleet_data():
         record_channels_telemetry_snapshot(channels_list)
         # Métricas Globais da Frota
         now = datetime.now(timezone.utc)
-        unique_hosts = set(s["hostname"] for s in services_list)
+        unique_hosts = set(s["hostname"] for s in services_list if s.get("hostname") and s["hostname"] != "N/A")
         
         hosts_offline = 0
         for h in unique_hosts:
@@ -374,9 +389,11 @@ def sync_fleet_data():
 
         with _cache_lock:
             _cached_data["last_sync"] = datetime.now().isoformat()
-            _cached_data["services"] = services_list
+            # Guarda de integridade: preserva dados caso a busca retorne lista parcial ou vazia
+            if len(services_list) >= len(_cached_data.get("services", [])) * 0.5 or not _cached_data.get("services"):
+                _cached_data["services"] = services_list
+                _cached_data["stats"] = stats
             _cached_data["channels"] = channels_list
-            _cached_data["stats"] = stats
             _cached_data["recent_outages"] = outages
 
         try:

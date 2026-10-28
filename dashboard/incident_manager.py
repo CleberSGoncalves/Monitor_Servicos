@@ -1,5 +1,6 @@
 from gemini_service import execute_gemini_prompt, get_ai_settings
 import sqlite3
+import re
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any, Optional
 from config import DATA_DIR
