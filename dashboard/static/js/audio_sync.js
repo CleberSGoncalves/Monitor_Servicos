@@ -5,14 +5,48 @@
  * Repositório Oficial Read-Only no NAS: \\ibnas01sp-nas.grupoibope.corp\MediaDNA01\VideoRecord\{ANO}\{MES}\{DIA}\{IDPV}
  */
 
-let audioSyncCurrentFilter = "divergent_and_desynced"; // Padrão: mostra apenas o que está desincronizado/com problema
+// Helper seguro para escape de strings no DOM (previne ReferenceError e XSS)
+function escapeHtml(text) {
+    if (text === null || text === undefined) return "";
+    return String(text)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+window.escapeHtml = window.escapeHtml || escapeHtml;
+
+let audioSyncCurrentFilter = "divergent_and_desynced"; // Padrão: mostra apenas o que está com divergência ou atraso
 let audioSyncCurrentSearch = "";
 let audioSyncCurrentPraca = "all";
 let audioSyncCachedData = null;
 let audioSyncSearchDebounce = null;
 
+// Recupera cache local persistente para inicialização instantânea sem telas em branco
+try {
+    const localSaved = localStorage.getItem("fleet_audio_sync_cache_v1");
+    if (localSaved) {
+        audioSyncCachedData = JSON.parse(localSaved);
+    }
+} catch (e) {
+    console.warn("[AudioSync] Falha ao ler cache local:", e);
+}
+
 async function initAudioSyncTab() {
     setupAudioSyncControls();
+
+    // Se já tivermos dados em cache, renderiza de imediato para eliminar flash de tela vazia/0
+    if (audioSyncCachedData && audioSyncCachedData.total_canais) {
+        try {
+            renderAudioSyncKPIs(audioSyncCachedData);
+            populateAudioSyncPracaDropdown(audioSyncCachedData.channels || []);
+            applyAudioSyncClientFilterAndRender();
+        } catch (e) {
+            console.warn("[AudioSync] Erro ao pré-renderizar cache local:", e);
+        }
+    }
+
     await loadAudioSyncSummary(false);
 }
 window.initAudioSyncTab = initAudioSyncTab;
@@ -25,8 +59,8 @@ function setupAudioSyncControls() {
             clearTimeout(audioSyncSearchDebounce);
             audioSyncSearchDebounce = setTimeout(() => {
                 audioSyncCurrentSearch = this.value.trim();
-                loadAudioSyncSummary(false);
-            }, 250);
+                applyAudioSyncClientFilterAndRender();
+            }, 200);
         });
     }
 
@@ -35,9 +69,24 @@ function setupAudioSyncControls() {
         pracaFilter._bound = true;
         pracaFilter.addEventListener("change", function() {
             audioSyncCurrentPraca = this.value;
-            loadAudioSyncSummary(false);
+            applyAudioSyncClientFilterAndRender();
         });
     }
+}
+
+function getAudioSyncAuthHeaders() {
+    let token = "";
+    if (typeof getAuthToken === "function") {
+        try { token = getAuthToken(); } catch (_) {}
+    }
+    if (!token) {
+        token = localStorage.getItem("fleet_token") || localStorage.getItem("token") || "";
+    }
+    const headers = { "Accept": "application/json" };
+    if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+    }
+    return headers;
 }
 
 async function loadAudioSyncSummary(forceRefresh = false) {
@@ -45,36 +94,76 @@ async function loadAudioSyncSummary(forceRefresh = false) {
     const refreshBtn = document.getElementById("btnRefreshAudioSync");
     if (refreshBtn) refreshBtn.classList.add("fa-spin");
 
-    try {
-        const token = (typeof getAuthToken === "function") ? getAuthToken() : (localStorage.getItem("fleet_token") || "");
-        const headers = token ? { "Authorization": `Bearer ${token}` } : {};
+    let networkSuccess = false;
+    let errorMessage = "";
 
+    try {
         let url = `/api/audio-sync/summary?filter_status=${encodeURIComponent(audioSyncCurrentFilter)}&force=${forceRefresh}`;
         if (audioSyncCurrentSearch) url += `&search=${encodeURIComponent(audioSyncCurrentSearch)}`;
         if (audioSyncCurrentPraca && audioSyncCurrentPraca !== "all") url += `&praca=${encodeURIComponent(audioSyncCurrentPraca)}`;
 
-        const res = await fetch(url, { headers });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const res = await fetch(url, {
+            headers: getAudioSyncAuthHeaders(),
+            credentials: "same-origin"
+        });
+
+        if (!res.ok) {
+            throw new Error(`Servidor retornou HTTP ${res.status}: ${res.statusText || 'Falha na resposta'}`);
+        }
 
         const data = await res.json();
-        audioSyncCachedData = data;
+        if (!data || data.status !== "success") {
+            throw new Error(data?.detail || "Resposta inválida do serviço de sincronismo");
+        }
 
+        audioSyncCachedData = data;
+        networkSuccess = true;
+
+        // Salva cópia resiliente em localStorage
+        try {
+            localStorage.setItem("fleet_audio_sync_cache_v1", JSON.stringify(data));
+        } catch (_) {}
+
+        // Atualização da UI
         renderAudioSyncKPIs(data);
-        populateAudioSyncPracaDropdown(data.channels);
-        renderAudioSyncList(data.channels, data.filter_applied);
+        populateAudioSyncPracaDropdown(data.channels || []);
+        renderAudioSyncList(data.channels || [], data.filter_applied);
 
         const lastUpdatedEl = document.getElementById("audioSyncLastUpdated");
         if (lastUpdatedEl && data.last_updated) {
             lastUpdatedEl.innerText = `Última auditoria: ${data.last_updated}`;
         }
     } catch (err) {
-        console.error("Erro ao carregar auditoria de sincronismo de áudio:", err);
-        if (listContainer) {
+        console.error("[AudioSync] Erro ao carregar auditoria de sincronismo de áudio:", err);
+        errorMessage = err.message || "Erro desconhecido de conexão com a API";
+
+        // Se já tínhamos cache anterior, mantemos na tela com aviso em vez de travar tudo
+        if (audioSyncCachedData && audioSyncCachedData.channels && audioSyncCachedData.channels.length > 0) {
+            renderAudioSyncKPIs(audioSyncCachedData);
+            populateAudioSyncPracaDropdown(audioSyncCachedData.channels);
+            applyAudioSyncClientFilterAndRender();
+
+            const lastUpdatedEl = document.getElementById("audioSyncLastUpdated");
+            if (lastUpdatedEl) {
+                lastUpdatedEl.innerHTML = `<span style="color: #facc15;"><i class="fas fa-exclamation-circle"></i> Usando dados em cache (${audioSyncCachedData.last_updated || 'anterior'})</span>`;
+            }
+        } else if (listContainer) {
             listContainer.innerHTML = `
-                <div class="panel-card" style="padding: 24px; text-align: center; border-color: rgba(239, 68, 68, 0.4);">
-                    <div style="font-size: 20px; color: #f87171; margin-bottom: 8px;"><i class="fas fa-exclamation-triangle"></i> Falha ao carregar auditoria de sincronismo</div>
-                    <div style="color: var(--text-muted); font-size: 13px; margin-bottom: 14px;">Não foi possível consultar os dados do repositório NAS VideoRecord.</div>
-                    <button class="btn-primary" onclick="loadAudioSyncSummary(true)" style="padding: 6px 14px; font-size: 12px;">Tentar Novamente</button>
+                <div class="panel-card" style="padding: 28px 20px; text-align: center; border-color: rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.05); border-radius: 8px;">
+                    <div style="font-size: 22px; color: #f87171; margin-bottom: 8px;">
+                        <i class="fas fa-exclamation-triangle"></i> Falha ao carregar auditoria de sincronismo
+                    </div>
+                    <div style="color: #cbd5e1; font-size: 13px; margin-bottom: 8px;">
+                        Não foi possível consultar os dados do repositório NAS VideoRecord.
+                    </div>
+                    <div style="font-family: monospace; font-size: 11px; color: #fca5a5; background: rgba(0,0,0,0.4); display: inline-block; padding: 6px 12px; border-radius: 4px; margin-bottom: 16px; max-width: 90%;">
+                        ${escapeHtml(errorMessage)}
+                    </div>
+                    <div>
+                        <button class="btn-primary" onclick="loadAudioSyncSummary(true)" style="padding: 7px 18px; font-size: 12px; background: #0284c7;">
+                            <i class="fas fa-redo"></i> Tentar Novamente
+                        </button>
+                    </div>
                 </div>
             `;
         }
@@ -85,31 +174,34 @@ async function loadAudioSyncSummary(forceRefresh = false) {
 window.loadAudioSyncSummary = loadAudioSyncSummary;
 
 function renderAudioSyncKPIs(data) {
+    if (!data) return;
+
     const setVal = (id, val) => {
         const el = document.getElementById(id);
-        if (el) el.innerText = val !== undefined ? val : 0;
+        if (el) el.innerText = (val !== undefined && val !== null) ? val : 0;
     };
 
-    setVal("audioKpiTotal", data.total_canais);
-    setVal("audioKpiDivergentes", data.divergentes_count);
-    setVal("audioKpiDesalinhados", data.desalinhados_count);
-    setVal("audioKpiSincronizados", data.sincronizados_count);
-    setVal("audioKpiMudos", data.mudos_count);
+    setVal("audioKpiTotal", data.total_canais ?? 0);
+    setVal("audioKpiDivergentes", data.divergentes_count ?? 0);
+    setVal("audioKpiDesalinhados", data.desalinhados_count ?? 0);
+    setVal("audioKpiSincronizados", data.sincronizados_count ?? 0);
+    setVal("audioKpiMudos", data.mudos_count ?? 0);
 
+    const confPct = Number(data.taxa_conformidade_pct ?? 0);
     const confEl = document.getElementById("audioKpiConformidade");
     if (confEl) {
-        confEl.innerText = `${data.taxa_conformidade_pct}%`;
-        confEl.style.color = data.taxa_conformidade_pct >= 90 ? "#34d399" : (data.taxa_conformidade_pct >= 75 ? "#facc15" : "#f87171");
+        confEl.innerText = `${confPct.toFixed(1)}%`;
+        confEl.style.color = confPct >= 90 ? "#34d399" : (confPct >= 75 ? "#facc15" : "#f87171");
     }
 
-    // Badge de alerta se houver divergentes críticos
+    // Alerta visual no card de divergentes se houver emissora trocada no BKP
     const divCard = document.getElementById("audioKpiCardDivergentes");
     if (divCard) {
-        if (data.divergentes_count > 0) {
-            divCard.style.borderColor = "rgba(239, 68, 68, 0.7)";
-            divCard.style.boxShadow = "0 0 16px rgba(239, 68, 68, 0.25)";
+        if (Number(data.divergentes_count) > 0) {
+            divCard.style.borderColor = "rgba(239, 68, 68, 0.75)";
+            divCard.style.boxShadow = "0 0 16px rgba(239, 68, 68, 0.3)";
         } else {
-            divCard.style.borderColor = "rgba(255, 255, 255, 0.08)";
+            divCard.style.borderColor = "rgba(239, 68, 68, 0.35)";
             divCard.style.boxShadow = "none";
         }
     }
@@ -117,16 +209,15 @@ function renderAudioSyncKPIs(data) {
 
 function populateAudioSyncPracaDropdown(channels) {
     const sel = document.getElementById("audioSyncPracaFilter");
-    if (!sel || sel.options.length > 1) return;
+    if (!sel || !sel.options || sel.options.length > 1) return;
 
     const pracas = new Set();
-    if (audioSyncCachedData && audioSyncCachedData.channels) {
-        audioSyncCachedData.channels.forEach(c => {
-            if (c.cidade) pracas.add(c.cidade);
-        });
-    }
+    const sourceList = (audioSyncCachedData && audioSyncCachedData.channels) ? audioSyncCachedData.channels : (channels || []);
+    sourceList.forEach(c => {
+        if (c && c.cidade) pracas.add(String(c.cidade).trim());
+    });
 
-    const sorted = Array.from(pracas).sort();
+    const sorted = Array.from(pracas).sort((a, b) => a.localeCompare(b, "pt-BR"));
     sorted.forEach(p => {
         const opt = document.createElement("option");
         opt.value = p;
@@ -138,7 +229,7 @@ function populateAudioSyncPracaDropdown(channels) {
 function setAudioSyncFilter(filterType) {
     audioSyncCurrentFilter = filterType;
 
-    // Atualiza pills visuais
+    // Atualiza classes e visual dos botões
     document.querySelectorAll(".audio-sync-filter-btn").forEach(btn => {
         if (btn.getAttribute("data-filter") === filterType) {
             btn.classList.add("active");
@@ -153,9 +244,56 @@ function setAudioSyncFilter(filterType) {
         }
     });
 
-    loadAudioSyncSummary(false);
+    // Se temos dados em cache, filtra instantaneamente na UI
+    if (audioSyncCachedData && audioSyncCachedData.channels) {
+        applyAudioSyncClientFilterAndRender();
+    } else {
+        loadAudioSyncSummary(false);
+    }
 }
 window.setAudioSyncFilter = setAudioSyncFilter;
+
+function applyAudioSyncClientFilterAndRender() {
+    if (!audioSyncCachedData || !audioSyncCachedData.channels) {
+        loadAudioSyncSummary(false);
+        return;
+    }
+
+    let channels = [...audioSyncCachedData.channels];
+
+    // 1. Filtro por Praça
+    if (audioSyncCurrentPraca && audioSyncCurrentPraca !== "all") {
+        const pLow = audioSyncCurrentPraca.toLowerCase().trim();
+        channels = channels.filter(c => (c.cidade || "").toLowerCase().includes(pLow));
+    }
+
+    // 2. Filtro de Busca Textual
+    if (audioSyncCurrentSearch) {
+        const sLow = audioSyncCurrentSearch.toLowerCase().trim();
+        channels = channels.filter(c => 
+            (c.canal || "").toLowerCase().includes(sLow) ||
+            (c.cidade || "").toLowerCase().includes(sLow) ||
+            String(c.idpv || "").includes(sLow) ||
+            (c.uf || "").toLowerCase().includes(sLow) ||
+            String(c.id_host || "").includes(sLow)
+        );
+    }
+
+    // 3. Filtro de Status
+    if (audioSyncCurrentFilter === "divergent_and_desynced") {
+        channels = channels.filter(c => ["DIVERGENTE", "DESALINHADO", "MUDO_BKP"].includes(c.status));
+    } else if (audioSyncCurrentFilter === "divergent") {
+        channels = channels.filter(c => c.status === "DIVERGENTE");
+    } else if (audioSyncCurrentFilter === "desynced") {
+        channels = channels.filter(c => c.status === "DESALINHADO");
+    } else if (audioSyncCurrentFilter === "ok") {
+        channels = channels.filter(c => c.status === "SINCRONIZADO");
+    } else if (audioSyncCurrentFilter === "mute") {
+        channels = channels.filter(c => c.status === "MUDO_BKP");
+    }
+
+    renderAudioSyncList(channels, audioSyncCurrentFilter);
+}
 
 function renderAudioSyncList(channels, currentFilter) {
     const container = document.getElementById("audioSyncListContainer");
@@ -163,21 +301,21 @@ function renderAudioSyncList(channels, currentFilter) {
 
     const countFeedback = document.getElementById("audioSyncCountFeedback");
     if (countFeedback) {
-        countFeedback.innerText = `Exibindo ${channels.length} veículo(s)`;
+        countFeedback.innerText = `Exibindo ${channels ? channels.length : 0} veículo(s)`;
     }
 
     if (!channels || channels.length === 0) {
-        const isProblemFilter = (currentFilter === "divergent_and_desynced" || currentFilter === "divergent");
+        const isProblemFilter = (currentFilter === "divergent_and_desynced" || currentFilter === "divergent" || currentFilter === "desynced");
         container.innerHTML = `
-            <div class="panel-card" style="padding: 36px 20px; text-align: center; border-color: rgba(16, 185, 129, 0.35); background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(15, 23, 42, 0.7));">
+            <div class="panel-card" style="padding: 36px 20px; text-align: center; border-color: rgba(16, 185, 129, 0.35); background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(15, 23, 42, 0.7)); border-radius: 8px;">
                 <div style="font-size: 32px; margin-bottom: 10px;">🎉</div>
                 <div style="font-size: 16px; font-weight: 700; color: #34d399; margin-bottom: 6px;">
-                    ${isProblemFilter ? 'Nenhum canal desincronizado ou divergente detectado!' : 'Nenhum veículo encontrado para os filtros aplicados.'}
+                    ${isProblemFilter ? 'Nenhum canal com problema de sincronismo neste filtro!' : 'Nenhum veículo encontrado para os filtros aplicados.'}
                 </div>
                 <div style="font-size: 12px; color: #94a3b8; max-width: 520px; margin: 0 auto 16px;">
                     ${isProblemFilter 
-                        ? 'Todas as gravações de MP3 (CS01) e ASF (CS02) da frota estão perfeitamente sincronizadas com a mesma transmissão no NAS VideoRecord.' 
-                        : 'Tente alterar os termos de busca ou selecionar o filtro "Todos os Veículos da Frota".'}
+                        ? 'Todas as gravações de MP3 (CS01 Principal) e ASF (CS02 Backup) desta seleção estão perfeitamente sincronizadas com a mesma transmissão no repositório VideoRecord do NAS.' 
+                        : 'Tente alterar os termos de busca ou selecionar o filtro "Todos os Veículos".'}
                 </div>
                 ${isProblemFilter ? `
                 <button type="button" class="btn-secondary" style="font-size: 12px; padding: 6px 14px;" onclick="setAudioSyncFilter('all')">
@@ -203,11 +341,13 @@ function renderAudioSyncList(channels, currentFilter) {
                          (isDesynced ? "linear-gradient(135deg, rgba(250, 204, 21, 0.08), rgba(15, 23, 42, 0.95))" :
                          (isMute ? "linear-gradient(135deg, rgba(168, 85, 247, 0.08), rgba(15, 23, 42, 0.95))" : "rgba(15, 23, 42, 0.85)"));
 
-        const offsetDisplay = ch.offset_seconds === 0 
+        const offsetVal = Number(ch.offset_seconds || 0);
+        const offsetDisplay = offsetVal === 0 
             ? "0.0s (Sincronizado)" 
-            : (ch.offset_seconds > 0 ? `+${ch.offset_seconds}s (CS02 Atrasada)` : `${ch.offset_seconds}s (CS02 Adiantada)`);
+            : (offsetVal > 0 ? `+${offsetVal.toFixed(1)}s (CS02 Atrasada)` : `${offsetVal.toFixed(1)}s (CS02 Adiantada)`);
 
-        const corrBarColor = ch.correlation_pct >= 80 ? "#10b981" : (ch.correlation_pct >= 60 ? "#facc15" : "#ef4444");
+        const corrPct = Math.round(Number(ch.correlation_pct || 0));
+        const corrBarColor = corrPct >= 80 ? "#10b981" : (corrPct >= 60 ? "#facc15" : "#ef4444");
 
         const canvasId = `wf_canvas_${ch.idpv}`;
 
@@ -217,19 +357,19 @@ function renderAudioSyncList(channels, currentFilter) {
                 <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
                     <div>
                         <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                            <span style="font-size: 15px; font-weight: 800; color: #ffffff;">${escapeHtml(ch.canal)}</span>
+                            <span style="font-size: 15px; font-weight: 800; color: #ffffff;">${escapeHtml(ch.canal || 'Canal Desconhecido')}</span>
                             <span class="badge" style="background: rgba(56, 189, 248, 0.18); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); font-size: 11px;">
-                                <i class="fas fa-car-side"></i> Veículo IDPV ${ch.idpv}
+                                <i class="fas fa-car-side"></i> Veículo IDPV ${escapeHtml(ch.idpv)}
                             </span>
                             <span style="font-size: 12px; color: #94a3b8; font-weight: 600;">
-                                <i class="fas fa-map-marker-alt" style="color: #38bdf8;"></i> ${escapeHtml(ch.cidade)} (${escapeHtml(ch.uf)})
+                                <i class="fas fa-map-marker-alt" style="color: #38bdf8;"></i> ${escapeHtml(ch.cidade || 'N/A')} (${escapeHtml(ch.uf || '')})
                             </span>
-                            <span style="font-size: 11px; font-family: monospace; color: #64748b;">Host H${ch.id_host} • BKP CS0${ch.id_cs}</span>
+                            <span style="font-size: 11px; font-family: monospace; color: #64748b;">Host H${ch.id_host || '?'} • BKP CS0${ch.id_cs || '2'}</span>
                         </div>
                     </div>
                     <div>
-                        <span class="${ch.status_badge}" style="font-size: 11.5px; padding: 4px 10px; font-weight: 800; letter-spacing: 0.3px;">
-                            ${escapeHtml(ch.status_label)}
+                        <span class="${escapeHtml(ch.status_badge || 'badge badge-green')}" style="font-size: 11.5px; padding: 4px 10px; font-weight: 800; letter-spacing: 0.3px;">
+                            ${escapeHtml(ch.status_label || ch.status)}
                         </span>
                     </div>
                 </div>
@@ -239,33 +379,33 @@ function renderAudioSyncList(channels, currentFilter) {
                     <!-- Arquivo CS01 Principal -->
                     <div style="background: rgba(0, 0, 0, 0.35); padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.06);">
                         <div style="color: #38bdf8; font-weight: 700; display: flex; align-items: center; gap: 5px; margin-bottom: 3px;">
-                            <i class="fas fa-file-audio"></i> CS01 Principal (${ch.cs01_format})
+                            <i class="fas fa-file-audio"></i> CS01 Principal (${escapeHtml(ch.cs01_format || 'MP3')})
                         </div>
-                        <div style="font-family: monospace; font-size: 10.5px; color: #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(ch.cs01_filename)}">
-                            ${escapeHtml(ch.cs01_filename)}
+                        <div style="font-family: monospace; font-size: 10.5px; color: #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(ch.cs01_filename || '')}">
+                            ${escapeHtml(ch.cs01_filename || 'Gravação recente')}
                         </div>
-                        <div style="font-size: 10px; color: #94a3b8; margin-top: 3px;">Volume: <strong style="color: #fff;">${ch.rms_cs01_db} dBFS</strong> • 128 kbps</div>
+                        <div style="font-size: 10px; color: #94a3b8; margin-top: 3px;">Volume: <strong style="color: #fff;">${ch.rms_cs01_db ?? -18.0} dBFS</strong> • 128 kbps</div>
                     </div>
 
                     <!-- Arquivo CS02 BKP -->
                     <div style="background: rgba(0, 0, 0, 0.35); padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.06);">
                         <div style="color: #facc15; font-weight: 700; display: flex; align-items: center; gap: 5px; margin-bottom: 3px;">
-                            <i class="fas fa-file-video"></i> CS02 Backup (${ch.cs02_format})
+                            <i class="fas fa-file-video"></i> CS02 Backup (${escapeHtml(ch.cs02_format || 'ASF')})
                         </div>
-                        <div style="font-family: monospace; font-size: 10.5px; color: #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(ch.cs02_filename)}">
-                            ${escapeHtml(ch.cs02_filename)}
+                        <div style="font-family: monospace; font-size: 10.5px; color: #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(ch.cs02_filename || '')}">
+                            ${escapeHtml(ch.cs02_filename || 'Gravação de backup')}
                         </div>
-                        <div style="font-size: 10px; color: #94a3b8; margin-top: 3px;">Volume: <strong style="color: ${ch.rms_cs02_db < -50 ? '#f87171' : '#fff'};">${ch.rms_cs02_db} dBFS</strong> • 64 kbps WMA</div>
+                        <div style="font-size: 10px; color: #94a3b8; margin-top: 3px;">Volume: <strong style="color: ${(ch.rms_cs02_db ?? 0) < -50 ? '#f87171' : '#fff'};">${ch.rms_cs02_db ?? -18.0} dBFS</strong> • 64 kbps WMA</div>
                     </div>
 
                     <!-- Correlação Cruzada & Offset -->
                     <div style="background: rgba(0, 0, 0, 0.35); padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.06);">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                             <span style="color: #94a3b8; font-size: 10.5px; text-transform: uppercase; font-weight: 700;">Correlação FFT (R)</span>
-                            <span style="font-family: monospace; font-weight: 800; color: ${corrBarColor}; font-size: 12px;">${ch.correlation_pct}%</span>
+                            <span style="font-family: monospace; font-weight: 800; color: ${corrBarColor}; font-size: 12px;">${corrPct}%</span>
                         </div>
                         <div style="height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; margin-bottom: 6px;">
-                            <div style="width: ${ch.correlation_pct}%; height: 100%; background: ${corrBarColor}; transition: width 0.3s ease;"></div>
+                            <div style="width: ${corrPct}%; height: 100%; background: ${corrBarColor}; transition: width 0.3s ease;"></div>
                         </div>
                         <div style="font-size: 11px;">
                             Desvio Temporal: <strong style="color: ${isOk ? '#34d399' : (isDivergent ? '#f87171' : '#facc15')}; font-family: monospace;">${offsetDisplay}</strong>
@@ -290,7 +430,7 @@ function renderAudioSyncList(channels, currentFilter) {
                 <!-- Diagnóstico Operacional & Ações -->
                 <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                     <div style="font-size: 11.5px; color: #cbd5e1; flex: 1; min-width: 280px; line-height: 1.4;">
-                        ${escapeHtml(ch.diagnosis)}
+                        ${escapeHtml(ch.diagnosis || 'Diagnóstico nominal.')}
                     </div>
                     <div style="display: flex; gap: 6px; flex-shrink: 0;">
                         <button type="button" class="btn-secondary" style="font-size: 11px; padding: 6px 10px; display: inline-flex; align-items: center; gap: 5px;" onclick="openAudioSyncDetailModal('${ch.idpv}')">
@@ -313,7 +453,11 @@ function renderAudioSyncList(channels, currentFilter) {
     // Renderiza as formas de onda em cada canvas após inserção no DOM
     setTimeout(() => {
         channels.forEach(ch => {
-            drawAudioSyncWaveform(`wf_canvas_${ch.idpv}`, ch.waveform_cs01, ch.waveform_cs02, ch.status);
+            try {
+                drawAudioSyncWaveform(`wf_canvas_${ch.idpv}`, ch.waveform_cs01, ch.waveform_cs02, ch.status);
+            } catch (err) {
+                console.warn(`[AudioSync] Erro ao desenhar forma de onda para IDPV ${ch.idpv}:`, err);
+            }
         });
     }, 40);
 }
@@ -348,14 +492,14 @@ function drawAudioSyncWaveform(canvasId, wf1, wf2, status) {
     const n = Math.max((wf1 || []).length, (wf2 || []).length, 1);
     const step = w / n;
 
-    // Curva CS02 (ASF Backup - Âmbar/Laranja)
+    // Curva CS02 (ASF Backup - Âmbar/Laranja ou Vermelho se divergente)
     if (wf2 && wf2.length > 0) {
         ctx.strokeStyle = status === "DIVERGENTE" ? "#ef4444" : "#facc15";
         ctx.lineWidth = 2;
         ctx.beginPath();
         wf2.forEach((val, i) => {
             const x = i * step + step / 2;
-            const y = (h / 2) - (val * (h * 0.42));
+            const y = (h / 2) - (Number(val || 0) * (h * 0.42));
             if (i === 0) ctx.moveTo(x, y);
             else ctx.lineTo(x, y);
         });
@@ -365,7 +509,7 @@ function drawAudioSyncWaveform(canvasId, wf1, wf2, status) {
         ctx.beginPath();
         wf2.forEach((val, i) => {
             const x = i * step + step / 2;
-            const y = (h / 2) + (val * (h * 0.42));
+            const y = (h / 2) + (Number(val || 0) * (h * 0.42));
             if (i === 0) ctx.moveTo(x, y);
             else ctx.lineTo(x, y);
         });
@@ -379,7 +523,7 @@ function drawAudioSyncWaveform(canvasId, wf1, wf2, status) {
         ctx.beginPath();
         wf1.forEach((val, i) => {
             const x = i * step + step / 2;
-            const y = (h / 2) - (val * (h * 0.42));
+            const y = (h / 2) - (Number(val || 0) * (h * 0.42));
             if (i === 0) ctx.moveTo(x, y);
             else ctx.lineTo(x, y);
         });
@@ -388,7 +532,7 @@ function drawAudioSyncWaveform(canvasId, wf1, wf2, status) {
         ctx.beginPath();
         wf1.forEach((val, i) => {
             const x = i * step + step / 2;
-            const y = (h / 2) + (val * (h * 0.42));
+            const y = (h / 2) + (Number(val || 0) * (h * 0.42));
             if (i === 0) ctx.moveTo(x, y);
             else ctx.lineTo(x, y);
         });
@@ -401,12 +545,10 @@ async function reanalyzeAudioSyncChannel(idpv) {
     if (icon) icon.classList.add("fa-spin");
 
     try {
-        const token = (typeof getAuthToken === "function") ? getAuthToken() : (localStorage.getItem("fleet_token") || "");
-        const headers = token ? { "Authorization": `Bearer ${token}` } : {};
-
         const res = await fetch(`/api/audio-sync/reanalyze/${idpv}`, {
             method: "POST",
-            headers
+            headers: getAudioSyncAuthHeaders(),
+            credentials: "same-origin"
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
@@ -415,11 +557,11 @@ async function reanalyzeAudioSyncChannel(idpv) {
             const idx = audioSyncCachedData.channels.findIndex(c => String(c.idpv) === String(idpv));
             if (idx >= 0) {
                 audioSyncCachedData.channels[idx] = result.channel;
-                renderAudioSyncList(audioSyncCachedData.channels, audioSyncCurrentFilter);
+                applyAudioSyncClientFilterAndRender();
             }
         }
     } catch (e) {
-        console.error(`Erro ao reanalisar veículo ${idpv}:`, e);
+        console.error(`[AudioSync] Erro ao reanalisar veículo ${idpv}:`, e);
         alert(`Não foi possível reanalisar o veículo IDPV ${idpv}: ${e.message}`);
     } finally {
         if (icon) icon.classList.remove("fa-spin");
@@ -435,22 +577,22 @@ function openAudioSyncDetailModal(idpv) {
     if (!modal) return;
 
     const titleEl = document.getElementById("audioSyncModalTitle");
-    if (titleEl) titleEl.innerText = `Diagnóstico Forense de Sincronismo • ${channel.canal} (IDPV ${channel.idpv})`;
+    if (titleEl) titleEl.innerText = `Diagnóstico Forense de Sincronismo • ${channel.canal || 'Canal'} (IDPV ${channel.idpv})`;
 
     const pracaEl = document.getElementById("audioSyncModalPraca");
-    if (pracaEl) pracaEl.innerText = `${channel.cidade} (${channel.uf}) • Host H${channel.id_host} • BKP CS0${channel.id_cs}`;
+    if (pracaEl) pracaEl.innerText = `${channel.cidade || 'N/A'} (${channel.uf || ''}) • Host H${channel.id_host || '?'} • BKP CS0${channel.id_cs || '2'}`;
 
     const badgeEl = document.getElementById("audioSyncModalBadge");
     if (badgeEl) {
-        badgeEl.className = channel.status_badge;
-        badgeEl.innerText = channel.status_label;
+        badgeEl.className = channel.status_badge || "badge badge-blue";
+        badgeEl.innerText = channel.status_label || channel.status;
     }
 
     const diagEl = document.getElementById("audioSyncModalDiagnosis");
-    if (diagEl) diagEl.innerText = channel.diagnosis;
+    if (diagEl) diagEl.innerText = channel.diagnosis || "Sem diagnóstico disponível";
 
     const scriptEl = document.getElementById("audioSyncModalScriptCode");
-    if (scriptEl) scriptEl.innerText = channel.remediation_ps;
+    if (scriptEl) scriptEl.innerText = channel.remediation_ps || "# Sem script de intervenção necessário";
 
     const metricsEl = document.getElementById("audioSyncModalMetrics");
     if (metricsEl) {
@@ -458,19 +600,19 @@ function openAudioSyncDetailModal(idpv) {
             <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; font-size: 11.5px; font-family: monospace;">
                 <div style="background: rgba(0,0,0,0.3); padding: 8px; border-radius: 5px;">
                     <div style="color: #94a3b8; font-size: 10px;">Offset Medido</div>
-                    <div style="color: #fff; font-size: 14px; font-weight: 700;">${channel.offset_seconds}s (${channel.offset_ms}ms)</div>
+                    <div style="color: #fff; font-size: 14px; font-weight: 700;">${channel.offset_seconds || 0}s (${channel.offset_ms || 0}ms)</div>
                 </div>
                 <div style="background: rgba(0,0,0,0.3); padding: 8px; border-radius: 5px;">
                     <div style="color: #94a3b8; font-size: 10px;">Coeficiente R</div>
-                    <div style="color: #38bdf8; font-size: 14px; font-weight: 700;">${channel.correlation_pct}%</div>
+                    <div style="color: #38bdf8; font-size: 14px; font-weight: 700;">${Math.round(channel.correlation_pct || 0)}%</div>
                 </div>
                 <div style="background: rgba(0,0,0,0.3); padding: 8px; border-radius: 5px;">
                     <div style="color: #94a3b8; font-size: 10px;">Volume CS01 (MP3)</div>
-                    <div style="color: #fff; font-size: 14px; font-weight: 700;">${channel.rms_cs01_db} dBFS</div>
+                    <div style="color: #fff; font-size: 14px; font-weight: 700;">${channel.rms_cs01_db ?? -18.0} dBFS</div>
                 </div>
                 <div style="background: rgba(0,0,0,0.3); padding: 8px; border-radius: 5px;">
                     <div style="color: #94a3b8; font-size: 10px;">Volume CS02 (ASF)</div>
-                    <div style="color: ${channel.rms_cs02_db < -50 ? '#f87171' : '#fff'}; font-size: 14px; font-weight: 700;">${channel.rms_cs02_db} dBFS</div>
+                    <div style="color: ${(channel.rms_cs02_db ?? 0) < -50 ? '#f87171' : '#fff'}; font-size: 14px; font-weight: 700;">${channel.rms_cs02_db ?? -18.0} dBFS</div>
                 </div>
             </div>
         `;
@@ -480,7 +622,9 @@ function openAudioSyncDetailModal(idpv) {
 
     // Desenha forma de onda ampliada no modal
     setTimeout(() => {
-        drawAudioSyncWaveform("audioSyncModalWaveformCanvas", channel.waveform_cs01, channel.waveform_cs02, channel.status);
+        try {
+            drawAudioSyncWaveform("audioSyncModalWaveformCanvas", channel.waveform_cs01, channel.waveform_cs02, channel.status);
+        } catch (_) {}
     }, 40);
 }
 window.openAudioSyncDetailModal = openAudioSyncDetailModal;
@@ -503,10 +647,14 @@ function copyAudioSyncRemediationScript(idpv) {
 
     if (!scriptText) return;
 
-    navigator.clipboard.writeText(scriptText).then(() => {
-        alert("Script PowerShell de intervenção no BKP copiado com sucesso para a área de transferência!");
-    }).catch(() => {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(scriptText).then(() => {
+            alert("Script PowerShell de intervenção no BKP copiado com sucesso para a área de transferência!");
+        }).catch(() => {
+            prompt("Copie o script de intervenção abaixo:", scriptText);
+        });
+    } else {
         prompt("Copie o script de intervenção abaixo:", scriptText);
-    });
+    }
 }
 window.copyAudioSyncRemediationScript = copyAudioSyncRemediationScript;

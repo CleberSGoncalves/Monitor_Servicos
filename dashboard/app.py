@@ -84,8 +84,10 @@ app.add_middleware(
         "https://localhost:8092",
         "http://127.0.0.1:8092",
         "https://127.0.0.1:8092",
-        "http://192.168.15.17:8092"
+        "http://192.168.15.17:8092",
+        "https://192.168.15.17:8092"
     ],
+    allow_origin_regex=r"https?://.*",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "Accept"],
