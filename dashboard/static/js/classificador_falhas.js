@@ -69,11 +69,10 @@ async function loadClassificadorFalhas() {
         </tr>
     `;
 
-    if (!cachedClassifierData) {
-        if (catBody) catBody.innerHTML = loadingHtml("Carregando Catálogo Taxonômico e Assinaturas Heurísticas...", "Processando 10 tipos de falhas broadcast (#01 a #10)...");
-        if (pracasBody) pracasBody.innerHTML = loadingHtml("Consolidando Matriz de Falhas &amp; Saúde por Afiliada...", "Auditando canais digitais ISDB-Tb e streams da frota...");
-        if (relBody) relBody.innerHTML = loadingHtml("Mapeando Relação Falha x Canal &amp; Rastreabilidade...", "Cruzando métricas e histórico de ocorrências...");
-    }
+    // Exibe sempre feedback visual explícito e claro de carregamento
+    if (catBody && (!cachedClassifierData || !catBody.innerHTML.trim())) catBody.innerHTML = loadingHtml("Carregando Catálogo Taxonômico e Assinaturas Heurísticas...", "Processando tipos de falhas broadcast e regras ativas...");
+    if (pracasBody && (!cachedClassifierData || !pracasBody.innerHTML.trim())) pracasBody.innerHTML = loadingHtml("Consolidando Matriz de Falhas &amp; Saúde por Afiliada...", "Auditando canais digitais ISDB-Tb e streams da frota...");
+    if (relBody && (!cachedClassifierData || !relBody.innerHTML.trim())) relBody.innerHTML = loadingHtml("Mapeando Relação Falha x Canal &amp; Rastreabilidade...", "Cruzando telemetria em tempo real e ocorrências ativas...");
 
     try {
         const res = await fetch("/api/classificador-falhas/analise-frota", {
@@ -402,18 +401,26 @@ function populateRelacaoFilters(tipos, pracas) {
     }
 
     if (selPraca) {
-        const curVal = selPraca.value;
-        const allPracas = (window.FleetCatalog && window.FleetCatalog.pracas && window.FleetCatalog.pracas.length > 0)
-            ? window.FleetCatalog.pracas
-            : (pracas || []).map(p => p.praca || p);
-        selPraca.innerHTML = `<option value="all">Todas as Praças (${allPracas.length})</option>`;
-        const sortedPracas = [...allPracas].sort((a,b) => (a.praca || a).localeCompare(b.praca || b));
-        sortedPracas.forEach(p => {
-            const opt = document.createElement("option");
-            opt.value = p.praca || p;
-            opt.textContent = `📍 ${p.praca || p}`;
-            selPraca.appendChild(opt);
-        });
+        try {
+            const rawPracas = (window.FleetCatalog && window.FleetCatalog.pracas && window.FleetCatalog.pracas.length > 0)
+                ? window.FleetCatalog.pracas
+                : (pracas || []).map(p => (p && typeof p === 'object') ? (p.praca || p.nome || '') : String(p || ''));
+            const cleanList = Array.from(new Set(rawPracas.map(p => {
+                if (!p) return "";
+                if (typeof p === "object") return String(p.praca || p.nome || "").trim();
+                return String(p).trim();
+            }).filter(Boolean)));
+            cleanList.sort((a, b) => a.localeCompare(b, "pt-BR", { sensitivity: "base" }));
+            selPraca.innerHTML = `<option value="all">Todas as Praças (${cleanList.length})</option>`;
+            cleanList.forEach(pName => {
+                const opt = document.createElement("option");
+                opt.value = pName;
+                opt.textContent = `📍 ${pName}`;
+                selPraca.appendChild(opt);
+            });
+        } catch (errPraca) {
+            console.warn("[Classificador] Falha ao processar lista de praças:", errPraca);
+        }
     }
 }
 

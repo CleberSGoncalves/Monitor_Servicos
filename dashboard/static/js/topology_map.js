@@ -2254,15 +2254,69 @@ function renderTopologyAiTradeoffResult(data) {
         ? `<span class="badge badge-red" style="font-size: 11px; padding: 3px 8px;"><i class="fas fa-exclamation-triangle"></i> Conflito Crítico Multi-Torre (${spread}° de Dispersão)</span>`
         : `<span class="badge badge-green" style="font-size: 11px; padding: 3px 8px;"><i class="fas fa-check-circle"></i> Geometria Concentrada (${spread}° de Dispersão)</span>`;
 
-    let reportHtml = escapeHtml(data.ai_report_markdown || "");
-    reportHtml = reportHtml
-        .replace(/^### (.*$)/gim, '<h4 style="color: #38bdf8; font-size: 14px; font-weight: 800; margin: 18px 0 8px 0; border-bottom: 1px solid rgba(56, 189, 248, 0.2); padding-bottom: 4px;">$1</h4>')
-        .replace(/^#### (.*$)/gim, '<h5 style="color: #c084fc; font-size: 13px; font-weight: 700; margin: 14px 0 6px 0;">$1</h5>')
-        .replace(/\*\*(.*?)\*\*/g, '<strong style="color: #fff;">$1</strong>')
-        .replace(/\*(.*?)\*/g, '<em style="color: #cbd5e1;">$1</em>')
-        .replace(/^- (.*$)/gim, '<div style="margin-left: 12px; margin-bottom: 4px; font-size: 12px; color: #cbd5e1;">• $1</div>')
-        .replace(/---/g, '<hr style="border: none; border-top: 1px solid rgba(255,255,255,0.08); margin: 16px 0;">')
-        .replace(/\n/g, '<br>');
+    function renderAiMarkdownWithTables(rawMd) {
+        if (!rawMd) return "";
+        const lines = rawMd.split("\n");
+        let htmlOut = [];
+        let inTable = false;
+        let tableRows = [];
+
+        function flushTable() {
+            if (!tableRows.length) return;
+            let tHtml = `<div style="overflow-x: auto; margin: 14px 0;"><table style="width: 100%; border-collapse: collapse; font-size: 11px; font-family: monospace; background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px;">`;
+            tableRows.forEach((row, rIdx) => {
+                const cols = row.split("|").slice(1, -1).map(c => c.trim());
+                if (rIdx === 0) {
+                    tHtml += `<tr style="background: rgba(30, 41, 59, 0.95); border-bottom: 2px solid rgba(56, 189, 248, 0.4);">` +
+                        cols.map(c => `<th style="padding: 8px 10px; color: #38bdf8; text-align: left; font-weight: 700;">${escapeHtml(c)}</th>`).join("") +
+                        `</tr>`;
+                } else if (rIdx === 1 && cols[0].includes("---")) {
+                    // separator line
+                } else {
+                    const bg = (rIdx % 2 === 0) ? "rgba(255,255,255,0.02)" : "transparent";
+                    tHtml += `<tr style="background: ${bg}; border-bottom: 1px solid rgba(255,255,255,0.06);">` +
+                        cols.map(c => `<td style="padding: 6px 10px; color: #e2e8f0;">${escapeHtml(c)}</td>`).join("") +
+                        `</tr>`;
+                }
+            });
+            tHtml += `</table></div>`;
+            htmlOut.push(tHtml);
+            tableRows = [];
+            inTable = false;
+        }
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            if (line.trim().startsWith("|") && line.trim().endsWith("|")) {
+                inTable = true;
+                tableRows.push(line.trim());
+            } else {
+                if (inTable) flushTable();
+                if (line.startsWith("### ")) {
+                    htmlOut.push(`<h4 style="color: #38bdf8; font-size: 14px; font-weight: 800; margin: 20px 0 8px 0; border-bottom: 1px solid rgba(56, 189, 248, 0.25); padding-bottom: 5px;">${escapeHtml(line.slice(4))}</h4>`);
+                } else if (line.startsWith("#### ")) {
+                    htmlOut.push(`<h5 style="color: #c084fc; font-size: 13px; font-weight: 700; margin: 16px 0 6px 0;">${escapeHtml(line.slice(5))}</h5>`);
+                } else if (line.trim().startsWith("- ") || line.trim().startsWith("* ")) {
+                    const itemTxt = line.trim().slice(2);
+                    const formatted = escapeHtml(itemTxt)
+                        .replace(/\*\*(.*?)\*\*/g, '<strong style="color: #fff;">$1</strong>')
+                        .replace(/\*(.*?)\*/g, '<em style="color: #cbd5e1;">$1</em>');
+                    htmlOut.push(`<div style="margin-left: 12px; margin-bottom: 5px; font-size: 12px; color: #cbd5e1; display: flex; align-items: flex-start; gap: 6px;"><span style="color: #38bdf8;">•</span><span>${formatted}</span></div>`);
+                } else if (line.trim() === "---") {
+                    htmlOut.push(`<hr style="border: none; border-top: 1px solid rgba(255,255,255,0.08); margin: 16px 0;">`);
+                } else if (line.trim()) {
+                    const formatted = escapeHtml(line)
+                        .replace(/\*\*(.*?)\*\*/g, '<strong style="color: #fff;">$1</strong>')
+                        .replace(/\*(.*?)\*/g, '<em style="color: #cbd5e1;">$1</em>');
+                    htmlOut.push(`<p style="margin: 0 0 8px 0; font-size: 12.5px; line-height: 1.6; color: #cbd5e1;">${formatted}</p>`);
+                }
+            }
+        }
+        if (inTable) flushTable();
+        return htmlOut.join("");
+    }
+
+    let reportHtml = renderAiMarkdownWithTables(data.ai_report_markdown || "");
 
     body.innerHTML = `
         <!-- Faixa de Resumo e Dispersão Angular -->
