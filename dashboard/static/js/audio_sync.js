@@ -1,7 +1,8 @@
 // dashboard/static/js/audio_sync.js
 /**
- * Módulo de Auditoria Forense de Sincronismo de Áudio:
+ * Módulo de Auditoria Forense de Conteúdo e Sincronismo de Áudio:
  * Comparação de Matérias: CS01 (Principal - MP3/MP4) vs CS02/CS03 (BKP - ASF)
+ *Pareamento Estrito pelo Mesmo Horário de Gravação (YYYYMMDDHHMM) e Envelope de Modulação Invariante a Volume.
  * Repositório Oficial Read-Only no NAS: \\ibnas01sp-nas.grupoibope.corp\MediaDNA01\VideoRecord\{ANO}\{MES}\{DIA}\{IDPV}
  */
 
@@ -17,15 +18,32 @@ function escapeHtml(text) {
 }
 window.escapeHtml = window.escapeHtml || escapeHtml;
 
-let audioSyncCurrentFilter = "divergent_and_desynced"; // Padrão: mostra apenas o que está com divergência ou atraso
+// Extrai o bloco de horário formatado a partir do metadado ou do próprio nome do arquivo NAS
+function extractMatchedTimeWindow(ch) {
+    if (ch && ch.matched_time_window) {
+        return ch.matched_time_window;
+    }
+    const fname = (ch && (ch.cs01_filename || ch.cs02_filename)) ? String(ch.cs01_filename || ch.cs02_filename) : "";
+    const m = fname.match(/^H\d+_PV\d+_(\d{12,17})_\d+_(\d{6,9})_/i);
+    if (m) {
+        const s = m[1];
+        const e = m[2];
+        return `${s.slice(6, 8)}/${s.slice(4, 6)}/${s.slice(0, 4)} • ${s.slice(8, 10)}:${s.slice(10, 12)} às ${e.slice(0, 2)}:${e.slice(2, 4)}`;
+    }
+    return "Mesma Janela de 30 min";
+}
+
+let audioSyncCurrentFilter = "divergent_and_desynced"; // Padrão: mostra apenas o que está com divergência de conteúdo ou atraso temporal
 let audioSyncCurrentSearch = "";
 let audioSyncCurrentPraca = "all";
 let audioSyncCachedData = null;
 let audioSyncSearchDebounce = null;
 
-// Recupera cache local persistente para inicialização instantânea sem flash de "0"
+// Limpa caches antigos que continham pareamento sem filtro de horário ou métricas de volume
 try {
-    const localSaved = localStorage.getItem("fleet_audio_sync_cache_v2");
+    localStorage.removeItem("fleet_audio_sync_cache_v1");
+    localStorage.removeItem("fleet_audio_sync_cache_v2");
+    const localSaved = localStorage.getItem("fleet_audio_sync_cache_v3");
     if (localSaved) {
         audioSyncCachedData = JSON.parse(localSaved);
     }
@@ -43,7 +61,7 @@ try {
                 if (sData && sData.channels && sData.channels.length > 0) {
                     audioSyncCachedData = sData;
                     audioSyncCachedData.status = "success";
-                    localStorage.setItem("fleet_audio_sync_cache_v2", JSON.stringify(sData));
+                    localStorage.setItem("fleet_audio_sync_cache_v3", JSON.stringify(sData));
                     console.log(`[AudioSync] Cache estático pré-carregado com sucesso: ${sData.channels.length} canais.`);
                 }
             }
@@ -54,7 +72,7 @@ try {
 async function initAudioSyncTab() {
     setupAudioSyncControls();
 
-    // 1. Se já tivermos dados em cache, renderiza de imediato (0ms de latência)
+    // 1. Se já tivermos dados em cache v3, renderiza de imediato (0ms de latência)
     if (audioSyncCachedData && audioSyncCachedData.channels && audioSyncCachedData.channels.length > 0) {
         try {
             renderAudioSyncKPIs(audioSyncCachedData);
@@ -172,7 +190,7 @@ async function loadAudioSyncSummary(forceRefresh = false) {
 
         // Salva cópia resiliente em localStorage
         try {
-            localStorage.setItem("fleet_audio_sync_cache_v2", JSON.stringify(data));
+            localStorage.setItem("fleet_audio_sync_cache_v3", JSON.stringify(data));
         } catch (_) {}
 
         // Atualização da UI
@@ -239,7 +257,6 @@ function renderAudioSyncKPIs(data) {
     setVal("audioKpiDivergentes", data.divergentes_count ?? 0);
     setVal("audioKpiDesalinhados", data.desalinhados_count ?? 0);
     setVal("audioKpiSincronizados", data.sincronizados_count ?? 0);
-    setVal("audioKpiMudos", data.mudos_count ?? 0);
 
     const confPct = Number(data.taxa_conformidade_pct ?? 0);
     const confEl = document.getElementById("audioKpiConformidade");
@@ -330,15 +347,13 @@ function applyAudioSyncClientFilterAndRender() {
 
     // 3. Filtro de Status
     if (audioSyncCurrentFilter === "divergent_and_desynced") {
-        channels = channels.filter(c => ["DIVERGENTE", "DESALINHADO", "MUDO_BKP"].includes(c.status));
+        channels = channels.filter(c => ["DIVERGENTE", "DESALINHADO"].includes(c.status));
     } else if (audioSyncCurrentFilter === "divergent") {
         channels = channels.filter(c => c.status === "DIVERGENTE");
     } else if (audioSyncCurrentFilter === "desynced") {
         channels = channels.filter(c => c.status === "DESALINHADO");
     } else if (audioSyncCurrentFilter === "ok") {
         channels = channels.filter(c => c.status === "SINCRONIZADO");
-    } else if (audioSyncCurrentFilter === "mute") {
-        channels = channels.filter(c => c.status === "MUDO_BKP");
     }
     // "all" exibe todos
 
@@ -360,11 +375,11 @@ function renderAudioSyncList(channels, currentFilter) {
             <div class="panel-card" style="padding: 36px 20px; text-align: center; border-color: rgba(16, 185, 129, 0.35); background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(15, 23, 42, 0.7)); border-radius: 8px;">
                 <div style="font-size: 32px; margin-bottom: 10px;">🎉</div>
                 <div style="font-size: 16px; font-weight: 700; color: #34d399; margin-bottom: 6px;">
-                    ${isProblemFilter ? 'Nenhum canal com problema de sincronismo neste filtro!' : 'Nenhum veículo encontrado para os filtros aplicados.'}
+                    ${isProblemFilter ? 'Nenhum canal com divergência de conteúdo ou atraso neste filtro!' : 'Nenhum veículo encontrado para os filtros aplicados.'}
                 </div>
-                <div style="font-size: 12px; color: #94a3b8; max-width: 520px; margin: 0 auto 16px;">
+                <div style="font-size: 12px; color: #94a3b8; max-width: 560px; margin: 0 auto 16px;">
                     ${isProblemFilter 
-                        ? 'Todas as gravações de MP3 (CS01 Principal) e ASF (CS02 Backup) desta seleção estão perfeitamente sincronizadas com a mesma transmissão no repositório VideoRecord do NAS.' 
+                        ? 'Todas as gravações pareadas no mesmo bloco de horário entre CS01 (MP3/MP4 Principal) e CS02 (ASF Backup) estão com o mesmo conteúdo de áudio e sincronizadas no NAS.' 
                         : 'Tente alterar os termos de busca ou selecionar o filtro "Todos os Veículos".'}
                 </div>
                 ${isProblemFilter ? `
@@ -380,24 +395,25 @@ function renderAudioSyncList(channels, currentFilter) {
     channels.forEach(ch => {
         const isDivergent = ch.status === "DIVERGENTE";
         const isDesynced = ch.status === "DESALINHADO";
-        const isMute = ch.status === "MUDO_BKP";
         const isOk = ch.status === "SINCRONIZADO";
 
         let borderCardColor = isDivergent ? "rgba(239, 68, 68, 0.55)" : 
-                             (isDesynced ? "rgba(250, 204, 21, 0.45)" : 
-                             (isMute ? "rgba(168, 85, 247, 0.45)" : "rgba(16, 185, 129, 0.25)"));
+                             (isDesynced ? "rgba(250, 204, 21, 0.45)" : "rgba(16, 185, 129, 0.25)");
 
         let bgGradient = isDivergent ? "linear-gradient(135deg, rgba(239, 68, 68, 0.12), rgba(15, 23, 42, 0.95))" :
-                         (isDesynced ? "linear-gradient(135deg, rgba(250, 204, 21, 0.08), rgba(15, 23, 42, 0.95))" :
-                         (isMute ? "linear-gradient(135deg, rgba(168, 85, 247, 0.08), rgba(15, 23, 42, 0.95))" : "rgba(15, 23, 42, 0.85)"));
+                         (isDesynced ? "linear-gradient(135deg, rgba(250, 204, 21, 0.08), rgba(15, 23, 42, 0.95))" : "rgba(15, 23, 42, 0.85)");
 
         const offsetVal = Number(ch.offset_seconds || 0);
         const offsetDisplay = offsetVal === 0 
-            ? "0.0s (Sincronizado)" 
+            ? "0.0s (Alinhado)" 
             : (offsetVal > 0 ? `+${offsetVal.toFixed(1)}s (CS02 Atrasada)` : `${offsetVal.toFixed(1)}s (CS02 Adiantada)`);
 
         const corrPct = Math.round(Number(ch.correlation_pct || 0));
         const corrBarColor = corrPct >= 80 ? "#10b981" : (corrPct >= 60 ? "#facc15" : "#ef4444");
+
+        const timeWindow = extractMatchedTimeWindow(ch);
+        const cs01SizeInfo = ch.cs01_size_mb ? `${ch.cs01_size_mb} MB` : "Mesmo Horário";
+        const cs02SizeInfo = ch.cs02_size_mb ? `${ch.cs02_size_mb} MB` : "Mesmo Horário";
 
         const canvasId = `wf_canvas_${ch.idpv}`;
 
@@ -415,6 +431,9 @@ function renderAudioSyncList(channels, currentFilter) {
                                 <i class="fas fa-map-marker-alt" style="color: #38bdf8;"></i> ${escapeHtml(ch.cidade || 'N/A')} (${escapeHtml(ch.uf || '')})
                             </span>
                             <span style="font-size: 11px; font-family: monospace; color: #64748b;">Host H${ch.id_host || '?'} • BKP CS0${ch.id_cs || '2'}</span>
+                            <span class="badge" style="background: rgba(16, 185, 129, 0.12); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.3); font-size: 10.5px;">
+                                <i class="far fa-clock"></i> Bloco Pareado: ${escapeHtml(timeWindow)}
+                            </span>
                         </div>
                     </div>
                     <div>
@@ -424,54 +443,61 @@ function renderAudioSyncList(channels, currentFilter) {
                     </div>
                 </div>
 
-                <!-- Linha de Métricas Forenses & Formatos no NAS -->
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-bottom: 12px; font-size: 11.5px;">
+                <!-- Linha de Arquivos Pareados no Mesmo Horário & Similaridade de Conteúdo -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-bottom: 12px; font-size: 11.5px;">
                     <!-- Arquivo CS01 Principal -->
                     <div style="background: rgba(0, 0, 0, 0.35); padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.06);">
-                        <div style="color: #38bdf8; font-weight: 700; display: flex; align-items: center; gap: 5px; margin-bottom: 3px;">
-                            <i class="fas fa-file-audio"></i> CS01 Principal (${escapeHtml(ch.cs01_format || 'MP3')})
+                        <div style="color: #38bdf8; font-weight: 700; display: flex; align-items: center; justify-content: space-between; gap: 5px; margin-bottom: 3px;">
+                            <span><i class="fas fa-file-audio"></i> CS01 Principal (${escapeHtml(ch.cs01_format || 'MP3')})</span>
+                            <span style="font-size: 10px; color: #38bdf8; font-family: monospace;">${escapeHtml(cs01SizeInfo)}</span>
                         </div>
                         <div style="font-family: monospace; font-size: 10.5px; color: #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(ch.cs01_filename || '')}">
-                            ${escapeHtml(ch.cs01_filename || 'Gravação recente')}
+                            ${escapeHtml(ch.cs01_filename || 'Gravação principal')}
                         </div>
-                        <div style="font-size: 10px; color: #94a3b8; margin-top: 3px;">Volume: <strong style="color: #fff;">${ch.rms_cs01_db ?? -18.0} dBFS</strong> • 128 kbps</div>
+                        <div style="font-size: 10px; color: #94a3b8; margin-top: 3px;">
+                            🕒 Janela: <strong style="color: #e2e8f0;">${escapeHtml(timeWindow)}</strong>
+                        </div>
                     </div>
 
                     <!-- Arquivo CS02 BKP -->
                     <div style="background: rgba(0, 0, 0, 0.35); padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.06);">
-                        <div style="color: #facc15; font-weight: 700; display: flex; align-items: center; gap: 5px; margin-bottom: 3px;">
-                            <i class="fas fa-file-video"></i> CS02 Backup (${escapeHtml(ch.cs02_format || 'ASF')})
+                        <div style="color: #facc15; font-weight: 700; display: flex; align-items: center; justify-content: space-between; gap: 5px; margin-bottom: 3px;">
+                            <span><i class="fas fa-file-video"></i> CS0${escapeHtml(ch.id_cs || '2')} Backup (${escapeHtml(ch.cs02_format || 'ASF')})</span>
+                            <span style="font-size: 10px; color: #facc15; font-family: monospace;">${escapeHtml(cs02SizeInfo)}</span>
                         </div>
                         <div style="font-family: monospace; font-size: 10.5px; color: #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(ch.cs02_filename || '')}">
                             ${escapeHtml(ch.cs02_filename || 'Gravação de backup')}
                         </div>
-                        <div style="font-size: 10px; color: #94a3b8; margin-top: 3px;">Volume: <strong style="color: ${(ch.rms_cs02_db ?? 0) < -50 ? '#f87171' : '#fff'};">${ch.rms_cs02_db ?? -18.0} dBFS</strong> • 64 kbps WMA</div>
+                        <div style="font-size: 10px; color: #94a3b8; margin-top: 3px;">
+                            🕒 Janela: <strong style="color: #e2e8f0;">${escapeHtml(timeWindow)}</strong> <span style="color: #34d399;">(Mesmo Horário)</span>
+                        </div>
                     </div>
 
-                    <!-- Correlação Cruzada & Offset -->
+                    <!-- Similaridade de Conteúdo (Invariante a Volume) & Offset -->
                     <div style="background: rgba(0, 0, 0, 0.35); padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.06);">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                            <span style="color: #94a3b8; font-size: 10.5px; text-transform: uppercase; font-weight: 700;">Correlação FFT (R)</span>
+                            <span style="color: #94a3b8; font-size: 10.5px; text-transform: uppercase; font-weight: 700;">Similaridade de Conteúdo</span>
                             <span style="font-family: monospace; font-weight: 800; color: ${corrBarColor}; font-size: 12px;">${corrPct}%</span>
                         </div>
                         <div style="height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; margin-bottom: 6px;">
                             <div style="width: ${corrPct}%; height: 100%; background: ${corrBarColor}; transition: width 0.3s ease;"></div>
                         </div>
-                        <div style="font-size: 11px;">
-                            Desvio Temporal: <strong style="color: ${isOk ? '#34d399' : (isDivergent ? '#f87171' : '#facc15')}; font-family: monospace;">${offsetDisplay}</strong>
+                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 10.5px; gap: 6px;">
+                            <span>Desvio: <strong style="color: ${isOk ? '#34d399' : (isDivergent ? '#f87171' : '#facc15')}; font-family: monospace;">${offsetDisplay}</strong></span>
+                            <span style="color: #64748b; font-size: 9.5px;" title="A comparação iguala automaticamente a escala dos dois sinais e ignora diferenças de volume/ganho">Volume Ignorado</span>
                         </div>
                     </div>
                 </div>
 
-                <!-- Gráfico de Formas de Onda Sobrepostas (Waveform Canvas) -->
+                <!-- Gráfico de Envelopes de Conteúdo Sobrepostos (Waveform Canvas) -->
                 <div style="background: rgba(10, 15, 30, 0.85); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 6px; padding: 10px 12px; margin-bottom: 12px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
                         <span style="font-size: 11px; font-weight: 700; color: #cbd5e1; text-transform: uppercase;">
-                            <i class="fas fa-wave-square" style="color: #38bdf8;"></i> Forma de Onda Normalizada (Janela Forense de 15s)
+                            <i class="fas fa-wave-square" style="color: #38bdf8;"></i> Modulação de Conteúdo de Áudio no Mesmo Horário (Escala Equalizada • Volume Ignorado)
                         </span>
                         <div style="font-size: 10px; display: flex; gap: 14px;">
-                            <span style="color: #38bdf8; font-weight: 700;"><i class="fas fa-square" style="color: #38bdf8;"></i> CS01 (MP3 Principal)</span>
-                            <span style="color: #facc15; font-weight: 700;"><i class="fas fa-square" style="color: #facc15;"></i> CS02 (ASF Backup)</span>
+                            <span style="color: #38bdf8; font-weight: 700;"><i class="fas fa-square" style="color: #38bdf8;"></i> CS01 (${escapeHtml(ch.cs01_format || 'MP3')} Principal)</span>
+                            <span style="color: #facc15; font-weight: 700;"><i class="fas fa-square" style="color: #facc15;"></i> CS0${escapeHtml(ch.id_cs || '2')} (${escapeHtml(ch.cs02_format || 'ASF')} Backup)</span>
                         </div>
                     </div>
                     <canvas id="${canvasId}" width="900" height="60" style="width: 100%; height: 60px; display: block; border-radius: 4px;"></canvas>
@@ -489,7 +515,7 @@ function renderAudioSyncList(channels, currentFilter) {
                         <button type="button" class="btn-primary" style="font-size: 11px; padding: 6px 10px; display: inline-flex; align-items: center; gap: 5px; background: #0284c7;" onclick="copyAudioSyncRemediationScript('${ch.idpv}')" title="Copiar script de intervenção PowerShell para a máquina de BKP">
                             <i class="fas fa-terminal"></i> Script de Intervenção BKP
                         </button>
-                        <button type="button" class="btn-secondary" style="font-size: 11px; padding: 6px 8px;" onclick="reanalyzeAudioSyncChannel('${ch.idpv}')" title="Reanalisar sincronismo deste canal agora">
+                        <button type="button" class="btn-secondary" style="font-size: 11px; padding: 6px 8px;" onclick="reanalyzeAudioSyncChannel('${ch.idpv}')" title="Reanalisar conteúdo e sincronismo deste canal agora">
                             <i class="fas fa-sync-alt" id="icon-reanalyze-${ch.idpv}"></i>
                         </button>
                     </div>
@@ -522,7 +548,7 @@ function drawAudioSyncWaveform(canvasId, wf1, wf2, status) {
     const h = canvas.height;
     ctx.clearRect(0, 0, w, h);
 
-    // Fundo escuro com grade de milissegundos
+    // Fundo escuro com grade temporal
     ctx.fillStyle = "#070d18";
     ctx.fillRect(0, 0, w, h);
 
@@ -566,7 +592,7 @@ function drawAudioSyncWaveform(canvasId, wf1, wf2, status) {
         ctx.stroke();
     }
 
-    // Curva CS01 (MP3 Principal - Azul Celeste)
+    // Curva CS01 (MP3/MP4 Principal - Azul Celeste)
     if (wf1 && wf1.length > 0) {
         ctx.strokeStyle = "#38bdf8";
         ctx.lineWidth = 2.2;
@@ -607,6 +633,9 @@ async function reanalyzeAudioSyncChannel(idpv) {
             const idx = audioSyncCachedData.channels.findIndex(c => String(c.idpv) === String(idpv));
             if (idx >= 0) {
                 audioSyncCachedData.channels[idx] = result.channel;
+                try {
+                    localStorage.setItem("fleet_audio_sync_cache_v3", JSON.stringify(audioSyncCachedData));
+                } catch (_) {}
                 applyAudioSyncClientFilterAndRender();
             }
         }
@@ -626,11 +655,13 @@ function openAudioSyncDetailModal(idpv) {
     const modal = document.getElementById("audioSyncDetailModal");
     if (!modal) return;
 
+    const timeWindow = extractMatchedTimeWindow(channel);
+
     const titleEl = document.getElementById("audioSyncModalTitle");
-    if (titleEl) titleEl.innerText = `Diagnóstico Forense de Sincronismo • ${channel.canal || 'Canal'} (IDPV ${channel.idpv})`;
+    if (titleEl) titleEl.innerText = `Auditoria de Conteúdo & Sincronismo • ${channel.canal || 'Canal'} (IDPV ${channel.idpv})`;
 
     const pracaEl = document.getElementById("audioSyncModalPraca");
-    if (pracaEl) pracaEl.innerText = `${channel.cidade || 'N/A'} (${channel.uf || ''}) • Host H${channel.id_host || '?'} • BKP CS0${channel.id_cs || '2'}`;
+    if (pracaEl) pracaEl.innerText = `${channel.cidade || 'N/A'} (${channel.uf || ''}) • Host H${channel.id_host || '?'} • BKP CS0${channel.id_cs || '2'} • Bloco: ${timeWindow}`;
 
     const badgeEl = document.getElementById("audioSyncModalBadge");
     if (badgeEl) {
@@ -649,19 +680,20 @@ function openAudioSyncDetailModal(idpv) {
         metricsEl.innerHTML = `
             <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; font-size: 11.5px; font-family: monospace;">
                 <div style="background: rgba(0,0,0,0.3); padding: 8px; border-radius: 5px;">
-                    <div style="color: #94a3b8; font-size: 10px;">Offset Medido</div>
-                    <div style="color: #fff; font-size: 14px; font-weight: 700;">${channel.offset_seconds || 0}s (${channel.offset_ms || 0}ms)</div>
+                    <div style="color: #94a3b8; font-size: 10px;">Bloco Horário Pareado</div>
+                    <div style="color: #34d399; font-size: 12px; font-weight: 700;">${escapeHtml(timeWindow)}</div>
                 </div>
                 <div style="background: rgba(0,0,0,0.3); padding: 8px; border-radius: 5px;">
-                    <div style="color: #94a3b8; font-size: 10px;">Coeficiente R</div>
+                    <div style="color: #94a3b8; font-size: 10px;">Similaridade de Conteúdo</div>
                     <div style="color: #38bdf8; font-size: 14px; font-weight: 700;">${Math.round(channel.correlation_pct || 0)}%</div>
                 </div>
                 <div style="background: rgba(0,0,0,0.3); padding: 8px; border-radius: 5px;">
-                    <div style="color: #94a3b8; font-size: 10px;">Volume CS01 (MP3)</div>
-                    <div style="color: #fff; font-size: 14px; font-weight: 700;">${channel.rms_cs01_db ?? -18.0} dBFS</div>
+                    <div style="color: #94a3b8; font-size: 10px;">Desvio Temporal (Delay)</div>
+                    <div style="color: #fff; font-size: 14px; font-weight: 700;">${channel.offset_seconds || 0}s (${channel.offset_ms || 0}ms)</div>
                 </div>
                 <div style="background: rgba(0,0,0,0.3); padding: 8px; border-radius: 5px;">
-                    <div style="color: ${(channel.rms_cs02_db ?? 0) < -50 ? '#f87171' : '#fff'}; font-size: 14px; font-weight: 700;">${channel.rms_cs02_db ?? -18.0} dBFS</div>
+                    <div style="color: #94a3b8; font-size: 10px;">Diferença de Volume</div>
+                    <div style="color: #cbd5e1; font-size: 12px; font-weight: 700;">Ignorada (Z-Score)</div>
                 </div>
             </div>
         `;
@@ -698,12 +730,22 @@ function copyAudioSyncRemediationScript(idpv) {
 
     if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(scriptText).then(() => {
-            alert("Script PowerShell de intervenção no BKP copiado com sucesso para a área de transferência!");
-        }).catch(() => {
-            prompt("Copie o script de intervenção abaixo:", scriptText);
-        });
+            alert("Script PowerShell de intervenção no BKP copiado para a área de transferência!");
+        }).catch(() => fallbackCopyText(scriptText));
     } else {
-        prompt("Copie o script de intervenção abaixo:", scriptText);
+        fallbackCopyText(scriptText);
     }
 }
 window.copyAudioSyncRemediationScript = copyAudioSyncRemediationScript;
+
+function fallbackCopyText(text) {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+        document.execCommand("copy");
+        alert("Script PowerShell copiado para a área de transferência!");
+    } catch (_) {}
+    document.body.removeChild(ta);
+}

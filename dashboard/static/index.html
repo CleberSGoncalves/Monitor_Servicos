@@ -1322,7 +1322,7 @@
 
     <div class="nav-user">
       <button type="button" class="btn-secondary" id="btnHandoverReport" onclick="openHandoverReportModal()" style="display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; font-size: 11px; background: rgba(99,102,241,0.18); border: 1px solid rgba(99,102,241,0.45); color: #a5b4fc; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; white-space: nowrap;" title="Gerar Relatório Executivo de Passagem de Turno (Handover)"><i class="fas fa-clipboard-list"></i> <span>Turno</span></button>
-      <button type="button" class="btn-secondary" id="btnSystemUpdate" onclick="openSystemUpdateModal()" style="display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; font-size: 11px; background: rgba(37,99,235,0.15); border: 1px solid rgba(37,99,235,0.4); color: #38bdf8; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; white-space: nowrap;" title="Verificar atualizações do sistema"><i class="fas fa-sync-alt" id="iconSystemUpdate"></i> <span id="labelSystemVersion">v3.9.57</span></button>
+      <button type="button" class="btn-secondary" id="btnSystemUpdate" onclick="openSystemUpdateModal()" style="display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; font-size: 11px; background: rgba(37,99,235,0.15); border: 1px solid rgba(37,99,235,0.4); color: #38bdf8; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; white-space: nowrap;" title="Verificar atualizações do sistema"><i class="fas fa-sync-alt" id="iconSystemUpdate"></i> <span id="labelSystemVersion">v3.9.58</span></button>
       <div class="user-badge" style="padding: 4px 10px; font-size: 11px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;">
         <div class="status-dot"></div>
         <span id="navUserDisplay">Usuário</span>
@@ -3370,10 +3370,10 @@
               <span style="font-size: 20px;">🎚️</span>
               <h2 style="font-size: 17px; font-weight: 800; color: #fff; margin: 0;">Comparação de Matérias &amp; Sincronismo de Áudio</h2>
               <span class="badge badge-blue" style="font-size: 11px;">CS01 (Principal) ↔ CS02 (BKP)</span>
-              <span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); font-size: 10px;">FFT Cross-Correlation</span>
+              <span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); font-size: 10px;">Mesmo Horário • Volume Ignorado</span>
             </div>
             <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
-              Auditoria contínua de alinhamento temporal entre a gravação nativa (MP3/MP4 na CS01) e a gravação de backup (ASF na CS02/CS03) no repositório VideoRecord do NAS.
+              Auditoria de correspondência de conteúdo de áudio e alinhamento temporal entre gravações do <strong>mesmo bloco de horário</strong> (MP3/MP4 na CS01 vs ASF na CS02/CS03) no NAS, ignorando diferenças de volume.
             </div>
             <div style="font-size: 10.5px; font-family: monospace; color: #64748b; margin-top: 2px;">
               <i class="fas fa-database"></i> Repositório NAS (Somente Leitura): \\ibnas01sp-nas.grupoibope.corp\MediaDNA01\VideoRecord\{ANO}\{MES}\{DIA}\{IDPV}
@@ -3412,12 +3412,6 @@
           <div style="font-size: 10px; color: #34d399; text-transform: uppercase; font-weight: 800;">🟢 100% Sincronizados</div>
           <div style="font-size: 24px; font-weight: 800; color: #34d399; margin: 4px 0;" id="audioKpiSincronizados">0</div>
           <div style="font-size: 10.5px; color: #6ee7b7;">Offset &lt; 0.5s (Conforme)</div>
-        </div>
-
-        <div class="panel-card" style="padding: 14px; text-align: center; border-color: rgba(168, 85, 247, 0.3); background: rgba(168, 85, 247, 0.04); cursor: pointer;" onclick="setAudioSyncFilter('mute')" title="Clique para filtrar canais mudos">
-          <div style="font-size: 10px; color: #c084fc; text-transform: uppercase; font-weight: 800;">⚪ Mudo / Sem BKP</div>
-          <div style="font-size: 24px; font-weight: 800; color: #c084fc; margin: 4px 0;" id="audioKpiMudos">0</div>
-          <div style="font-size: 10.5px; color: #d8b4fe;">Áudio &lt; -50 dBFS</div>
         </div>
 
         <div class="panel-card" style="padding: 14px; text-align: center; border-color: rgba(56, 189, 248, 0.3);">
@@ -7839,7 +7833,7 @@
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
           <div style="background: rgba(0,0,0,0.3); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color);">
             <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Versão Instalada</div>
-            <div id="sys-update-local-version" style="font-size: 14px; font-weight: 700; color: #38bdf8; margin-top: 2px;">v3.9.0 (<span id="sys-update-local-sha">...</span>)</div>
+            <div id="sys-update-local-version" style="font-size: 14px; font-weight: 700; color: #38bdf8; margin-top: 2px;">v3.9.58 (<span id="sys-update-local-sha">...</span>)</div>
           </div>
           <div style="background: rgba(0,0,0,0.3); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color);">
             <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Última Versão no GitHub</div>
@@ -8114,7 +8108,7 @@
   <script src="/static/js/network_link.js?v=3.9.40"></script>
   <script src="/static/js/fiscalizacao.js?v=3.9.49"></script>
   <script src="/static/js/classificador_falhas.js?v=3.9.50"></script>
-  <script src="/static/js/audio_sync.js?v=3.9.56"></script>
+  <script src="/static/js/audio_sync.js?v=3.9.58"></script>
 
 <!-- MODAL: DIAGNÓSTICO DE IA DE LINK & CONECTIVIDADE DE REDE -->
   <div class="modal-overlay" id="networkAiDiagModal" style="display: none; align-items: center; justify-content: center; z-index: 10000;">
@@ -8264,7 +8258,7 @@
 
       <!-- Modal Footer -->
       <div style="padding: 14px 20px; background: rgba(15, 23, 42, 0.95); border-top: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center;">
-        <span style="font-size: 11px; color: var(--text-muted);">MediaDNA Incident Cockpit • Handover Engine v3.9.28</span>
+        <span style="font-size: 11px; color: var(--text-muted);">MediaDNA Incident Cockpit • Handover Engine v3.9.58</span>
         <div style="display: flex; gap: 10px;">
           <button type="button" class="btn-secondary" onclick="closeHandoverReportModal()" style="padding: 8px 16px;">Fechar</button>
           <button type="button" class="btn-primary" onclick="copyHandoverReportToClipboard()" style="padding: 8px 18px; background: linear-gradient(135deg, #4f46e5, #2563eb); font-weight: 700; display: flex; align-items: center; gap: 8px;">
@@ -8402,7 +8396,7 @@
       <div style="background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 12px; margin-bottom: 14px;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
           <span style="font-size: 11px; font-weight: 700; color: #cbd5e1; text-transform: uppercase;">
-            <i class="fas fa-chart-line" style="color: #38bdf8;"></i> Correlação Espectral &amp; Sobreposição de Áudio (15s)
+            <i class="fas fa-chart-line" style="color: #38bdf8;"></i> Modulação de Conteúdo Comparada no Mesmo Horário (Volume Equalizado / Ignorado)
           </span>
           <div style="font-size: 10.5px; display: flex; gap: 16px;">
             <span style="color: #38bdf8; font-weight: 700;">● CS01 (MP3 Principal)</span>
