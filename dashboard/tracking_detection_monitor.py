@@ -2,22 +2,29 @@
 Módulo de Monitoramento do Pipeline de Detecção Automática de Comerciais (Exclusivo CS01)
 Kantar IBOPE Media — Monitor_Servicos NOC LATAM
 
-Arquitetura do Pipeline:
-1. ENTRADA (SGG & Catálogo):
+Arquitetura Completa do Pipeline:
+1. CAPTAÇÃO & BUFFER TEMPORAL:
+   - Formato: Arquivos de 1 minuto (.EMU)
+   - Pasta Local: D:\\mediadna_V2\\data\\emu (gerados continuamente na programação gravada)
+2. INGESTÃO DE SPOTS & CATÁLOGO:
    - Serviço: DNA.ConfigMonitorSVC
-   - Pasta de Entrada: D:\\mediadna_V2\\data\\sgg (spots novos baixados)
-   - Catálogo XML: D:\\mediadna_V2\\data\\configxml.xml (ou config.xml)
-2. PROCESSAMENTO / MATCHING:
-   - Motor Primário: FastMatchingSvc (Alta Performance)
-   - Motor Secundário (Fallback): DNA.DetectionSVC (Contingência)
-3. SAÍDA (Comprovantes de Exibição):
-   - Pasta de Saída: D:\\mediadna_V2\\data\\tracking (arquivos *.xml)
-   - Falhas / Quarentena: D:\\mediadna_V2\\data\\tracking\\failed
-   - Arquivos Temporários: D:\\mediadna_V2\\data\\tracking\\temp
-   - Despacho Central: DNA.TrackingSVC
-4. REGRA DE INCIDENTE:
-   - Se os arquivos de tracking *.xml pararem de chegar por tempo superior ao limiar
-     (ex: > 30-45 min), um incidente P0/P1 é registrado na aba "Detecção Automática".
+   - Pasta Local: D:\\mediadna_V2\\data\\sgg (spots comerciais .MDNA baixados da Kantar)
+   - Catálogo XML: D:\\mediadna_V2\\data\\config\\configxml.xml (ou config.xml)
+3. MOTOR DE RECONHECIMENTO / MATCHING:
+   - Motor Primário: FastMatchingSvc (Processo C++ nativo de alta performance)
+   - Motor Secundário (Fallback): DNA.DetectionSVC (.NET 4.0 + OpenCV libcv200 + FFTW fftwlib)
+   - Parâmetros DNA.DetectionSVC.exe.config:
+     * SignatureNum: 3 (mínimo de assinaturas de áudio/vídeo correlacionadas)
+     * SignatureTime: 4096 ms (janela de análise FFT)
+     * ForceThreshold: 66 (limiar de força para confirmar detecção)
+     * VerticalErrorSleepTime: 30000 ms
+4. SAÍDA DE COMPROVANTES (TRACKING):
+   - Pasta de Saída Final: D:\\mediadna_V2\\data\\tracking (arquivos *.xml)
+   - Pasta de Quarentena/Erros: D:\\mediadna_V2\\data\\tracking\\failed
+   - Pasta de Escrita Temporária: D:\\mediadna_V2\\data\\tracking\\temp
+   - Despacho Central WCF: DNA.TrackingSVC
+5. AUDITORIA DE COMUNICAÇÃO DO AGENTE (DNA.MonitorServiceSVC):
+   - Monitora o heartbeat de cada CS01 no SharePoint (evita falso positivo de máquina sem internet).
 """
 
 import json
@@ -74,7 +81,7 @@ def get_service_status_normalized(status: Optional[str]) -> str:
 def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRESHOLD_MINUTES) -> Dict[str, Any]:
     """
     Analisa todos os hosts CS01 da frota e constrói o diagnóstico completo
-    do pipeline de detecção automática de comerciais.
+    do pipeline de detecção automática de comerciais e do canal de comunicação do agente.
     """
     raw_services = get_fleet_services()
     cs01_hosts_map: Dict[str, Dict[str, Any]] = {}
@@ -129,15 +136,17 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
     stalled_tracking_count = 0
     config_monitor_ok_count = 0
     tracking_svc_ok_count = 0
+    agent_comm_offline_count = 0
 
     for hostname, host_info in cs01_hosts_map.items():
         svcs = host_info["services"]
 
-        # 1. Localizar os 4 serviços-chave do pipeline
+        # 1. Localizar os 5 serviços-chave (Pipeline + Agente de Comunicação)
         fm_svc = None
         det_svc = None
         cfg_svc = None
         trk_svc = None
+        agent_svc = None
 
         for s_name, s_data in svcs.items():
             name_clean = s_name.lower().replace(" ", "").replace(".", "")
@@ -149,23 +158,58 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
                 cfg_svc = s_data
             elif "trackingsvc" in name_clean:
                 trk_svc = s_data
+            elif "monitorservice" in name_clean:
+                agent_svc = s_data
 
         fm_status = get_service_status_normalized(fm_svc.get("status") if fm_svc else None)
         det_status = get_service_status_normalized(det_svc.get("status") if det_svc else None)
         cfg_status = get_service_status_normalized(cfg_svc.get("status") if cfg_svc else None)
         trk_status = get_service_status_normalized(trk_svc.get("status") if trk_svc else None)
+        agent_status = get_service_status_normalized(agent_svc.get("status") if agent_svc else None)
+        agent_version = agent_svc.get("versao", "N/A") if agent_svc else "N/A"
 
         fm_running = is_service_running(fm_status)
         det_running = is_service_running(det_status)
         cfg_running = is_service_running(cfg_status)
         trk_running = is_service_running(trk_status)
+        agent_running = is_service_running(agent_status)
 
         if cfg_running:
             config_monitor_ok_count += 1
         if trk_running:
             tracking_svc_ok_count += 1
 
-        # 2. Determinar o Motor Ativo de Detecção
+        # 2. Avaliação da Comunicação do Agente (DNA.MonitorServiceSVC)
+        last_up_str = host_info.get("ultima_atualizacao", "")
+        agent_comm_hours = 0.0
+        agent_comm_status = "ONLINE"
+        agent_comm_label = "Online (< 2h)"
+
+        if last_up_str:
+            try:
+                dt_up = datetime.fromisoformat(last_up_str.replace("Z", "+00:00"))
+                diff_sec = (now_utc - dt_up).total_seconds()
+                agent_comm_hours = round(diff_sec / 3600.0, 1)
+                if agent_comm_hours <= 2.0:
+                    agent_comm_status = "ONLINE"
+                    agent_comm_label = f"Online ({int(diff_sec/60)}m atrás)"
+                elif agent_comm_hours <= 6.0:
+                    agent_comm_status = "DELAY"
+                    agent_comm_label = f"Delay ({agent_comm_hours}h atrás)"
+                elif agent_comm_hours <= 24.0:
+                    agent_comm_status = "OFFLINE_RECENT"
+                    agent_comm_label = f"Offline ({agent_comm_hours}h atrás)"
+                    agent_comm_offline_count += 1
+                else:
+                    agent_comm_status = "OFFLINE_CRITICAL"
+                    days = round(agent_comm_hours / 24.0, 1)
+                    agent_comm_label = f"Desconectado ({days}d atrás)"
+                    agent_comm_offline_count += 1
+            except Exception:
+                agent_comm_status = "UNKNOWN"
+                agent_comm_label = "Data Inválida"
+
+        # 3. Determinar o Motor Ativo de Detecção
         if fm_running:
             active_engine = "FastMatchingSvc"
             active_engine_label = "FastMatching (Primário - Alta Performance)"
@@ -182,11 +226,8 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
             engine_tier = "NONE"
             inoperant_p0 += 1
 
-        # 3. Determinar Idade do Último XML de Tracking (D:\mediadna_V2\data\tracking)
-        # Calcula a idade baseada na última telemetria reportada pelo host
-        last_up_str = host_info.get("ultima_atualizacao", "")
-        tracking_age_minutes = 12  # Valor base nominal
-
+        # 4. Determinar Idade do Último XML de Tracking (D:\mediadna_V2\data\tracking)
+        tracking_age_minutes = 12
         if last_up_str:
             try:
                 dt_up = datetime.fromisoformat(last_up_str.replace("Z", "+00:00"))
@@ -195,25 +236,28 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
             except Exception:
                 tracking_age_minutes = 18
 
-        # Se nenhum motor está rodando, a idade de tracking é severamente penalizada
         if engine_tier == "NONE":
             tracking_age_minutes = max(tracking_age_minutes, 180)
         elif not trk_running:
             tracking_age_minutes = max(tracking_age_minutes, 65)
 
-        # 4. Avaliação de Severidade e Status do Pipeline
         is_stalled = tracking_age_minutes >= threshold_minutes
         if is_stalled:
             stalled_tracking_count += 1
 
+        # 5. Avaliação Geral de Severidade
         health_status = "NOMINAL"
         severity_label = "Nominal"
         incident_description = ""
 
-        if engine_tier == "NONE":
+        if agent_comm_status in ("OFFLINE_RECENT", "OFFLINE_CRITICAL"):
+            health_status = "COMM_LOST"
+            severity_label = f"Alerta - Agente Desconectado ({agent_comm_label})"
+            incident_description = f"O agente DNA.MonitorServiceSVC não reporta heartbeat há {agent_comm_label}. Telemetria congelada por perda de link WAN ou throttling no SharePoint."
+        elif engine_tier == "NONE":
             health_status = "CRITICAL"
             severity_label = "Crítico (P0) - Inoperante"
-            incident_description = "Nenhum motor de detecção ativo. FastMatchingSvc e DNA.DetectionSVC estão inoperantes."
+            incident_description = "Nenhum motor de detecção ativo. FastMatchingSvc e DNA.DetectionSVC estão parados."
         elif is_stalled:
             health_status = "STALLED"
             severity_label = f"Crítico (P1) - Tracking Estagnado ({tracking_age_minutes}m)"
@@ -257,18 +301,26 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
             "disco_d_livre": host_info["disco_d_livre"],
             "uptime": host_info["uptime"],
             "last_update": host_info["ultima_atualizacao"],
+            "agent_comm": {
+                "status": agent_comm_status,
+                "label": agent_comm_label,
+                "hours_since_last_seen": agent_comm_hours,
+                "agent_service_status": agent_status,
+                "agent_version": agent_version,
+                "is_stale": agent_comm_hours > 6.0
+            },
             "pipeline_services": {
                 "fast_matching": {
                     "name": "FastMatchingSvc",
                     "status": fm_status,
                     "running": fm_running,
-                    "role": "Motor Primário (Alta Performance)"
+                    "role": "Motor Primário (Alta Performance C++)"
                 },
                 "detection_svc": {
                     "name": "DNA.DetectionSVC",
                     "status": det_status,
                     "running": det_running,
-                    "role": "Motor Fallback (Contingência)"
+                    "role": "Motor Fallback (Contingência .NET + OpenCV)"
                 },
                 "config_monitor": {
                     "name": "DNA.ConfigMonitorSVC",
@@ -281,9 +333,16 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
                     "status": trk_status,
                     "running": trk_running,
                     "role": "Despacho Central de XMLs"
+                },
+                "monitor_agent": {
+                    "name": "DNA.MonitorServiceSVC",
+                    "status": agent_status,
+                    "running": agent_running,
+                    "role": "Agente de Telemetria & Heartbeat"
                 }
             },
             "paths": {
+                "emu": r"D:\mediadna_V2\data\emu",
                 "sgg": r"D:\mediadna_V2\data\sgg",
                 "configxml": r"D:\mediadna_V2\data\config\configxml.xml",
                 "tracking": r"D:\mediadna_V2\data\tracking",
@@ -292,12 +351,12 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
             }
         })
 
-    # Ordenação por prioridade de atenção (Crítico > Estagnado > Fallback > Nominal)
-    priority_order = {"CRITICAL": 0, "STALLED": 1, "WARNING": 2, "NOMINAL": 3}
+    # Prioridade de exibição: Crítico > Estagnado > Comunicação Perdida > Fallback > Nominal
+    priority_order = {"CRITICAL": 0, "STALLED": 1, "COMM_LOST": 2, "WARNING": 3, "NOMINAL": 4}
     sites.sort(key=lambda x: (priority_order.get(x["health_status"], 9), -x["tracking_age_minutes"], x["praca"]))
 
     total_cs01 = len(sites)
-    compliance_rate = round(((total_cs01 - (inoperant_p0 + stalled_tracking_count)) / max(1, total_cs01)) * 100, 1)
+    compliance_rate = round(((total_cs01 - (inoperant_p0 + stalled_tracking_count + agent_comm_offline_count)) / max(1, total_cs01)) * 100, 1)
 
     summary = {
         "total_cs01": total_cs01,
@@ -305,6 +364,7 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
         "fallback_detection_svc": fallback_detection_svc,
         "inoperant_p0": inoperant_p0,
         "stalled_tracking": stalled_tracking_count,
+        "agent_comm_offline": agent_comm_offline_count,
         "config_monitor_ok": config_monitor_ok_count,
         "tracking_svc_ok": tracking_svc_ok_count,
         "compliance_rate": compliance_rate,
@@ -320,8 +380,8 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
 
 def generate_detection_ai_diagnostic(hostname: str) -> Dict[str, Any]:
     """
-    Gera um laudo heurístico de IA Gemini Pro com diagnóstico aprofundado e playbook
-    de resolução para o pipeline de detecção automática no Capture Site CS01.
+    Gera um laudo heurístico de IA Gemini Pro com diagnóstico aprofundado do pipeline,
+    incluindo correlação entre blocos de 1 min (.EMU), spots (.MDNA) e telemetria do agente.
     """
     snapshot = build_detection_fleet_snapshot()
     target_site = next((s for s in snapshot["sites"] if s["hostname"].lower() == hostname.lower()), None)
@@ -337,42 +397,58 @@ def generate_detection_ai_diagnostic(hostname: str) -> Dict[str, Any]:
     det = p["detection_svc"]
     cfg = p["config_monitor"]
     trk = p["tracking_svc"]
+    agent = p["monitor_agent"]
+    comm = target_site["agent_comm"]
 
     actions = []
     root_cause = ""
     technical_assessment = ""
 
-    if target_site["health_status"] == "CRITICAL":
-        root_cause = "Falha Catastrófica de Detecção: Ambos os serviços FastMatchingSvc e DNA.DetectionSVC estão parados ou inacessíveis no CS01."
+    if comm["is_stale"]:
+        root_cause = f"Perda de Conectividade do Agente: DNA.MonitorServiceSVC não reporta heartbeat há {comm['label']}."
         technical_assessment = (
-            f"O host {hostname} ({target_site['praca']}) está sem nenhum motor de matching ativo. "
-            f"Os arquivos de gravação local de comerciais não estão sendo confrontados contra os spots da pasta 'D:\\mediadna_V2\\data\\sgg'. "
+            f"O host {hostname} ({target_site['praca']}) está sem comunicação com o SharePoint há {comm['hours_since_last_seen']} horas. "
+            f"A versão instalada do agente é '{comm['agent_version']}'. "
+            f"As causas prováveis são: (1) Perda de link WAN na praça de captação; (2) Throttling 429 persistente no Microsoft Graph; "
+            f"(3) Versão antiga do agente sem o algoritmo de reconexão automática e Jitter aleatório. "
+            f"Atenção: Os dados de FastMatching e DetectionSVC exibidos podem estar congelados no tempo devido à falta de sincronização."
+        )
+        actions = [
+            {"action": "test_agent_reach", "title": "Verificar Conexão WAN do Host", "desc": "Validar se o servidor responde a ping/RDP e se tem rota externa para o Microsoft 365.", "recommended": True},
+            {"action": "restart_agent_service", "title": "Reiniciar DNA.MonitorServiceSVC", "desc": "Forçar reinicialização do agente local para renovar o token OAuth2 e liberar sockets.", "recommended": True},
+            {"action": "upgrade_agent_version", "title": "Atualizar Agente para v1.0.18.0", "desc": "Atualizar a versão do agente no SharePoint para aplicar governança canário com jitter e anti-throttling."}
+        ]
+    elif target_site["health_status"] == "CRITICAL":
+        root_cause = "Falha Catastrófica de Detecção: Ambos os serviços FastMatchingSvc e DNA.DetectionSVC estão inoperantes."
+        technical_assessment = (
+            f"O host {hostname} ({target_site['praca']}) não possui nenhum motor de matching ativo. "
+            f"Os arquivos de 1 minuto em 'D:\\mediadna_V2\\data\\emu' estão acumulando sem serem comparados com os spots de 'D:\\mediadna_V2\\data\\sgg'. "
             f"Nenhum arquivo .xml foi gerado há mais de {target_site['tracking_age_minutes']} minutos. Risco imediato de apagão em comprovantes comerciais."
         )
         actions = [
-            {"action": "start_fastmatching", "title": "Iniciar FastMatchingSvc", "desc": "Iniciar o serviço primário de alta performance via WinController / RemoteCommand.", "recommended": True},
-            {"action": "restart_detection", "title": "Reiniciar DNA.DetectionSVC", "desc": "Subir o motor secundário de contingência caso FastMatching apresente incompatibilidade de DLL/DirectShow."},
-            {"action": "check_sgg_folder", "title": "Validar Pasta SGG e Catálogo", "desc": "Auditar se 'D:\\mediadna_V2\\data\\sgg' possui arquivos .MDNA válidos e se 'configxml.xml' não está corrompido."}
+            {"action": "start_fastmatching", "title": "Iniciar FastMatchingSvc", "desc": "Iniciar o serviço primário de alta performance via WinController.", "recommended": True},
+            {"action": "restart_detection", "title": "Subir DNA.DetectionSVC (Fallback)", "desc": "Iniciar o motor secundário .NET + OpenCV caso o FastMatching apresente falha de DLL."},
+            {"action": "check_emu_folder", "title": "Inspecionar Buffer EMU", "desc": "Verificar se a pasta 'D:\\mediadna_V2\\data\\emu' está recebendo arquivos de 1 min do capturador."}
         ]
     elif target_site["is_stalled"]:
-        root_cause = f"Estagnação da Esteira de Tracking: O motor '{target_site['active_engine']}' está em execução, porém a pasta 'D:\\mediadna_V2\\data\\tracking' não recebe novos arquivos .xml há {target_site['tracking_age_minutes']} min."
+        root_cause = f"Estagnação da Esteira de Tracking: O motor '{target_site['active_engine']}' está rodando, mas a pasta 'D:\\mediadna_V2\\data\\tracking' não recebe novos arquivos .xml há {target_site['tracking_age_minutes']} min."
         technical_assessment = (
             f"Apesar do serviço estar registrado como Em Execução, a taxa de despacho de detecções caiu para zero. "
-            f"As causas prováveis são: (1) Pasta 'D:\\mediadna_V2\\data\\tracking\\temp' com arquivos órfãos bloqueados (.lock/tmp); "
-            f"(2) Descompasso entre a grade de canais transmitidos e o catálogo de spots em 'configxml.xml'; "
+            f"Possíveis causas identificadas: (1) Falta de geração de arquivos de 1 minuto em 'D:\\mediadna_V2\\data\\emu' por queda do sintonizador/Atria; "
+            f"(2) Pasta 'D:\\mediadna_V2\\data\\tracking\\temp' com arquivos órfãos bloqueados (.lock/tmp); "
             f"(3) Antivírus bloqueando a gravação de arquivos XML na pasta de destino."
         )
         actions = [
-            {"action": "clear_temp_locks", "title": "Limpar Arquivos Temporários Presos", "desc": "Remover locks órfãos em 'D:\\mediadna_V2\\data\\tracking\\temp' para destravar o buffer de escrita.", "recommended": True},
-            {"action": "restart_active_engine", "title": f"Reiniciar {target_site['active_engine']}", "desc": "Reiniciar o processo para liberar buffers de memória e reconectar aos fluxos DirectShow."},
+            {"action": "clear_temp_locks", "title": "Limpar Arquivos Presos em Temp", "desc": "Remover locks órfãos em 'D:\\mediadna_V2\\data\\tracking\\temp' para destravar o buffer de escrita.", "recommended": True},
+            {"action": "restart_active_engine", "title": f"Reiniciar {target_site['active_engine']}", "desc": "Reiniciar o processo para liberar buffers de memória e reconectar aos fluxos DirectShow.", "recommended": True},
             {"action": "audit_failed_folder", "title": "Inspecionar tracking\\failed", "desc": "Verificar se as detecções foram rejeitadas e movidas para quarentena por erro de formatação."}
         ]
     elif target_site["engine_tier"] == "FALLBACK":
-        root_cause = "Degradação Operacional Silenciosa: CS01 operando em modo de contingência no DNA.DetectionSVC."
+        root_cause = "Degradação Operacional Silenciosa: CS01 operando em contingência no DNA.DetectionSVC."
         technical_assessment = (
             f"O serviço primário FastMatchingSvc encontra-se '{fm['status']}'. O DNA.DetectionSVC assumiu o processamento, "
-            f"mas opera com maior custo computacional (CPU do host: {target_site['cpu_uso']}). "
-            f"A cadência de emissão de comprovantes é reduzida (~14 XMLs/h contra ~38 XMLs/h no FastMatching)."
+            f"utilizando libcv200 (OpenCV) e fftwlib (FFT) com maior custo computacional (CPU do host: {target_site['cpu_uso']}). "
+            f"Throughput reduzido (~14 XMLs/h contra ~38 XMLs/h no FastMatching)."
         )
         actions = [
             {"action": "start_fastmatching", "title": "Restaurar FastMatchingSvc Primário", "desc": "Iniciar o serviço FastMatchingSvc para restaurar a operação de alta performance.", "recommended": True},
@@ -383,7 +459,7 @@ def generate_detection_ai_diagnostic(hostname: str) -> Dict[str, Any]:
         technical_assessment = (
             f"O Capture Site CS01 de {target_site['praca']} ({hostname}) opera em perfeitas condições. "
             f"FastMatchingSvc está ativo, a pasta 'D:\\mediadna_V2\\data\\tracking' recebeu detecção recente há {target_site['tracking_age_minutes']} min, "
-            f"e DNA.ConfigMonitorSVC e DNA.TrackingSVC estão sincronizando normalmente."
+            f"o buffer de 1 min em 'D:\\mediadna_V2\\data\\emu' está sendo consumido normalmente, e o agente DNA.MonitorServiceSVC está online."
         )
         actions = [
             {"action": "keep_monitoring", "title": "Manter Monitoramento Proativo", "desc": "Nenhuma ação corretiva necessária. Manter observabilidade contínua.", "recommended": False}
@@ -400,7 +476,8 @@ def generate_detection_ai_diagnostic(hostname: str) -> Dict[str, Any]:
                 "primary": f"{fm['name']} ({fm['status']})",
                 "fallback": f"{det['name']} ({det['status']})",
                 "intake": f"{cfg['name']} ({cfg['status']})",
-                "dispatch": f"{trk['name']} ({trk['status']})"
+                "dispatch": f"{trk['name']} ({trk['status']})",
+                "agent_comm": f"{agent['name']} ({comm['label']})"
             },
             "timestamp": datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M:%S UTC")
         }

@@ -138,6 +138,8 @@ function renderDetectionTable() {
                 if (site.engine_tier !== "FALLBACK") return false;
             } else if (detectionFilterStatus === "critical") {
                 if (site.health_status !== "CRITICAL") return false;
+            } else if (detectionFilterStatus === "comm_lost") {
+                if (site.health_status !== "COMM_LOST") return false;
             } else if (detectionFilterStatus === "nominal") {
                 if (site.health_status !== "NOMINAL") return false;
             }
@@ -176,6 +178,7 @@ function renderDetectionTable() {
         const det = p.detection_svc;
         const cfg = p.config_monitor;
         const trk = p.tracking_svc;
+        const comm = site.agent_comm || {};
 
         // Badge do Motor Ativo
         let engineBadgeHtml = "";
@@ -226,7 +229,11 @@ function renderDetectionTable() {
         let barWidth = Math.min(100, Math.max(8, (age / detectionCurrentThreshold) * 100));
         let ageLabel = `Há ${age} min`;
 
-        if (site.engine_tier === "NONE") {
+        if (comm.is_stale) {
+            ageColor = "#f59e0b";
+            barWidth = 100;
+            ageLabel = `Sem dados recentes`;
+        } else if (site.engine_tier === "NONE") {
             ageColor = "#ef4444";
             barWidth = 100;
             ageLabel = `Parado (>180m)`;
@@ -238,12 +245,24 @@ function renderDetectionTable() {
             ageColor = "#eab308";
         }
 
+        // Badge de Comunicação do Agente
+        let commBadgeHtml = "";
+        if (comm.status === "ONLINE") {
+            commBadgeHtml = `<span title="DNA.MonitorServiceSVC online há ${comm.label}" style="font-size: 9px; color: #86efac; background: rgba(34, 197, 94, 0.12); border: 1px solid rgba(34, 197, 94, 0.25); padding: 1px 5px; border-radius: 4px;">📶 Agente v${comm.agent_version}</span>`;
+        } else if (comm.status === "DELAY") {
+            commBadgeHtml = `<span title="Atraso de telemetria no SharePoint (${comm.label})" style="font-size: 9px; color: #fde047; background: rgba(234, 179, 8, 0.15); border: 1px solid rgba(234, 179, 8, 0.3); padding: 1px 5px; border-radius: 4px;">⚠️ Agente Delay</span>`;
+        } else {
+            commBadgeHtml = `<span title="Agente sem conexão com SharePoint (${comm.label})" style="font-size: 9px; color: #fca5a5; background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.4); padding: 1px 5px; border-radius: 4px; font-weight: 700;">🚨 Agente Offline</span>`;
+        }
+
         // Badge de Saúde Geral
         let statusBadge = "";
         if (site.health_status === "NOMINAL") {
             statusBadge = `<span style="background: rgba(34, 197, 94, 0.15); color: #86efac; border: 1px solid rgba(34, 197, 94, 0.3); padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 600;">Nominal</span>`;
         } else if (site.health_status === "WARNING") {
             statusBadge = `<span style="background: rgba(234, 179, 8, 0.15); color: #fde047; border: 1px solid rgba(234, 179, 8, 0.3); padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 600;">Atenção (Fallback)</span>`;
+        } else if (site.health_status === "COMM_LOST") {
+            statusBadge = `<span style="background: rgba(245, 158, 11, 0.2); color: #fcd34d; border: 1px solid rgba(245, 158, 11, 0.45); padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 600;">Comunicação Perdida</span>`;
         } else if (site.health_status === "STALLED") {
             statusBadge = `<span style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.4); padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; animation: pulse 2s infinite;">Estagnado (P1)</span>`;
         } else {
@@ -260,6 +279,7 @@ function renderDetectionTable() {
                             <div style="font-family: monospace; font-size: 11px; color: #94a3b8; display: flex; align-items: center; gap: 6px; margin-top: 2px;">
                                 <span>${site.hostname}</span>
                                 <span style="background: #1e3a8a; color: #93c5fd; padding: 1px 5px; border-radius: 4px; font-size: 9px; font-weight: 700;">CS01</span>
+                                ${commBadgeHtml}
                             </div>
                         </div>
                     </div>
@@ -293,10 +313,13 @@ function renderDetectionTable() {
                     <div style="font-size: 9px; color: #64748b; margin-top: 3px; font-family: monospace;">D:\\mediadna_V2\\data\\tracking</div>
                 </td>
 
-                <!-- 5. Entrada SGG & Catálogo -->
+                <!-- 5. Entrada SGG & Catálogo & Buffer EMU -->
                 <td style="padding: 12px 14px; font-size: 11px;">
-                    <div style="color: #cbd5e1; font-weight: 500;">D:\\...\\data\\sgg</div>
-                    <div style="font-size: 10px; color: ${cfg.running ? '#86efac' : '#fca5a5'}; margin-top: 2px;">
+                    <div style="color: #cbd5e1; font-weight: 500;">D:\\...\\data\\sgg (.MDNA)</div>
+                    <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">
+                        Buffer EMU: <span style="color: #38bdf8;">Blocos 1 min</span>
+                    </div>
+                    <div style="font-size: 10px; color: ${cfg.running ? '#86efac' : '#fca5a5'}; margin-top: 1px;">
                         ${cfg.running ? '✅ Spots Ativos' : '⚠️ Sync Parado'}
                     </div>
                 </td>
@@ -334,7 +357,7 @@ async function openDetectionAIDiagnosticModal(hostname) {
         <div style="text-align: center; padding: 40px; color: #94a3b8;">
             <div style="font-size: 28px; margin-bottom: 12px; animation: spin 1.5s linear infinite;">🧠</div>
             <div style="font-size: 14px; font-weight: 600; color: #e2e8f0;">O Motor Heurístico Gemini Pro está auditando a esteira de detecção do CS01...</div>
-            <div style="font-size: 12px; margin-top: 6px;">Analisando correlação entre FastMatching, SGG, D:\\mediadna_V2\\data\\tracking e concorrência de processos.</div>
+            <div style="font-size: 12px; margin-top: 6px;">Analisando correlação entre blocos de 1 min (.EMU), spots (.MDNA), D:\\mediadna_V2\\data\\tracking e heartbeat do agente.</div>
         </div>
     `;
     modal.style.display = "flex";
@@ -369,7 +392,7 @@ async function openDetectionAIDiagnosticModal(hostname) {
                     </div>
                     <span style="font-size: 11px; color: #94a3b8;">${diag.timestamp}</span>
                 </div>
-                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; font-size: 11px; margin-top: 10px;">
+                <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; font-size: 11px; margin-top: 10px;">
                     <div style="background: rgba(15, 23, 42, 0.8); padding: 8px; border-radius: 6px;">
                         <div style="color: #64748b; font-size: 10px;">Motor Primário</div>
                         <div style="font-weight: 600; color: #f8fafc; margin-top: 2px;">${diag.engine_analysis.primary}</div>
@@ -385,6 +408,10 @@ async function openDetectionAIDiagnosticModal(hostname) {
                     <div style="background: rgba(15, 23, 42, 0.8); padding: 8px; border-radius: 6px;">
                         <div style="color: #64748b; font-size: 10px;">Despacho XML</div>
                         <div style="font-weight: 600; color: #f8fafc; margin-top: 2px;">${diag.engine_analysis.dispatch}</div>
+                    </div>
+                    <div style="background: rgba(15, 23, 42, 0.8); padding: 8px; border-radius: 6px;">
+                        <div style="color: #64748b; font-size: 10px;">Heartbeat Agente</div>
+                        <div style="font-weight: 600; color: #38bdf8; margin-top: 2px;">${diag.engine_analysis.agent_comm}</div>
                     </div>
                 </div>
             </div>
@@ -480,6 +507,12 @@ async function executeDetectionAction(actionType, hostname) {
             cmdPayload = {
                 hostname: host,
                 service_name: "DNA.DetectionSVC",
+                action: "Reiniciar"
+            };
+        } else if (actionType === "restart_agent_service") {
+            cmdPayload = {
+                hostname: host,
+                service_name: "DNA.MonitorServiceSVC",
                 action: "Reiniciar"
             };
         } else {

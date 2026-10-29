@@ -42,7 +42,7 @@ def test_build_detection_fleet_snapshot_structure():
     for site in sites:
         assert site["cs"] == 1, f"Host {site['hostname']} deve ser exclusivamente CS01, obtido CS={site['cs']}"
         assert site["engine_tier"] in ("PRIMARY", "FALLBACK", "NONE")
-        assert site["health_status"] in ("NOMINAL", "WARNING", "STALLED", "CRITICAL")
+        assert site["health_status"] in ("NOMINAL", "WARNING", "STALLED", "CRITICAL", "COMM_LOST")
         assert "pipeline_services" in site
         p = site["pipeline_services"]
         assert "fast_matching" in p

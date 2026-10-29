@@ -118,10 +118,19 @@ def parse_recording_slot_metadata(filename: str, full_path: str = "") -> Optiona
         date_fmt = dt_start.strftime("%d/%m/%Y")
         start_hhmmss = dt_start.strftime("%H:%M:%S")
         start_hhmm = dt_start.strftime("%H:%M")
+        # Conversão explícita de UTC para Horário de Brasília (BRT = UTC-3)
+        dt_brt = dt_start - timedelta(hours=3)
+        brt_date_fmt = dt_brt.strftime("%d/%m/%Y")
+        brt_start_hhmm = dt_brt.strftime("%H:%M")
+        dt_brt_end = dt_brt + timedelta(minutes=30)
+        brt_end_hhmm = dt_brt_end.strftime("%H:%M")
     except Exception:
         date_fmt = f"{start_ts[6:8]}/{start_ts[4:6]}/{start_ts[:4]}"
         start_hhmmss = f"{start_ts[8:10]}:{start_ts[10:12]}:00"
         start_hhmm = f"{start_ts[8:10]}:{start_ts[10:12]}"
+        brt_date_fmt = date_fmt
+        brt_start_hhmm = start_hhmm
+        brt_end_hhmm = f"{int(start_ts[8:10])}:30" if start_ts[10:12] == "00" else f"{int(start_ts[8:10])+1}:00"
 
     if len(end_ts) >= 6:
         end_hhmmss = f"{end_ts[:2]}:{end_ts[2:4]}:{end_ts[4:6]}"
@@ -133,6 +142,10 @@ def parse_recording_slot_metadata(filename: str, full_path: str = "") -> Optiona
     sz_int = int(sz_bytes) if sz_bytes.isdigit() else 0
     size_mb = round(sz_int / (1024.0 * 1024.0), 1)
 
+    # Rótulo com paridade de fuso: Horário de Brasília como referência operacional e UTC como referência do arquivo
+    time_window_label = f"{brt_date_fmt} • {brt_start_hhmm} às {brt_end_hhmm} (Brasília) [{start_hhmm} às {end_hhmm} UTC]"
+    time_range_short = f"{brt_start_hhmm} às {brt_end_hhmm} (BRT)"
+
     return {
         "filename": filename,
         "path": full_path,
@@ -142,11 +155,13 @@ def parse_recording_slot_metadata(filename: str, full_path: str = "") -> Optiona
         "start_ts": start_ts,
         "end_ts": end_ts,
         "dt_start": dt_start if "dt_start" in locals() else None,
-        "date_fmt": date_fmt,
+        "date_fmt": brt_date_fmt,
         "start_hhmmss": start_hhmmss,
         "end_hhmmss": end_hhmmss,
-        "time_window_label": f"{date_fmt} • {start_hhmm} às {end_hhmm}",
-        "time_range_short": f"{start_hhmm} → {end_hhmm}",
+        "time_window_label": time_window_label,
+        "time_range_short": time_range_short,
+        "utc_time_window": f"{date_fmt} • {start_hhmm} às {end_hhmm} UTC",
+        "brt_time_window": f"{brt_date_fmt} • {brt_start_hhmm} às {brt_end_hhmm} BRT",
         "sequence": int(seq_num),
         "size_bytes": sz_int,
         "size_mb": size_mb,
