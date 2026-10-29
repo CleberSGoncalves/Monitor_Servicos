@@ -1,7 +1,7 @@
 {
-    "version": "3.9.60",
+    "version": "3.9.61",
     "agent_version": "1.0.18.0",
     "commit_sha": "auto",
-    "updated_at": "2026-10-28T23:45:00.000000",
-    "description": "v3.9.60 - Suporte Completo a Multi-CS na Topologia RF com seletor de Capture Site e badges de host; Sincronização dinâmica de 106+ praças em todos os 12 módulos e dropdowns do dashboard; Análise Holística de Frota com IA Gemini e Catálogo de 24 Automações Proativas; Otimização de renderização DOM para 3.300+ microsserviços."
+    "updated_at": "2026-10-29T03:30:00.000000",
+    "description": "v3.9.61 - Deduplicação rigorosa de canais e snapshots históricos do SharePoint; Correção de falso alarme de contagem múltipla de canais (28 vs 13); Tratamento contextual de áudio e tuners desconectados em blades analógicos PayTV (TW6802 PCI); Normalização de detecção de anomalias com supressão de badges nominais conflitantes em incidentes ativos."
 }

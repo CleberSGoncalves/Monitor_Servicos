@@ -142,11 +142,39 @@ def sync_fleet_data():
             if "mediaconverter" in str(s.get("nome_servico", "")).lower() and s.get("status_servico") == "Em Execução"
         }
 
+        # Deduplicação inteligente de canais: O SharePoint acumula atualizações históricas.
+        # Mantém estritamente o snapshot mais recente por (Canal, Praça, CS) para evitar duplicações.
+        raw_channels_dedup = {}
+        for it in raw_channels:
+            f = it.get("fields", {})
+            ch_name_clean = str(f.get("Title", "")).strip().lower()
+            praca_name_clean = str(f.get("Cidade", "")).strip().lower()
+            try:
+                cs_val = int(float(f.get("IDCS", 1) or 1))
+            except Exception:
+                cs_val = 1
+            if not ch_name_clean:
+                continue
+            key = (ch_name_clean, praca_name_clean, cs_val)
+            at_str = str(f.get("Atualizacao", "") or "")
+            try:
+                dt_ch = datetime.fromisoformat(at_str.replace("Z", "+00:00"))
+            except Exception:
+                dt_ch = datetime.min.replace(tzinfo=timezone.utc)
+            
+            if key not in raw_channels_dedup:
+                raw_channels_dedup[key] = (dt_ch, it)
+            else:
+                if dt_ch >= raw_channels_dedup[key][0]:
+                    raw_channels_dedup[key] = (dt_ch, it)
+        
+        valid_raw_channels = [v[1] for v in raw_channels_dedup.values()]
+
         # Mapeamento prévio de canais com gravação ativa por praça para análise contextual de redundância
         # Ex: Se SBT já grava ativamente via Streaming UDP em SJC, uma linha de antena Digital Terrestre
         # com sinal 0 e sem gravação é secundária/não cabeada e NÃO pode gerar alarme crítico P0 de queda!
         active_recordings_by_praca = {}
-        for it in raw_channels:
+        for it in valid_raw_channels:
             f_temp = it.get("fields", {})
             p_temp = f_temp.get("Cidade", "").strip().lower()
             ch_temp = f_temp.get("Title", "").strip()
@@ -169,7 +197,7 @@ def sync_fleet_data():
                 })
         
         now_utc = datetime.now(timezone.utc)
-        for it in raw_channels:
+        for it in valid_raw_channels:
             f = it.get("fields", {})
             ch_name = f.get("Title", "Canal")
             praca = f.get("Cidade", "N/A")
@@ -254,7 +282,10 @@ def sync_fleet_data():
                 motivo = "Vídeo Congelado"
             elif is_mute and not is_radio and not is_rec_mp3:
                 has_outage = True
-                motivo = "Áudio Mudo"
+                if any(w in t_lower for w in ["disconnected", "desconectado"]):
+                    motivo = "Sintonizador Desconectado"
+                else:
+                    motivo = "Áudio Mudo"
             elif any(err in t_lower for err in ["falha", "security", "500"]):
                 has_outage = True
                 motivo = "Falha API Atria (Porta 9000)" if ("api" in t_lower or "500" in t_lower or "security" in t_lower) else "Falha no Sintonizador TBS"

@@ -922,11 +922,11 @@ def track_channel_anomalies_cycle(channels_list: List[Dict[str, Any]]) -> None:
             cs = int(ch.get("id_cs", 1) or 1)
             ch_low = canal.lower()
 
-            is_frozen = (ch.get("video_congelado") or "").lower() == "sim"
-            is_mute = (ch.get("audio_mudo") or "").lower() == "sim"
+            is_frozen = (ch.get("video_congelado") or "").lower().startswith("sim")
+            is_mute = (ch.get("audio_mudo") or "").lower().startswith("sim")
             rec_status = str(ch.get("gravando_mp4", "Sim"))
-            is_storage_fault = "⚠️" in rec_status or "inacessível" in rec_status.lower()
-            is_rf_outage = (float(ch.get("qualidade_sinal", 0) or 0) == 0 and "não" in rec_status.lower())
+            is_storage_fault = "⚠️" in rec_status or "inacessível" in rec_status.lower() or "travado" in rec_status.lower()
+            is_rf_outage = (float(ch.get("qualidade_sinal", 0) or 0) == 0 and ("não" in rec_status.lower() or "sem gravação" in str(ch.get("motivo", "")).lower()))
 
             # Detecta feeds de teste e monitoramento interno (não comerciais)
             is_monitoring_feed = any(k in ch_low for k in ["obs", "teste", "monitoramento", "stream_obs"])

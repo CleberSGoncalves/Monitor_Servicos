@@ -2981,9 +2981,16 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
             detailSubline = `• ${c.canal}: Vídeo Congelado no MUX`;
             statusBadgeText = "Vídeo Congelado";
         } else if (isMute) {
-            telStr = `Áudio: Sem Portadora Sonora | Tuner: ${c.status_tuner || 'OK'}`;
-            detailSubline = `• ${c.canal}: Áudio Mudo`;
-            statusBadgeText = "Áudio Mudo";
+            const isDisc = (c.status_tuner || '').toLowerCase().includes('disconnect') || (c.status_tuner || '').toLowerCase().includes('desconect');
+            if (isDisc) {
+                telStr = `Entrada: Sintonizador Desconectado | Tuner: ${c.status_tuner}`;
+                detailSubline = `• ${c.canal}: Sintonizador Desconectado`;
+                statusBadgeText = "Sinal Desconectado";
+            } else {
+                telStr = `Áudio: Sem Portadora Sonora | Tuner: ${c.status_tuner || 'OK'}`;
+                detailSubline = `• ${c.canal}: Áudio Mudo`;
+                statusBadgeText = "Áudio Mudo";
+            }
         } else if (isRtsp) {
             telStr = `Meio: Streaming IP (${c.meio}) | Tuner: ${c.status_tuner || 'N/A'} | Gravação: ${c.gravando_mp4 || c.gravando_mp3 || 'Não'}`;
             detailSubline = `• ${c.canal} (${c.meio}): Fluxo Desconectado`;
@@ -3443,8 +3450,18 @@ function renderNocUnifiedQueue() {
         const cardClass = isP0 ? "p0-card" : (isP1 ? "p1-card" : "p2-card");
         const sevColor = isP0 ? "#ef4444" : (isP1 ? "#f59e0b" : "#38bdf8");
         const sevIcon = isP0 ? "🔴" : (isP1 ? "🟡" : "🔵");
-        const streamCount = group.items.length;
-        const mainItem = group.items[0];
+        // Deduplica sub-itens para garantir que o mesmo canal nunca seja listado repetido
+        const uniqueSubItems = (() => {
+            const seen = new Set();
+            return group.items.filter(sub => {
+                const k = (sub.target || sub.canal || "").toLowerCase().trim();
+                if (seen.has(k)) return false;
+                seen.add(k);
+                return true;
+            });
+        })();
+        const streamCount = uniqueSubItems.length;
+        const mainItem = uniqueSubItems[0] || group.items[0];
 
         // Tags do cabeçalho
         const triggerTag = group.trigger_type === "rtsp_udp" ? "#RTSP" :
@@ -3465,7 +3482,7 @@ function renderNocUnifiedQueue() {
                     <span style="color: var(--text-muted); font-size: 11px;">| ${escapeHtml(group.time_ago)}</span>
                 </div>
                 <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
-                    ${mainItem.chronicity_badge ? `<span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #fde047; border: 1px solid rgba(245, 158, 11, 0.4); font-size: 10px; font-weight: 700;">${escapeHtml(mainItem.chronicity_badge)}</span>` : ''}
+                    ${(mainItem.chronicity_badge && !mainItem.chronicity_badge.includes("Nominal")) ? `<span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #fde047; border: 1px solid rgba(245, 158, 11, 0.4); font-size: 10px; font-weight: 700;">${escapeHtml(mainItem.chronicity_badge)}</span>` : ''}
                     <span class="badge" style="background: rgba(255,255,255,0.06); font-family: monospace; font-size: 10px; color: #94a3b8;">${triggerTag}</span>
                     <span class="badge" style="background: rgba(59,130,246,0.15); color: #93c5fd; font-family: monospace; font-size: 10px;">#CS${group.cs}</span>
                 </div>
@@ -3489,11 +3506,11 @@ function renderNocUnifiedQueue() {
             <!-- Subgrade / Lista de Canais Afetados (se for grupo com múltiplos) -->
             ${streamCount > 1 ? `
                 <div style="background: rgba(0,0,0,0.3); border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; border-left: 2px solid ${sevColor}; display: flex; flex-direction: column; gap: 4px;">
-                    ${group.items.map(sub => `
+                    ${uniqueSubItems.map(sub => `
                         <div style="font-size: 11px; color: #cbd5e1; font-family: monospace; display: flex; justify-content: space-between; align-items: center; gap: 8px;">
                             <span>${escapeHtml(sub.details_subline || `• ${sub.target}`)}</span>
                             <div style="display: flex; gap: 4px; align-items: center;">
-                                ${sub.chronicity_badge ? `<span style="color: #fde047; font-size: 9px; background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.3); padding: 1px 5px; border-radius: 4px;">${escapeHtml(sub.chronicity_badge)}</span>` : ''}
+                                ${(sub.chronicity_badge && !sub.chronicity_badge.includes("Nominal")) ? `<span style="color: #fde047; font-size: 9px; background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.3); padding: 1px 5px; border-radius: 4px;">${escapeHtml(sub.chronicity_badge)}</span>` : ''}
                                 <span style="color: #ef4444; font-weight: 700; font-size: 10px; background: rgba(239, 68, 68, 0.1); padding: 2px 6px; border-radius: 4px;">
                                     ${escapeHtml(sub.statusBadgeText || 'Anomalia')}
                                 </span>
