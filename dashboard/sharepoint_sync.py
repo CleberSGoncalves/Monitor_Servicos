@@ -466,6 +466,22 @@ def sync_fleet_data():
             _cached_data["recent_outages"] = [c for c in _cached_data["channels"] if c.get("has_outage")]
             _cached_data["last_sync"] = now.isoformat()
 
+            # Recalcula estatísticas consolidadas da frota com base na totalidade dos dados mesclados
+            total_ch = len(_cached_data["channels"])
+            ch_down = sum(1 for c in _cached_data["channels"] if c.get("has_outage"))
+            ch_degraded = sum(1 for c in _cached_data["channels"] if c.get("is_degraded"))
+            rec_active = sum(1 for c in _cached_data["channels"] if "sim" in str(c.get("gravando_mp4", "")).lower() or "gravando" in str(c.get("gravando_mp4", "")).lower() or "asf" in str(c.get("gravando_mp4", "")).lower() or "sim" in str(c.get("gravando_mp3", "")).lower())
+
+            if "stats" not in _cached_data:
+                _cached_data["stats"] = {}
+            _cached_data["stats"]["total_channels"] = total_ch
+            _cached_data["stats"]["channels_ok"] = max(0, total_ch - ch_down)
+            _cached_data["stats"]["channels_down"] = ch_down
+            _cached_data["stats"]["channels_degraded"] = ch_degraded
+            _cached_data["stats"]["recordings_active"] = rec_active
+            _cached_data["stats"]["total_services"] = len(_cached_data["services"])
+            _cached_data["stats"]["services_running"] = sum(1 for s in _cached_data["services"] if s.get("status_servico") == "Em Execução")
+
         try:
             # So grava em disco se houver canais e servicos validos para nunca corromper o cache persistente com listas vazias
             if _cached_data.get("channels") and len(_cached_data.get("channels", [])) > 20 and _cached_data.get("services"):

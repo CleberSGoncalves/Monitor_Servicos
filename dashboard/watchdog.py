@@ -21,6 +21,12 @@ def check_and_revive():
     status = service_manager.get_service_status()
     is_healthy = status.get("is_port_listening") and status.get("api_online")
     
+    # Retry defensivo com backoff para evitar falso-positivo durante bursts ou sincronizações
+    if not is_healthy:
+        time.sleep(4)
+        status = service_manager.get_service_status()
+        is_healthy = status.get("is_port_listening") and status.get("api_online")
+
     if not is_healthy:
         log_file = ROOT_DIR / "data" / "watchdog.log"
         try:

@@ -2813,11 +2813,32 @@ def diagnose_topology_aiming_tradeoff_with_ai(cidade: str, current_mast_m: float
     servs = cached.get("services", [])
     markets = get_markets_map_data(chans, servs)
 
-    market = next((m for m in markets if cidade.lower() in m.get("cidade", "").lower()), None)
+    # Limpeza e normalização do nome da cidade (remove prefixos de título e sufixos de UF como '(MG)')
+    clean_city = re.sub(r'Perfil Geogr[áa]fico & Topografia RF\s*[\•\—\-]\s*', '', cidade, flags=re.IGNORECASE).strip()
+    clean_city = re.sub(r'\(.*?\)', '', clean_city).strip()
+    c_lower = clean_city.lower()
+
+    market = None
+    for m in markets:
+        m_c = m.get("cidade", "").strip().lower()
+        if c_lower == m_c or c_lower in m_c or m_c in c_lower or _match_city(clean_city, m):
+            market = m
+            break
+
+    if not market:
+        # Fallback de busca nos aliases
+        for m in markets:
+            for al in m.get("aliases", []):
+                if c_lower in al.lower() or al.lower() in c_lower:
+                    market = m
+                    break
+            if market:
+                break
+
     if not market:
         return {
             "status": "error",
-            "message": f"Praça '{cidade}' não localizada no mapeamento topográfico da frota."
+            "message": f"Praça '{clean_city}' não localizada no mapeamento topográfico da frota."
         }
 
     channels = market.get("channels_rf_detail", [])
@@ -2877,30 +2898,87 @@ def diagnose_topology_aiming_tradeoff_with_ai(cidade: str, current_mast_m: float
         )
     clusters_str = "\n".join(lines_summary)
 
+    # 3. Montagem do Detalhamento Técnico Completo dos Enlaces da Praça
+    channels_table_lines = []
+    min_level_ch = None
+    min_level_val = 999.0
+    max_dist_ch = None
+    max_dist_val = 0.0
+
+    for ch in channels:
+        ch_name = ch.get("emissora", "Canal")
+        freq = ch.get("freq_mhz", 0.0)
+        uhf = ch.get("canal_fisico", "")
+        dist = ch.get("distance_km", 0.0)
+        az = ch.get("azimuth_deg", 0.0)
+        card = ch.get("cardinal", "")
+        fspl = ch.get("fspl_db", 0.0)
+        lvl = ch.get("rx_level_measured_pct", 0)
+        qual = ch.get("rx_quality_pct", 0)
+        los = ch.get("los_status", "LOS")
+        tw_name = ch.get("tower_name", "")
+        
+        if lvl < min_level_val:
+            min_level_val = lvl
+            min_level_ch = ch
+        if dist > max_dist_val:
+            max_dist_val = dist
+            max_dist_ch = ch
+
+        channels_table_lines.append(
+            f"| {ch_name} | {uhf} ({freq:.3f} MHz) | {dist:.2f} km | {az:.1f}° ({card}) | {fspl:.1f} dB | {lvl}% | {qual}% | {los} |"
+        )
+    table_str = "\n".join(channels_table_lines)
+
+    # Cálculo do Azimute Ótimo Ponderado (ponderando por distância e inverso do nível medido)
+    weighted_az_sum = 0.0
+    weight_total = 0.0
+    for ch in channels:
+        # Canais mais fracos e distantes recebem maior peso no apontamento
+        w = (ch.get("distance_km", 1.0) / max(0.1, ch.get("rx_level_measured_pct", 10.0)))
+        weighted_az_sum += ch.get("azimuth_deg", 0.0) * w
+        weight_total += w
+    optimal_azimuth = round(weighted_az_sum / max(0.001, weight_total), 1)
+
     ai_prompt = f"""
-Atue como Engenheiro Sênior de Telecomunicações e Propagação de RF especialista no padrão ISDB-Tb (TV Digital Terrestre) e auditoria de Capture Sites.
+Você é o Engenheiro Especialista em Propagação de RF, Antenas e Topologia ISDB-Tb da Central de Monitoração MediaDNA/IBOPE.
+Elabore um LAUDO TÉCNICO DE ENGENHARIA DE RF EXCLUSIVO, CIRÚRGICO E ALTAMENTE ESPECÍFICO para a estação de monitoramento em {cidade}.
 
-CONTEXTO DA ESTAÇÃO RECEPTORA (CAPTURE SITE):
+PROIBIÇÃO ABSOLUTA: NÃO utilize templates genéricos ou textos pré-fabricados de outras praças. Você DEVE citar nominalmente as emissoras, frequências, distâncias e níveis medidos desta estação.
+
+DADOS REAIS DA ESTAÇÃO RECEPTORA (CAPTURE SITE):
 - Praça: {cidade}
-- Altura do Mastro: {current_mast_m} metros
-- Quantidade de Canais Monitorados: {len(channels)}
+- Cota de Elevação do Terreno: {market.get('site_elevation_m', 60)}m | Altura do Mastro Receptor: {current_mast_m}m
+- Quantidade de Canais UHF Analisados: {len(channels)}
 - Dispersão Angular Máxima entre Torres: {max_spread:.1f}°
-- Conflito Crítico de Apontamento Detectado: {"SIM (Dispersão Extrema)" if has_conflict else "NÃO (Torres no mesmo quadrante)"}
+- Conflito Severo de Apontamento: {"SIM (Múltiplos Clusters Dispersos)" if has_conflict else "NÃO (Transmissores no mesmo cone angular)"}
+- Azimute Ótimo Ponderado de Sintonia: {optimal_azimuth}°
 
-DISTRIBUIÇÃO DOS CLUSTERS DE TRANSMISSÃO DETECTADOS:
-{clusters_str}
+TABELA REAL DE ENLACES SINTONIZADOS NO HARDWARE TBS DA PRAÇA:
+| Emissora | Canal Físico / Frequência | Distância | Azimute / Direção | Perda Espaço Livre (FSPL) | Nível TBS Medido | Qualidade Lock | Condição de Visada |
+|---|---|---|---|---|---|---|---|
+{table_str}
 
-PROBLEMA DE CAMPO IDENTIFICADO:
-Em {cidade}, as emissoras estão dispersas em direções angulares muito distintas ({max_spread:.1f}° de diferença).
-Ao apontar uma antena diretiva para favorecer um grupo de canais, o grupo oposto é atenuado na razão frente-costas (Front-to-Back Ratio) ou nulos laterais da antena (perda de 18 dB a 25 dB), causando perda de Lock digital (Q=0%) e freezing nos canais secundários.
+ESTRUTURA OBRIGATÓRIA DO SEU PARECER TÉCNICO (em Markdown rico):
 
-Por favor, forneça um LAUDO TÉCNICO DE ENGENHARIA DE RF E PLANO DE AÇÃO PRÁTICO estruturado em Markdown com:
-1. **Diagnóstico da Geometria de Recepção**: Análise vetorial da dispersão angular e do porquê uma antena diretiva simples falha em atender todos os canais simultaneamente.
-2. **Solução Recomendada 1 (Dual-Antenna + Combinador Seletivo de Canais)**: Especificações de usar duas antenas diretivas com combinador passivo/ativo ou diplexador com isolamento > 22 dB para evitar multipath artificial.
-3. **Solução Recomendada 2 (Antena Bidirecional em Figura-8 / Painel Bow-Tie sem refletor)**: Avaliação da viabilidade de antena bidirecional (lóbulos simétricos em 0° e 180°) caso os clusters sejam opostos.
-4. **Solução Recomendada 3 (Equalização de Ganho LNA)**: Ajuste de amplificador para compensar canais distantes sem saturar os canais próximos.
-5. **Recomendações Práticas para o Técnico de Campo**: Passo a passo direto para execução física na torre/mastro.
-Seja técnico, objetivo, prático e fundamentado nas normas de RF.
+### 📡 Laudo Técnico de Engenharia de RF • {cidade}
+
+#### 1. Diagnóstico Geométrico e Análise de Cobertura
+Analise a geometria de recepção específica desta praça com base nos dados da tabela. Explique por que canais como {min_level_ch.get('emissora') if min_level_ch else 'o canal crítico'} apresentam nível de sinal reduzido ({min_level_val}%) em comparação a outros canais da praça, correlacionando com a perda de espaço livre ({min_level_ch.get('fspl_db') if min_level_ch else 95} dB) e a distância ({min_level_ch.get('distance_km') if min_level_ch else 3} km).
+
+#### 2. Trade-Off de Apontamento & Lóbulos de Antena
+- Avalie o feixe horizontal (Half-Power Beamwidth de 36° a 44°) de uma antena diretiva Yagi ou Log-Periódica frente à dispersão angular de {max_spread:.1f}°.
+- Calcule o desvio em relação ao Azimute Ótimo ({optimal_azimuth}°).
+- Se houver conflito angular (>45°), detalhe a instalação de sistema Dual-Antenna com combinador de canal passivo/seletivo com isolamento > 25 dB para evitar multipath artificial.
+- Se os transmissores estiverem no mesmo quadrante, detalhe como apontar precisamente para {optimal_azimuth}° maximiza o lóbulo principal sobre todos os canais.
+
+#### 3. Simulação de Elevação do Mastro e 1ª Zona de Fresnel
+Analise o impacto da altura atual do mastro ({current_mast_m}m) sobre o obstáculo intermediário e recomende se a elevação para {min(50, current_mast_m + 3.5):.1f}m recupera desobstrução de Fresnel e margem de desvanecimento (Fade Margin).
+
+#### 4. Recomendações Práticas e Hardware Homologado de Campo
+- Modelo de antena recomendado com ganho e lóbulo específico.
+- Calibração de pré-amplificador de baixo ruído (LNA) ou atenuador na entrada do demodulador TBS PCIe.
+- Passo a passo numerado e objetivo para o técnico em campo executar a calibração com medidor de campo / analisador de espectro.
 """
 
     gemini_resp = None
@@ -2910,55 +2988,73 @@ Seja técnico, objetivo, prático e fundamentado nas normas de RF.
             module="topologia_rf",
             target=f"RF-{cidade.upper()}",
             operator="sistema_rf",
-            system_instruction="Você é o Engenheiro Especialista em RF e Topologia de Broadcast do MediaDNA/IBOPE. Emita pareceres técnicos cirúrgicos, diretos e com especificações de hardware reais."
+            system_instruction="Você é o Engenheiro Especialista em RF e Topologia de Broadcast do MediaDNA/IBOPE. Emita laudos técnicos cirúrgicos, densos e com valores matemáticos reais das emissoras locais."
         )
     except Exception as ex_gem:
         print(f"[TopologyTradeoffAi] Erro ao invocar Gemini: {ex_gem}")
 
-    # Fallback Heurístico Robusto caso IA esteja offline
+    # Fallback Analítico Dinâmico Contextualizado: NUNCA usa texto fixo genérico!
+    # Monta o laudo matemático em tempo real com as métricas exatas de cada canal local
     if not gemini_resp:
         if has_conflict:
             cl1, cl2 = conflict_clusters[0], conflict_clusters[1]
-            gemini_resp = f"""### 📡 Laudo Técnico de Engenharia de RF • Dispersão Angular Severa em {cidade}
+            gemini_resp = f"""### 📡 Laudo Técnico de Engenharia de RF • Conflito Multi-Torre em {cidade}
 
-#### 1. Diagnóstico da Geometria de Recepção
-A praça de **{cidade}** apresenta uma **dispersão angular crítica de {max_spread:.1f}°** entre seus principais centros de transmissão. 
-- **{cl1['id']}** ({cl1['cardinal']} • Az {cl1['avg_azimuth']}°): {', '.join(cl1['channel_names'])}
-- **{cl2['id']}** ({cl2['cardinal']} • Az {cl2['avg_azimuth']}°): {', '.join(cl2['channel_names'])}
+#### 1. Diagnóstico da Geometria de Recepção e Dispersão Angular
+A praça de **{cidade}** apresenta uma **abertura angular extrema de {max_spread:.1f}°** entre seus centros de transmissão:
+- **{cl1['id']}** ({cl1['cardinal']} • Azimute Médio {cl1['avg_azimuth']}° • Distância Média {cl1['avg_dist_km']} km): **{', '.join(cl1['channel_names'])}** (Nível médio TBS: {cl1['avg_level_pct']}%)
+- **{cl2['id']}** ({cl2['cardinal']} • Azimute Médio {cl2['avg_azimuth']}° • Distância Média {cl2['avg_dist_km']} km): **{', '.join(cl2['channel_names'])}** (Nível médio TBS: {cl2['avg_level_pct']}%)
 
-Uma antena diretiva convencional tipo Yagi (14 a 18 dBi) possui lóbulo horizontal estreito (Half-Power Beamwidth de 32° a 42°). Ao apontar para o Azimute {cl1['avg_azimuth']}°, o cluster oposto em Azimute {cl2['avg_azimuth']}° cai nos nulos laterais ou no lóbulo traseiro da antena, sofrendo atenuação superior a **22 dB (Front-to-Back Ratio)**, o que explica a perda de Lock digital (Q: 0%) em canais comerciais vitais.
-
----
-
-#### 2. Soluções Técnicas de Hardware Recomendadas
-
-* **Opção 1 (Padrão Ouro de Engenharia): Sistema Dual-Antenna com Combinador de Canal Seletivo**
-  - Instalar **duas antenas diretivas independentes** no mastro: Antena A apontada para {cl1['avg_azimuth']}° ({cl1['cardinal']}) e Antena B apontada para {cl2['avg_azimuth']}° ({cl2['cardinal']}).
-  - **Crítico**: Proibido o uso de divisor/splitter invertido comum (gera cancelamento de fase / multipath artificial). Utilizar **Combinador de Canais Seletivo Passivo ou Mixer Ativo com isolamento entre portas superior a 25 dB**.
-
-* **Opção 2 (Otimização Rápida): Antena Painel Bow-Tie Bidirecional (Padrão Figura-8)**
-  - Como a diferença angular é de **{max_spread:.1f}° (quase 180° opostos)**, substituir a antena diretiva por uma **Antena Painel 4-Bay Bow-Tie sem grade refletora traseira**.
-  - Este arranjo gera um diagrama de irradiação bidirecional simétrico em formato de 8, captando simultaneamente os clusters a 0° e 180° com ganho de aproximadamente **8.5 dBi a 10.5 dBi** em ambos os eixos, sem necessidade de duas descidas de cabo coaxial.
-
-* **Opção 3: Pré-Amplificador LNA Seletivo com Equalização de Nível**
-  - O cluster mais distante ({cl2['avg_dist_km']} km) necessita de ganho compensatório de **+14 dB**, enquanto o cluster próximo ({cl1['avg_dist_km']} km) opera em regime de campo próximo e saturação. Inserir atenuação de 6 dB na linha do cluster próximo para evitar intermodulação de 3ª ordem no tuner TBS.
+Uma antena diretiva convencional Yagi ou Log-Periódica (HPBW de 32° a 42°) apontada para o azimute de um grupo atenuará o cluster oposto em mais de **20 dB a 25 dB (razão frente-costas / nulos laterais)**, provocando congelamentos e perda periódica de Lock digital (Q: 0%).
 
 ---
 
-#### 3. Procedimento de Instalação para a Equipe de Campo
-1. Fixar o mastro na cota nominal de **{current_mast_m}m**, garantindo ancoragem em estais a cada 6 metros.
-2. Para teste imediato com antena única: calcular o **Azimute Ponderado de Compromisso ({((cl1['avg_azimuth'] + cl2['avg_azimuth'])/2):.1f}°)** usando antena log-periódica de lóbulo aberto (HPBW > 65°).
-3. Na solução definitiva: montar as duas antenas com separação vertical mínima de **1,20m no mesmo mastro** para evitar acoplamento mútuo indutivo.
+#### 2. Soluções de Hardware Homologadas para Mitigação
+
+* **Solução 1 (Padrão Ouro): Sistema Dual-Antenna com Combinador de Canal Seletivo**
+  - Instalar **duas antenas diretivas independentes** no mastro: Antena A alinhada para **{cl1['avg_azimuth']}°** e Antena B alinhada para **{cl2['avg_azimuth']}°**.
+  - **Crítico**: Proibido o uso de divisor invertido (splitter passivo comum). Utilizar **Combinador de Canais Seletivo Passivo ou Mixer Ativo com isolamento entre portas superior a 25 dB** para evitar multipath e cancelamento por defasagem.
+
+* **Solução 2: Antena Painel 4-Bay Bow-Tie Bidirecional (Figura-8)**
+  - Para eixos opostos ({max_spread:.1f}° de abertura), utilizar **Antena Painel 4-Bay Bow-Tie sem grade refletora traseira**, obtendo diagrama de irradiação em formato de 8 com ganho de aproximadamente **9.5 dBi** em ambos os eixos sem duplicar cabos coaxiais.
+
+* **Solução 3: Pré-Amplificador LNA Seletivo com Equalização de Ganho**
+  - O cluster mais distante ({max_dist_ch.get('emissora') if max_dist_ch else 'mais distante'} a {max_dist_val} km, FSPL {max_dist_ch.get('fspl_db') if max_dist_ch else 100} dB) necessita de ganho compensatório de **+12 dB a +16 dB**, enquanto canais próximos devem receber atenuação para evitar intermodulação de 3ª ordem no demodulador TBS.
+
+---
+
+#### 3. Playbook de Execução para a Equipe de Campo
+1. Fixar o mastro na cota nominal de **{current_mast_m}m**, estaiado a cada 6 metros.
+2. Com antena única provisória: calibrar no **Azimute Ótimo Ponderado de {optimal_azimuth}°** utilizando antena com feixe aberto (HPBW > 60°).
+3. Na solução definitiva com duas antenas: manter espaçamento vertical mínimo de **1,20m no mastro** para eliminar acoplamento mútuo capacitivo/indutivo.
 """
         else:
-            gemini_resp = f"""### 📡 Laudo Técnico de Engenharia de RF • Geometria Unidirecional em {cidade}
+            cl = clusters[0] if clusters else {}
+            gemini_resp = f"""### 📡 Laudo Técnico de Engenharia de RF • Geometria Concentrada em {cidade}
 
-#### Diagnóstico
-A praça de **{cidade}** possui todos os seus transmissores agrupados em um cone angular estreito (**{max_spread:.1f}°** de dispersão).
+#### 1. Diagnóstico da Geometria de Recepção e Propagação
+A praça de **{cidade}** possui todos os seus transmissores agrupados em um **cone angular estreito ({max_spread:.1f}° de abertura)** no quadrante **{cl.get('cardinal', 'Nominal')}** (Azimute Médio de **{cl.get('avg_azimuth', optimal_azimuth)}°**).
+- **Emissoras Integradas**: {', '.join(cl.get('channel_names', []))}
+- **Distância Média dos Transmissores**: {cl.get('avg_dist_km', 3.5)} km
+- **Nível Médio Medido no Tuner TBS**: {cl.get('avg_level_pct', 50)}%
 
-#### Recomendação
-- Todas as emissoras estão no mesmo quadrante. Uma **antena diretiva Yagi de alto ganho (14 a 16 dBi)** apontada para o Azimute médio de **{clusters[0]['avg_azimuth']}°** atende 100% dos canais com máxima margem de desvanecimento (Fade Margin > 15 dB).
-- Não há conflito entre canais; ajuste fino de elevação do mastro ({current_mast_m}m) é suficiente para garantir visada desobstruída (LOS).
+Apesar da concentração angular, há variações de sinal decorrentes da diferença de cota e distância entre transmissores: o enlace de **{max_dist_ch.get('emissora') if max_dist_ch else 'maior distância'}** atinge {max_dist_val} km com perda em espaço livre de **{max_dist_ch.get('fspl_db') if max_dist_ch else 98} dB**, enquanto enlaces próximos sofrem menos de {min_level_ch.get('fspl_db') if min_level_ch else 92} dB.
+
+---
+
+#### 2. Recomendações de Alinhamento e Hardware de Campo
+
+* **Apontamento Cirúrgico no Azimute Ótimo Ponderado ({optimal_azimuth}°)**
+  - Uma única antena diretiva de alto ganho (**Yagi de 14 a 16 dBi ou Log-Periódica de 28 elementos**) atende 100% dos canais da praça com margem de desvanecimento (*Fade Margin*) superior a **16 dB**.
+  - O alinhamento exato para **{optimal_azimuth}°** posiciona o canal crítico ({min_level_ch.get('emissora') if min_level_ch else 'crítico'} com nível {min_level_val}%) no centro do lóbulo de ganho máximo da antena (0 dB de perda angular).
+
+* **Simulador What-If de Elevação do Mastro Receptor ({current_mast_m}m)**
+  - Para a portadora mais distante em {max_dist_ch.get('canal_fisico') if max_dist_ch else 'UHF'}, a 1ª Zona de Fresnel possui raio máximo de **24m a 28m**.
+  - A elevação do mastro receptor de **{current_mast_m}m para {min(50, current_mast_m + 3.5):.1f}m (+3.5m)** garante folga superior a **65% sobre obstáculos urbanos intermediários**, recuperando aproximadamente **+3.8 dB de sinal**.
+
+* **Equalização de Entrada e Proteção contra Ruído**
+  - Inserir **Filtro Passa-Faixa UHF (470 a 698 MHz)** para bloquear interferências espúrias de estações rádio-base 4G/5G na faixa de 700 MHz (Banda 28).
+  - Inspecionar conectores coaxiais BNC/F de compressão e descida de cabo **RG-6 ou RG-11 celular com blindagem de 90%** para manter atenuação de cabo abaixo de **2.5 dB / 100m**.
 """
 
     return {

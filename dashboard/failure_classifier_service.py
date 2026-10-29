@@ -19,6 +19,9 @@ import os
 import json
 import sqlite3
 import time
+import logging
+
+logger = logging.getLogger("failure_classifier")
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Any, Optional
@@ -34,6 +37,8 @@ def init_classifier_db():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
         cursor = conn.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL;")
+        cursor.execute("PRAGMA busy_timeout=30000;")
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS failure_taxonomy_catalog (
@@ -623,8 +628,10 @@ def classify_fleet_quality_failures(force_refresh: bool = False) -> Dict[str, An
 
     # Persiste ocorrências ativas em failure_incidents_history e atualiza status de falhas resolvidas
     try:
-        with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
+        with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
             cur = conn.cursor()
+            cur.execute("PRAGMA journal_mode=WAL;")
+            cur.execute("PRAGMA busy_timeout=30000;")
             
             # Conjunto de chaves de falhas ativas no ciclo atual
             active_keys = set()
@@ -660,7 +667,7 @@ def classify_fleet_quality_failures(force_refresh: bool = False) -> Dict[str, An
 
             conn.commit()
     except Exception as e:
-        logger.warning(f"Erro ao persistir histórico de ocorrências de falhas: {e}")
+        print(f"[ClassificadorFalhas Warning] Persistência histórica segura ignorada (não bloqueante): {e}", flush=True)
 
     # Consolida métricas de rastreabilidade (Falha X Canal)
     unique_channels_with_fails = len(set(o["canal"] for o in ocorrencias_rastreabilidade))

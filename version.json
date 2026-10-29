@@ -1,7 +1,7 @@
 {
-    "version": "3.9.63",
+    "version": "3.9.64",
     "agent_version": "1.0.18.0",
     "commit_sha": "auto",
-    "updated_at": "2026-10-29T15:25:00.000000",
-    "description": "v3.9.63 - Restauração completa do canal de Cachoeiro de Itapemirim (Rede Globo UHF 21 515MHz BRES-CIM-DT02 CS02); Resolução definitiva de Throttling Microsoft Graph 429 com sincronização assíncrona a cada 180s e backoff exponencial; Implementação de Merge Cumulativo anti-perda de canais e serviços da frota; Remoção do descarte agressivo de telemetria estagnada (>3h); Calibração de limiares anti-ruído no ThresholdsManager (eliminação de 162 falsos positivos operacionais de RF e disco); Limpeza de blocos duplicados de abas no index.html."
+    "updated_at": "2026-10-29T16:22:00.000000",
+    "description": "v3.9.64 - Correção do erro HTTP 500 no Classificador de Falhas (blindagem WAL e resolução de NameError de logger); Reformulação profunda da IA de Topologia RF com motor analítico de engenharia exclusivo e contextualizado por cidade; Normalização definitiva de nomes de praças (remoção de parênteses/UF); Recálculo e consolidação de estatísticas da frota no cache com proteção contra locks."
 }

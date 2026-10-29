@@ -2185,7 +2185,12 @@ async function openTopologyAiTradeoffModal() {
 
     modal.style.display = "flex";
     const currentMarket = (typeof currentRfModalMarket !== "undefined" && currentRfModalMarket) ? currentRfModalMarket : null;
-    const cidade = currentMarket ? currentMarket.cidade : (document.getElementById("rfModalTitle")?.textContent.replace("Perfil Geográfico & Topografia RF — ", "").split("—")[0].trim() || "Praça Atual");
+    let cidade = currentMarket ? currentMarket.cidade : "";
+    if (!cidade) {
+        const rawTitle = document.getElementById("rfModalTitle")?.textContent || "";
+        cidade = rawTitle.replace(/Perfil Geogr[áa]fico & Topografia RF\s*[\•\—\-]\s*/gi, "").split(/[\•\—\-]/)[0].trim();
+    }
+    cidade = cidade.replace(/\(.*?\)/g, "").trim() || "Praça Atual";
     if (title) title.innerHTML = `🧠 Otimização de Apontamento & Trade-Off Multi-Torre • <span style="color: #38bdf8;">${escapeHtml(cidade)}</span>`;
 
     body.innerHTML = `
@@ -2214,6 +2219,9 @@ async function openTopologyAiTradeoffModal() {
 
         if (!resp.ok) throw new Error("HTTP " + resp.status);
         const data = await resp.json();
+        if (data.status === "error") {
+            throw new Error(data.message || "Não foi possível gerar a análise técnica de RF para esta praça.");
+        }
         renderTopologyAiTradeoffResult(data);
     } catch (err) {
         body.innerHTML = `
@@ -2265,7 +2273,7 @@ function renderTopologyAiTradeoffResult(data) {
                     ${conflictBadge}
                 </div>
                 <div style="font-size: 12px; color: #94a3b8; font-family: monospace;">
-                    Mastro: <strong style="color: #38bdf8;">${data.current_mast_m}m</strong> | Canais: <strong style="color: #fff;">${data.total_channels}</strong>
+                    Mastro: <strong style="color: #38bdf8;">${data.current_mast_m || 25}m</strong> | Canais: <strong style="color: #fff;">${data.total_channels || (data.clusters ? data.clusters.reduce((acc, c) => acc + (c.count || 0), 0) : 0)}</strong>
                 </div>
             </div>
             <div style="font-size: 12px; color: #cbd5e1; line-height: 1.4;">

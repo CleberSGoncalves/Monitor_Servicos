@@ -53,6 +53,8 @@ def save_stored_api_key(key: str):
 def init_gemini_db():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA busy_timeout=30000;")
         cursor = conn.cursor()
         
         # Tabela de Configurações da IA
@@ -125,23 +127,28 @@ def seed_initial_usage_records(cursor):
 
 
 def get_ai_settings() -> Dict[str, Any]:
-    init_gemini_db()
-    with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
-        conn.row_factory = sqlite3.Row
-        row = conn.cursor().execute("SELECT * FROM ai_governance_settings WHERE id = 1").fetchone()
-        if row:
-            raw_key = row["api_key"] or get_stored_api_key()
-            masked_key = (raw_key[:8] + "..." + raw_key[-4:]) if len(raw_key) > 12 else ("********" if raw_key else "")
-            return {
-                "enabled": bool(row["enabled"]),
-                "api_key": raw_key,
-                "api_key_masked": masked_key,
-                "operational_mode": row["operational_mode"],
-                "selected_model": row["selected_model"],
-                "monthly_budget_usd": float(row["monthly_budget_usd"]),
-                "cluster_batching": bool(row["cluster_batching"]),
-                "updated_at": row["updated_at"]
-            }
+    try:
+        init_gemini_db()
+        with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
+            conn.execute("PRAGMA journal_mode=WAL;")
+            conn.execute("PRAGMA busy_timeout=30000;")
+            conn.row_factory = sqlite3.Row
+            row = conn.cursor().execute("SELECT * FROM ai_governance_settings WHERE id = 1").fetchone()
+            if row:
+                raw_key = row["api_key"] or get_stored_api_key()
+                masked_key = (raw_key[:8] + "..." + raw_key[-4:]) if len(raw_key) > 12 else ("********" if raw_key else "")
+                return {
+                    "enabled": bool(row["enabled"]),
+                    "api_key": raw_key,
+                    "api_key_masked": masked_key,
+                    "operational_mode": row["operational_mode"],
+                    "selected_model": row["selected_model"],
+                    "monthly_budget_usd": float(row["monthly_budget_usd"]),
+                    "cluster_batching": bool(row["cluster_batching"]),
+                    "updated_at": row["updated_at"]
+                }
+    except Exception as e:
+        print(f"[GeminiSettings Warning] Fallback seguro para chave local: {e}", flush=True)
     fallback_key = get_stored_api_key()
     return {
         "enabled": True,
@@ -279,6 +286,8 @@ def execute_gemini_prompt(prompt: str, module: str = "geral", target: str = "CS-
 def record_ai_usage(operator: str, module: str, target: str, mode: str, model: str, p_tokens: int, c_tokens: int, tot_tokens: int, cost_usd: float, cost_brl: float, lat_ms: int, status: str, err: str = ""):
     try:
         with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
+            conn.execute("PRAGMA journal_mode=WAL;")
+            conn.execute("PRAGMA busy_timeout=30000;")
             conn.cursor().execute("""
                 INSERT INTO ai_usage_audit 
                 (timestamp, operator, module, target, operational_mode, model_used, prompt_tokens, completion_tokens, total_tokens, cost_usd, cost_brl, latency_ms, status, error_detail)

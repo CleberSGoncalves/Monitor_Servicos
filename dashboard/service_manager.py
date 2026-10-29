@@ -96,7 +96,7 @@ def get_service_status() -> Dict[str, Any]:
     if is_online:
         try:
             req = urllib.request.Request(f"http://127.0.0.1:{PORT}/api/health", headers={"User-Agent": "FleetAuditor/1.0"})
-            with urllib.request.urlopen(req, timeout=3) as resp:
+            with urllib.request.urlopen(req, timeout=6) as resp:
                 api_online = (resp.status == 200)
         except Exception:
             pass
