@@ -141,6 +141,7 @@ def parse_recording_slot_metadata(filename: str, full_path: str = "") -> Optiona
         "slot_key": slot_key,
         "start_ts": start_ts,
         "end_ts": end_ts,
+        "dt_start": dt_start if "dt_start" in locals() else None,
         "date_fmt": date_fmt,
         "start_hhmmss": start_hhmmss,
         "end_hhmmss": end_hhmmss,
@@ -151,6 +152,49 @@ def parse_recording_slot_metadata(filename: str, full_path: str = "") -> Optiona
         "size_mb": size_mb,
         "cs_num": int(cs_num),
         "ext": ext.upper()
+    }
+
+
+def get_most_recent_completed_recording_slot(dt: Optional[datetime] = None) -> Dict[str, Any]:
+    """
+    Calcula o bloco de gravação de 30 minutos mais recente que JÁ FOI CONCLUÍDO e fechado.
+    Garante que jamais retorne horários futuros em relação ao momento da análise.
+    
+    Exemplo:
+      Se agora são 14:19, o bloco atual em gravação é 14:00-14:30.
+      O último bloco totalmente CONCLUÍDO e fechado é 13:30 às 14:00 (seq 28).
+      
+      Se agora são 14:35, o bloco atual em gravação é 14:30-15:00.
+      O último bloco totalmente CONCLUÍDO e fechado é 14:00 às 14:30 (seq 29).
+    """
+    now = dt or datetime.now()
+    if now.minute >= 30:
+        end_slot = now.replace(minute=30, second=0, microsecond=0)
+        start_slot = now.replace(minute=0, second=0, microsecond=0)
+    else:
+        end_slot = now.replace(minute=0, second=0, microsecond=0)
+        start_slot = (now - timedelta(hours=1)).replace(minute=30, second=0, microsecond=0)
+
+    seq_num = (start_slot.hour * 60 + start_slot.minute) // 30 + 1
+    date_str = start_slot.strftime("%Y%m%d")
+    date_human = start_slot.strftime("%d/%m/%Y")
+    start_hhmm = start_slot.strftime("%H:%M")
+    end_hhmm = end_slot.strftime("%H:%M")
+    start_ts_str = f"{date_str}{start_slot.strftime('%H%M')}00000"
+    end_ts_str = f"{end_slot.strftime('%H%M')}00000"
+    slot_label = f"{date_human} • {start_hhmm} às {end_hhmm}"
+    
+    return {
+        "start_dt": start_slot,
+        "end_dt": end_slot,
+        "date_str": date_str,
+        "date_human": date_human,
+        "start_hhmm": start_hhmm,
+        "end_hhmm": end_hhmm,
+        "start_ts": start_ts_str,
+        "end_ts": end_ts_str,
+        "seq_num": seq_num,
+        "slot_label": slot_label,
     }
 
 
@@ -180,6 +224,10 @@ def find_matched_timeblock_pair_in_nas(
                             continue
                         meta = parse_recording_slot_metadata(entry.name, entry.path)
                         if not meta:
+                            continue
+
+                        # Descarta qualquer gravação com carimbo no futuro em relação ao momento auditado
+                        if meta.get("dt_start") and meta["dt_start"] > dt:
                             continue
 
                         s_key = meta["slot_key"]
@@ -508,14 +556,15 @@ def analyze_single_channel_audio_sync(
         id_cs = 2
 
     dt = target_date or datetime.now()
-    date_str = dt.strftime("%Y%m%d")
-    date_human = dt.strftime("%d/%m/%Y")
+    slot_info = get_most_recent_completed_recording_slot(dt)
+    date_str = slot_info["date_str"]
+    date_human = slot_info["date_human"]
+    seq_num = slot_info["seq_num"]
 
-    # Bloco padrão caso o NAS esteja offline (ambos com o MESMO horário exato!)
-    seq_num = 48
-    default_slot_label = f"{date_human} • 15:30 às 16:00"
-    fname_cs1 = f"H{id_host}_PV{idpv}_{date_str}153000000_{seq_num}_160000000_0_SZ19041275_CS1.MP3"
-    fname_cs2 = f"H{id_host}_PV{idpv}_{date_str}153000000_{seq_num}_160000000_0_SZ18776185_CS{id_cs}.ASF"
+    # Bloco dinâmico correspondente ao último horário de gravação CONCLUÍDO (nunca no futuro)
+    default_slot_label = slot_info["slot_label"]
+    fname_cs1 = f"H{id_host}_PV{idpv}_{slot_info['start_ts']}_{seq_num}_{slot_info['end_ts']}_0_SZ19041275_CS1.MP3"
+    fname_cs2 = f"H{id_host}_PV{idpv}_{slot_info['start_ts']}_{seq_num}_{slot_info['end_ts']}_0_SZ18776185_CS{id_cs}.ASF"
     cs1_format = "MP3"
     cs2_format = "ASF"
     cs1_size_mb = 18.2

@@ -550,25 +550,30 @@ def list_or_simulate_nas_directory_files(
 
     # Se a máquina atual estiver fora da rede corporativa IBOPE (sem rota SMB direta para ibnas01sp-nas),
     # projeta o espelho exato da estrutura do NAS VideoRecord (blocos de 30 minutos H{id_host}_PV{idpv}_..._SZ3600432_CS{cs}.ASF / .MP4)
+    # estritamente até o último horário concluído (nunca gera blocos no futuro).
     if not files_found:
         date_compact = dt.strftime("%Y%m%d")
         date_slash = dt.strftime("%d/%m/%Y")
-        base_seq = 110
-        slots = [
-            ("060000000", "063000000", "06:46", 3600432, 3517),
-            ("063000000", "070000000", "07:16", 3600432, 3517),
-            ("070000000", "073000000", "07:46", 3600432, 3517),
-            ("073000000", "080000000", "08:16", 3600432, 3517),
-            ("080000000", "083000000", "08:46", 3600432, 3517),
-            ("083000000", "090000000", "09:16", 3600432, 3517),
-            ("090000000", "093000000", "09:46", 3599856, 3516),
-            ("093000000", "100000000", "10:16", 3600432, 3517),
-            ("100000000", "103000000", "10:46", 3599136, 3515),
-            ("103000000", "110000000", "11:16", 3600432, 3517),
-            ("140000000", "143000000", "14:46", 3599856, 3516),
-            ("160000000", "163000000", "16:46", 3600432, 3517),
-            ("163000000", "170000000", "17:16", 3600432, 3517),
-        ]
+        base_seq = 100
+        now_dt = datetime.now()
+        is_today = (dt.date() == now_dt.date())
+
+        slots = []
+        for h in range(24):
+            for m in (0, 30):
+                slot_st = dt.replace(hour=h, minute=m, second=0, microsecond=0)
+                slot_end = slot_st + timedelta(minutes=30)
+                if is_today and slot_end > now_dt:
+                    continue
+                st_str = f"{h:02d}{m:02d}00000"
+                end_h = slot_end.hour
+                end_m = slot_end.minute
+                end_str = f"{end_h:02d}{end_m:02d}00000" if slot_end.day == slot_st.day else "000000000"
+                mod_time = slot_end + timedelta(minutes=16)
+                mod_hm = f"{mod_time.hour:02d}:{mod_time.minute:02d}"
+                slots.append((st_str, end_str, mod_hm, 3600432, 3517))
+
+        slots = slots[-15:] if slots else [("000000000", "003000000", "00:46", 3600432, 3517)]
         for idx, (st_t, end_t, mod_hm, sz_b, kb_val) in enumerate(reversed(slots)):
             seq = base_seq + (len(slots) - 1 - idx)
             # Gera tanto o .ASF (BKP) quanto o .MP4 (Principal) conforme aplicável

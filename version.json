@@ -1,7 +1,7 @@
 {
-    "version": "3.9.64",
+    "version": "3.9.65",
     "agent_version": "1.0.18.0",
     "commit_sha": "auto",
-    "updated_at": "2026-10-29T16:22:00.000000",
-    "description": "v3.9.64 - Correção do erro HTTP 500 no Classificador de Falhas (blindagem WAL e resolução de NameError de logger); Reformulação profunda da IA de Topologia RF com motor analítico de engenharia exclusivo e contextualizado por cidade; Normalização definitiva de nomes de praças (remoção de parênteses/UF); Recálculo e consolidação de estatísticas da frota no cache com proteção contra locks."
+    "updated_at": "2026-10-29T17:48:00.000000",
+    "description": "v3.9.65 - Correção do cálculo de janelas temporais de gravação e pareamento de blocos CS01/CS02/CS03 no NAS: substituição de timestamps estáticos hardcoded por cálculo dinâmico do último bloco de 30 minutos efetivamente concluído (nunca no futuro); saneamento de slots no mp4_analyzer."
 }
