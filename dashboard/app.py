@@ -739,6 +739,30 @@ async def download_planilha_frota_endpoint():
     return JSONResponse(status_code=404, content={"error": "Planilha não encontrada"})
 
 
+@app.get("/api/fleet/download-planilha-atria-xls")
+async def download_planilha_atria_xls_endpoint():
+    for cand in [ROOT_DIR / "CS_Brasil_ATRIA.xls", ROOT_DIR.parent / "CS_Brasil_ATRIA.xls"]:
+        if cand.exists():
+            return FileResponse(
+                str(cand),
+                media_type="application/vnd.ms-excel",
+                filename="CS_Brasil_ATRIA.xls"
+            )
+    return JSONResponse(status_code=404, content={"error": "Planilha CS_Brasil_ATRIA.xls não encontrada"})
+
+
+@app.get("/api/fleet/download-planilha-atria-xlsx")
+async def download_planilha_atria_xlsx_endpoint():
+    for cand in [ROOT_DIR / "CS_Brasil_ATRIA.xlsx", ROOT_DIR.parent / "CS_Brasil_ATRIA.xlsx"]:
+        if cand.exists():
+            return FileResponse(
+                str(cand),
+                media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                filename="CS_Brasil_ATRIA.xlsx"
+            )
+    return JSONResponse(status_code=404, content={"error": "Planilha CS_Brasil_ATRIA.xlsx não encontrada"})
+
+
 class LinkDiagnoseRequest(BaseModel):
     praca: str
     cs: int = 1

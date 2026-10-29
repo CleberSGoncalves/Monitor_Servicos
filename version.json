@@ -1,7 +1,7 @@
 {
-    "version": "3.9.65",
+    "version": "3.9.66",
     "agent_version": "1.0.18.0",
     "commit_sha": "auto",
-    "updated_at": "2026-10-29T17:48:00.000000",
-    "description": "v3.9.65 - Correção do cálculo de janelas temporais de gravação e pareamento de blocos CS01/CS02/CS03 no NAS: substituição de timestamps estáticos hardcoded por cálculo dinâmico do último bloco de 30 minutos efetivamente concluído (nunca no futuro); saneamento de slots no mp4_analyzer."
+    "updated_at": "2026-10-29T18:30:00.000000",
+    "description": "v3.9.66 - Exportação consolidada da lista do SharePoint 'Painel de gestão de serviços dos CS' (filtro: Atria Capture) para as planilhas CS_Brasil_ATRIA.xls e CS_Brasil_ATRIA.xlsx contendo 203 hosts em 116 praças, 990 canais detalhados, indicadores executivos e rotas de download direto no dashboard."
 }
