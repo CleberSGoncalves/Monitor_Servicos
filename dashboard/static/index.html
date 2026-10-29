@@ -22,7 +22,7 @@
 
 
 
-    <link rel="stylesheet" href="/static/css/style.css?v=3.9.62">
+    <link rel="stylesheet" href="/static/css/style.css?v=3.9.68">
 
 
 
@@ -1314,6 +1314,7 @@
         <button class="nav-btn" data-tab="map"><span>🗺️</span> Topologia RF</button>
         <button class="nav-btn" data-tab="audiosync" title="Comparação de Matérias &amp; Sincronismo CS01/CS02"><span>🎚️</span> Comparação CS</button>
         <button class="nav-btn" data-tab="classificador" title="Classificador de Falhas &amp; Base de Conhecimento Broadcast"><span>🏷️</span> Classificador</button>
+        <button class="nav-btn" data-tab="deteccao" title="Pipeline de Detecção Automática de Comerciais (Exclusivo CS01)"><span>🎯</span> Detecção Automática</button>
         <button class="nav-btn" data-tab="fiscalizacao"><span>⚖️</span> Fiscalização</button>
         <button class="nav-btn" data-tab="incidents"><span>📋</span> Worklog</button>
         <button class="nav-btn" data-tab="network"><span>🌐</span> Link WAN</button>
@@ -1330,7 +1331,7 @@
 
     <div class="nav-user">
       <button type="button" class="btn-secondary" id="btnHandoverReport" onclick="openHandoverReportModal()" style="display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; font-size: 11px; background: rgba(99,102,241,0.18); border: 1px solid rgba(99,102,241,0.45); color: #a5b4fc; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; white-space: nowrap;" title="Gerar Relatório Executivo de Passagem de Turno (Handover)"><i class="fas fa-clipboard-list"></i> <span>Turno</span></button>
-      <button type="button" class="btn-secondary" id="btnSystemUpdate" onclick="openSystemUpdateModal()" style="display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; font-size: 11px; background: rgba(37,99,235,0.15); border: 1px solid rgba(37,99,235,0.4); color: #38bdf8; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; white-space: nowrap;" title="Verificar atualizações do sistema"><i class="fas fa-sync-alt" id="iconSystemUpdate"></i> <span id="labelSystemVersion">v3.9.62</span></button>
+      <button type="button" class="btn-secondary" id="btnSystemUpdate" onclick="openSystemUpdateModal()" style="display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; font-size: 11px; background: rgba(37,99,235,0.15); border: 1px solid rgba(37,99,235,0.4); color: #38bdf8; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; white-space: nowrap;" title="Verificar atualizações do sistema"><i class="fas fa-sync-alt" id="iconSystemUpdate"></i> <span id="labelSystemVersion">v3.9.68</span></button>
       <div class="user-badge" style="padding: 4px 10px; font-size: 11px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;">
         <div class="status-dot"></div>
         <span id="navUserDisplay">Usuário</span>
@@ -3820,6 +3821,226 @@
       </div>
       <!-- FIM SUB-ABA 2: RELAÇÃO FALHA X CANAL -->
     </section>
+
+        <!-- ================================================================= -->
+    <!-- ABA: DETECÇÃO AUTOMÁTICA DE COMERCIAIS & SPOTS (EXCLUSIVO CS01)   -->
+    <!-- ================================================================= -->
+    <section class="content-section" id="tab-deteccao">
+      <div class="section-header" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; flex-wrap: wrap; gap: 14px;">
+        <div>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <h2 style="font-size: 20px; font-weight: 700; color: #f8fafc; margin: 0;">🎯 Pipeline de Detecção Automática (Comerciais &amp; Spots)</h2>
+            <span class="badge" style="background: #1e3a8a; color: #93c5fd; border: 1px solid #3b82f6; font-size: 11px; padding: 3px 8px; font-weight: 700;">Exclusivo CS01</span>
+          </div>
+          <p style="color: #94a3b8; font-size: 12px; margin-top: 4px; max-width: 900px;">
+            Observabilidade ponta a ponta da esteira de identificação comercial da Kantar IBOPE Media:
+            da ingestão de novos spots (<code>D:\mediadna_V2\data\sgg</code>) ao motor de matching (<strong>FastMatchingSvc</strong> primário / <strong>DetectionSVC</strong> fallback) e geração dos comprovantes <code>.xml</code> (<code>D:\mediadna_V2\data\tracking</code>).
+          </p>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <div style="display: flex; align-items: center; gap: 8px; background: rgba(30, 41, 59, 0.7); padding: 6px 12px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.1);">
+            <label for="detectionThresholdSelect" style="font-size: 11px; font-weight: 600; color: #94a3b8; white-space: nowrap;">Limiar de Alerta Tracking:</label>
+            <select id="detectionThresholdSelect" onchange="loadDetectionFleetData()" style="background: #0f172a; color: #f8fafc; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 6px; padding: 4px 8px; font-size: 12px; cursor: pointer;">
+              <option value="30">30 minutos (Alta Sensibilidade)</option>
+              <option value="45" selected>45 minutos (Padrão Recomendado)</option>
+              <option value="60">60 minutos (Tolerante)</option>
+              <option value="90">90 minutos (Madrugada / Baixo Volume)</option>
+            </select>
+          </div>
+
+          <button id="btnRefreshDetection" onclick="loadDetectionFleetData()" class="btn-refresh" style="background: linear-gradient(135deg, #2563eb, #3b82f6); color: #fff; border: none; padding: 8px 16px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 8px rgba(37, 99, 235, 0.35);">
+            <span>🔄</span> Atualizar Auditoria
+          </button>
+        </div>
+      </div>
+
+      <!-- CARDS DE METRICAS PRINCIPAIS (KPIS) -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 16px; margin-bottom: 24px;">
+        <!-- Card 1: FastMatching Primário -->
+        <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 12px; padding: 16px; position: relative; overflow: hidden;">
+          <div style="position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: #22c55e;"></div>
+          <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+              <div style="font-size: 11px; font-weight: 700; color: #86efac; text-transform: uppercase; letter-spacing: 0.5px;">FastMatching Primário</div>
+              <div style="font-size: 26px; font-weight: 800; color: #f8fafc; margin-top: 4px;" id="kpiDetNominal">--</div>
+            </div>
+            <div style="width: 36px; height: 36px; border-radius: 8px; background: rgba(34, 197, 94, 0.15); display: flex; align-items: center; justify-content: center; font-size: 18px;">⚡</div>
+          </div>
+          <div style="font-size: 11px; color: #94a3b8; margin-top: 8px;">CS01 em alta performance (C++)</div>
+        </div>
+
+        <!-- Card 2: Fallback no DetectionSVC -->
+        <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(234, 179, 8, 0.3); border-radius: 12px; padding: 16px; position: relative; overflow: hidden;">
+          <div style="position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: #eab308;"></div>
+          <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+              <div style="font-size: 11px; font-weight: 700; color: #fde047; text-transform: uppercase; letter-spacing: 0.5px;">Fallback no DetectionSVC</div>
+              <div style="font-size: 26px; font-weight: 800; color: #f8fafc; margin-top: 4px;" id="kpiDetFallback">--</div>
+            </div>
+            <div style="width: 36px; height: 36px; border-radius: 8px; background: rgba(234, 179, 8, 0.15); display: flex; align-items: center; justify-content: center; font-size: 18px;">⚠️</div>
+          </div>
+          <div style="font-size: 11px; color: #94a3b8; margin-top: 8px;">Contingência ativa (Sobrecarga CPU)</div>
+        </div>
+
+        <!-- Card 3: Tracking Estagnado -->
+        <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(239, 68, 68, 0.35); border-radius: 12px; padding: 16px; position: relative; overflow: hidden;">
+          <div style="position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: #ef4444;"></div>
+          <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+              <div style="font-size: 11px; font-weight: 700; color: #fca5a5; text-transform: uppercase; letter-spacing: 0.5px;">Tracking Estagnado</div>
+              <div style="font-size: 26px; font-weight: 800; color: #f8fafc; margin-top: 4px;" id="kpiDetStalled">--</div>
+            </div>
+            <div style="width: 36px; height: 36px; border-radius: 8px; background: rgba(239, 68, 68, 0.15); display: flex; align-items: center; justify-content: center; font-size: 18px;">🚨</div>
+          </div>
+          <div style="font-size: 11px; color: #94a3b8; margin-top: 8px;">Sem novos .xml acima do limiar</div>
+        </div>
+
+        <!-- Card 4: Detecção Inoperante (Crítico P0) -->
+        <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(220, 38, 38, 0.45); border-radius: 12px; padding: 16px; position: relative; overflow: hidden;">
+          <div style="position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: #dc2626;"></div>
+          <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+              <div style="font-size: 11px; font-weight: 700; color: #fecaca; text-transform: uppercase; letter-spacing: 0.5px;">Inoperantes (P0)</div>
+              <div style="font-size: 26px; font-weight: 800; color: #f8fafc; margin-top: 4px;" id="kpiDetInoperant">--</div>
+            </div>
+            <div style="width: 36px; height: 36px; border-radius: 8px; background: rgba(220, 38, 38, 0.2); display: flex; align-items: center; justify-content: center; font-size: 18px;">⛔</div>
+          </div>
+          <div style="font-size: 11px; color: #94a3b8; margin-top: 8px;">Ambos os motores parados</div>
+        </div>
+
+        <!-- Card 5: Taxa de Conformidade CS01 -->
+        <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 12px; padding: 16px; position: relative; overflow: hidden;">
+          <div style="position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: #3b82f6;"></div>
+          <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+              <div style="font-size: 11px; font-weight: 700; color: #93c5fd; text-transform: uppercase; letter-spacing: 0.5px;">Conformidade da Frota</div>
+              <div style="font-size: 26px; font-weight: 800; color: #f8fafc; margin-top: 4px;" id="kpiDetCompliance">--%</div>
+            </div>
+            <div style="width: 36px; height: 36px; border-radius: 8px; background: rgba(59, 130, 246, 0.15); display: flex; align-items: center; justify-content: center; font-size: 18px;">🎯</div>
+          </div>
+          <div style="font-size: 11px; color: #94a3b8; margin-top: 8px;"><span id="kpiDetTotalCS01">--</span> CS01 auditados</div>
+        </div>
+      </div>
+
+      <!-- BARRA DE FILTROS E BUSCA -->
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; background: rgba(30, 41, 59, 0.5); padding: 12px 16px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.08); margin-bottom: 18px;">
+        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+          <div style="position: relative;">
+            <input type="text" id="detectionSearchInput" oninput="filterDetectionSites()" placeholder="🔍 Buscar Praça ou Hostname..." style="background: #0f172a; color: #f8fafc; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 6px; padding: 6px 12px; font-size: 12px; min-width: 240px;">
+          </div>
+
+          <select id="detectionFilterStatus" onchange="filterDetectionSites()" style="background: #0f172a; color: #f8fafc; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 6px; padding: 6px 10px; font-size: 12px; cursor: pointer;">
+            <option value="all">Todos os Status</option>
+            <option value="problems">⚠️ Apenas com Problemas (P0, P1, Fallback)</option>
+            <option value="stalled">🚨 Apenas Estagnados (> Limiar)</option>
+            <option value="fallback">⚠️ Apenas em Fallback (DetectionSVC)</option>
+            <option value="critical">⛔ Apenas Inoperantes (P0)</option>
+            <option value="nominal">✅ Apenas Nominais (FastMatching)</option>
+          </select>
+
+          <select id="detectionFilterEngine" onchange="filterDetectionSites()" style="background: #0f172a; color: #f8fafc; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 6px; padding: 6px 10px; font-size: 12px; cursor: pointer;">
+            <option value="all">Todos os Motores</option>
+            <option value="primary">FastMatching (Primário)</option>
+            <option value="fallback">DetectionSVC (Fallback)</option>
+            <option value="none">Inoperante (Sem Motor)</option>
+          </select>
+        </div>
+
+        <div style="font-size: 12px; color: #94a3b8; display: flex; align-items: center; gap: 12px;">
+          <span id="detectionFilteredCount">Carregando dados...</span>
+          <span style="color: #64748b;">|</span>
+          <span style="font-size: 11px;">Última Auditoria: <span id="detectionAuditTimestamp" style="color: #cbd5e1;">--</span></span>
+        </div>
+      </div>
+
+      <!-- TABELA VIVA DE CS01 -->
+      <div style="background: rgba(15, 23, 42, 0.5); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 10px; overflow-x: auto;">
+        <table style="width: 100%; border-collapse: collapse; text-align: left; min-width: 950px;">
+          <thead>
+            <tr style="background: rgba(30, 41, 59, 0.8); border-bottom: 1px solid rgba(255, 255, 255, 0.1); font-size: 11px; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.5px;">
+              <th style="padding: 12px 14px;">Praça &amp; Hostname (CS01)</th>
+              <th style="padding: 12px 14px;">Motor de Matching Ativo</th>
+              <th style="padding: 12px 14px;">Serviços do Pipeline (4)</th>
+              <th style="padding: 12px 14px;">Idade do Último XML (Tracking)</th>
+              <th style="padding: 12px 14px;">Entrada SGG &amp; Catálogo</th>
+              <th style="padding: 12px 14px;">Saúde</th>
+              <th style="padding: 12px 14px; text-align: right;">Ações</th>
+            </tr>
+          </thead>
+          <tbody id="detectionTableBody">
+            <tr>
+              <td colspan="7" style="text-align: center; padding: 40px; color: #94a3b8;">
+                <div style="font-size: 24px; margin-bottom: 8px;">⏳</div>
+                <div>Carregando auditoria do pipeline de detecção dos CS01...</div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- MODAL DE DIAGNÓSTICO HEURÍSTICO COM IA GEMINI -->
+      <div id="detectionAIDiagnoseModal" style="display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(4px); z-index: 9999; align-items: center; justify-content: center; padding: 20px;">
+        <div style="background: #0f172a; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 12px; max-width: 760px; width: 100%; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6); padding: 24px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255, 255, 255, 0.1); padding-bottom: 14px; margin-bottom: 18px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 20px;">🧠</span>
+              <h3 id="detAIModalTitle" style="font-size: 16px; font-weight: 700; color: #f8fafc; margin: 0;">Diagnóstico Heurístico de Detecção</h3>
+            </div>
+            <button onclick="closeDetectionAIDiagnosticModal()" style="background: none; border: none; color: #94a3b8; font-size: 20px; cursor: pointer; padding: 4px 8px;">✕</button>
+          </div>
+          <div id="detAIModalContent"></div>
+          <div style="margin-top: 20px; text-align: right; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 14px;">
+            <button onclick="closeDetectionAIDiagnosticModal()" style="background: #334155; color: #fff; border: none; padding: 8px 18px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer;">Fechar Laudo</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODAL DE AÇÕES OPERACIONAIS RÁPIDAS -->
+      <div id="detectionActionsModal" style="display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(4px); z-index: 9999; align-items: center; justify-content: center; padding: 20px;">
+        <div style="background: #0f172a; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 12px; max-width: 600px; width: 100%; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6); padding: 24px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255, 255, 255, 0.1); padding-bottom: 14px; margin-bottom: 16px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 20px;">⚡</span>
+              <h3 id="detActionModalTitle" style="font-size: 16px; font-weight: 700; color: #f8fafc; margin: 0;">Ações Operacionais de Detecção</h3>
+            </div>
+            <button onclick="closeDetectionQuickActionsModal()" style="background: none; border: none; color: #94a3b8; font-size: 20px; cursor: pointer; padding: 4px 8px;">✕</button>
+          </div>
+          <div id="detActionTargetHost" style="font-size: 12px; color: #94a3b8; margin-bottom: 16px; padding: 8px 12px; background: rgba(30, 41, 59, 0.5); border-radius: 6px;"></div>
+
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="padding: 12px; background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <div style="font-weight: 600; font-size: 13px; color: #4ade80;">Iniciar / Reiniciar FastMatchingSvc</div>
+                <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">Restaura o motor primário C++ de alta performance.</div>
+              </div>
+              <button onclick="executeDetectionAction('start_fastmatching')" style="background: #16a34a; color: #fff; border: none; padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer;">Executar</button>
+            </div>
+
+            <div style="padding: 12px; background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <div style="font-weight: 600; font-size: 13px; color: #facc15;">Reiniciar DNA.DetectionSVC</div>
+                <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">Reinicia o motor fallback para liberar buffers e threads presas.</div>
+              </div>
+              <button onclick="executeDetectionAction('restart_detection')" style="background: #ca8a04; color: #fff; border: none; padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer;">Executar</button>
+            </div>
+
+            <div style="padding: 12px; background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <div style="font-weight: 600; font-size: 13px; color: #38bdf8;">Forçar Sincronização SGG (ConfigMonitor)</div>
+                <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">Força o download de novos comerciais em D:\mediadna_V2\data\sgg.</div>
+              </div>
+              <button onclick="executeDetectionAction('restart_config_monitor')" style="background: #0284c7; color: #fff; border: none; padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer;">Executar</button>
+            </div>
+          </div>
+
+          <div style="margin-top: 20px; text-align: right; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 14px;">
+            <button onclick="closeDetectionQuickActionsModal()" style="background: #334155; color: #fff; border: none; padding: 8px 18px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer;">Fechar</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
 
     <section class="content-section" id="tab-fiscalizacao">
       <!-- Header do Módulo -->
@@ -7866,7 +8087,7 @@
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
           <div style="background: rgba(0,0,0,0.3); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color);">
             <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Versão Instalada</div>
-            <div id="sys-update-local-version" style="font-size: 14px; font-weight: 700; color: #38bdf8; margin-top: 2px;">v3.9.62 (<span id="sys-update-local-sha">...</span>)</div>
+            <div id="sys-update-local-version" style="font-size: 14px; font-weight: 700; color: #38bdf8; margin-top: 2px;">v3.9.68 (<span id="sys-update-local-sha">...</span>)</div>
           </div>
           <div style="background: rgba(0,0,0,0.3); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color);">
             <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Última Versão no GitHub</div>
@@ -8148,17 +8369,17 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=3.9.62"></script>
-  <script src="/static/js/ai_insights.js?v=3.9.62"></script>
-  <script src="/static/js/fleet_ops.js?v=3.9.62"></script>
-  <script src="/static/js/remote_commands.js?v=3.9.62"></script>
-  <script src="/static/js/signals_analysis.js?v=3.9.62"></script>
-  <script src="/static/js/mosaic_wall.js?v=3.9.62"></script>
-  <script src="/static/js/topology_map.js?v=3.9.62"></script>
-  <script src="/static/js/network_link.js?v=3.9.62"></script>
-  <script src="/static/js/fiscalizacao.js?v=3.9.62"></script>
-  <script src="/static/js/classificador_falhas.js?v=3.9.62"></script>
-  <script src="/static/js/audio_sync.js?v=3.9.62"></script>
+  <script src="/static/js/app.js?v=3.9.68"></script>
+  <script src="/static/js/ai_insights.js?v=3.9.68"></script>
+  <script src="/static/js/fleet_ops.js?v=3.9.68"></script>
+  <script src="/static/js/remote_commands.js?v=3.9.68"></script>
+  <script src="/static/js/signals_analysis.js?v=3.9.68"></script>
+  <script src="/static/js/mosaic_wall.js?v=3.9.68"></script>
+  <script src="/static/js/topology_map.js?v=3.9.68"></script>
+  <script src="/static/js/network_link.js?v=3.9.68"></script>
+  <script src="/static/js/fiscalizacao.js?v=3.9.68"></script>
+  <script src="/static/js/classificador_falhas.js?v=3.9.68"></script>
+  <script src="/static/js/audio_sync.js?v=3.9.68"></script>
 
 <!-- MODAL: DIAGNÓSTICO DE IA DE LINK & CONECTIVIDADE DE REDE -->
   <div class="modal-overlay" id="networkAiDiagModal" style="display: none; align-items: center; justify-content: center; z-index: 10000;">
@@ -8308,7 +8529,7 @@
 
       <!-- Modal Footer -->
       <div style="padding: 14px 20px; background: rgba(15, 23, 42, 0.95); border-top: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center;">
-        <span style="font-size: 11px; color: var(--text-muted);">MediaDNA Incident Cockpit • Handover Engine v3.9.62</span>
+        <span style="font-size: 11px; color: var(--text-muted);">MediaDNA Incident Cockpit • Handover Engine v3.9.68</span>
         <div style="display: flex; gap: 10px;">
           <button type="button" class="btn-secondary" onclick="closeHandoverReportModal()" style="padding: 8px 16px;">Fechar</button>
           <button type="button" class="btn-primary" onclick="copyHandoverReportToClipboard()" style="padding: 8px 18px; background: linear-gradient(135deg, #4f46e5, #2563eb); font-weight: 700; display: flex; align-items: center; gap: 8px;">
@@ -8511,6 +8732,7 @@
     </div>
   </div>
 
+  <script src="/static/js/detection_monitor.js"></script>
 </body>
 
 

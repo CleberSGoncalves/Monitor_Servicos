@@ -81,26 +81,32 @@ DEFAULT_THRESHOLDS = [
 
 
 def init_thresholds():
-    """Popula os limiares padrão se ainda não existirem."""
-    with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
-        cursor = conn.cursor()
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS alert_thresholds (
-                key TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                category TEXT NOT NULL,
-                value REAL NOT NULL,
-                unit TEXT NOT NULL,
-                is_enabled INTEGER DEFAULT 1,
-                description TEXT
-            )
-        """)
-        for t in DEFAULT_THRESHOLDS:
+    """Popula os limiares padrão se ainda não existirem com resiliência a locks concorrentes."""
+    try:
+        with sqlite3.connect(DB_PATH, timeout=5.0) as conn:
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA journal_mode=WAL;")
+            cursor.execute("PRAGMA busy_timeout=5000;")
             cursor.execute("""
-                INSERT OR IGNORE INTO alert_thresholds (key, name, category, value, unit, is_enabled, description)
-                VALUES (:key, :name, :category, :value, :unit, :is_enabled, :description)
-            """, t)
-        conn.commit()
+                CREATE TABLE IF NOT EXISTS alert_thresholds (
+                    key TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    category TEXT NOT NULL,
+                    value REAL NOT NULL,
+                    unit TEXT NOT NULL,
+                    is_enabled INTEGER DEFAULT 1,
+                    description TEXT
+                )
+            """)
+            for t in DEFAULT_THRESHOLDS:
+                cursor.execute("""
+                    INSERT OR IGNORE INTO alert_thresholds (key, name, category, value, unit, is_enabled, description)
+                    VALUES (:key, :name, :category, :value, :unit, :is_enabled, :description)
+                """, t)
+            conn.commit()
+    except Exception:
+        # Blindagem contra lock concorrente do serviço em execução
+        pass
 
 
 def get_all_thresholds() -> List[Dict[str, Any]]:

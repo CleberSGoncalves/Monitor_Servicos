@@ -380,7 +380,7 @@ def get_channel_telemetry_history(praca: str, canal: str, period: str = "24h", c
         step_hours = 0.5
 
     # Consulta pontos reais no banco
-    with sqlite3.connect(f"file:{DB_PATH.as_posix()}?mode=ro", uri=True, timeout=10.0) as conn:
+    with sqlite3.connect(DB_PATH, timeout=5.0) as conn:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         

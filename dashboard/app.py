@@ -12,6 +12,11 @@ from mp4_analyzer import (
 from signals_analysis import (
     get_channel_telemetry_history, diagnose_channel_with_ai, get_all_chronic_issues
 )
+from tracking_detection_monitor import (
+    build_detection_fleet_snapshot,
+    generate_detection_ai_diagnostic,
+    DEFAULT_STALLED_THRESHOLD_MINUTES
+)
 from ft_audit_manager import (
     get_ft_dashboard_kpis, get_digital_terrestrial_channels_only, audit_time_range_with_nas_and_ai
 )
@@ -2053,3 +2058,84 @@ async def get_sharepoint_releases_catalog():
             "message": str(e)
         }
 
+
+
+# =========================================================================
+# MONITORAMENTO DO PIPELINE DE DETECÇÃO AUTOMÁTICA DE COMERCIAIS (EXCLUSIVO CS01)
+# =========================================================================
+
+@app.get("/api/fleet/detection/summary")
+async def get_detection_summary(threshold: int = Query(DEFAULT_STALLED_THRESHOLD_MINUTES, ge=10, le=240)):
+    """Retorna os KPIs agregados de monitoramento do pipeline de detecção automática para CS01."""
+    try:
+        data = build_detection_fleet_snapshot(threshold_minutes=threshold)
+        return {"status": "success", "summary": data["summary"]}
+    except Exception as e:
+        logger.error(f"[DetectionAPI] Erro ao obter summary de detecção: {e}", exc_info=True)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
+@app.get("/api/fleet/detection/sites")
+async def get_detection_sites(
+    threshold: int = Query(DEFAULT_STALLED_THRESHOLD_MINUTES, ge=10, le=240),
+    praca: Optional[str] = None,
+    status_filter: Optional[str] = None,
+    engine_filter: Optional[str] = None
+):
+    """Retorna a lista detalhada de todos os Capture Sites CS01 e a telemetria do pipeline de detecção."""
+    try:
+        data = build_detection_fleet_snapshot(threshold_minutes=threshold)
+        sites = data["sites"]
+
+        if praca and praca.lower() != "all" and praca.strip():
+            p_low = praca.strip().lower()
+            sites = [s for s in sites if p_low in s["praca"].lower() or p_low in s["hostname"].lower()]
+
+        if status_filter and status_filter.lower() != "all":
+            st_low = status_filter.strip().lower()
+            if st_low == "stalled":
+                sites = [s for s in sites if s["is_stalled"]]
+            elif st_low == "critical":
+                sites = [s for s in sites if s["health_status"] == "CRITICAL"]
+            elif st_low == "fallback":
+                sites = [s for s in sites if s["engine_tier"] == "FALLBACK"]
+            elif st_low == "nominal":
+                sites = [s for s in sites if s["health_status"] == "NOMINAL"]
+            elif st_low == "problems":
+                sites = [s for s in sites if s["health_status"] in ("CRITICAL", "STALLED", "WARNING")]
+
+        if engine_filter and engine_filter.lower() != "all":
+            eng_low = engine_filter.strip().lower()
+            if eng_low == "primary":
+                sites = [s for s in sites if s["engine_tier"] == "PRIMARY"]
+            elif eng_low == "fallback":
+                sites = [s for s in sites if s["engine_tier"] == "FALLBACK"]
+            elif eng_low == "none":
+                sites = [s for s in sites if s["engine_tier"] == "NONE"]
+
+        return {
+            "status": "success",
+            "summary": data["summary"],
+            "total_filtered": len(sites),
+            "sites": sites
+        }
+    except Exception as e:
+        logger.error(f"[DetectionAPI] Erro ao listar sites de detecção: {e}", exc_info=True)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
+class DetectionAIDiagnoseRequest(BaseModel):
+    hostname: str
+
+
+@app.post("/api/fleet/detection/ai-diagnose")
+async def diagnose_detection_with_ai(payload: DetectionAIDiagnoseRequest):
+    """Gera diagnóstico heurístico aprofundado com IA Gemini para o Capture Site CS01 selecionado."""
+    try:
+        result = generate_detection_ai_diagnostic(payload.hostname)
+        if not result.get("success"):
+            return JSONResponse(status_code=404, content=result)
+        return result
+    except Exception as e:
+        logger.error(f"[DetectionAPI] Erro no diagnóstico de IA: {e}", exc_info=True)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})

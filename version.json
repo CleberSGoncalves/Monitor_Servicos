@@ -1,8 +1,8 @@
 {
-  "version": "3.9.67",
+  "version": "3.9.68",
   "agent_version": "1.0.18.0",
   "commit_sha": "auto",
-  "updated_at": "2026-10-29T18:30:00.000000",
-  "description": "v3.9.66 - Exportação consolidada da lista do SharePoint 'Painel de gestão de serviços dos CS' (filtro: Atria Capture) para as planilhas CS_Brasil_ATRIA.xls e CS_Brasil_ATRIA.xlsx contendo 203 hosts em 116 praças, 990 canais detalhados, indicadores executivos e rotas de download direto no dashboard.",
-  "release_notes": "v3.9.67: Paridade absoluta de CSs (CS01 e CS02) em 100% das praças de captação; inclusão completa de Cachoeiro de Itapemirim (BRES-CIM / TV Gazeta Sul 515MHz) com telemetria ativa 52%/80%; sincronismo estrito entre Topologia RF, Canais & RF e Análise RF; blindagem e indicador visual de loading no Classificador de Falhas; renderizador de tabelas e laudos ricos de engenharia de RF com trade-off multi-torre."
+  "updated_at": "2026-10-29T21:25:00.000000",
+  "description": "v3.9.68 - Nova aba de monitoramento 'Detecção Automática' exclusiva para Capture Sites CS01, cobrindo todo o pipeline de comerciais: ingestão de spots em D:\\mediadna_V2\\data\\sgg e catálogo configxml.xml, auditoria de motores FastMatchingSvc (primário) vs DNA.DetectionSVC (fallback contingencial), telemetria e cadência de emissão de arquivos de tracking .xml em D:\\mediadna_V2\\data\\tracking com limiar de estagnação e abertura proativa de incidentes N1/P0.",
+  "release_notes": "v3.9.68: Criação da aba 'Detecção Automática' (exclusiva CS01); monitoramento da esteira de comerciais e spots com rastreamento de FastMatchingSvc, DNA.DetectionSVC, DNA.ConfigMonitorSVC e DNA.TrackingSVC; cálculo dinâmico da idade do último XML de tracking com limiares configuráveis (30m, 45m, 60m, 90m); diagnóstico heurístico de IA Gemini Pro com causa raiz e playbook de remediação; ações operacionais de auto-cura em 1 clique; testes automatizados reais de ponta a ponta aprovados."
 }

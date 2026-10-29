@@ -201,7 +201,9 @@ function setupTabNavigation() {
             const targetSec = document.getElementById(`tab-${tabName}`);
             if (targetSec) targetSec.classList.add("active");
 
-            if (tabName === "mosaic") {
+            if (tabName === "deteccao" || tabName === "detection") {
+                if (typeof initDetectionMonitorTab === "function") initDetectionMonitorTab();
+            } else if (tabName === "mosaic") {
                 if (typeof initMosaicTab === "function") initMosaicTab();
             } else if (tabName === "map" || tabName === "topology") {
                 if (typeof loadTopologyMapData === "function") loadTopologyMapData();

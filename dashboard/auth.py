@@ -11,97 +11,100 @@ DB_PATH = DATA_DIR / "fleet.db"
 
 
 def init_db():
-    """Inicializa as tabelas do banco de dados local SQLite."""
-    with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
-        conn.execute("PRAGMA journal_mode=WAL;")
-        conn.execute("PRAGMA busy_timeout=10000;")
-        cursor = conn.cursor()
-        
-        # Tabela de Usuários
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,
-                full_name TEXT NOT NULL,
-                email TEXT,
-                role TEXT NOT NULL DEFAULT 'operator', -- admin, operator, viewer
-                auth_type TEXT NOT NULL DEFAULT 'local', -- local, ldap
-                is_active INTEGER NOT NULL DEFAULT 1,
-                created_at TEXT NOT NULL,
-                last_login TEXT
-            )
-        """)
-        
-        # Tabela de Configurações de Limiares (Thresholds)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS alert_thresholds (
-                key TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                category TEXT NOT NULL,
-                value REAL NOT NULL,
-                unit TEXT NOT NULL,
-                is_enabled INTEGER NOT NULL DEFAULT 1,
-                description TEXT
-            )
-        """)
-        
-        # Tabela de Registro de Ações Manuais e Incidentes (Worklog)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS incident_worklog (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                incident_key TEXT NOT NULL,
-                host TEXT NOT NULL,
-                target_name TEXT NOT NULL, -- Servico ou Canal
-                incident_type TEXT NOT NULL, -- servico_parado, canal_fora, crash_loop, disco_cheio, etc.
-                operator_username TEXT NOT NULL,
-                operator_name TEXT NOT NULL,
-                action_taken TEXT NOT NULL, -- Descrição da ação manual
-                resolution_status TEXT NOT NULL DEFAULT 'em_analise', -- em_analise, resolvido, escalado
-                created_at TEXT NOT NULL
-            )
-        """)
-        
-        # Tabela de Sugestões da Inteligência Artificial
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS ai_suggestions (
-                id TEXT PRIMARY KEY,
-                title TEXT NOT NULL,
-                category TEXT NOT NULL, -- preditivo, anomalia, otimizacao, tuning
-                severity TEXT NOT NULL, -- baixa, media, alta, critica
-                description TEXT NOT NULL,
-                suggested_rule JSON NOT NULL,
-                status TEXT NOT NULL DEFAULT 'pendente', -- pendente, aprovada, recusada
-                created_at TEXT NOT NULL,
-                updated_at TEXT
-            )
-        """)
-
-        # Tabela de Sessões Ativas
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS sessions (
-                token TEXT PRIMARY KEY,
-                username TEXT NOT NULL,
-                role TEXT NOT NULL,
-                expires_at REAL NOT NULL
-            )
-        """)
-
-        # Migração automática de perfis legado para RBAC justo (admin, n2, n1)
-        cursor.execute("UPDATE users SET role = 'n2' WHERE role = 'operator'")
-        cursor.execute("UPDATE users SET role = 'n1' WHERE role = 'viewer'")
-
-        conn.commit()
-        
-        # Cria usuário admin padrão se não existir
-        cursor.execute("SELECT id FROM users WHERE username = ?", (DEFAULT_ADMIN_USER,))
-        if not cursor.fetchone():
-            pass_hash = hash_password(DEFAULT_ADMIN_PASS)
+    try:
+        """Inicializa as tabelas do banco de dados local SQLite."""
+        with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
+            conn.execute("PRAGMA journal_mode=WAL;")
+            conn.execute("PRAGMA busy_timeout=10000;")
+            cursor = conn.cursor()
+            
+            # Tabela de Usuários
             cursor.execute("""
-                INSERT INTO users (username, password_hash, full_name, email, role, auth_type, is_active, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, 1, datetime('now'))
-            """, (DEFAULT_ADMIN_USER, pass_hash, "Suporte CS Master", "suporte@kinomuse.com.br", "admin", "local"))
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    full_name TEXT NOT NULL,
+                    email TEXT,
+                    role TEXT NOT NULL DEFAULT 'operator', -- admin, operator, viewer
+                    auth_type TEXT NOT NULL DEFAULT 'local', -- local, ldap
+                    is_active INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT NOT NULL,
+                    last_login TEXT
+                )
+            """)
+            
+            # Tabela de Configurações de Limiares (Thresholds)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS alert_thresholds (
+                    key TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    category TEXT NOT NULL,
+                    value REAL NOT NULL,
+                    unit TEXT NOT NULL,
+                    is_enabled INTEGER NOT NULL DEFAULT 1,
+                    description TEXT
+                )
+            """)
+            
+            # Tabela de Registro de Ações Manuais e Incidentes (Worklog)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS incident_worklog (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    incident_key TEXT NOT NULL,
+                    host TEXT NOT NULL,
+                    target_name TEXT NOT NULL, -- Servico ou Canal
+                    incident_type TEXT NOT NULL, -- servico_parado, canal_fora, crash_loop, disco_cheio, etc.
+                    operator_username TEXT NOT NULL,
+                    operator_name TEXT NOT NULL,
+                    action_taken TEXT NOT NULL, -- Descrição da ação manual
+                    resolution_status TEXT NOT NULL DEFAULT 'em_analise', -- em_analise, resolvido, escalado
+                    created_at TEXT NOT NULL
+                )
+            """)
+            
+            # Tabela de Sugestões da Inteligência Artificial
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS ai_suggestions (
+                    id TEXT PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    category TEXT NOT NULL, -- preditivo, anomalia, otimizacao, tuning
+                    severity TEXT NOT NULL, -- baixa, media, alta, critica
+                    description TEXT NOT NULL,
+                    suggested_rule JSON NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'pendente', -- pendente, aprovada, recusada
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT
+                )
+            """)
+    
+            # Tabela de Sessões Ativas
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS sessions (
+                    token TEXT PRIMARY KEY,
+                    username TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    expires_at REAL NOT NULL
+                )
+            """)
+    
+            # Migração automática de perfis legado para RBAC justo (admin, n2, n1)
+            cursor.execute("UPDATE users SET role = 'n2' WHERE role = 'operator'")
+            cursor.execute("UPDATE users SET role = 'n1' WHERE role = 'viewer'")
+    
             conn.commit()
+            
+            # Cria usuário admin padrão se não existir
+            cursor.execute("SELECT id FROM users WHERE username = ?", (DEFAULT_ADMIN_USER,))
+            if not cursor.fetchone():
+                pass_hash = hash_password(DEFAULT_ADMIN_PASS)
+                cursor.execute("""
+                    INSERT INTO users (username, password_hash, full_name, email, role, auth_type, is_active, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, 1, datetime('now'))
+                """, (DEFAULT_ADMIN_USER, pass_hash, "Suporte CS Master", "suporte@kinomuse.com.br", "admin", "local"))
+            conn.commit()
+    except Exception:
+        pass
 
 
 def hash_password(password: str) -> str:
