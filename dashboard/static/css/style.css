@@ -1,3 +1,44 @@
+
+/* Wrapper e Controles de Rolagem da Navbar de Abas */
+.nav-tabs-wrapper {
+  display: flex;
+  align-items: center;
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  gap: 3px;
+  overflow: hidden;
+}
+
+.nav-scroll-btn {
+  background: rgba(15, 23, 42, 0.95);
+  color: #94a3b8;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  width: 22px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 11px;
+  z-index: 10;
+  transition: all 0.2s ease;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.nav-scroll-btn:hover {
+  background: #1e293b;
+  color: #38bdf8;
+  border-color: #38bdf8;
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.4);
+}
+
+.nav-scroll-btn.visible {
+  display: flex !important;
+}
+
 :root {
   --bg-primary: #0a0e17;
   --bg-secondary: #111827;
@@ -95,16 +136,27 @@ body {
 .nav-tabs {
   display: flex;
   align-items: center;
-  gap: 3px;
-  background: rgba(0, 0, 0, 0.4);
-  padding: 3px;
+  gap: 2px;
+  background: rgba(0, 0, 0, 0.45);
+  padding: 2px 4px;
   border-radius: var(--radius-md);
   border: 1px solid rgba(255, 255, 255, 0.08);
   overflow-x: auto;
-  scrollbar-width: none;
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(56, 189, 248, 0.3) transparent;
   flex: 1;
   min-width: 0;
-  max-width: fit-content;
+}
+.nav-tabs::-webkit-scrollbar {
+  height: 3px;
+}
+.nav-tabs::-webkit-scrollbar-track {
+  background: transparent;
+}
+.nav-tabs::-webkit-scrollbar-thumb {
+  background: rgba(56, 189, 248, 0.3);
+  border-radius: 3px;
 }
 
 .nav-tabs::-webkit-scrollbar {
@@ -115,19 +167,19 @@ body {
   background: transparent;
   color: var(--text-muted);
   border: none;
-  padding: 5px 9px;
-  font-size: 11.5px;
+  padding: 4px 7px;
+  font-size: 11px;
   font-weight: 600;
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition: all 0.15s ease;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   white-space: nowrap !important;
   flex-shrink: 0;
   line-height: 1;
-  height: 30px;
+  height: 28px;
 }
 
 .nav-btn span {

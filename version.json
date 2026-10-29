@@ -1,7 +1,7 @@
 {
-    "version": "3.9.58",
+    "version": "3.9.59",
     "agent_version": "1.0.18.0",
     "commit_sha": "auto",
     "updated_at": "2026-10-28T20:52:00.000000",
-    "description": "v3.9.58 - Comparacao CS01/CS02: Pareamento estrito de gravacoes do mesmo bloco de horario (YYYYMMDDHHMM), extracao segura de audio do NAS via temp local e analise de similaridade de conteudo invariante a volume (dBFS removido)."
+    "description": "v3.9.59 - Navbar responsiva: suporte a rolagem horizontal via mouse wheel, setas de navegacao (scroll buttons), compactacao dos botoes para exibicao de todas as 15 abas e contador dinamico de pracas."
 }

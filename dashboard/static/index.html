@@ -22,7 +22,7 @@
 
 
 
-    <link rel="stylesheet" href="/static/css/style.css?v=3.4.0">
+    <link rel="stylesheet" href="/static/css/style.css?v=3.9.59">
 
 
 
@@ -1298,31 +1298,39 @@
       <div class="brand-icon">📡</div>
       <div>
         <div class="brand-title">Monitoração LATAM - IBOPE</div>
-        <div class="brand-subtitle">Fleet NOC • 24 Praças</div>
+        <div class="brand-subtitle">Fleet NOC • <span id="brandSubtitlePracas">65 Praças</span></div>
       </div>
     </div>
 
-    <nav class="nav-tabs">
-      <button class="nav-btn active" data-tab="overview"><span>🚨</span> Incidentes N1</button>
-      <button class="nav-btn" data-tab="channels"><span>📡</span> Canais & RF</button>
-      <button class="nav-btn" data-tab="signals"><span>📈</span> Análise RF</button>
-      <button class="nav-btn" data-tab="mosaic"><span>🖼️</span> Mosaico Live</button>
-      <button class="nav-btn" data-tab="map"><span>🗺️</span> Topologia RF</button>
-      <button class="nav-btn" data-tab="audiosync"><span>🎚️</span> Comparação CS01/CS02</button>
-      <button class="nav-btn" data-tab="classificador"><span>🏷️</span> Classificador de Falhas</button>
-      <button class="nav-btn" data-tab="fiscalizacao"><span>⚖️</span> Fiscalização</button>
-      <button class="nav-btn" data-tab="incidents"><span>📋</span> Worklog</button>
-      <button class="nav-btn" data-tab="network"><span>🌐</span> Link WAN</button>
-      <button class="nav-btn" data-tab="ai"><span>🧠</span> IA Insights</button>
-      <button class="nav-btn" data-tab="fleet"><span>🚀</span> Frota</button>
-      <button class="nav-btn" data-tab="logs"><span>📑</span> Logs</button>
-      <button class="nav-btn" data-tab="remote-commands"><span>⚡</span> Comandos</button>
-      <button class="nav-btn" data-tab="configs"><span>⚙️</span> Config</button>
-    </nav>
+    <div class="nav-tabs-wrapper">
+      <button type="button" class="nav-scroll-btn nav-scroll-left" id="btnNavScrollLeft" onclick="scrollNavTabs(-220)" title="Rolar abas para a esquerda">
+        <i class="fas fa-chevron-left"></i>
+      </button>
+      <nav class="nav-tabs" id="mainNavTabs">
+        <button class="nav-btn active" data-tab="overview"><span>🚨</span> Incidentes N1</button>
+        <button class="nav-btn" data-tab="channels"><span>📡</span> Canais &amp; RF</button>
+        <button class="nav-btn" data-tab="signals"><span>📈</span> Análise RF</button>
+        <button class="nav-btn" data-tab="mosaic"><span>🖼️</span> Mosaico Live</button>
+        <button class="nav-btn" data-tab="map"><span>🗺️</span> Topologia RF</button>
+        <button class="nav-btn" data-tab="audiosync" title="Comparação de Matérias &amp; Sincronismo CS01/CS02"><span>🎚️</span> Comparação CS</button>
+        <button class="nav-btn" data-tab="classificador" title="Classificador de Falhas &amp; Base de Conhecimento Broadcast"><span>🏷️</span> Classificador</button>
+        <button class="nav-btn" data-tab="fiscalizacao"><span>⚖️</span> Fiscalização</button>
+        <button class="nav-btn" data-tab="incidents"><span>📋</span> Worklog</button>
+        <button class="nav-btn" data-tab="network"><span>🌐</span> Link WAN</button>
+        <button class="nav-btn" data-tab="ai"><span>🧠</span> IA Insights</button>
+        <button class="nav-btn" data-tab="fleet"><span>💻</span> Frota</button>
+        <button class="nav-btn" data-tab="logs"><span>📜</span> Logs</button>
+        <button class="nav-btn" data-tab="remote-commands"><span>⚡</span> Comandos</button>
+        <button class="nav-btn" data-tab="configs"><span>⚙️</span> Config</button>
+      </nav>
+      <button type="button" class="nav-scroll-btn nav-scroll-right" id="btnNavScrollRight" onclick="scrollNavTabs(220)" title="Rolar abas para a direita">
+        <i class="fas fa-chevron-right"></i>
+      </button>
+    </div>
 
     <div class="nav-user">
       <button type="button" class="btn-secondary" id="btnHandoverReport" onclick="openHandoverReportModal()" style="display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; font-size: 11px; background: rgba(99,102,241,0.18); border: 1px solid rgba(99,102,241,0.45); color: #a5b4fc; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; white-space: nowrap;" title="Gerar Relatório Executivo de Passagem de Turno (Handover)"><i class="fas fa-clipboard-list"></i> <span>Turno</span></button>
-      <button type="button" class="btn-secondary" id="btnSystemUpdate" onclick="openSystemUpdateModal()" style="display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; font-size: 11px; background: rgba(37,99,235,0.15); border: 1px solid rgba(37,99,235,0.4); color: #38bdf8; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; white-space: nowrap;" title="Verificar atualizações do sistema"><i class="fas fa-sync-alt" id="iconSystemUpdate"></i> <span id="labelSystemVersion">v3.9.58</span></button>
+      <button type="button" class="btn-secondary" id="btnSystemUpdate" onclick="openSystemUpdateModal()" style="display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; font-size: 11px; background: rgba(37,99,235,0.15); border: 1px solid rgba(37,99,235,0.4); color: #38bdf8; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; white-space: nowrap;" title="Verificar atualizações do sistema"><i class="fas fa-sync-alt" id="iconSystemUpdate"></i> <span id="labelSystemVersion">v3.9.59</span></button>
       <div class="user-badge" style="padding: 4px 10px; font-size: 11px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;">
         <div class="status-dot"></div>
         <span id="navUserDisplay">Usuário</span>
@@ -7833,7 +7841,7 @@
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
           <div style="background: rgba(0,0,0,0.3); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color);">
             <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Versão Instalada</div>
-            <div id="sys-update-local-version" style="font-size: 14px; font-weight: 700; color: #38bdf8; margin-top: 2px;">v3.9.58 (<span id="sys-update-local-sha">...</span>)</div>
+            <div id="sys-update-local-version" style="font-size: 14px; font-weight: 700; color: #38bdf8; margin-top: 2px;">v3.9.59 (<span id="sys-update-local-sha">...</span>)</div>
           </div>
           <div style="background: rgba(0,0,0,0.3); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color);">
             <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Última Versão no GitHub</div>
@@ -8098,7 +8106,7 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=3.9.52"></script>
+  <script src="/static/js/app.js?v=3.9.59"></script>
   <script src="/static/js/ai_insights.js?v=3.9.40"></script>
   <script src="/static/js/fleet_ops.js?v=3.9.40"></script>
   <script src="/static/js/remote_commands.js?v=3.9.40"></script>
@@ -8258,7 +8266,7 @@
 
       <!-- Modal Footer -->
       <div style="padding: 14px 20px; background: rgba(15, 23, 42, 0.95); border-top: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center;">
-        <span style="font-size: 11px; color: var(--text-muted);">MediaDNA Incident Cockpit • Handover Engine v3.9.58</span>
+        <span style="font-size: 11px; color: var(--text-muted);">MediaDNA Incident Cockpit • Handover Engine v3.9.59</span>
         <div style="display: flex; gap: 10px;">
           <button type="button" class="btn-secondary" onclick="closeHandoverReportModal()" style="padding: 8px 16px;">Fechar</button>
           <button type="button" class="btn-primary" onclick="copyHandoverReportToClipboard()" style="padding: 8px 18px; background: linear-gradient(135deg, #4f46e5, #2563eb); font-weight: 700; display: flex; align-items: center; gap: 8px;">

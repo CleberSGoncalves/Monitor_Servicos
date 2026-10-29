@@ -1,3 +1,48 @@
+
+function setupNavScroll() {
+    const nav = document.getElementById("mainNavTabs");
+    const btnLeft = document.getElementById("btnNavScrollLeft");
+    const btnRight = document.getElementById("btnNavScrollRight");
+    if (!nav) return;
+
+    function updateArrows() {
+        const hasOverflow = nav.scrollWidth > nav.clientWidth + 4;
+        if (btnLeft) {
+            btnLeft.classList.toggle("visible", hasOverflow && nav.scrollLeft > 6);
+        }
+        if (btnRight) {
+            btnRight.classList.toggle("visible", hasOverflow && (nav.scrollLeft < nav.scrollWidth - nav.clientWidth - 6));
+        }
+    }
+
+    nav.addEventListener("wheel", (e) => {
+        if (e.deltaY !== 0) {
+            e.preventDefault();
+            nav.scrollLeft += (e.deltaY * 0.9);
+            updateArrows();
+        }
+    }, { passive: false });
+
+    nav.addEventListener("scroll", updateArrows);
+    window.addEventListener("resize", updateArrows);
+    setTimeout(updateArrows, 100);
+    setTimeout(updateArrows, 600);
+}
+
+window.scrollNavTabs = function(delta) {
+    const nav = document.getElementById("mainNavTabs");
+    if (nav) {
+        nav.scrollBy({ left: delta, behavior: "smooth" });
+        setTimeout(() => {
+            const btnLeft = document.getElementById("btnNavScrollLeft");
+            const btnRight = document.getElementById("btnNavScrollRight");
+            const hasOverflow = nav.scrollWidth > nav.clientWidth + 4;
+            if (btnLeft) btnLeft.classList.toggle("visible", hasOverflow && nav.scrollLeft > 6);
+            if (btnRight) btnRight.classList.toggle("visible", hasOverflow && (nav.scrollLeft < nav.scrollWidth - nav.clientWidth - 6));
+        }, 320);
+    }
+};
+
 // static/js/app.js - Central de Monitoração Proativa CS Fleet
 
 let authToken = localStorage.getItem("fleet_token") || "";
@@ -141,12 +186,14 @@ function doLogout() {
 }
 
 function setupTabNavigation() {
+    setupNavScroll();
     document.querySelectorAll(".nav-btn").forEach(btn => {
         btn.addEventListener("click", () => {
             document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
             document.querySelectorAll(".content-section").forEach(s => s.classList.remove("active"));
 
             btn.classList.add("active");
+            try { btn.scrollIntoView({ behavior: "smooth", inline: "nearest", block: "nearest" }); } catch(_) {}
             const tabName = btn.getAttribute("data-tab");
             currentTab = tabName;
             const targetSec = document.getElementById(`tab-${tabName}`);
@@ -496,6 +543,8 @@ function applyFleetCatalogToAllDropdowns(cat) {
     const sortedHosts = cat.hosts;
 
     // 1. Visão Geral (filterCity)
+    const brandSub = document.getElementById("brandSubtitlePracas");
+    if (brandSub && sortedPracas && sortedPracas.length > 0) brandSub.innerText = `${sortedPracas.length} Praças`;
     const filterCity = document.getElementById("filterCity");
     if (filterCity) {
         const cur = filterCity.value;
