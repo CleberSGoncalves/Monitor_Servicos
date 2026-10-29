@@ -41,9 +41,10 @@ def test_build_detection_fleet_snapshot_structure():
     # Valida que TODOS os sites retornados são estritamente CS01
     for site in sites:
         assert site["cs"] == 1, f"Host {site['hostname']} deve ser exclusivamente CS01, obtido CS={site['cs']}"
-        assert site["engine_tier"] in ("PRIMARY", "FALLBACK", "NONE")
+        assert site["engine_tier"] in ("PRIMARY", "FALLBACK", "NONE", "CONFLICT")
         assert site["health_status"] in ("NOMINAL", "WARNING", "STALLED", "CRITICAL", "COMM_LOST")
         assert "pipeline_services" in site
+        assert "sgg_vs_tracking_audit" in site
         p = site["pipeline_services"]
         assert "fast_matching" in p
         assert "detection_svc" in p

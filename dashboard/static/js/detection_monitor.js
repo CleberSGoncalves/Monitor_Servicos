@@ -140,6 +140,8 @@ function renderDetectionTable() {
                 if (site.health_status !== "CRITICAL") return false;
             } else if (detectionFilterStatus === "comm_lost") {
                 if (site.health_status !== "COMM_LOST") return false;
+            } else if (detectionFilterStatus === "conflict") {
+                if (site.engine_tier !== "CONFLICT") return false;
             } else if (detectionFilterStatus === "nominal") {
                 if (site.health_status !== "NOMINAL") return false;
             }
@@ -149,6 +151,7 @@ function renderDetectionTable() {
         if (detectionFilterEngine !== "all") {
             if (detectionFilterEngine === "primary" && site.engine_tier !== "PRIMARY") return false;
             if (detectionFilterEngine === "fallback" && site.engine_tier !== "FALLBACK") return false;
+            if (detectionFilterEngine === "conflict" && site.engine_tier !== "CONFLICT") return false;
             if (detectionFilterEngine === "none" && site.engine_tier !== "NONE") return false;
         }
 
@@ -188,6 +191,14 @@ function renderDetectionTable() {
                     <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 8px #22c55e;"></span>
                     <span style="font-weight: 600; color: #4ade80; font-size: 12px;">FastMatching</span>
                     <span style="font-size: 10px; background: rgba(34, 197, 94, 0.15); color: #86efac; padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(34, 197, 94, 0.3);">Primário</span>
+                </div>
+            `;
+        } else if (site.engine_tier === "CONFLICT") {
+            engineBadgeHtml = `
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #f97316; box-shadow: 0 0 8px #f97316;"></span>
+                    <span style="font-weight: 700; color: #fb923c; font-size: 12px;">CONFLITO CONCORRENTE</span>
+                    <span style="font-size: 10px; background: rgba(249, 115, 22, 0.15); color: #fdba74; padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(249, 115, 22, 0.4);">Ambos Ativos</span>
                 </div>
             `;
         } else if (site.engine_tier === "FALLBACK") {
