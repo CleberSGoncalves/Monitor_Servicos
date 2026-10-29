@@ -1097,7 +1097,7 @@ async def get_audio_sync_summary_endpoint(
 
         # Fallback resiliente lendo diretamente do cache em disco
         if not data or not isinstance(data, dict) or "channels" not in data:
-            from audio_sync_analyzer import CACHE_AUDIO_SYNC_FILE
+            CACHE_AUDIO_SYNC_FILE = DATA_DIR / "audio_sync_cache.json"
             if CACHE_AUDIO_SYNC_FILE.exists():
                 try:
                     data = json.loads(CACHE_AUDIO_SYNC_FILE.read_text(encoding="utf-8"))
