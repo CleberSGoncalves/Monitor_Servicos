@@ -1,7 +1,7 @@
 {
-    "version": "3.9.59",
+    "version": "3.9.60",
     "agent_version": "1.0.18.0",
     "commit_sha": "auto",
-    "updated_at": "2026-10-28T20:52:00.000000",
-    "description": "v3.9.59 - Navbar responsiva: suporte a rolagem horizontal via mouse wheel, setas de navegacao (scroll buttons), compactacao dos botoes para exibicao de todas as 15 abas e contador dinamico de pracas."
+    "updated_at": "2026-10-28T23:45:00.000000",
+    "description": "v3.9.60 - Suporte Completo a Multi-CS na Topologia RF com seletor de Capture Site e badges de host; Sincronização dinâmica de 106+ praças em todos os 12 módulos e dropdowns do dashboard; Análise Holística de Frota com IA Gemini e Catálogo de 24 Automações Proativas; Otimização de renderização DOM para 3.300+ microsserviços."
 }

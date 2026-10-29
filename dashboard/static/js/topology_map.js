@@ -10,7 +10,9 @@ let customZoomScale = 1.0;
 let customPanOffsetX = 0;
 let customPanOffsetY = 0;
 let currentRfModalView = "radar";
-let selectedRfChannelIndex = null; // null = Visão Ampla (Todos os Canais); 0..N = Canal específico focado
+let selectedRfChannelIndex = null;
+let currentRfModalCs = "all";
+window.currentRfModalCs = currentRfModalCs; // null = Visão Ampla (Todos os Canais); 0..N = Canal específico focado
 
 // Paleta de cores distintas para diferenciar claramente cada emissora/canal nos gráficos
 const CHANNEL_COLORS = [
@@ -629,6 +631,32 @@ function updateMarketDetailPanel(market) {
     
     const outChEl = document.getElementById("mapDetailOutageChannels");
     if (outChEl) outChEl.textContent = market.outage_channels || 0;
+
+    const csButtonsContainer = document.getElementById("mapDetailCsButtonsContainer");
+    if (csButtonsContainer) {
+        const csList = market.available_cs_info || [];
+        if (csList.length > 0) {
+            let pillsHtml = `
+                <div style="font-size: 10px; color: var(--text-muted); width: 100%; margin-bottom: 2px;">
+                    <i class="fas fa-server" style="color: #38bdf8;"></i> Capture Sites Disponíveis (${csList.length}):
+                </div>
+                <button type="button" class="btn-secondary" style="flex: 1; font-size: 10px; padding: 4px 6px; font-weight: 700; background: rgba(56, 189, 248, 0.12); border-color: rgba(56, 189, 248, 0.4); color: #38bdf8;" onclick="openMarketRfModal('${market.id}', 'all')">
+                    🌐 Todas
+                </button>
+            `;
+            csList.forEach(cs => {
+                const isCs1 = (cs.cs === 1);
+                pillsHtml += `
+                    <button type="button" class="btn-secondary" style="flex: 1; font-size: 10px; padding: 4px 6px; font-weight: 700; background: ${isCs1 ? 'rgba(56, 189, 248, 0.08)' : 'rgba(168, 85, 247, 0.12)'}; border-color: ${isCs1 ? 'rgba(56, 189, 248, 0.3)' : 'rgba(168, 85, 247, 0.35)'}; color: ${isCs1 ? '#38bdf8' : '#c084fc'};" onclick="openMarketRfModal('${market.id}', ${cs.cs})" title="${cs.hostname || ''} (${cs.channels_count} canais • ${cs.services_count} svcs)">
+                        🖥️ ${escapeHtml(cs.label || cs.cs_label)} (${cs.channels_count} ch)
+                    </button>
+                `;
+            });
+            csButtonsContainer.innerHTML = pillsHtml;
+        } else {
+            csButtonsContainer.innerHTML = "";
+        }
+    }
 }
 
 function handleCityClick(marketId, event) {
@@ -688,6 +716,87 @@ function escapeHtml(text) {
 // ==============================================================================
 // INTERAÇÃO DE FOCO POR CANAL OU VISÃO AMPLA (TODOS OS CANAIS)
 // ==============================================================================
+
+function renderRfModalCsSelector(market) {
+    const container = document.getElementById("rfModalCsSelectorContainer");
+    const summary = document.getElementById("rfModalActiveCsSummary");
+    if (!container) return;
+
+    const csList = market.available_cs_info || [];
+    const allChannels = market.channels_rf_detail || [];
+
+    if (csList.length === 0) {
+        container.innerHTML = `<span class="badge badge-blue" style="font-size: 10px;">CS01 (Principal)</span>`;
+        if (summary) summary.innerHTML = `<span>Host: ${market.site_bairro || 'Local'} • ${allChannels.length} canais DTV</span>`;
+        return;
+    }
+
+    let pillsHtml = `
+        <button type="button" class="${currentRfModalCs === 'all' ? 'btn-primary' : 'btn-secondary'}" 
+                style="padding: 3px 10px; font-size: 11px; font-weight: 700; border-radius: 4px; ${currentRfModalCs === 'all' ? 'background: #0284c7;' : ''}" 
+                onclick="switchRfModalCs('all')">
+            🌐 Todas as CSs (${allChannels.length})
+        </button>
+    `;
+
+    csList.forEach(cs => {
+        const isActive = String(currentRfModalCs) === String(cs.cs);
+        const bgStyle = isActive ? 'background: #0284c7; border-color: #38bdf8;' : (cs.cs === 1 ? 'border-color: rgba(56,189,248,0.4);' : 'border-color: rgba(168,85,247,0.4);');
+        pillsHtml += `
+            <button type="button" class="${isActive ? 'btn-primary' : 'btn-secondary'}" 
+                    style="padding: 3px 10px; font-size: 11px; font-weight: 700; border-radius: 4px; ${bgStyle}" 
+                    onclick="switchRfModalCs(${cs.cs})"
+                    title="Host: ${cs.hostname || ''} | ${cs.channels_count} canais DTV | ${cs.services_count} microsserviços">
+                🖥️ ${escapeHtml(cs.label || cs.cs_label)} (${cs.channels_count} canais)
+            </button>
+        `;
+    });
+
+    container.innerHTML = pillsHtml;
+
+    if (summary) {
+        if (currentRfModalCs === 'all') {
+            summary.innerHTML = `<span>🌐 <strong>Visão Multi-CS:</strong> ${csList.length} Capture Sites • ${allChannels.length} canais consolidados</span>`;
+        } else {
+            const activeCs = csList.find(c => String(c.cs) === String(currentRfModalCs));
+            if (activeCs) {
+                summary.innerHTML = `<span>🖥️ <strong>${escapeHtml(activeCs.label)}:</strong> Host <code style="color: #38bdf8; font-weight: 700;">${escapeHtml(activeCs.hostname)}</code> • ${activeCs.channels_count} canais TBS • ${activeCs.services_count} serviços</span>`;
+            } else {
+                summary.innerHTML = `<span>CS0${currentRfModalCs}</span>`;
+            }
+        }
+    }
+}
+window.renderRfModalCsSelector = renderRfModalCsSelector;
+
+function switchRfModalCs(csNum) {
+    currentRfModalCs = (csNum !== undefined && csNum !== null) ? csNum : "all";
+    window.currentRfModalCs = currentRfModalCs;
+    selectedRfChannelIndex = null; // reseta foco individual de canal ao trocar de CS
+
+    const market = selectedMarket || window.selectedMarket;
+    if (!market) return;
+
+    const titleEl = document.getElementById("rfModalTitle");
+    if (titleEl) {
+        if (currentRfModalCs === "all") {
+            titleEl.innerText = `Perfil Geográfico & Topografia RF • ${market.cidade} (${market.uf})`;
+        } else {
+            const csList = market.available_cs_info || [];
+            const activeCs = csList.find(c => String(c.cs) === String(currentRfModalCs));
+            const csText = activeCs ? activeCs.label : `CS0${currentRfModalCs}`;
+            titleEl.innerText = `Perfil Geográfico & Topografia RF • ${market.cidade} (${market.uf}) — ${csText}`;
+        }
+    }
+
+    renderRfModalCsSelector(market);
+    renderRfModalChannelsTable(market);
+    renderMarketRadarCanvas(market, null);
+    renderTerrainCanvas(market, null, null);
+    updateRfModalEngineeringNotes(market, null);
+}
+window.switchRfModalCs = switchRfModalCs;
+
 function selectRfModalChannel(channelIdx) {
     if (channelIdx === null || channelIdx === undefined || selectedRfChannelIndex === channelIdx) {
         selectedRfChannelIndex = null; // Volta para Visão Ampla
@@ -710,12 +819,19 @@ window.selectRfModalChannel = selectRfModalChannel;
 function renderRfModalChannelsTable(market) {
     const tbody = document.getElementById("rfModalChannelsTableBody");
     const countBadge = document.getElementById("rfModalChannelsCountBadge");
-    const channels = market.channels_rf_detail || [];
+    const allChannels = market.channels_rf_detail || [];
     
+    // Filtragem por CS selecionada
+    let channels = allChannels;
+    if (currentRfModalCs !== "all") {
+        channels = allChannels.filter(c => Number(c.cs) === Number(currentRfModalCs));
+    }
+
     if (countBadge) {
         const isWide = (selectedRfChannelIndex === null);
+        const csLabel = (currentRfModalCs === "all") ? "Todas as CSs" : `CS0${currentRfModalCs}`;
         const modeLabel = isWide
-            ? `🌐 Visão Ampla (${channels.length} Canais)`
+            ? `🌐 Visão Ampla ${csLabel} (${channels.length} Canais)`
             : `🎯 Em Foco: ${channels[selectedRfChannelIndex]?.emissora || 'Canal'}`;
         countBadge.innerHTML = `
             <span>${modeLabel}</span>
@@ -729,7 +845,13 @@ function renderRfModalChannelsTable(market) {
 
     if (!tbody) return;
     if (channels.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: var(--text-muted); padding: 16px;">Nenhum canal DTV cadastrado para esta praça.</td></tr>`;
+        const csList = market.available_cs_info || [];
+        const activeCs = csList.find(c => String(c.cs) === String(currentRfModalCs));
+        const csName = activeCs ? activeCs.label : `CS0${currentRfModalCs}`;
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 18px;">
+            <i class="fas fa-info-circle" style="color: #38bdf8;"></i> Nenhum canal sintonizado no sintonizador TBS de <strong>${escapeHtml(csName)}</strong>.
+            <div style="margin-top: 6px;"><button type="button" class="btn-secondary" style="font-size: 10px; padding: 3px 8px;" onclick="switchRfModalCs('all')">Ver Todos os Canais da Praça</button></div>
+        </td></tr>`;
         return;
     }
 
@@ -741,6 +863,10 @@ function renderRfModalChannelsTable(market) {
         const distStr = c.distance_m ? `${c.distance_m.toLocaleString('pt-BR')} m (${c.distance_km} km)` : `${c.distance_km} km`;
         const signalColor = c.rx_level_measured_pct >= 60 ? "#10b981" : (c.rx_level_measured_pct >= 40 ? "#facc15" : "#ef4444");
         const freqFormatted = Number(c.freq_mhz).toFixed(3).replace(".", ",") + " MHz";
+        const csNum = c.cs || 1;
+        const csBadgeClass = csNum === 1 ? 'badge badge-blue' : 'badge badge-purple';
+        const csLabelText = c.cs_label || (csNum === 1 ? 'CS01 (Principal)' : (csNum === 2 ? 'CS02 (BKP)' : `CS0${csNum}`));
+        const hostText = c.hostname || 'Local';
 
         return `
         <tr onclick="selectRfModalChannel(${idx})" 
@@ -755,6 +881,12 @@ function renderRfModalChannelsTable(market) {
                             ${isFocused ? '🎯 Em Foco (clique p/ Todos)' : '🔍 Clique p/ focar corte'}
                         </div>
                     </div>
+                </div>
+            </td>
+            <td style="padding: 6px 6px; white-space: nowrap;">
+                <span class="${csBadgeClass}" style="font-size: 9px; font-weight: 700; padding: 2px 6px;">${escapeHtml(csLabelText)}</span>
+                <div style="font-size: 9px; color: #94a3b8; font-family: monospace; margin-top: 2px;" title="${escapeHtml(hostText)}">
+                    <i class="fas fa-desktop" style="font-size: 8px;"></i> ${escapeHtml(hostText)}
                 </div>
             </td>
             <td style="padding: 6px 6px; white-space: nowrap;">
@@ -843,7 +975,9 @@ function updateRfModalEngineeringNotes(market, channelIdx = null) {
 // ==============================================================================
 // MODAL DE GEOLOCALIZAÇÃO PRECISA, RELEVO TOPOGRÁFICO & CANAIS DIGITAIS TERRESTRES (WIDESCREEN)
 // ==============================================================================
-async function openMarketRfModal(marketId) {
+async function openMarketRfModal(marketId, targetCs = "all") {
+    currentRfModalCs = (targetCs !== undefined && targetCs !== null) ? targetCs : "all";
+    window.currentRfModalCs = currentRfModalCs;
     if (!topologyMarketsData || topologyMarketsData.length === 0) {
         if (typeof loadTopologyMapData === "function") {
             await loadTopologyMapData();
@@ -873,7 +1007,17 @@ async function openMarketRfModal(marketId) {
     if (!modal) return;
 
     const titleEl = document.getElementById("rfModalTitle");
-    if (titleEl) titleEl.innerText = `Perfil Geográfico & Topografia RF • ${market.cidade} (${market.uf})`;
+    if (titleEl) {
+        if (currentRfModalCs === "all") {
+            titleEl.innerText = `Perfil Geográfico & Topografia RF • ${market.cidade} (${market.uf})`;
+        } else {
+            const csList = market.available_cs_info || [];
+            const activeCs = csList.find(c => String(c.cs) === String(currentRfModalCs));
+            const csText = activeCs ? activeCs.label : `CS0${currentRfModalCs}`;
+            titleEl.innerText = `Perfil Geográfico & Topografia RF • ${market.cidade} (${market.uf}) — ${csText}`;
+        }
+    }
+    renderRfModalCsSelector(market);
     
     const statusBadge = document.getElementById("rfModalStatusBadge");
     if (statusBadge) {
@@ -1859,17 +2003,33 @@ function renderMarketRadarCanvas(market, selectedChannelIdx = undefined) {
     ctx.stroke();
 
     ctx.fillStyle = "rgba(15, 23, 42, 0.96)";
-    ctx.fillRect(cx - 88, cy + 14, 176, 26);
+    ctx.fillRect(cx - 98, cy + 13, 196, 28);
     ctx.strokeStyle = "rgba(56, 189, 248, 0.75)";
     ctx.lineWidth = 1.3;
-    ctx.strokeRect(cx - 88, cy + 14, 176, 26);
+    ctx.strokeRect(cx - 98, cy + 13, 196, 28);
     ctx.fillStyle = "#fff";
     ctx.font = "bold 9.5px Inter, sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText(`🔵 CS • ${market.cidade.toUpperCase()}`, cx, cy + 25);
+
+    let csHeaderTitle = `🔵 CS • ${market.cidade.toUpperCase()}`;
+    if (currentRfModalCs !== "all") {
+        const csList = market.available_cs_info || [];
+        const activeCsObj = csList.find(x => String(x.cs) === String(currentRfModalCs));
+        csHeaderTitle = `🔵 ${activeCsObj ? activeCsObj.cs_label : ('CS0' + currentRfModalCs)} • ${market.cidade.toUpperCase()}`;
+    }
+    ctx.fillText(csHeaderTitle, cx, cy + 24);
+
     ctx.fillStyle = "#38bdf8";
     ctx.font = "8.5px monospace";
-    ctx.fillText(`${market.site_bairro || 'Centro'} (${market.site_elevation_m || 36}m+${mastH}m)`, cx, cy + 35);
+    let csSubTitle = `${market.site_bairro || 'Centro'} (${market.site_elevation_m || 36}m+${mastH}m)`;
+    if (currentRfModalCs !== "all") {
+        const csList = market.available_cs_info || [];
+        const activeCsObj = csList.find(x => String(x.cs) === String(currentRfModalCs));
+        if (activeCsObj && activeCsObj.hostname) {
+            csSubTitle = `${activeCsObj.hostname} (${market.site_elevation_m || 36}m+${mastH}m)`;
+        }
+    }
+    ctx.fillText(csSubTitle, cx, cy + 36);
     ctx.textAlign = "left";
 
     // Atualiza aviso inferior do Radar

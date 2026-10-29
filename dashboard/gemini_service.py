@@ -213,7 +213,7 @@ def test_gemini_connection(api_key: Optional[str] = None, model: str = "gemini-2
         return {"success": False, "error": f"Falha de rede ao conectar com Google AI: {str(e)}"}
 
 
-def execute_gemini_prompt(prompt: str, module: str = "geral", target: str = "CS-FLEET", operator: str = "suportesmme", system_instruction: Optional[str] = None) -> Optional[str]:
+def execute_gemini_prompt(prompt: str, module: str = "geral", target: str = "CS-FLEET", operator: str = "suportesmme", system_instruction: Optional[str] = None, max_tokens: Optional[int] = None) -> Optional[str]:
     """
     Executa prompt com o Gemini respeitando as travas de governança, modo operacional e auditoria.
     Retorna o texto da resposta ou None caso a IA esteja desativada ou ocorra erro.
@@ -237,11 +237,13 @@ def execute_gemini_prompt(prompt: str, module: str = "geral", target: str = "CS-
     else:
         contents.append({"role": "user", "parts": [{"text": prompt}]})
 
+    tokens_limit = max_tokens if max_tokens else 8192
+
     payload = {
         "contents": contents,
         "generationConfig": {
             "temperature": 0.2,
-            "maxOutputTokens": 600
+            "maxOutputTokens": tokens_limit
         }
     }
 
@@ -252,7 +254,7 @@ def execute_gemini_prompt(prompt: str, module: str = "geral", target: str = "CS-
             data=json.dumps(payload).encode("utf-8"),
             headers={"Content-Type": "application/json"}
         )
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with urllib.request.urlopen(req, timeout=30) as resp:
             latency_ms = int((time.time() - start_time) * 1000)
             res_data = json.loads(resp.read().decode("utf-8"))
             

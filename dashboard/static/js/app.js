@@ -57,6 +57,8 @@ document.addEventListener("DOMContentLoaded", () => {
     setupFilters();
     setupModals();
     checkSystemUpdate(false);
+    syncFleetCatalog(true);
+    setInterval(() => syncFleetCatalog(false), 90000);
 });
 
 function initAuth() {
@@ -506,11 +508,12 @@ window.FleetCatalog = {
     hosts: [{"hostname": "BRSE-AJU-DT01", "praca": "Aracaju", "cs": 1}, {"hostname": "BRSE-AJU-DT02", "praca": "Aracaju", "cs": 2}, {"hostname": "BRSP-PPE-DT01", "praca": "Araçatuba", "cs": 1}, {"hostname": "BRSP-PPE-DT02", "praca": "Araçatuba", "cs": 2}, {"hostname": "BRSP-SRR-DT01", "praca": "Araçatuba", "cs": 1}, {"hostname": "BRSP-CAS-ATRIA-", "praca": "Campinas", "cs": 1}, {"hostname": "BRRS-CSL-DT01", "praca": "Caxias do Sul", "cs": 1}, {"hostname": "BRRS-CSL-DT02", "praca": "Caxias do Sul", "cs": 2}, {"hostname": "CS-BRSC-FNS-DT0", "praca": "Florianópolis", "cs": 1}, {"hostname": "BRXX-XXX-DT0X", "praca": "Homolog_SP", "cs": 1}, {"hostname": "BRGO-IUB-DT01", "praca": "Itumbiara", "cs": 1}, {"hostname": "BRBA-JUO-DT01", "praca": "Juazeiro", "cs": 1}, {"hostname": "BRBA-JUO-DT02", "praca": "Juazeiro", "cs": 2}, {"hostname": "BRCE-JNE-DT01", "praca": "Juazeiro do Norte", "cs": 1}, {"hostname": "BRCE-JNE-DT02", "praca": "Juazeiro do Norte", "cs": 2}, {"hostname": "BRMG-JFA-DT1", "praca": "Juiz de Fora", "cs": 1}, {"hostname": "BRMG-JFA-DT2", "praca": "Juiz de Fora", "cs": 2}, {"hostname": "BRES-LNS-DT01", "praca": "Linhares", "cs": 1}, {"hostname": "BRES-LNS-DT02", "praca": "Linhares", "cs": 2}, {"hostname": "BRPR-LDA-DT-01", "praca": "Londrina", "cs": 1}, {"hostname": "BRPR-LDA-DT-02", "praca": "Londrina", "cs": 2}, {"hostname": "BRGO-LZA-DT-02", "praca": "Luziânia", "cs": 2}, {"hostname": "CS-BRGO-LZA-DT-", "praca": "Luziânia", "cs": 1}, {"hostname": "BRAP-MPA-DT01", "praca": "Macapá", "cs": 1}, {"hostname": "BRAP-MPA-DT02", "praca": "Macapá", "cs": 2}, {"hostname": "BRAL-MCO-DT01", "praca": "Maceió", "cs": 1}, {"hostname": "BRAL-MCO-DT02", "praca": "Maceió", "cs": 2}, {"hostname": "CS-BRAM-MNS-DT-", "praca": "Manaus", "cs": 1}, {"hostname": "BRPA-MBA-DT01", "praca": "Marabá", "cs": 1}, {"hostname": "BRPA-MBA-DT02", "praca": "Marabá", "cs": 2}, {"hostname": "BRPR-MGA-DT01", "praca": "Maringá", "cs": 1}, {"hostname": "BRSC-MGA-DT02", "praca": "Maringá", "cs": 2}, {"hostname": "BRSP-MCZ-DT01", "praca": "Mogi das Cruzes", "cs": 1}, {"hostname": "BRSP-MZC-DT02", "praca": "Mogi das Cruzes", "cs": 2}, {"hostname": "CS-BRMG-MCL-DT-", "praca": "Montes Claros", "cs": 2}, {"hostname": "BRRN-MOS-DT1", "praca": "Mossoró", "cs": 1}, {"hostname": "BRRN-MOS-DT2", "praca": "Mossoró", "cs": 2}, {"hostname": "CS-BRSP-REPUCOM", "praca": "Nacional", "cs": 1}, {"hostname": "PAYTV-PREM-NET-", "praca": "Nacional", "cs": 3}, {"hostname": "PAYTV-SKY-BL01-", "praca": "Nacional", "cs": 3}, {"hostname": "PAYTV-SKY-BL02-", "praca": "Nacional", "cs": 3}, {"hostname": "PAYTV-SKY-BL03-", "praca": "Nacional", "cs": 3}, {"hostname": "PAYTV-SKY-BL04-", "praca": "Nacional", "cs": 3}, {"hostname": "PAYTV-SKY-BL05-", "praca": "Nacional", "cs": 3}, {"hostname": "PAYTV-SKY-BL06-", "praca": "Nacional", "cs": 3}, {"hostname": "PAYTV-SKY-BL07-", "praca": "Nacional", "cs": 3}, {"hostname": "PAYTV-SKY-BL08-", "praca": "Nacional", "cs": 3}, {"hostname": "PAYTV-SKY-BL09-", "praca": "Nacional", "cs": 3}, {"hostname": "PAYTV-SKY-BL10-", "praca": "Nacional", "cs": 3}, {"hostname": "BRRN-NTL-DT-01", "praca": "Natal", "cs": 1}, {"hostname": "BRRN-NTL-DT-02", "praca": "Natal", "cs": 2}, {"hostname": "BRRJ-NOF-DT01", "praca": "Nova Friburgo", "cs": 1}, {"hostname": "BRRJ-NOF-DT02", "praca": "Nova Friburgo", "cs": 2}, {"hostname": "COMPUTER-01PR70", "praca": "Não Informado", "cs": 1}, {"hostname": "BRTO-PMJ-DT-01", "praca": "Palmas", "cs": 1}, {"hostname": "BRTO-PMJ-DT02", "praca": "Palmas", "cs": 2}, {"hostname": "BRPA-PGN-DT-02", "praca": "Paragominas", "cs": 2}, {"hostname": "BRPA-PGN-DT01", "praca": "Paragominas", "cs": 1}, {"hostname": "BRPR-PVA-DT01", "praca": "Paranavaí", "cs": 1}, {"hostname": "BRPR-PVA-DT02", "praca": "Paranavaí", "cs": 2}, {"hostname": "BRPA-PUP-DT01", "praca": "Parauapebas", "cs": 1}, {"hostname": "BRPA-PUP-DT02", "praca": "Parauapebas", "cs": 2}, {"hostname": "CS-BRAM-PAR-DT-", "praca": "Parintins", "cs": 2}, {"hostname": "BRRS-PAS-DT01", "praca": "Passo Fundo", "cs": 1}, {"hostname": "BRRS-PAS-DT02", "praca": "Passo Fundo", "cs": 2}, {"hostname": "BRRS-PLT-DT01", "praca": "Pelotas", "cs": 1}, {"hostname": "BRRS-PLT-DT02", "praca": "Pelotas", "cs": 2}, {"hostname": "BRPR-PGO-DT01", "praca": "Ponta Grossa", "cs": 1}, {"hostname": "BRPR-PGO-DT02", "praca": "Ponta Grossa", "cs": 2}, {"hostname": "BRMS-PPR-DT01", "praca": "Ponta Porã", "cs": 1}, {"hostname": "BRMS-PPR-DT02", "praca": "Ponta Porã", "cs": 2}, {"hostname": "BRGO-PGT-DT01", "praca": "Porangatú", "cs": 1}, {"hostname": "BRGO-PGT-DT02", "praca": "Porangatú", "cs": 2}, {"hostname": "BRRS-PAE-ATRIA-", "praca": "Porto Alegre", "cs": 1}, {"hostname": "BRRO-PVO-DT01", "praca": "Porto Velho", "cs": 1}, {"hostname": "BRRO-PVO-DT02", "praca": "Porto Velho", "cs": 2}, {"hostname": "BRPE-RCE-DT01", "praca": "Recife", "cs": 1}, {"hostname": "BRPE-RCE-DT02", "praca": "Recife", "cs": 2}, {"hostname": "BRPA-RDO-DT01", "praca": "Redenção", "cs": 1}, {"hostname": "BRPA-RDO-DT02", "praca": "Redenção", "cs": 2}, {"hostname": "BRRJ-RES-DT01", "praca": "Resende", "cs": 1}, {"hostname": "BRRJ-RSD-DT02", "praca": "Resende", "cs": 2}, {"hostname": "BRSP-RPO-DT01", "praca": "Ribeirão Preto", "cs": 1}, {"hostname": "BRSP-RPO-DT02", "praca": "Ribeirão Preto", "cs": 2}, {"hostname": "BRAC-RBO-DT01", "praca": "Rio Branco", "cs": 1}, {"hostname": "BRAC-RBO-DT02", "praca": "Rio Branco", "cs": 2}, {"hostname": "BRRJ-RJO-ATRIA-", "praca": "Rio de Janeiro", "cs": 2}, {"hostname": "BRRS-RGR-DT01", "praca": "Rio Grande", "cs": 1}, {"hostname": "BRRS-RGR-DT02", "praca": "Rio Grande", "cs": 2}, {"hostname": "BRGO-RVD-ATRIA-", "praca": "Rio Verde", "cs": 2}, {"hostname": "BRMT-ROI-DT01", "praca": "Rondonópolis", "cs": 1}, {"hostname": "BRMT-ROI-DT02", "praca": "Rondonópolis", "cs": 2}, {"hostname": "BRSP-SJC-DT01", "praca": "S.J dos Campos", "cs": 1}, {"hostname": "BRSP-SJC-DT02", "praca": "S.J dos Campos", "cs": 2}, {"hostname": "BRSP-SRR-DT02", "praca": "S.J. Rio Preto", "cs": 2}, {"hostname": "BRBA-SDR-DT1", "praca": "Salvador", "cs": 1}, {"hostname": "BRBA-SDR-DT2", "praca": "Salvador", "cs": 2}, {"hostname": "BRRS-SCR-DT02", "praca": "Santa Cruz do Sul", "cs": 2}, {"hostname": "BRRS-SMA-DT01", "praca": "Santa Maria", "cs": 1}, {"hostname": "BRRS-SMA-DT02", "praca": "Santa Maria", "cs": 2}, {"hostname": "BRRS-SRO-DT01", "praca": "Santa Rosa", "cs": 1}, {"hostname": "BRRS-SRO-DT02", "praca": "Santa Rosa", "cs": 2}, {"hostname": "BRPA-SRM-DT01", "praca": "Santarém", "cs": 1}, {"hostname": "BRPA-SRM-DT02", "praca": "Santarém", "cs": 2}, {"hostname": "BRSP-STS-ATRIA-", "praca": "Santos", "cs": 2}, {"hostname": "BRMT-SNO-DT01", "praca": "Sinop", "cs": 1}, {"hostname": "BRMT-SNO-DT02", "praca": "Sinop", "cs": 2}, {"hostname": "BRSP-SOR-DT-01", "praca": "Sorocaba", "cs": 1}, {"hostname": "CS-BRSP-SOR-DT0", "praca": "Sorocaba", "cs": 2}, {"hostname": "BRSP-SCL-DT1", "praca": "São Carlos", "cs": 1}, {"hostname": "BRSP-SCL-DT2", "praca": "São Carlos", "cs": 2}, {"hostname": "BRSP-HQ1-DT02", "praca": "São Paulo", "cs": 2}, {"hostname": "BRSP-SPO-DT1-CS", "praca": "São Paulo", "cs": 3}, {"hostname": "BRSP-SPO-DT2-CS", "praca": "São Paulo", "cs": 3}, {"hostname": "BRSP-SPO-RADIO-", "praca": "São Paulo", "cs": 1}, {"hostname": "BRMT-TGS-DT-02", "praca": "Tangará da Serra", "cs": 2}, {"hostname": "CS-BRMT-TGS-DT-", "praca": "Tangará da Serra", "cs": 1}, {"hostname": "CS-BRSP-TTE-DT0", "praca": "Taubaté", "cs": 2}, {"hostname": "BRPI-TSA-DT01", "praca": "Teresina", "cs": 1}, {"hostname": "BRPI-TSA-DT02", "praca": "Teresina", "cs": 2}, {"hostname": "BRMG-UBA-DT01", "praca": "Uberaba", "cs": 2}, {"hostname": "BRMG-ULA-DT01", "praca": "Uberlândia", "cs": 1}, {"hostname": "BRMG-ULA-DT02", "praca": "Uberlândia", "cs": 2}, {"hostname": "BRMG-VGA-DT01", "praca": "Varginha", "cs": 1}, {"hostname": "BRMG-VGA-DT02", "praca": "Varginha", "cs": 2}, {"hostname": "BRES-VIT-DT02", "praca": "Vitória", "cs": 2}, {"hostname": "CS-BRES-VIT-01", "praca": "Vitória", "cs": 1}, {"hostname": "BRBA-VCA-DT01", "praca": "Vitória da Conquista", "cs": 1}, {"hostname": "BRBA-VCA-DT02", "praca": "Vitória da Conquista", "cs": 2}],
     channels_by_praca: {},
     outages_by_praca: new Set(["Maringá", "Juiz de Fora", "Salvador", "Araçatuba", "Paragominas", "Linhares", "Rio de Janeiro", "Nova Friburgo", "Pelotas", "Ponta Grossa", "Florianópolis", "Aracaju", "S.J dos Campos", "São Carlos", "Vitória da Conquista", "Rio Verde", "Nacional", "Passo Fundo"]),
-    loaded: true
+    loaded: false,
+    syncedAt: 0
 };
 
 async function syncFleetCatalog(force = false) {
-    if (window.FleetCatalog.loaded && !force && window.FleetCatalog.pracas.length > 50) {
+    if (window.FleetCatalog.loaded && !force && window.FleetCatalog.syncedAt && (Date.now() - window.FleetCatalog.syncedAt < 60000)) {
         applyFleetCatalogToAllDropdowns(window.FleetCatalog);
         return window.FleetCatalog;
     }
@@ -524,7 +527,8 @@ async function syncFleetCatalog(force = false) {
                 hosts: data.hosts || window.FleetCatalog.hosts,
                 channels_by_praca: data.channels_by_praca || {},
                 outages_by_praca: new Set(data.outages_by_praca || []),
-                loaded: true
+                loaded: true,
+                syncedAt: Date.now()
             };
             applyFleetCatalogToAllDropdowns(window.FleetCatalog);
             return window.FleetCatalog;
@@ -631,7 +635,23 @@ function applyFleetCatalogToAllDropdowns(cat) {
         mp4FilterPraca.innerHTML = sortedPracas.map(p => `<option value="${p}" ${p.toLowerCase() === cur.toLowerCase() ? 'selected' : ''}>${p}</option>`).join("");
     }
 
-    console.log(`[FleetCatalog] 10 combos sincronizados com ${sortedPracas.length} praças e ${sortedHosts.length} servidores.`);
+    // 11. Comparação CS01/CS02 (audioSyncPracaFilter)
+    const audioSyncPraca = document.getElementById("audioSyncPracaFilter");
+    if (audioSyncPraca) {
+        const cur = audioSyncPraca.value;
+        audioSyncPraca.innerHTML = `<option value="all">Todas as Praças (${sortedPracas.length})</option>` +
+            sortedPracas.map(p => `<option value="${p}" ${p.toLowerCase() === cur.toLowerCase() ? 'selected' : ''}>${p}</option>`).join("");
+    }
+
+    // 12. NOC (nocFilterCity)
+    const nocFilterCity = document.getElementById("nocFilterCity");
+    if (nocFilterCity) {
+        const cur = nocFilterCity.value;
+        nocFilterCity.innerHTML = `<option value="all">Todas as Praças (${sortedPracas.length})</option>` +
+            sortedPracas.map(p => `<option value="${p}" ${p.toLowerCase() === cur.toLowerCase() ? 'selected' : ''}>${p}</option>`).join("");
+    }
+
+    console.log(`[FleetCatalog] 12 combos sincronizados com ${sortedPracas.length} praças e ${sortedHosts.length} servidores.`);
 }
 window.applyFleetCatalogToAllDropdowns = applyFleetCatalogToAllDropdowns;
 
@@ -685,7 +705,11 @@ function filterServicesTable() {
         return;
     }
 
-    tbody.innerHTML = filtered.map(s => {
+    const maxServicesRender = 250;
+    const toRender = filtered.slice(0, maxServicesRender);
+    const hasMore = filtered.length > maxServicesRender;
+
+    tbody.innerHTML = toRender.map(s => {
         const isRunning = s.status_servico === "Em Execução";
         const isCrash = s.status_servico.includes("Crash-Loop") || s.status_atualizacao.includes("Crash-Loop");
         const statusBadge = isCrash ? `<span class="badge badge-red">🚨 Crash-Loop</span>` :
@@ -718,7 +742,13 @@ function filterServicesTable() {
                 </td>
             </tr>
         `;
-    }).join("");
+    }).join("") + (hasMore ? `
+        <tr>
+            <td colspan="12" style="text-align: center; background: rgba(56,189,248,0.08); color: #38bdf8; font-weight: 700; padding: 10px; font-size: 11px; border-top: 1px solid rgba(56,189,248,0.3);">
+                <i class="fas fa-info-circle"></i> Exibindo os primeiros ${maxServicesRender} de ${filtered.length} serviços (utilize o filtro de Praça ou Nome para refinar a busca com máxima velocidade).
+            </td>
+        </tr>
+    ` : "");
 }
 window.filterServicesTable = filterServicesTable;
 

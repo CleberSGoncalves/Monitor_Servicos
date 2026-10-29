@@ -2212,11 +2212,70 @@ def _build_channel_terrain_profile(
     ]
 
 
+
+BRAZIL_CITIES_GEO = {'belo horizonte': {'lat': -19.9167, 'lng': -43.9345, 'uf': 'MG', 'regiao': 'Sudeste', 'alt': 852}, 'goiânia': {'lat': -16.6869, 'lng': -49.2648, 'uf': 'GO', 'regiao': 'Centro-Oeste', 'alt': 749}, 'goiania': {'lat': -16.6869, 'lng': -49.2648, 'uf': 'GO', 'regiao': 'Centro-Oeste', 'alt': 749}, 'curitiba': {'lat': -25.4284, 'lng': -49.2733, 'uf': 'PR', 'regiao': 'Sul', 'alt': 934}, 'belém': {'lat': -1.4558, 'lng': -48.4902, 'uf': 'PA', 'regiao': 'Norte', 'alt': 10}, 'belem': {'lat': -1.4558, 'lng': -48.4902, 'uf': 'PA', 'regiao': 'Norte', 'alt': 10}, 'fortaleza': {'lat': -3.7172, 'lng': -38.5433, 'uf': 'CE', 'regiao': 'Nordeste', 'alt': 21}, 'campo grande': {'lat': -20.4697, 'lng': -54.6201, 'uf': 'MS', 'regiao': 'Centro-Oeste', 'alt': 592}, 'são luís': {'lat': -2.5307, 'lng': -44.3068, 'uf': 'MA', 'regiao': 'Nordeste', 'alt': 24}, 'sao luis': {'lat': -2.5307, 'lng': -44.3068, 'uf': 'MA', 'regiao': 'Nordeste', 'alt': 24}, 'joão pessoa': {'lat': -7.1153, 'lng': -34.861, 'uf': 'PB', 'regiao': 'Nordeste', 'alt': 40}, 'joao pessoa': {'lat': -7.1153, 'lng': -34.861, 'uf': 'PB', 'regiao': 'Nordeste', 'alt': 40}, 'boa vista': {'lat': 2.8235, 'lng': -60.6758, 'uf': 'RR', 'regiao': 'Norte', 'alt': 85}, 'blumenau': {'lat': -26.9194, 'lng': -49.0661, 'uf': 'SC', 'regiao': 'Sul', 'alt': 21}, 'foz do iguaçu': {'lat': -25.5159, 'lng': -54.5878, 'uf': 'PR', 'regiao': 'Sul', 'alt': 192}, 'foz do iguacu': {'lat': -25.5159, 'lng': -54.5878, 'uf': 'PR', 'regiao': 'Sul', 'alt': 192}, 'cascavel': {'lat': -24.9578, 'lng': -53.4595, 'uf': 'PR', 'regiao': 'Sul', 'alt': 781}, 'chapeco': {'lat': -27.1004, 'lng': -52.6152, 'uf': 'SC', 'regiao': 'Sul', 'alt': 674}, 'chapecó': {'lat': -27.1004, 'lng': -52.6152, 'uf': 'SC', 'regiao': 'Sul', 'alt': 674}, 'joinville': {'lat': -26.3045, 'lng': -48.8487, 'uf': 'SC', 'regiao': 'Sul', 'alt': 4}, 'criciúma': {'lat': -28.6775, 'lng': -49.3704, 'uf': 'SC', 'regiao': 'Sul', 'alt': 46}, 'criciuma': {'lat': -28.6775, 'lng': -49.3704, 'uf': 'SC', 'regiao': 'Sul', 'alt': 46}, 'campos': {'lat': -21.7545, 'lng': -41.3244, 'uf': 'RJ', 'regiao': 'Sudeste', 'alt': 14}, 'campos dos goytacazes': {'lat': -21.7545, 'lng': -41.3244, 'uf': 'RJ', 'regiao': 'Sudeste', 'alt': 14}, 'cabo frio': {'lat': -22.889, 'lng': -42.0289, 'uf': 'RJ', 'regiao': 'Sudeste', 'alt': 4}, 'cachoeiro de itapemirim': {'lat': -20.8489, 'lng': -41.1128, 'uf': 'ES', 'regiao': 'Sudeste', 'alt': 36}, 'colatina': {'lat': -19.5397, 'lng': -40.63, 'uf': 'ES', 'regiao': 'Sudeste', 'alt': 71}, 'coronel fabriciano': {'lat': -19.5208, 'lng': -42.6289, 'uf': 'MG', 'regiao': 'Sudeste', 'alt': 250}, 'g valadares': {'lat': -18.8511, 'lng': -41.9494, 'uf': 'MG', 'regiao': 'Sudeste', 'alt': 170}, 'governador valadares': {'lat': -18.8511, 'lng': -41.9494, 'uf': 'MG', 'regiao': 'Sudeste', 'alt': 170}, 'ituiutaba': {'lat': -18.9689, 'lng': -49.465, 'uf': 'MG', 'regiao': 'Sudeste', 'alt': 605}, 'franca': {'lat': -20.5386, 'lng': -47.4008, 'uf': 'SP', 'regiao': 'Sudeste', 'alt': 1040}, 'bauru': {'lat': -22.3145, 'lng': -49.0587, 'uf': 'SP', 'regiao': 'Sudeste', 'alt': 526}, 'itapetininga': {'lat': -23.5917, 'lng': -48.0531, 'uf': 'SP', 'regiao': 'Sudeste', 'alt': 656}, 'anapolis': {'lat': -16.3267, 'lng': -48.9534, 'uf': 'GO', 'regiao': 'Centro-Oeste', 'alt': 1017}, 'anápolis': {'lat': -16.3267, 'lng': -48.9534, 'uf': 'GO', 'regiao': 'Centro-Oeste', 'alt': 1017}, 'jatai': {'lat': -17.8814, 'lng': -51.7144, 'uf': 'GO', 'regiao': 'Centro-Oeste', 'alt': 708}, 'jataí': {'lat': -17.8814, 'lng': -51.7144, 'uf': 'GO', 'regiao': 'Centro-Oeste', 'alt': 708}, 'catalão': {'lat': -18.1658, 'lng': -47.9464, 'uf': 'GO', 'regiao': 'Centro-Oeste', 'alt': 835}, 'catalao': {'lat': -18.1658, 'lng': -47.9464, 'uf': 'GO', 'regiao': 'Centro-Oeste', 'alt': 835}, 'corumbá': {'lat': -19.0094, 'lng': -57.6533, 'uf': 'MS', 'regiao': 'Centro-Oeste', 'alt': 118}, 'corumba': {'lat': -19.0094, 'lng': -57.6533, 'uf': 'MS', 'regiao': 'Centro-Oeste', 'alt': 118}, 'guarapuava': {'lat': -25.3907, 'lng': -51.4628, 'uf': 'PR', 'regiao': 'Sul', 'alt': 1120}, 'bagé': {'lat': -31.3314, 'lng': -54.1069, 'uf': 'RS', 'regiao': 'Sul', 'alt': 212}, 'bage': {'lat': -31.3314, 'lng': -54.1069, 'uf': 'RS', 'regiao': 'Sul', 'alt': 212}, 'feira de santana': {'lat': -12.2664, 'lng': -38.9663, 'uf': 'BA', 'regiao': 'Nordeste', 'alt': 234}, 'barreiras': {'lat': -12.1528, 'lng': -44.9967, 'uf': 'BA', 'regiao': 'Nordeste', 'alt': 452}, 'caruaru': {'lat': -8.2833, 'lng': -35.9761, 'uf': 'PE', 'regiao': 'Nordeste', 'alt': 545}, 'floriano': {'lat': -6.7669, 'lng': -43.0225, 'uf': 'PI', 'regiao': 'Nordeste', 'alt': 116}, 'imperatriz': {'lat': -5.5264, 'lng': -47.4917, 'uf': 'MA', 'regiao': 'Nordeste', 'alt': 95}, 'codo': {'lat': -4.4553, 'lng': -43.8856, 'uf': 'MA', 'regiao': 'Nordeste', 'alt': 47}, 'codó': {'lat': -4.4553, 'lng': -43.8856, 'uf': 'MA', 'regiao': 'Nordeste', 'alt': 47}, 'balsas': {'lat': -7.5325, 'lng': -46.0356, 'uf': 'MA', 'regiao': 'Nordeste', 'alt': 253}, 'araguaína': {'lat': -7.1925, 'lng': -48.2044, 'uf': 'TO', 'regiao': 'Norte', 'alt': 227}, 'araguaina': {'lat': -7.1925, 'lng': -48.2044, 'uf': 'TO', 'regiao': 'Norte', 'alt': 227}, 'gurupi': {'lat': -11.7297, 'lng': -49.0686, 'uf': 'TO', 'regiao': 'Norte', 'alt': 287}, 'castanhal': {'lat': -1.2967, 'lng': -47.9253, 'uf': 'PA', 'regiao': 'Norte', 'alt': 41}, 'itaituba': {'lat': -4.2761, 'lng': -55.9836, 'uf': 'PA', 'regiao': 'Norte', 'alt': 45}, 'itacoatiara': {'lat': -3.1431, 'lng': -58.4442, 'uf': 'AM', 'regiao': 'Norte', 'alt': 40}, 'ji-paraná': {'lat': -10.8828, 'lng': -61.9519, 'uf': 'RO', 'regiao': 'Norte', 'alt': 159}, 'ji-parana': {'lat': -10.8828, 'lng': -61.9519, 'uf': 'RO', 'regiao': 'Norte', 'alt': 159}, 'ariquemes': {'lat': -9.9133, 'lng': -63.0408, 'uf': 'RO', 'regiao': 'Norte', 'alt': 142}, 'cacoal': {'lat': -11.4386, 'lng': -61.4472, 'uf': 'RO', 'regiao': 'Norte', 'alt': 200}, 'vilhena': {'lat': -12.7406, 'lng': -60.1458, 'uf': 'RO', 'regiao': 'Norte', 'alt': 615}, 'brasília': {'lat': -15.7975, 'lng': -47.8919, 'uf': 'DF', 'regiao': 'Centro-Oeste', 'alt': 1172}, 'brasilia': {'lat': -15.7975, 'lng': -47.8919, 'uf': 'DF', 'regiao': 'Centro-Oeste', 'alt': 1172}}
+
+def _synthesize_market_from_praca(p_name: str, channels: list, services: list) -> Dict[str, Any]:
+    """Sintetiza um perfil topográfico dinâmico para praças que não estavam no catálogo estático."""
+    p_clean = p_name.strip()
+    p_lower = p_clean.lower()
+    
+    # 1. Busca coordenadas geográficas
+    geo = BRAZIL_CITIES_GEO.get(p_lower)
+    if not geo:
+        for k, v in BRAZIL_CITIES_GEO.items():
+            if k in p_lower or p_lower in k:
+                geo = v
+                break
+                
+    uf = (geo.get("uf") if geo else "")
+    if not uf:
+        # Tenta deduzir UF a partir do hostname (ex: BRGO-RVD-..., BRMG-BHE-...)
+        for s in services:
+            h = (s.get("hostname") or "").upper()
+            if h.startswith("BR") and len(h) >= 6 and h[4] == "-":
+                uf = h[2:4]
+                break
+        if not uf:
+            for c in channels:
+                h = (c.get("host") or c.get("hostname") or "").upper()
+                if h.startswith("BR") and len(h) >= 6 and h[4] == "-":
+                    uf = h[2:4]
+                    break
+        if not uf:
+            uf = "BR"
+
+    regiao = (geo.get("regiao") if geo else "Brasil")
+    lat = (geo.get("lat") if geo else -15.7801)
+    lng = (geo.get("lng") if geo else -47.9292)
+    alt = (geo.get("alt") if geo else 350)
+    
+    # Sigla de 3 letras para ID
+    clean_slug = re.sub(r'[^a-zA-Z]', '', p_clean)[:3].upper() or "PRC"
+    market_id = f"BR{uf.upper()}-{clean_slug}"
+    
+    return {
+        "id": market_id,
+        "cidade": p_clean,
+        "aliases": [p_lower, p_clean],
+        "uf": uf,
+        "pais": "Brasil",
+        "regiao": regiao,
+        "lat": lat,
+        "lng": lng,
+        "site_location": f"Setor Central • {p_clean}",
+        "site_elevation_m": alt,
+        "rx_mast_m": 25,
+        "cs_count": 2,
+        "towers": []
+    }
+
+
 def get_markets_map_data(channels: list = None, services: list = None) -> List[Dict[str, Any]]:
     """
     Consolida as praças com dados geográficos reais, leitura direta dos canais terrestres do
-    Multiplexes.xml (via fleet_cache), posicionamento individualizado de cada torre transmissora
-    (Norte, Sul, Leste, Oeste) e cálculo de enlace RF canal a canal.
+    Multiplexes.xml (via fleet_cache), posicionamento individualizado de cada torre transmissora,
+    suporte total a seleção de CS (CS01, CS02, CS03) e inclusão dinâmica de 100% das praças da frota.
     """
     if channels is None or len(channels) == 0:
         try:
@@ -2229,78 +2288,128 @@ def get_markets_map_data(channels: list = None, services: list = None) -> List[D
             channels = channels or []
             services = services or []
 
-    # Determina o conjunto de praças que possuem monitoramento ativo real
-    active_monitored_pracas = set()
+    # 1. Determina todas as praças únicas ativas na frota a partir de canais e serviços
+    active_monitored_pracas_map: Dict[str, str] = {} # lower -> original_name
     if services:
         for s in services:
             p = s.get("praca")
-            if p and str(p).strip().lower() not in ("n/a", "não informado", "nao informado"):
-                active_monitored_pracas.add(str(p).strip().lower())
+            if p and str(p).strip().lower() not in ("n/a", "não informado", "nao informado", "indefinida", "geral"):
+                active_monitored_pracas_map[str(p).strip().lower()] = str(p).strip()
     if channels:
         for c in channels:
-            p = c.get("cidade")
-            if p and str(p).strip().lower() not in ("n/a", "não informado", "nao informado"):
-                active_monitored_pracas.add(str(p).strip().lower())
+            p = c.get("cidade") or c.get("praca")
+            if p and str(p).strip().lower() not in ("n/a", "não informado", "nao informado", "indefinida", "geral"):
+                active_monitored_pracas_map[str(p).strip().lower()] = str(p).strip()
+
+    # Mapeamento rápido de praças conhecidas do catálogo estático
+    static_market_by_name: Dict[str, Dict[str, Any]] = {}
+    for sm in MARKET_TOPOLOGY:
+        static_market_by_name[sm["cidade"].strip().lower()] = sm
+        for al in sm.get("aliases", []):
+            static_market_by_name[al.strip().lower()] = sm
+
+    # Monta a lista completa de praças a processar (estáticas + dinâmicas)
+    all_target_markets: List[Dict[str, Any]] = []
+    seen_market_cities = set()
+
+    # Primeiro: praças estáticas que estão ativas na frota
+    for sm in MARKET_TOPOLOGY:
+        s_low = sm["cidade"].strip().lower()
+        if active_monitored_pracas_map:
+            matched = any(_match_city(p, sm) for p in active_monitored_pracas_map)
+            if not matched:
+                continue
+        seen_market_cities.add(s_low)
+        for al in sm.get("aliases", []):
+            seen_market_cities.add(al.strip().lower())
+        all_target_markets.append(sm)
+
+    # Segundo: praças ativas na frota que NÃO estavam no catálogo estático (síntese dinâmica)
+    for p_low, p_orig in active_monitored_pracas_map.items():
+        if not any(p_low == sc or p_low in sc or sc in p_low for sc in seen_market_cities):
+            syn_m = _synthesize_market_from_praca(p_orig, channels, services)
+            seen_market_cities.add(p_low)
+            all_target_markets.append(syn_m)
 
     result = []
-    for m in MARKET_TOPOLOGY:
+    for m in all_target_markets:
         cidade = m["cidade"]
-        # Só inclui no mapa praças que estão ativamente sendo monitoradas
-        if active_monitored_pracas and not any(_match_city(p, m) for p in active_monitored_pracas):
-            continue
         site_lat = m["lat"]
         site_lng = m["lng"]
         site_elevation = m.get("site_elevation_m", 60)
-        rx_mast_h = m.get("rx_mast_m", 24)
+        rx_mast_h = m.get("rx_mast_m", 25)
         site_total_h = site_elevation + rx_mast_h
 
         # Filtra canais reais da praça (incluindo aliases como 'S.J dos Campos')
         m_channels = [c for c in channels if _match_city(c.get("cidade", ""), m)]
+        m_services = [s for s in services if _match_city(s.get("praca", ""), m)]
+
+        # Identifica todas as CSs disponíveis nesta praça
+        cs_hosts: Dict[int, str] = {}
+        for s in m_services:
+            try:
+                cs_num = int(float(s.get("cs", 1) or 1))
+            except Exception:
+                cs_num = 1
+            h = s.get("hostname")
+            if h and cs_num not in cs_hosts:
+                cs_hosts[cs_num] = h
+        for c in m_channels:
+            try:
+                cs_num = int(float(c.get("id_cs") or c.get("cs") or 1))
+            except Exception:
+                cs_num = 1
+            h = c.get("host") or c.get("hostname")
+            if h and cs_num not in cs_hosts:
+                cs_hosts[cs_num] = h
+
+        cs_set = set(cs_hosts.keys())
+        if not cs_set:
+            cs_set = {1}
+        available_cs = sorted(list(cs_set))
+
         # Filtra canais terrestres DTV (com frequência MHz válida no Multiplexes.xml)
         terrestrial_raw = []
         for c in m_channels:
             f_val = parse_frequency_mhz(c.get("frequencia"))
             if f_val is not None:
-                terrestrial_raw.append((c, f_val))
+                try:
+                    c_cs = int(float(c.get("id_cs") or c.get("cs") or 1))
+                except Exception:
+                    c_cs = 1
+                terrestrial_raw.append((c, f_val, c_cs))
 
-        # Deduplica canais terrestres por nome/frequência priorizando o CS com maior nível de sinal medido
-        dedup_terrestrial: Dict[str, tuple] = {}
-        for c, f_val in terrestrial_raw:
-            ch_name = str(c.get("canal") or "").strip()
-            key = f"{ch_name.lower()}_{round(f_val, 1)}"
+        # Deduplica canais terrestres por (Nome, Frequência, CS) para PRESERVAR canais da CS01 e CS02 separadamente!
+        dedup_terrestrial: Dict[tuple, tuple] = {}
+        for c, f_val, c_cs in terrestrial_raw:
+            ch_name = str(c.get("canal") or c.get("veiculo") or f_val).strip()
+            key = (ch_name.lower(), round(f_val, 2), c_cs)
             score = float(c.get("qualidade_sinal") or 0) + float(c.get("forca_sinal") or 0)
-            if key not in dedup_terrestrial or score > dedup_terrestrial[key][2]:
-                dedup_terrestrial[key] = (c, f_val, score)
+            if key not in dedup_terrestrial or score > dedup_terrestrial[key][3]:
+                dedup_terrestrial[key] = (c, f_val, c_cs, score)
 
         channels_rf_detail = []
         market_towers = m.get("towers", [])
-        used_tower_indices = set()
 
         # 1. Constrói canais a partir dos dados reais do Multiplexes.xml na praça
-        for idx, (c_obj, freq_mhz, _) in enumerate(dedup_terrestrial.values()):
+        for idx, (c_obj, freq_mhz, ch_cs, _) in enumerate(dedup_terrestrial.values()):
             raw_name = str(c_obj.get("canal") or "Canal DTV").strip()
             raw_lower = raw_name.lower()
+            ch_host = cs_hosts.get(ch_cs, c_obj.get("host") or c_obj.get("hostname") or f"CS{ch_cs}")
+            ch_veiculo = str(c_obj.get("veiculo") or "").strip()
 
             # Encontra a torre específica desta emissora na praça
             matched_tower = None
-            matched_t_idx = None
-            for t_idx, tw in enumerate(market_towers):
+            for tw in market_towers:
                 if any(k in raw_lower for k in tw.get("match_keys", [])):
                     matched_tower = tw
-                    matched_t_idx = t_idx
                     break
-            if not matched_tower and market_towers:
-                matched_t_idx = idx % len(market_towers)
-                matched_tower = market_towers[matched_t_idx]
 
-            if matched_t_idx is not None:
-                used_tower_indices.add(matched_t_idx)
-
-            tw_lat = matched_tower["lat"] if matched_tower else (site_lat + 0.03)
-            tw_lng = matched_tower["lng"] if matched_tower else (site_lng + 0.03)
-            tw_name = matched_tower["nome"] if matched_tower else f"Torre Transmissora {raw_name}"
-            tw_bairro = matched_tower.get("bairro", cidade) if matched_tower else cidade
-            tw_cota = matched_tower.get("cota_m", site_elevation + 50) if matched_tower else (site_elevation + 50)
+            tw_lat = matched_tower["lat"] if matched_tower else (site_lat + 0.02 + ((idx % 4) * 0.008))
+            tw_lng = matched_tower["lng"] if matched_tower else (site_lng + 0.02 + ((idx % 3) * 0.009))
+            tw_name = matched_tower["nome"] if matched_tower else f"Torre {raw_name} • {cidade}"
+            tw_bairro = matched_tower.get("bairro", f"Setor de Antenas ({cidade})") if matched_tower else f"Zona de Transmissão ({cidade})"
+            tw_cota = matched_tower.get("cota_m", site_elevation + 45) if matched_tower else (site_elevation + 45)
             tw_mast = matched_tower.get("mastro_m", 70) if matched_tower else 70
             tw_erp = matched_tower.get("erp_kw", 20.0) if matched_tower else 20.0
             display_emissora = matched_tower.get("emissora", raw_name) if matched_tower else raw_name
@@ -2329,6 +2438,10 @@ def get_markets_map_data(channels: list = None, services: list = None) -> List[D
                 "channel_index": len(channels_rf_detail),
                 "emissora": display_emissora,
                 "raw_channel_name": raw_name,
+                "cs": ch_cs,
+                "cs_label": f"CS0{ch_cs}",
+                "hostname": ch_host,
+                "veiculo": ch_veiculo,
                 "canal_fisico": f"UHF Canal {uhf_num}",
                 "uhf_channel": uhf_num,
                 "freq_mhz": round(freq_mhz, 3),
@@ -2363,7 +2476,7 @@ def get_markets_map_data(channels: list = None, services: list = None) -> List[D
                 )
             })
 
-        # 2. Se alguma torre cadastrada da praça não veio no cache dinâmico (ex: host sem DTVTunersStatus ativo), completa com os dados reais da praça
+        # 2. Se nenhuma torre foi detectada pelos multiplexes, completa a partir das torres estáticas (se houver)
         if len(channels_rf_detail) == 0:
             for t_idx, tw in enumerate(market_towers):
                 freq_mhz = float(tw["freq_mhz"])
@@ -2393,6 +2506,10 @@ def get_markets_map_data(channels: list = None, services: list = None) -> List[D
                     "channel_index": len(channels_rf_detail),
                     "emissora": tw["emissora"],
                     "raw_channel_name": tw["emissora"],
+                    "cs": 1,
+                    "cs_label": "CS01",
+                    "hostname": cs_hosts.get(1, f"CS01"),
+                    "veiculo": "",
                     "canal_fisico": f"UHF Canal {uhf_num}",
                     "uhf_channel": uhf_num,
                     "freq_mhz": round(freq_mhz, 3),
@@ -2422,13 +2539,14 @@ def get_markets_map_data(channels: list = None, services: list = None) -> List[D
                     )
                 })
 
-        # Lista de torres detalhadas com coordenadas, distância e azimute reais a partir do Capture Site
+        # Lista de torres detalhadas com coordenadas
         towers_detail = []
         for ch in channels_rf_detail:
             towers_detail.append({
                 "nome": ch["tower_name"],
                 "bairro": ch["tower_bairro"],
                 "emissora": ch["emissora"],
+                "cs": ch["cs"],
                 "canal_fisico": ch["canal_fisico"],
                 "freq_mhz": ch["freq_mhz"],
                 "lat": ch["tower_lat"],
@@ -2451,10 +2569,7 @@ def get_markets_map_data(channels: list = None, services: list = None) -> List[D
         )
         stable_ch = max(0, total_ch - degraded_ch)
 
-        m_services = [s for s in services if _match_city(s.get("praca", ""), m)]
         stopped_svc = sum(1 for s in m_services if s.get("status_servico") == "Parado")
-        
-        # Identificação de falha real em serviços essenciais de gravação/captura (ignora Inexistente/FastMatching)
         core_capture_svcs = ["dna.mediarecorder", "atria capture", "dtvcapture"]
         core_service_failed = False
         crash_svc = 0
@@ -2478,12 +2593,32 @@ def get_markets_map_data(channels: list = None, services: list = None) -> List[D
             status_color = "green"
             status_label = "Estável (100% Conforme)"
 
-        primary_ch = channels_rf_detail[0]
+        primary_ch = channels_rf_detail[0] if channels_rf_detail else {
+            "tower_name": f"Torre Central {cidade}",
+            "distance_km": 2.0, "distance_m": 2000, "azimuth_deg": 35.0,
+            "tower_total_alt_m": site_elevation + 70, "fspl_db": 92.0,
+            "los_status": "Visada Desobstruída (LOS)", "terrain_profile": [],
+            "fresnel_r1_m": 16.0, "has_obstruction": False,
+            "los_analysis": "Visada desobstruída."
+        }
+        
         if len(channels_rf_detail) > 1:
             unique_dirs = list(dict.fromkeys(c["cardinal_dir"].split(" ")[0] for c in channels_rf_detail))
             main_tower_summary = f"{len(channels_rf_detail)} Torres DTV ({' ↔ '.join(unique_dirs[:3])}) • Principal: {primary_ch['tower_name']}"
         else:
             main_tower_summary = primary_ch["tower_name"]
+
+        available_cs_info = [
+            {
+                "cs": cs_num,
+                "cs_label": f"CS0{cs_num}",
+                "label": f"CS0{cs_num} ({'Principal' if cs_num == 1 else 'BKP'})",
+                "hostname": cs_hosts.get(cs_num, f"CS0{cs_num}"),
+                "channels_count": sum(1 for ch in channels_rf_detail if ch.get("cs", 1) == cs_num),
+                "services_count": sum(1 for s in m_services if int(float(s.get("cs", 1) or 1)) == cs_num)
+            }
+            for cs_num in available_cs
+        ]
 
         result.append({
             "id": m["id"],
@@ -2496,8 +2631,11 @@ def get_markets_map_data(channels: list = None, services: list = None) -> List[D
             "regiao": m["regiao"],
             "lat": site_lat,
             "lng": site_lng,
-            "site_location": m.get("site_location", f"Centro • {cidade}"),
-            "cs_count": m["cs_count"],
+            "site_location": m.get("site_location", f"Setor Central • {cidade}"),
+            "cs_count": len(available_cs),
+            "available_cs": available_cs,
+            "available_cs_info": available_cs_info,
+            "hosts": list(set(cs_hosts.values())),
             "status_color": status_color,
             "status_label": status_label,
             "total_channels": total_ch,
@@ -2524,6 +2662,9 @@ def get_markets_map_data(channels: list = None, services: list = None) -> List[D
             "towers_detail": towers_detail
         })
 
+    # Ordena as praças por prioridade (críticos primeiro) e depois por nome
+    priority_order = {"red": 0, "yellow": 1, "green": 2}
+    result.sort(key=lambda x: (priority_order.get(x["status_color"], 99), x["cidade"]))
     return result
 
 
