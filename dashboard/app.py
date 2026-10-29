@@ -700,6 +700,17 @@ async def get_topology_map_endpoint(user: dict = Depends(get_current_user)):
     return get_markets_map_data(channels, services)
 
 
+class TopologyAimingAiRequest(BaseModel):
+    cidade: str
+    current_mast_m: float = 25.0
+
+
+@app.post("/api/topology/ai-aiming-tradeoff")
+async def get_topology_aiming_tradeoff_endpoint(req: TopologyAimingAiRequest, user: dict = Depends(get_current_user)):
+    from geo_topology import diagnose_topology_aiming_tradeoff_with_ai
+    return diagnose_topology_aiming_tradeoff_with_ai(req.cidade, req.current_mast_m)
+
+
 @app.get("/api/fleet/media-pipeline/incidents")
 async def get_pipeline_incidents_endpoint(threshold_min: float = 10.0, user: dict = Depends(get_current_user)):
     data = get_cached_data()

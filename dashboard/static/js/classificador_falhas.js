@@ -40,13 +40,47 @@ document.addEventListener("DOMContentLoaded", () => {
 // ==============================================================================
 // 1. CARREGAMENTO E SINCRONIZAÇÃO GLOBAL DOS DADOS
 // ==============================================================================
+function getClfAuthHeaders() {
+    const token = (typeof getAuthToken === 'function' && getAuthToken()) || localStorage.getItem('access_token') || localStorage.getItem('token') || '';
+    const headers = { 'Content-Type': 'application/json' };
+    if (token) {
+        headers['Authorization'] = 'Bearer ' + token;
+    }
+    return headers;
+}
+
 async function loadClassificadorFalhas() {
     const icon = document.getElementById("iconReloadClassificador");
     if (icon) icon.classList.add("fa-spin");
 
+    const catBody = document.getElementById("clfCatalogTableBody");
+    const pracasBody = document.getElementById("clfPracasTableBody");
+    const relBody = document.getElementById("clfRelTableBody");
+
+    const loadingHtml = (title, sub) => `
+        <tr>
+            <td colspan="8" style="text-align: center; padding: 36px 20px; color: #94a3b8;">
+                <div style="display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 50%; background: rgba(168, 85, 247, 0.12); margin-bottom: 12px; border: 1px solid rgba(168, 85, 247, 0.3);">
+                    <i class="fas fa-circle-notch fa-spin fa-lg" style="color: #a855f7;"></i>
+                </div>
+                <div style="font-size: 13px; font-weight: 700; color: #f1f5f9; letter-spacing: 0.2px;">${title}</div>
+                <div style="font-size: 11px; color: #64748b; margin-top: 5px;">${sub || 'Auditoria de telemetria e classificação broadcast em andamento...'}</div>
+            </td>
+        </tr>
+    `;
+
+    if (!cachedClassifierData) {
+        if (catBody) catBody.innerHTML = loadingHtml("Carregando Catálogo Taxonômico e Assinaturas Heurísticas...", "Processando 10 tipos de falhas broadcast (#01 a #10)...");
+        if (pracasBody) pracasBody.innerHTML = loadingHtml("Consolidando Matriz de Falhas &amp; Saúde por Afiliada...", "Auditando canais digitais ISDB-Tb e streams da frota...");
+        if (relBody) relBody.innerHTML = loadingHtml("Mapeando Relação Falha x Canal &amp; Rastreabilidade...", "Cruzando métricas e histórico de ocorrências...");
+    }
+
     try {
-        const res = await fetch("/api/classificador-falhas/analise-frota", { credentials: "same-origin" });
-        if (!res.ok) throw new Error("HTTP " + res.status);
+        const res = await fetch("/api/classificador-falhas/analise-frota", {
+            headers: getClfAuthHeaders(),
+            credentials: "same-origin"
+        });
+        if (!res.ok) throw new Error("HTTP " + res.status + " " + res.statusText);
         const data = await res.json();
         cachedClassifierData = data;
 
@@ -94,6 +128,23 @@ async function loadClassificadorFalhas() {
 
     } catch (err) {
         console.error("Erro ao carregar o Classificador de Falhas:", err);
+        const errorHtml = (msg) => `
+            <tr>
+                <td colspan="8" style="text-align: center; padding: 35px 20px; color: #f87171;">
+                    <div style="display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 50%; background: rgba(239, 68, 68, 0.12); margin-bottom: 12px; border: 1px solid rgba(239, 68, 68, 0.3);">
+                        <i class="fas fa-exclamation-triangle fa-lg" style="color: #ef4444;"></i>
+                    </div>
+                    <div style="font-weight: 700; font-size: 13px; color: #fecaca;">Falha na Sincronização do Classificador</div>
+                    <div style="font-size: 11px; color: #94a3b8; margin: 6px 0 14px;">${msg}</div>
+                    <button onclick="loadClassificadorFalhas()" class="btn-primary" style="font-size: 11px; padding: 6px 16px; border-radius: 6px;">
+                        <i class="fas fa-redo"></i> Tentar Novamente
+                    </button>
+                </td>
+            </tr>
+        `;
+        if (catBody) catBody.innerHTML = errorHtml(err.message);
+        if (pracasBody) pracasBody.innerHTML = errorHtml(err.message);
+        if (relBody) relBody.innerHTML = errorHtml(err.message);
     } finally {
         if (icon) icon.classList.remove("fa-spin");
     }
@@ -141,6 +192,10 @@ function switchClfSubtab(tabName) {
         }
         if (secCat) secCat.style.display = "none";
         if (secRel) secRel.style.display = "block";
+    }
+
+    if (!cachedClassifierData) {
+        loadClassificadorFalhas();
     }
 }
 window.switchClfSubtab = switchClfSubtab;
@@ -777,7 +832,7 @@ async function triggerMineFailurePattern() {
     try {
         const res = await fetch("/api/classificador-falhas/aprender-novo-padrao", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: getClfAuthHeaders(),
             credentials: "same-origin"
         });
 

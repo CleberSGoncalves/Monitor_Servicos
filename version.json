@@ -1,7 +1,7 @@
 {
-    "version": "3.9.61",
+    "version": "3.9.62",
     "agent_version": "1.0.18.0",
     "commit_sha": "auto",
-    "updated_at": "2026-10-29T03:30:00.000000",
-    "description": "v3.9.61 - Deduplicação rigorosa de canais e snapshots históricos do SharePoint; Correção de falso alarme de contagem múltipla de canais (28 vs 13); Tratamento contextual de áudio e tuners desconectados em blades analógicos PayTV (TW6802 PCI); Normalização de detecção de anomalias com supressão de badges nominais conflitantes em incidentes ativos."
+    "updated_at": "2026-10-29T04:20:00.000000",
+    "description": "v3.9.62 - Resolução de inconsistência de sinal de RF (remoção de fallback artificial de 78% na Topologia e esclarecimento de topologia Single-CS BKP); Módulo de IA para resolução de trade-offs de apontamento e dispersão angular multi-torre (apontamento bidirecional e combinadores seletivos); Correção de autenticação e feedback visual de carregamento no Classificador de Falhas (sub-abas 1 e 2); Expansão do Link WAN para 200+ estações da frota com visão 15 Piores (Foco NOC), filtros por Região/Praça/SLA e spinners de carregamento."
 }

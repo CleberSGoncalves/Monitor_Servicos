@@ -4,22 +4,39 @@
 // ==============================================================================
 
 let cachedLinkMetrics = [];
+let networkFilterView = "worst15"; // "worst15", "critico", "alerta", "estavel", "all"
+let networkFilterRegion = "all";
 let networkFilterPraca = "all";
 let networkFilterSLA = "all";
+let networkFilterSearch = "";
 
 async function loadNetworkLinkMonitoring() {
     const tableBody = document.getElementById("networkLinkTableBody");
-    if (!tableBody) return;
+    const icon = document.getElementById("iconReloadNetworkLink");
+    if (icon) icon.classList.add("fa-spin");
+
+    if (tableBody && cachedLinkMetrics.length === 0) {
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="9" style="text-align: center; padding: 36px 20px; color: #94a3b8;">
+                    <div style="display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 50%; background: rgba(56, 189, 248, 0.12); margin-bottom: 12px; border: 1px solid rgba(56, 189, 248, 0.3);">
+                        <i class="fas fa-circle-notch fa-spin fa-lg" style="color: #38bdf8;"></i>
+                    </div>
+                    <div style="font-size: 13px; font-weight: 700; color: #f1f5f9; letter-spacing: 0.2px;">Auditando Links WAN &amp; Vazão de Escoamento da Frota...</div>
+                    <div style="font-size: 11px; color: #64748b; margin-top: 5px;">Calculando throughput real, ping, perda de pacotes e SLA de envio de 200+ estações...</div>
+                </td>
+            </tr>
+        `;
+    }
 
     try {
-        const token = (typeof getAuthToken === "function") ? getAuthToken() : (localStorage.getItem("fleet_token") || "");
+        const token = (typeof getAuthToken === "function") ? getAuthToken() : (localStorage.getItem("fleet_token") || localStorage.getItem("access_token") || "");
         const resp = await fetch("/api/fleet/network-link/metrics", {
             headers: token ? { "Authorization": `Bearer ${token}` } : {}
         });
 
         if (!resp.ok) {
-            console.error("[NetworkLink] Falha ao carregar métricas de link:", resp.status);
-            return;
+            throw new Error(`HTTP ${resp.status} - Falha ao carregar métricas de link`);
         }
 
         const metrics = await resp.json();
@@ -28,13 +45,32 @@ async function loadNetworkLinkMonitoring() {
         // Atualiza os Cards de Resumo (KPIs)
         updateNetworkLinkKpis(metrics);
 
-        // Preenche o dropdown de praças se ainda não estiver preenchido
+        // Preenche o dropdown de praças dinamicamente
         populateNetworkPracasDropdown(metrics);
 
-        // Renderiza a tabela filtrada
+        // Atualiza os badges dos pills de filtro rápido
+        updateNetworkFilterPillCounts(metrics);
+
+        // Renderiza a tabela com o filtro ativo
         renderNetworkLinkTable();
     } catch (err) {
         console.error("[NetworkLink] Erro ao carregar monitoramento de link:", err);
+        if (tableBody) {
+            tableBody.innerHTML = `
+                <tr>
+                    <td colspan="9" style="text-align: center; padding: 32px 20px; color: #f87171;">
+                        <i class="fas fa-exclamation-triangle fa-2x" style="margin-bottom: 10px; display: block; color: #ef4444;"></i>
+                        <div style="font-weight: 700; font-size: 13px; color: #fecaca;">Erro ao sincronizar conectividade da frota</div>
+                        <div style="font-size: 11px; color: #94a3b8; margin: 6px 0 14px;">${err.message}</div>
+                        <button onclick="loadNetworkLinkMonitoring()" class="btn-primary" style="font-size: 11px; padding: 6px 16px;">
+                            <i class="fas fa-redo"></i> Tentar Novamente
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }
+    } finally {
+        if (icon) icon.classList.remove("fa-spin");
     }
 }
 window.loadNetworkLinkMonitoring = loadNetworkLinkMonitoring;
@@ -43,12 +79,12 @@ function updateNetworkLinkKpis(metrics) {
     if (!metrics || metrics.length === 0) return;
 
     // 1. Throughput Médio de Upload da Frota
-    const avgUpload = (metrics.reduce((acc, m) => acc + m.measured_upload_mbps, 0) / metrics.length).toFixed(1);
+    const avgUpload = (metrics.reduce((acc, m) => acc + (m.measured_upload_mbps || 0), 0) / metrics.length).toFixed(1);
     const kpiAvgEl = document.getElementById("kpiNetAvgUpload");
     if (kpiAvgEl) kpiAvgEl.innerText = `${avgUpload} Mbps`;
 
     // 2. Volume de Mídia Gerado nas últimas 24h (GB estimado: 48 blocos de 30min x soma dos volumes)
-    const totalVol24hGb = ((metrics.reduce((acc, m) => acc + m.volume_mb_30min, 0) * 48) / 1024.0).toFixed(1);
+    const totalVol24hGb = ((metrics.reduce((acc, m) => acc + (m.volume_mb_30min || 0), 0) * 48) / 1024.0).toFixed(1);
     const kpiVolEl = document.getElementById("kpiNetTotalVolume24h");
     if (kpiVolEl) kpiVolEl.innerText = `${totalVol24hGb} GB`;
 
@@ -67,44 +103,151 @@ function updateNetworkLinkKpis(metrics) {
     }
 }
 
+function updateNetworkFilterPillCounts(metrics) {
+    const critCount = metrics.filter(m => m.status === "critico" || m.drain_time_minutes > 25 || m.packet_loss_pct >= 2.5).length;
+    const warnCount = metrics.filter(m => m.status === "alerta" || (m.drain_time_minutes > 16 && m.drain_time_minutes <= 25) || (m.packet_loss_pct >= 1.0 && m.packet_loss_pct < 2.5)).length;
+    const okCount = metrics.length - critCount - warnCount;
+
+    const elCrit = document.getElementById("netPillCountCrit");
+    const elWarn = document.getElementById("netPillCountWarn");
+    const elOk = document.getElementById("netPillCountOk");
+    const elAll = document.getElementById("netPillCountAll");
+
+    if (elCrit) elCrit.textContent = critCount;
+    if (elWarn) elWarn.textContent = warnCount;
+    if (elOk) elOk.textContent = okCount;
+    if (elAll) elAll.textContent = metrics.length;
+}
+
 function populateNetworkPracasDropdown(metrics) {
     const sel = document.getElementById("netFilterCity");
     if (!sel) return;
     const curVal = sel.value;
 
-    const uniqueCities = (window.FleetCatalog && window.FleetCatalog.pracas && window.FleetCatalog.pracas.length > 0)
-        ? window.FleetCatalog.pracas
-        : Array.from(new Set(metrics.map(m => m.praca))).sort();
+    const uniqueCities = Array.from(new Set(metrics.map(m => m.praca).filter(Boolean))).sort((a,b) => a.localeCompare(b));
     sel.innerHTML = `<option value="all">Todas as Praças (${uniqueCities.length})</option>`;
     uniqueCities.forEach(city => {
         const opt = document.createElement("option");
         opt.value = city;
         opt.textContent = city;
+        if (city === curVal) opt.selected = true;
         sel.appendChild(opt);
     });
 }
 
+function setNetworkFilterPill(mode) {
+    networkFilterView = mode;
+
+    const pillWorst = document.getElementById("btnNetPillWorst15");
+    const pillCrit = document.getElementById("btnNetPillCrit");
+    const pillWarn = document.getElementById("btnNetPillWarn");
+    const pillOk = document.getElementById("btnNetPillOk");
+    const pillAll = document.getElementById("btnNetPillAll");
+
+    const allPills = [
+        { el: pillWorst, bg: "rgba(239, 68, 68, 0.2)", border: "rgba(239, 68, 68, 0.5)", color: "#fca5a5" },
+        { el: pillCrit, bg: "rgba(239, 68, 68, 0.2)", border: "rgba(239, 68, 68, 0.5)", color: "#ef4444" },
+        { el: pillWarn, bg: "rgba(245, 158, 11, 0.2)", border: "rgba(245, 158, 11, 0.5)", color: "#f59e0b" },
+        { el: pillOk, bg: "rgba(16, 185, 129, 0.2)", border: "rgba(16, 185, 129, 0.5)", color: "#10b981" },
+        { el: pillAll, bg: "rgba(56, 189, 248, 0.2)", border: "rgba(56, 189, 248, 0.5)", color: "#38bdf8" }
+    ];
+
+    allPills.forEach(p => {
+        if (!p.el) return;
+        p.el.classList.remove("active");
+        p.el.style.background = "rgba(255,255,255,0.04)";
+        p.el.style.border = "1px solid rgba(255,255,255,0.1)";
+    });
+
+    const activeItem = mode === "worst15" ? allPills[0] :
+                       mode === "critico" ? allPills[1] :
+                       mode === "alerta" ? allPills[2] :
+                       mode === "estavel" ? allPills[3] : allPills[4];
+
+    if (activeItem && activeItem.el) {
+        activeItem.el.classList.add("active");
+        activeItem.el.style.background = activeItem.bg;
+        activeItem.el.style.border = `1px solid ${activeItem.border}`;
+    }
+
+    renderNetworkLinkTable();
+}
+window.setNetworkFilterPill = setNetworkFilterPill;
+
 function applyNetworkFilters() {
     const citySel = document.getElementById("netFilterCity");
+    const regSel = document.getElementById("netFilterRegion");
     const slaSel = document.getElementById("netFilterSLA");
+    const searchInput = document.getElementById("netFilterSearch");
+
     if (citySel) networkFilterPraca = citySel.value;
+    if (regSel) networkFilterRegion = regSel.value;
     if (slaSel) networkFilterSLA = slaSel.value;
+    if (searchInput) networkFilterSearch = searchInput.value.toLowerCase().trim();
+
+    // Se o operador está buscando especificamente ou selecionou praça/região, saímos do modo worst15
+    if (networkFilterPraca !== "all" || networkFilterRegion !== "all" || networkFilterSearch !== "") {
+        if (networkFilterView === "worst15") {
+            setNetworkFilterPill("all");
+            return;
+        }
+    }
+
     renderNetworkLinkTable();
 }
 window.applyNetworkFilters = applyNetworkFilters;
 
 function renderNetworkLinkTable() {
     const tableBody = document.getElementById("networkLinkTableBody");
+    const summaryLabel = document.getElementById("netViewSummaryLabel");
     if (!tableBody) return;
 
     let filtered = cachedLinkMetrics.filter(m => {
+        // Filtro de Texto
+        if (networkFilterSearch) {
+            const combined = `${m.praca} ${m.hostname} ${m.operadora} ${m.uf} ${m.regiao || ''}`.toLowerCase();
+            if (!combined.includes(networkFilterSearch)) return false;
+        }
+
+        // Filtro de Região
+        if (networkFilterRegion !== "all" && m.regiao !== networkFilterRegion) return false;
+
+        // Filtro de Praça
         if (networkFilterPraca !== "all" && m.praca !== networkFilterPraca) return false;
+
+        // Filtro de SLA Dropdown
         if (networkFilterSLA !== "all" && m.status !== networkFilterSLA) return false;
+
+        // Filtro de Status via Pills
+        if (networkFilterView === "critico" && m.status !== "critico") return false;
+        if (networkFilterView === "alerta" && m.status !== "alerta") return false;
+        if (networkFilterView === "estavel" && m.status !== "estavel") return false;
+
         return true;
     });
 
+    const isWorst15 = (networkFilterView === "worst15" && networkFilterPraca === "all" && networkFilterRegion === "all" && !networkFilterSearch);
+    if (isWorst15) {
+        filtered = filtered.slice(0, 15);
+    }
+
+    // Atualiza subtítulo do painel
+    if (summaryLabel) {
+        if (isWorst15) {
+            summaryLabel.innerHTML = `⚠️ <strong style="color: #fca5a5;">Exibindo as 15 Piores Conexões da Frota (Foco NOC)</strong> • Total da frota: ${cachedLinkMetrics.length} Capture Sites`;
+        } else if (networkFilterView === "critico") {
+            summaryLabel.innerHTML = `🚨 <strong style="color: #ef4444;">Exibindo ${filtered.length} Conexões em Gargalo Crítico</strong>`;
+        } else if (networkFilterView === "alerta") {
+            summaryLabel.innerHTML = `🟡 <strong style="color: #f59e0b;">Exibindo ${filtered.length} Conexões em Alerta de Escoamento</strong>`;
+        } else if (networkFilterView === "estavel") {
+            summaryLabel.innerHTML = `🟢 <strong style="color: #10b981;">Exibindo ${filtered.length} Conexões Nominais (SLA 100%)</strong>`;
+        } else {
+            summaryLabel.innerHTML = `🌐 <strong style="color: #38bdf8;">Exibindo ${filtered.length} de ${cachedLinkMetrics.length} Capture Sites da Frota</strong>`;
+        }
+    }
+
     if (filtered.length === 0) {
-        tableBody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: var(--text-muted); padding: 20px;">Nenhum Capture Site encontrado com os filtros selecionados.</td></tr>`;
+        tableBody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: var(--text-muted); padding: 30px;">Nenhum Capture Site encontrado com os filtros selecionados.</td></tr>`;
         return;
     }
 

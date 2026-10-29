@@ -22,7 +22,7 @@
 
 
 
-    <link rel="stylesheet" href="/static/css/style.css?v=3.9.61">
+    <link rel="stylesheet" href="/static/css/style.css?v=3.9.62">
 
 
 
@@ -1330,7 +1330,7 @@
 
     <div class="nav-user">
       <button type="button" class="btn-secondary" id="btnHandoverReport" onclick="openHandoverReportModal()" style="display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; font-size: 11px; background: rgba(99,102,241,0.18); border: 1px solid rgba(99,102,241,0.45); color: #a5b4fc; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; white-space: nowrap;" title="Gerar Relatório Executivo de Passagem de Turno (Handover)"><i class="fas fa-clipboard-list"></i> <span>Turno</span></button>
-      <button type="button" class="btn-secondary" id="btnSystemUpdate" onclick="openSystemUpdateModal()" style="display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; font-size: 11px; background: rgba(37,99,235,0.15); border: 1px solid rgba(37,99,235,0.4); color: #38bdf8; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; white-space: nowrap;" title="Verificar atualizações do sistema"><i class="fas fa-sync-alt" id="iconSystemUpdate"></i> <span id="labelSystemVersion">v3.9.61</span></button>
+      <button type="button" class="btn-secondary" id="btnSystemUpdate" onclick="openSystemUpdateModal()" style="display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; font-size: 11px; background: rgba(37,99,235,0.15); border: 1px solid rgba(37,99,235,0.4); color: #38bdf8; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; white-space: nowrap;" title="Verificar atualizações do sistema"><i class="fas fa-sync-alt" id="iconSystemUpdate"></i> <span id="labelSystemVersion">v3.9.62</span></button>
       <div class="user-badge" style="padding: 4px 10px; font-size: 11px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;">
         <div class="status-dot"></div>
         <span id="navUserDisplay">Usuário</span>
@@ -6557,6 +6557,1894 @@
         </div>
       </div>
 
+      <!-- Barra de Filtros de Rede e Seleção Rápida NOC -->
+      <div class="panel-card" style="margin-bottom: 18px; padding: 14px;">
+        <!-- Pills de Filtro Rápido (Foco NOC e Gravidade) -->
+        <div style="display: flex; gap: 8px; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.06); flex-wrap: wrap; align-items: center;">
+          <span style="font-size: 11px; text-transform: uppercase; color: #94a3b8; font-weight: 700; margin-right: 4px;">Foco NOC:</span>
+          <button id="btnNetPillWorst15" class="btn-secondary" onclick="setNetworkFilterPill('worst15')" style="padding: 5px 12px; font-size: 11px; border-radius: 6px; font-weight: 700; background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.5); color: #fca5a5;">
+            ⚠️ 15 Piores Conexões (Prioridade)
+          </button>
+          <button id="btnNetPillCrit" class="btn-secondary" onclick="setNetworkFilterPill('critico')" style="padding: 5px 12px; font-size: 11px; border-radius: 6px; font-weight: 600; color: #ef4444; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1);">
+            🚨 Críticas (<span id="netPillCountCrit">0</span>)
+          </button>
+          <button id="btnNetPillWarn" class="btn-secondary" onclick="setNetworkFilterPill('alerta')" style="padding: 5px 12px; font-size: 11px; border-radius: 6px; font-weight: 600; color: #f59e0b; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1);">
+            🟡 Atenção (<span id="netPillCountWarn">0</span>)
+          </button>
+          <button id="btnNetPillOk" class="btn-secondary" onclick="setNetworkFilterPill('estavel')" style="padding: 5px 12px; font-size: 11px; border-radius: 6px; font-weight: 600; color: #10b981; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1);">
+            🟢 Nominais (<span id="netPillCountOk">0</span>)
+          </button>
+          <button id="btnNetPillAll" class="btn-secondary" onclick="setNetworkFilterPill('all')" style="padding: 5px 12px; font-size: 11px; border-radius: 6px; font-weight: 600; color: #38bdf8; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1);">
+            🌐 Todas da Frota (<span id="netPillCountAll">202</span>)
+          </button>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+          <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+            <div>
+              <span style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;">Buscar Estação / Operadora:</span>
+              <input type="text" id="netFilterSearch" class="form-input" placeholder="🔍 Buscar praça, host, operadora..." style="min-width: 200px; font-size: 11px; padding: 5px 10px;" oninput="applyNetworkFilters()">
+            </div>
+            <div>
+              <span style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;">Região do País:</span>
+              <select id="netFilterRegion" class="form-input" style="min-width: 150px; font-size: 11px;" onchange="applyNetworkFilters()">
+                <option value="all">Todas as Regiões</option>
+                <option value="Sudeste">Sudeste (SP, RJ, MG, ES)</option>
+                <option value="Sul">Sul (RS, PR, SC)</option>
+                <option value="Nordeste">Nordeste (BA, PE, CE, RN...)</option>
+                <option value="Centro-Oeste">Centro-Oeste (DF, GO, MT, MS)</option>
+                <option value="Norte">Norte (AM, PA, RO...)</option>
+              </select>
+            </div>
+            <div>
+              <span style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;">Praça / Cidade:</span>
+              <select id="netFilterCity" class="filter-select" onchange="applyNetworkFilters()" style="min-width: 170px; font-size: 11px;">
+                <option value="all">Todas as Praças</option>
+              </select>
+            </div>
+            <div>
+              <span style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;">Condição de SLA / Link:</span>
+              <select id="netFilterSLA" class="form-input" style="min-width: 170px; font-size: 11px;" onchange="applyNetworkFilters()">
+                <option value="all">Todos os Status de Link</option>
+                <option value="critico">🔴 Gargalo de Link (&gt; 25min)</option>
+                <option value="alerta">🟡 Operando Próximo do Limite (18-25min)</option>
+                <option value="estavel">🟢 Conexão Folgada (SLA 100%)</option>
+              </select>
+            </div>
+          </div>
+          <button class="btn-secondary" style="padding: 6px 14px; font-size: 12px;" onclick="loadNetworkLinkMonitoring()">
+            <i class="fas fa-sync-alt" id="iconReloadNetworkLink"></i> Atualizar Conectividade
+          </button>
+        </div>
+      </div>
+
+      <!-- Tabela Analítica de Conectividade -->
+      <div class="panel-card">
+        <div class="panel-header" style="border-bottom: 1px solid var(--border-color); padding-bottom: 10px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+          <div>
+            <div class="panel-title" style="font-size: 14px;">
+              <span>🌐</span> Matriz de Capacidade de Upload &amp; Escoamento de Mídias (Blocos de 30 Minutos)
+            </div>
+            <div id="netViewSummaryLabel" style="font-size: 11px; color: #38bdf8; font-weight: 600; margin-top: 3px;">
+              Exibindo as 15 Piores Conexões da Frota (Prioridade NOC)
+            </div>
+          </div>
+          <span style="font-size: 11px; color: var(--text-muted);">Métrica: Volume gerado vs Throughput real de upload para escoamento antes do próximo ciclo</span>
+        </div>
+        <div class="table-responsive">
+          <table>
+            <thead>
+              <tr>
+                <th>Código / Data</th>
+                <th>Praça</th>
+                <th>Alvo / Equipamento</th>
+                <th>Tipo de Incidente</th>
+                <th>Severidade</th>
+                <th>Duração / Status</th>
+                <th>Torre / Posição</th>
+                <th style="text-align: center;">Diagnóstico & Ações</th>
+              </tr>
+            </thead>
+            <tbody id="incidentsEventsTableBody">
+              <tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 18px;">Carregando histórico de incidentes...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Worklog de Auditoria de Ações Manuais dos Operadores (Master-Detail) -->
+      <div class="panel-card">
+        <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+          <div class="panel-title" id="incidentAuditNotebookTitle"><span>📝</span> Caderno de Auditoria & Trilha de Operações (Worklog Manual)</div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <button type="button" class="btn-secondary" id="btnShowAllWorklogs" style="font-size: 11px; padding: 4px 10px; display: none;" onclick="showAllIncidentWorklogs()">
+              <i class="fas fa-list"></i> Exibir Todos os Registros
+            </button>
+            <span style="font-size: 12px; color: var(--text-muted);">Registro de comandos e ações manuais executadas pelos operadores</span>
+          </div>
+        </div>
+        <div class="table-responsive">
+          <table>
+            <thead>
+              <tr>
+                <th>Data / Hora</th>
+                <th>Host</th>
+                <th>Alvo (Serviço/Canal)</th>
+                <th>Tipo de Incidente</th>
+                <th>Operador</th>
+                <th>Ação Manual Executada</th>
+                <th>Status de Resolução</th>
+              </tr>
+            </thead>
+            <tbody id="incidentHistoryTableBody">
+              <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">Carregando worklog...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    
+  <!-- Modal: Análise Amostral de Padrões & Resolução de Casos Crônicos com IA -->
+  <div class="modal-overlay" id="incidentsAiClusterModal" style="display: none;">
+    <div class="modal-card" style="max-width: 980px; width: 95%; max-height: 92vh; overflow-y: auto; padding: 22px;">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 12px; margin-bottom: 16px;">
+        <div>
+          <div style="font-size: 18px; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 8px;">
+            <span>🧠</span> Diagnóstico Amostral de Padrões & Resolução de Casos Crônicos
+          </div>
+          <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;" id="incidentsAiClusterSubtitle">
+            Agrupamento por tipo de falha, análise de constância/recorrência e propostas de solução aplicáveis via Remote Command
+          </div>
+        </div>
+        <button type="button" class="btn-secondary" onclick="closeIncidentsAiClusterModal()" style="padding: 6px 12px;">✕ Fechar</button>
+      </div>
+
+      <div id="incidentsAiClusterList" style="display: flex; flex-direction: column; gap: 12px;">
+        <div style="text-align: center; padding: 30px; color: var(--text-muted);">Inspecionando histórico de incidentes...</div>
+      </div>
+    </div>
+  </div>
+
+    </section>
+
+
+
+
+
+
+
+    <!-- TAB 4: INTELIGÊNCIA IA PROATIVA, HOMOLOGAÇÃO & AUDITORIA DE MP4 -->
+
+
+
+    <section class="content-section" id="tab-ai">
+
+
+
+      <!-- Sub-navegação interna da Inteligência Artificial -->
+
+
+
+      <div class="rc-subtabs-nav" style="margin-bottom: 20px;">
+
+
+
+        <button class="rc-subtab-btn active" id="btn-ai-subtab-suggestions" onclick="switchAiSubtab('suggestions')">
+
+
+
+          <i class="fas fa-brain"></i> 🧠 Mesa de Engenharia de Triggers (Inbox Proativo)
+
+
+
+        </button>
+
+
+
+        <button class="rc-subtab-btn" id="btn-ai-subtab-homologation" onclick="switchAiSubtab('homologation')">
+
+
+
+          <i class="fas fa-flask"></i> 🧪 Esteira de Homologação & Validação no Agente <span class="badge" id="ai-homolog-count-badge" style="background: rgba(37, 99, 235, 0.3); font-size: 10px; margin-left: 4px;">0</span>
+
+
+
+        </button>
+
+
+
+
+
+
+
+      </div>
+
+
+
+
+
+
+
+      <!-- SUBTAB 1: SUGESTÕES PROATIVAS DA FROTA -->
+
+
+
+      <div id="ai-content-suggestions">
+        <div class="panel-card" style="padding: 20px;">
+          <!-- Header Bar with Metrics & Filters -->
+          <div class="ai-workbench-header">
+            <div class="ai-header-info">
+              <div class="panel-title" style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 20px;">🧠</span> Mesa de Engenharia de Triggers & Automações Proativas
+              </div>
+              <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+                Fila inteligente de inovação: sugestões deduplicadas com análise de impacto, simulação de 14 dias e esteira canário antes do rollout.
+              </div>
+            </div>
+
+            <!-- Telemetria Rápida de Deduplicação -->
+            <div class="ai-metrics-badges">
+              <div class="ai-metric-pill" title="Oportunidades únicas propostas pela IA">
+                <span class="ai-metric-icon">💡</span>
+                <span class="ai-metric-val" id="aiUniqueCount">10</span>
+                <span class="ai-metric-lbl">Oportunidades Únicas</span>
+              </div>
+              <div class="ai-metric-pill ai-metric-dedup" title="Regras repetidas deduplicadas automaticamente pelo motor">
+                <span class="ai-metric-icon">🔁</span>
+                <span class="ai-metric-val" id="aiDedupCount">0</span>
+                <span class="ai-metric-lbl">Deduplicadas</span>
+              </div>
+            </div>
+
+            <button class="btn-primary" id="btnTriggerAi" onclick="triggerAiAnalysis()">
+              <span>✨</span> Analisar Todo o Sistema com IA
+            </button>
+          </div>
+
+          <!-- Filter Pills Toolbar -->
+          <div class="ai-filter-toolbar">
+            <div class="ai-category-filters" id="aiCategoryFilters">
+              <button class="ai-filter-btn active" data-cat="all" onclick="filterAiCategory('all')">
+                <i class="fas fa-layer-group"></i> Todas as Oportunidades
+              </button>
+              <button class="ai-filter-btn" data-cat="auto_healing" onclick="filterAiCategory('auto_healing')">
+                <i class="fas fa-heartbeat"></i> Auto-Healing
+              </button>
+              <button class="ai-filter-btn" data-cat="performance" onclick="filterAiCategory('performance')">
+                <i class="fas fa-tachometer-alt"></i> Performance & I/O
+              </button>
+              <button class="ai-filter-btn" data-cat="sinal_rf" onclick="filterAiCategory('sinal_rf')">
+                <i class="fas fa-satellite-dish"></i> Sinal RF & Drivers
+              </button>
+              <button class="ai-filter-btn" data-cat="sistema" onclick="filterAiCategory('sistema')">
+                <i class="fas fa-server"></i> Sistema & SO
+              </button>
+            </div>
+            <div class="ai-quick-search">
+              <i class="fas fa-search" style="color: var(--text-muted); font-size: 12px;"></i>
+              <input type="text" id="aiTriggerSearch" placeholder="Filtrar por serviço, título ou praça..." oninput="onAiSearchInput(this.value)">
+            </div>
+          </div>
+
+          <!-- Two-Column Engineering Desk -->
+          <div class="ai-workbench-grid">
+            <!-- Left Column: List of Triggers (60%) -->
+            <div class="ai-trigger-list-column">
+              <div class="ai-column-title">
+                <span>📋 Triggers Propostas para Avaliação</span>
+                <span id="aiTriggerListBadge" class="badge badge-blue">0 listadas</span>
+              </div>
+              <div class="ai-trigger-cards-list" id="aiTriggerListContainer">
+                <div style="text-align: center; padding: 40px; color: var(--text-muted);">
+                  <i class="fas fa-spinner fa-spin"></i> Carregando sugestões deduplicadas da frota...
+                </div>
+              </div>
+            </div>
+
+            <!-- Right Column: Inspection, Dry-Run & Canary Desk (40%) -->
+            <div class="ai-trigger-detail-column" id="aiTriggerDetailPanel">
+              <div class="ai-detail-empty">
+                <i class="fas fa-sliders-h" style="font-size: 36px; margin-bottom: 12px; opacity: 0.5;"></i>
+                <h4>Selecione uma regra à esquerda para inspecionar parâmetros, simulação e script.</h4>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- SUBTAB 2: ESTEIRA DE HOMOLOGAÇÃO & VALIDAÇÃO NO AGENTE -->
+
+
+
+      <div id="ai-content-homologation" style="display: none;">
+
+
+
+        <div class="panel-card" style="margin-bottom: 20px;">
+
+
+
+          <div class="panel-header">
+
+
+
+            <div>
+
+
+
+              <div class="panel-title"><span>🧪</span> Governança de Homologação de Novas Funcionalidades no Agente</div>
+
+
+
+              <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+
+
+
+                Toda nova monitoração aprovada pela IA é primeiramente validada em praça piloto (Canary), passa por auditoria de estabilidade e, ao ser promovida, cadastra automaticamente os limiares na aba Configurações.
+
+
+
+              </div>
+
+
+
+            </div>
+
+
+
+            <button class="btn-secondary" onclick="loadHomologationPipeline()"><i class="fas fa-sync-alt"></i> Atualizar Esteira</button>
+
+
+
+          </div>
+
+
+
+        </div>
+
+
+
+
+
+
+
+        <div id="ai-homologation-container" style="display: flex; flex-direction: column; gap: 16px;">
+
+
+
+          <!-- Cards de Homologação renderizados dinamicamente -->
+
+
+
+        </div>
+
+
+
+      </div>
+
+
+
+
+
+
+
+      
+
+
+
+      </div>
+
+
+
+    </section>
+
+
+
+
+
+
+
+    <!-- TAB 5: GESTÃO DE FROTAS & CANARY -->
+
+
+
+        <section class="content-section" id="tab-fleet">
+      <div class="panel-card">
+        <div class="panel-header">
+          <div class="panel-title"><span>🚀</span> Esteira de Homologação Canário (5 Pilotos → Frota) & Versionamento do Agente C#</div>
+          <span style="font-size: 12px; color: var(--text-muted);">Sincronia obrigatória entre features locais dos Capture Sites e versão do <code>DNA.MonitorServiceSVC</code></span>
+        </div>
+
+        <!-- Diretriz Arquitetural Zero-Overhead & Alinhamento de Versão -->
+        <div style="background: rgba(37, 99, 235, 0.08); border: 1px solid rgba(59, 130, 246, 0.3); padding: 14px 18px; border-radius: var(--radius-md); margin-bottom: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px;">
+            <strong style="color: #60a5fa; font-size: 13px;">📌 Diretriz de Engenharia: Proteção de Recursos do Capture Site & Evolução de Versão do Serviço C#</strong>
+            <span style="background: rgba(16, 185, 129, 0.18); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); padding: 3px 10px; border-radius: 999px; font-size: 11px; font-family: monospace; font-weight: 700;">Build C# Atual: v1.0.16.0</span>
+          </div>
+          <div style="font-size: 12px; color: #cbd5e1; line-height: 1.55;">
+            • <strong>Zero-Overhead na Ponta:</strong> Cálculos pesados de IA (Gemini Pro), topografia RF/Fresnel e correlação rodam 100% no Dashboard Central.<br>
+            • <strong>Acompanhamento Obrigatório de Versão no Agente C#:</strong> Toda funcionalidade que exige interação física com a máquina da cidade (varredura de pastas <code>.MP4/.ASF</code>, leitura de <code>DTVCaptureLog</code>, execução real de scripts e abertura interativa do Atria) gera nova versão compilada do <code>DNA.MonitorServiceSVC</code> (<code>v1.0.16.0</code>), homologada primeiro em <strong>5 praças piloto</strong> antes do despacho automático para as demais.
+          </div>
+        </div>
+
+        <!-- Novidades da Release v1.0.16.0 do Serviço C# -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; margin-bottom: 16px;">
+          <div style="background: rgba(15, 23, 42, 0.65); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px; padding: 10px 12px;">
+            <div style="font-size: 12px; font-weight: 700; color: #38bdf8;">🖥️ Fix Interface Atria Capture (Sessão 0)</div>
+            <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">Elimina processos fantasmas sem janela no Gerenciador de Tarefas e abre a GUI na sessão ativa do usuário (Console/RDP/TeamViewer) com token elevado.</div>
+          </div>
+          <div style="background: rgba(15, 23, 42, 0.65); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px; padding: 10px 12px;">
+            <div style="font-size: 12px; font-weight: 700; color: #34d399;">⚡ Fila Real de Comandos & Tail de Logs</div>
+            <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">Canal assinado HMAC-SHA256 via SharePoint Drive (<code>Fila_Comandos</code>) com prioridade <code>BelowNormal</code> e leitura nativa de logs sem onerar a CPU.</div>
+          </div>
+          <div style="background: rgba(15, 23, 42, 0.65); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px; padding: 10px 12px;">
+            <div style="font-size: 12px; font-weight: 700; color: #fbbf24;">🛡️ Trava Canário (5 Pilotos → Frota)</div>
+            <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">O agente C# respeita estritamente a <code>Versao_Desejada</code> de cada host, garantindo que apenas as 5 máquinas piloto atualizem na Fase 1.</div>
+          </div>
+        </div>
+
+        <!-- Painel de Status Canário ao Vivo -->
+        <div id="canaryStatusSummaryGrid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 16px;"></div>
+
+        <div style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); padding: 18px; border-radius: var(--radius-md); margin-bottom: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 10px;">
+            <h4 style="margin: 0;">Controle de Homologação (5 Pilotos) e Despacho Global</h4>
+            <button class="btn-secondary" onclick="loadCanaryPipelineStatus()" style="padding: 5px 12px; font-size: 12px;">🔄 Atualizar Status</button>
+          </div>
+          <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 14px;">
+            Na <strong>Fase 1</strong>, o sistema seleciona 5 praças piloto online e define <code>Versao_Desejada = 1.0.16.0</code> + <code>Acao_Solicitada = Atualizar</code>, mantendo o restante da frota blindado. Assim que as 5 praças confirmarem a atualização sem falhas, a <strong>Fase 2</strong> despacha automaticamente para as demais praças (ou você pode promover manualmente abaixo).
+          </p>
+
+          <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px;">
+            <label style="font-size: 13px; font-weight: 600;">Versão Alvo do Agente C#:</label>
+            <input type="text" id="canaryTargetVersion" value="1.0.16.0" onchange="loadCanaryPipelineStatus()" style="padding: 8px 14px; background: rgba(0,0,0,0.4); border: 1px solid var(--border-color); color: #34d399; font-weight: 700; border-radius: var(--radius-sm); font-family: monospace; width: 130px;">
+
+            <button class="btn-primary" id="btnTriggerCanary5" onclick="triggerCanaryFromDashboard()">
+              <span>🐤</span> 1. Homologar em 5 Praças Piloto (Canary)
+            </button>
+
+            <button class="btn-secondary" id="btnPromoteFullFleet" onclick="triggerPromoteFleetFromDashboard()">
+              <span>🚀</span> 2. Despachar para Demais Praças da Frota
+            </button>
+          </div>
+
+          <div style="border-top: 1px solid rgba(148,163,184,0.15); padding-top: 10px;">
+            <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; margin-bottom: 6px; font-weight: 600;">Praças no Lote Canário / Atualizadas na Versão Alvo:</div>
+            <div id="canaryPilotsList" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
+          </div>
+        </div>
+
+        <div>
+          <h4 style="margin-bottom: 8px; font-size: 13px; color: var(--text-muted);">Console de Deploy e Auditoria Canário:</h4>
+          <pre id="canaryLogOutput" style="background: #000; padding: 14px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); font-family: monospace; font-size: 12px; color: #34d399; min-height: 110px; white-space: pre-wrap;">Pronto para homologação da versão v1.0.16.0 em 5 praças piloto. Selecione uma ação acima.</pre>
+        </div>
+      </div>
+    </section>
+
+
+
+
+
+
+
+    <!-- TAB 6: CONFIGURAÇÕES & LIMIARES -->
+
+
+
+    <section class="content-section" id="tab-configs">
+
+
+
+      <!-- Sub-navegação interna de Configurações -->
+
+
+
+      <div class="rc-subtabs-nav" style="margin-bottom: 20px;">
+
+
+
+        <button class="cfg-subtab-btn active" id="btn-cfg-subtab-thresholds" onclick="switchConfigsSubtab('thresholds')">
+
+
+
+          <i class="fas fa-sliders-h"></i> 🎛️ Limiares & Atualização
+
+
+
+        </button>
+
+
+
+        <button class="cfg-subtab-btn" id="btn-cfg-subtab-flags" onclick="switchConfigsSubtab('flags')">
+
+
+
+          <i class="fas fa-shield-alt"></i> 🛡️ Feature Flags & Kill-Switch Operacional
+
+
+
+        </button>
+
+
+
+        <button class="cfg-subtab-btn" id="btn-cfg-subtab-users" onclick="switchConfigsSubtab('users')">
+
+          <i class="fas fa-users"></i> 👥 Usuários e Domínio LDAP
+
+        </button>
+
+        <button class="cfg-subtab-btn" id="btn-cfg-subtab-ai" onclick="switchConfigsSubtab('ai')">
+
+          <i class="fas fa-brain"></i> 🧠 Consumo de IA & Governança
+
+        </button>
+        <button class="cfg-subtab-btn" id="btn-cfg-subtab-tuning" onclick="switchConfigsSubtab('tuning')">
+          <i class="fas fa-balance-scale text-yellow"></i> ⚖️ Auditoria de Limiares x Incidentes
+        </button>
+
+
+
+      </div>
+
+
+
+
+
+
+
+      <!-- SUBTAB 1: LIMIARES & ATUALIZAÇÃO -->
+      <div id="configs-content-thresholds">
+
+        <!-- Top Bar: Header & Polling Interval -->
+        <div class="panel-card" style="margin-bottom: 20px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
+            <div>
+              <div class="panel-title" style="font-size: 15px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px;">
+                <span>🎛️</span> Calibração dos Limiares de Alerta (SLA & Tolerâncias Técnicas)
+              </div>
+              <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+                Ajuste global com propagação síncrona para todos os daemons e agentes locais da frota
+              </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <span style="font-size: 12px; color: var(--text-muted);">Intervalo de Polling:</span>
+              <select id="autoRefreshIntervalSelect" class="form-input" style="width: 200px; font-size: 12px;" onchange="changeAutoRefreshInterval(this.value)">
+                <option value="10">A cada 10s (Rápido)</option>
+                <option value="15" selected>A cada 15s (Padrão Recomendado)</option>
+                <option value="30">A cada 30s (Moderado)</option>
+                <option value="60">A cada 1 min (Econômico)</option>
+                <option value="120">A cada 2 min (Baixo tráfego)</option>
+                <option value="0">Desativar Polling</option>
+              </select>
+              <span id="refreshTimerStatus" class="badge" style="background: rgba(37, 99, 235, 0.2); color: #60a5fa; border: 1px solid #2563eb; padding: 5px 10px; font-weight: 600; font-size: 11px;">
+                ⏱️ 15s ativo
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Thematic 2-Column Grid Container -->
+        <div id="thresholdsListContainer" class="threshold-grid">
+          <!-- Renderizado dinamicamente via loadThresholds() -->
+        </div>
+
+        <!-- Floating Action Save Bar -->
+        <div class="save-bar" id="thresholds-save-bar">
+          <span style="font-size: 12px; color: #38bdf8;" id="thresholds-save-bar-status">
+            <i class="fas fa-check-circle" style="color: #10b981;"></i> Nenhuma alteração pendente de gravação
+          </span>
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <button class="btn btn-secondary" style="font-size: 12px; padding: 7px 14px; font-weight: 600;" onclick="restoreThresholdDefaults()">
+              <i class="fas fa-undo"></i> Restaurar Padrões de Fábrica
+            </button>
+            <button class="btn btn-primary btn-save" style="font-size: 12px; padding: 7px 16px; font-weight: 700; background: linear-gradient(135deg, #0284c7, #2563eb);" onclick="saveAllThresholdsBatch()">
+              <i class="fas fa-save"></i> Guardar Todos os Limiares
+            </button>
+          </div>
+        </div>
+
+      </div><!-- Fecha configs-content-thresholds -->
+
+      <!-- SUBTAB 2: FEATURE FLAGS & KILL-SWITCH OPERACIONAL -->
+
+
+
+      <div id="configs-content-flags" style="display: none;">
+
+
+
+        <div class="panel-card" style="margin-bottom: 20px;">
+
+
+
+          <div class="panel-header">
+
+
+
+            <div>
+
+
+
+              <div class="panel-title"><span>🛡️</span> Chaves de Desativação Granular de Monitoramento (Kill-Switch)</div>
+
+
+
+              <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+
+
+
+                Desative preventivamente rotinas de captura de imagem, análise de MP4 ou inspeção pesada por Escopo (Global, País ou Praça Específica) sem reiniciar o Windows nem interromper o Atria.
+
+
+
+              </div>
+
+
+
+            </div>
+
+
+
+            <button class="btn-secondary" onclick="loadFeatureFlagsUI()"><i class="fas fa-sync-alt"></i> Atualizar Chaves</button>
+
+
+
+          </div>
+
+
+
+          <div style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 14px; margin-bottom: 16px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+
+
+
+            <label style="font-size: 12px; font-weight: 700; color: #fff;">Filtrar Escopo de Chaves:</label>
+
+
+
+            <select id="featureFlagsScopeFilter" class="form-input" style="width: 240px;" onchange="filterFeatureFlagsDisplay(this.value)">
+
+
+
+              <option value="all">Todas as Chaves e Escopos</option>
+
+
+
+              <option value="global">Apenas Escopo Global (*)</option>
+
+
+
+              <option value="city">Apenas Praças Específicas</option>
+
+
+
+            </select>
+
+
+
+          </div>
+
+
+
+          <div id="featureFlagsListContainer" style="display: flex; flex-direction: column; gap: 12px;">
+
+
+
+            <!-- Renderizado dinamicamente -->
+
+
+
+          </div>
+
+
+
+        </div>
+
+
+
+      </div>
+
+
+
+
+
+
+
+      <!-- SUBTAB 3: USUÁRIOS E LDAP -->
+
+
+
+      <div id="configs-content-users" style="display: none;">
+
+
+
+        <div class="panel-card">
+
+
+
+        <div class="panel-header">
+
+
+
+          <div class="panel-title"><span>👥</span> Usuários e Integração com Domínio (Active Directory / LDAP)</div>
+
+
+
+          <div style="display: flex; gap: 8px;">
+            <button class="btn-primary" onclick="openLdapConfigModal()" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; font-size: 12px; background: linear-gradient(135deg, #1e40af, #2563eb); border: 1px solid #3b82f6; font-weight: 700;">
+              <i class="fas fa-network-wired"></i> ⚙️ Configurar Servidor LDAP
+            </button>
+            <button class="btn-secondary" onclick="document.getElementById('newUserModal').classList.add('active')">➕ Novo Usuário Local</button>
+          </div>
+
+
+
+        </div>
+
+
+
+
+
+
+
+        <!-- Barra de Status da Integração LDAP -->
+        <div id="ldap-status-badge-bar" style="background: rgba(37,99,235,0.12); border: 1px solid rgba(59,130,246,0.3); border-radius: 6px; padding: 10px 14px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; font-size: 12px;">
+          <div>
+            <i class="fas fa-check-circle" style="color: #10b981; margin-right: 6px;"></i>
+            <span>Domínio Ativo: <strong style="color: #fff;" id="ldap-status-name">grupoibope.corp</strong> (Servidor: <span id="ldap-status-server">10.1.0.1:389</span>)</span>
+            <span style="color: var(--text-muted); margin-left: 12px;">Base DN: <code style="color: #93c5fd; font-size: 11px;" id="ldap-status-dn">OU=Users Accounts,OU=KIM Users,DC=grupoibope,DC=corp</code></span>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn-secondary" onclick="openLdapConfigModal()" style="padding: 3px 10px; font-size: 11px;"><i class="fas fa-cog"></i> Configurar Conexão</button>
+            <button class="btn-secondary" onclick="testLdapConfigDirect()" style="padding: 3px 10px; font-size: 11px; border-color: rgba(16,185,129,0.4); color: #6ee7b7;"><i class="fas fa-plug"></i> Testar Ping LDAP</button>
+          </div>
+        </div>
+
+        <!-- Busca no Domínio LDAP -->
+        <div style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); padding: 16px; border-radius: var(--radius-sm); margin-bottom: 20px;">
+
+
+
+          <h5 style="margin-bottom: 8px;">🔍 Buscar no Domínio Corporativo (LDAP)</h5>
+
+
+
+          <div style="display: flex; gap: 10px;">
+
+
+
+            <input type="text" id="ldapSearchInput" placeholder="Digite nome, usuário ou e-mail corporativo..." style="flex: 1; padding: 8px 12px; background: rgba(0,0,0,0.4); border: 1px solid var(--border-color); color: #fff; border-radius: var(--radius-sm); font-size: 13px;">
+
+
+
+            <button class="btn-primary" onclick="searchLdapDirectory()">Buscar no Domínio</button>
+
+
+
+          </div>
+
+
+
+          <div id="ldapSearchResults" style="margin-top: 12px;"></div>
+
+        </div>
+
+        <!-- Matriz de Perfis e Permissionamento (RBAC) -->
+        <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border-color); border-radius: 8px; padding: 14px 16px; margin-bottom: 16px;">
+          <div style="font-weight: 700; font-size: 13px; color: var(--text-main); margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+            <span>🛡️</span> Matriz de Papeis e Permissionamento de Acesso (RBAC)
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px;">
+            <div style="background: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 6px; padding: 10px 12px;">
+              <div style="font-weight: 700; color: #c084fc; font-size: 12px; margin-bottom: 4px;">👑 Administrador (admin)</div>
+              <div style="font-size: 11px; color: var(--text-muted); line-height: 1.4;">
+                Acesso total irrestrito: Configurações, Domínio LDAP, Atualização do Sistema (Localhost), Calibração de Limiares, Gestão de Perfis e Comandos Remotos Críticos.
+              </div>
+            </div>
+            <div style="background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 6px; padding: 10px 12px;">
+              <div style="font-weight: 700; color: #60a5fa; font-size: 12px; margin-bottom: 4px;">⚡ Perfil N2 - Operador Sênior (n2)</div>
+              <div style="font-size: 11px; color: var(--text-muted); line-height: 1.4;">
+                Permissivo para operações: Tratativas de incidentes, reinício de serviços, execução de comandos remotos aprovados e registro de worklog. Sem acesso a Configurações/Update.
+              </div>
+            </div>
+            <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 6px; padding: 10px 12px;">
+              <div style="font-weight: 700; color: #34d399; font-size: 12px; margin-bottom: 4px;">👁️ Perfil N1 - Triagem & Monitoração (n1)</div>
+              <div style="font-size: 11px; color: var(--text-muted); line-height: 1.4;">
+                Foco em monitoração contínua: Mosaico de Imagens, Topologia/Mapa, Análise de Sinal RF e notas de triagem. Bloqueado de alterar configurações, atualizar ou disparar comandos.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="table-responsive">
+
+          <table>
+
+            <thead>
+
+              <tr>
+
+                <th>Usuário</th>
+
+                <th>Nome Completo</th>
+
+                <th>E-mail</th>
+
+                <th>Perfil RBAC (Papel)</th>
+
+                <th>Tipo de Autenticação</th>
+
+                <th>Último Acesso</th>
+
+                <th>Ações</th>
+
+              </tr>
+
+            </thead>
+
+            <tbody id="usersTableBody">
+
+              <!-- Renderizado dinamicamente -->
+
+            </tbody>
+
+          </table>
+
+        </div>
+
+
+
+      </div>
+
+
+
+      </div>
+
+
+
+    
+      <!-- ========================================================================= -->
+      <!-- SUBTAB 4: GOVERNANÇA, CONSUMO & CHAVE DE API GOOGLE GEMINI               -->
+      <!-- ========================================================================= -->
+      <div id="configs-content-ai" style="display: none;">
+        
+        <!-- Header & Banner Informativo de Governança -->
+        <div style="background: linear-gradient(135deg, rgba(2, 132, 199, 0.15), rgba(147, 51, 234, 0.12)); border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 8px; padding: 18px 24px; margin-bottom: 22px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
+          <div>
+            <div style="font-size: 16px; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 10px;">
+              <i class="fas fa-brain" style="color: #38bdf8; font-size: 20px;"></i>
+              <span>Governança, Consumo de IA & Chave Google Gemini Pro</span>
+              <span class="badge" id="aiStatusBadge" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid #10b981; font-size: 11px; padding: 2px 8px;">ATIVO (PRO)</span>
+            </div>
+            <div style="font-size: 12px; color: var(--text-muted); margin-top: 5px; max-width: 800px; line-height: 1.5;">
+              Monitoramento transparente de tokens, custos em dólares/reais e controle de escala orçamentária.
+              Suporte nativo ao modo <strong>Econômico (Sob Demanda)</strong> para contenção de custos em escala de <strong>500+ servidores</strong> com fallback automático para o motor de engenharia local MediaDNA.
+            </div>
+          </div>
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <button class="btn-secondary" style="font-size: 12px; padding: 7px 14px; background: rgba(255,255,255,0.06); font-weight: 700;" onclick="loadAiGovernanceUI()">
+              <i class="fas fa-sync-alt"></i> Atualizar Métricas
+            </button>
+          </div>
+        </div>
+
+        <!-- Cards de KPIs de Custos e Consumo -->
+        <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin-bottom: 22px;">
+          <div class="kpi-card" style="border-left: 4px solid #38bdf8;">
+            <div class="kpi-value" id="aiKpiCostUsd" style="color: #38bdf8;">$0.0003</div>
+            <div class="kpi-label">Gasto Acumulado no Mês (USD)</div>
+            <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">Aprox. <strong id="aiKpiCostBrl" style="color: #34d399;">R$ 0,00</strong> • Teto: <span id="aiKpiBudgetCap">$15.00</span></div>
+          </div>
+
+          <div class="kpi-card" style="border-left: 4px solid #a855f7;">
+            <div class="kpi-value" id="aiKpiTotalTokens" style="color: #c084fc;">2.065</div>
+            <div class="kpi-label">Total de Tokens Processados</div>
+            <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;"><span id="aiKpiPromptTokens">1.525</span> prompt • <span id="aiKpiCompletionTokens">540</span> resposta</div>
+          </div>
+
+          <div class="kpi-card" style="border-left: 4px solid #10b981;">
+            <div class="kpi-value" id="aiKpiTotalRequests" style="color: #34d399;">5</div>
+            <div class="kpi-label">Requisições com Sucesso</div>
+            <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">Taxa: <strong id="aiKpiSuccessRate" style="color: #34d399;">100%</strong> • Latência: <span id="aiKpiAvgLatency">902ms</span></div>
+          </div>
+
+          <div class="kpi-card" style="border-left: 4px solid #f59e0b;">
+            <div class="kpi-value" id="aiKpiProjection500" style="color: #fbbf24; font-size: 17px;">~$0.27 / mês</div>
+            <div class="kpi-label">Projeção Futura (500+ CS)</div>
+            <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">Modo Econômico: <strong style="color: #34d399;">R$ 1,57/mês</strong></div>
+          </div>
+        </div>
+
+        <!-- Grid de Configurações da IA (Controle Operacional vs Chave) -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px;">
+          
+          <!-- Coluna 1: Modo Operacional e Governança -->
+          <div class="panel-card" style="background: rgba(15, 23, 42, 0.65); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 20px;">
+            <div class="panel-header" style="margin-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 10px;">
+              <h5 style="color: #fff; margin: 0; font-size: 14px; font-weight: 700;">
+                <i class="fas fa-sliders-h text-blue"></i> Parâmetros Operacionais de IA
+              </h5>
+            </div>
+
+            <!-- Switch Master Ativar / Desativar -->
+            <div class="form-group" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; padding: 12px; background: rgba(255,255,255,0.03); border-radius: 6px;">
+              <div>
+                <label style="color: #fff; font-weight: 700; font-size: 13px; display: block;">Habilitar Google Gemini AI</label>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+                  Se desativado, o sistema utiliza 100% o motor local MediaDNA com custo zero ($0.00).
+                </div>
+              </div>
+              <input type="checkbox" id="aiConfigMasterEnabled" checked style="width: 20px; height: 20px; cursor: pointer; accent-color: #38bdf8;">
+            </div>
+
+            <!-- Seletor de Modo Operacional -->
+            <div class="form-group" style="margin-bottom: 16px;">
+              <label class="form-label" style="font-size: 12px; font-weight: 700; color: #e2e8f0;">Modo Operacional de Consumo:</label>
+              <select id="aiConfigOperationalMode" class="form-input" style="font-size: 12px; padding: 8px 12px; background: #0f172a;">
+                <option value="economico">🟢 Modo Econômico (Sob Demanda) - Dispara IA apenas quando o operador clica (Ideal para 500+ CS)</option>
+                <option value="fluido">⚡ Modo Fluido (Pró-Ativo) - Monitoramento contínuo em lote agrupado por praça</option>
+              </select>
+              <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">
+                * No modo Econômico, nenhuma chamada é gerada em background, mantendo o custo extremamente baixo mesmo com 500+ servidores.
+              </div>
+            </div>
+
+            <!-- Seletor de Modelo Gemini -->
+            <div class="form-group" style="margin-bottom: 16px;">
+              <label class="form-label" style="font-size: 12px; font-weight: 700; color: #e2e8f0;">Modelo Fundacional Google:</label>
+              <select id="aiConfigModel" class="form-input" style="font-size: 12px; padding: 8px 12px; background: #0f172a;">
+                <option value="gemini-2.5-flash">Gemini 2.5 Flash (Padrão e Recomendado • Ultra Rápido • 1M Tokens)</option>
+                <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash-Lite (Super Econômico • 50% Menor Custo)</option>
+                <option value="gemini-2.5-pro">Gemini 2.5 Pro (Raciocínio Profundo • Casos Críticos Complexos)</option>
+              </select>
+            </div>
+
+            <!-- Teto Orçamentário Mensal e Clusterização -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+              <div class="form-group">
+                <label class="form-label" style="font-size: 11px; font-weight: 700; color: #cbd5e1;">Teto Mensal Limite (USD):</label>
+                <input type="number" id="aiConfigMonthlyBudget" class="form-input" value="15.00" step="1.00" min="1.00" style="font-size: 12px; padding: 8px 12px;">
+              </div>
+              <div class="form-group">
+                <label class="form-label" style="font-size: 11px; font-weight: 700; color: #cbd5e1;">Clusterização Regional:</label>
+                <select id="aiConfigClusterBatching" class="form-input" style="font-size: 12px; padding: 8px 12px; background: #0f172a;">
+                  <option value="true">Ativada (Economia de 90% em Lote)</option>
+                  <option value="false">Desativada (Chamadas Individuais)</option>
+                </select>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Coluna 2: Chave de API e Teste de Conexão -->
+          <div class="panel-card" style="background: rgba(15, 23, 42, 0.65); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 20px; display: flex; flex-direction: column; justify-content: space-between;">
+            <div>
+              <div class="panel-header" style="margin-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 10px;">
+                <h5 style="color: #fff; margin: 0; font-size: 14px; font-weight: 700;">
+                  <i class="fas fa-key text-blue"></i> Gerenciamento da Chave de API Google
+                </h5>
+              </div>
+
+              <div class="form-group" style="margin-bottom: 16px;">
+                <label class="form-label" style="font-size: 12px; font-weight: 700; color: #e2e8f0;">Chave de API Gemini (Google AI Studio / Vertex AI):</label>
+                <div style="position: relative;">
+                  <input type="password" id="aiConfigApiKey" class="form-input" placeholder="Cole sua chave de API Gemini aqui..." style="font-size: 12px; padding: 8px 36px 8px 12px; font-family: monospace; letter-spacing: 0.5px;">
+                  <button type="button" onclick="toggleAiApiKeyVisibility()" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #94a3b8; cursor: pointer;">
+                    <i class="fas fa-eye" id="aiApiKeyEyeIcon"></i>
+                  </button>
+                </div>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+                  * A chave é salva de forma segura e protegida contra visualização por usuários não administradores.
+                </div>
+              </div>
+
+              <!-- Caixa de Feedback do Teste de Conectividade -->
+              <div id="aiTestResultBox" style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 6px; padding: 12px 14px; margin-bottom: 16px;">
+                <div style="font-size: 12px; font-weight: 700; color: #34d399; display: flex; align-items: center; gap: 8px;">
+                  <i class="fas fa-check-circle"></i>
+                  <span id="aiTestStatusTitle">Chave Pro Conectada com Sucesso</span>
+                </div>
+                <div id="aiTestStatusDetail" style="font-size: 11px; color: #cbd5e1; margin-top: 4px;">
+                  Latência de resposta: <strong>863ms</strong> • Tier: <strong>Standard Pro</strong> • Modelo: <strong>gemini-2.5-flash</strong>
+                </div>
+              </div>
+            </div>
+
+            <!-- Botões de Ação -->
+            <div style="display: flex; gap: 10px; margin-top: 15px;">
+              <button type="button" class="btn-primary" id="btnSaveAiConfig" style="flex: 1; padding: 9px 16px; font-size: 12px; font-weight: 700; background: linear-gradient(135deg, #0284c7, #2563eb);" onclick="saveAiGovernanceConfig()">
+                <i class="fas fa-save"></i> Salvar Configurações
+              </button>
+              <button type="button" class="btn-secondary" id="btnTestAiConnection" style="padding: 9px 16px; font-size: 12px; font-weight: 700;" onclick="testAiApiConnection()">
+                <i class="fas fa-bolt"></i> Testar Conexão
+              </button>
+            </div>
+
+          </div>
+
+        </div>
+
+        <!-- Tabela de Auditoria e Consumo de IA em Tempo Real -->
+        <!-- Gráfico Compacto de Evolução de Consumo de Tokens (Leitura de Picos) -->
+        <div class="panel-card" style="background: rgba(15, 23, 42, 0.65); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 18px; margin-bottom: 22px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
+            <div>
+              <div style="font-size: 13px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px;">
+                <i class="fas fa-chart-area text-blue"></i>
+                <span>Evolução de Consumo de Tokens & Detecção de Picos</span>
+              </div>
+              <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+                Distribuição temporal das transações para identificação imediata de anomalias de processamento e volume
+              </div>
+            </div>
+            <div style="display: flex; gap: 10px; align-items: center;">
+              <span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-size: 11px;" id="aiTokenPeakBadge">Pico: 0 tokens</span>
+              <span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #34d399; font-size: 11px;" id="aiTokenAvgBadge">Média: 0 tokens/req</span>
+            </div>
+          </div>
+          <div id="aiTokenSparklineChart" style="width: 100%; height: 110px; background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center;">
+            <!-- SVG dinâmico -->
+          </div>
+        </div>
+
+        <div class="panel-card" style="background: rgba(15, 23, 42, 0.65); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 20px;">
+          <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 10px;">
+            <div>
+              <h5 style="color: #fff; margin: 0; font-size: 14px; font-weight: 700;">
+                <i class="fas fa-history text-blue"></i> Histórico de Chamadas e Auditoria de Tokens
+              </h5>
+              <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+                Registro completo de cada diagnóstico acionado pela equipe de suporte ou automação
+              </div>
+            </div>
+            <span class="badge" style="background: rgba(255,255,255,0.05); color: #cbd5e1; font-size: 11px;">
+              Últimas 50 transações
+            </span>
+          </div>
+
+          <div class="table-responsive" style="max-height: 380px; overflow-y: auto;">
+            <table class="data-table" style="width: 100%; border-collapse: collapse; font-size: 12px;">
+              <thead>
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.1); text-align: left; color: #94a3b8; font-size: 11px; text-transform: uppercase;">
+                  <th style="padding: 10px;">Data / Hora</th>
+                  <th style="padding: 10px;">Operador</th>
+                  <th style="padding: 10px;">Módulo</th>
+                  <th style="padding: 10px;">Alvo / Praça</th>
+                  <th style="padding: 10px;">Modo</th>
+                  <th style="padding: 10px;">Modelo</th>
+                  <th style="padding: 10px;">Tokens</th>
+                  <th style="padding: 10px;">Custo Est. (USD)</th>
+                  <th style="padding: 10px;">Latência</th>
+                  <th style="padding: 10px;">Status</th>
+                </tr>
+              </thead>
+              <tbody id="aiUsageAuditTableBody">
+                <!-- Renderizado via JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
+
+    
+      <!-- SUBTAB 5: AUDITORIA DE LIMIARES X INCIDENTES (IA) -->
+      <div id="configs-content-tuning" style="display: none;">
+        <div class="panel-card" style="padding: 20px; margin-bottom: 20px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;">
+            <div>
+              <div class="panel-title" style="font-size: 16px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px;">
+                <span>⚖️</span> Auditoria Horária de Limiares x Incidentes (Prevenção de Falsos Alertas)
+              </div>
+              <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+                Análise preditiva horária da eficiência dos limiares. Identifica flapping, alertas de ruído sem impacto na mídia e propõe ajustes calibrados.
+              </div>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <span style="font-size: 11px; color: var(--text-muted);">Última Auditoria: <strong id="auditLastRunTime" style="color: #38bdf8;">--:--:--</strong></span>
+              <button class="btn-primary" style="padding: 6px 14px; font-size: 12px; background: linear-gradient(135deg, #0284c7, #2563eb); font-weight: 700;" onclick="runThresholdAuditNow()">
+                <i class="fas fa-sync-alt"></i> Reanalisar Agora com IA
+              </button>
+            </div>
+          </div>
+
+          <!-- Métricas de Eficiência dos Limiares -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; margin-bottom: 20px;">
+            <div class="stat-card">
+              <div class="stat-label">Taxa de Precisão dos Limiares</div>
+              <div class="stat-value text-green" id="auditKpiPrecision">88.4%</div>
+              <div class="stat-sub">Alertas com real impacto técnico</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Falsos Positivos / Ruído Operacional</div>
+              <div class="stat-value text-yellow" id="auditKpiFalseAlarms">16</div>
+              <div class="stat-sub">Duração < 30s ou sem queda de frames</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Alertas Reais com Impacto</div>
+              <div class="stat-value" id="auditKpiRealImpact" style="color: #38bdf8;">82</div>
+              <div class="stat-sub">Incidentes válidos atendidos</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Redução Estimada de Alertas</div>
+              <div class="stat-value text-green" id="auditKpiReduction">-36.5%</div>
+              <div class="stat-sub">Ganho de assertividade com propostas</div>
+            </div>
+          </div>
+
+          <!-- Lista de Propostas de Calibração -->
+          <div style="font-size: 13px; font-weight: 700; color: #fff; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+            <span>💡</span> Propostas de Ajuste Calibrado da IA (Clique para Aplicar Imediatamente)
+          </div>
+          <div id="thresholdAuditProposalsList" style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="color: var(--text-muted); padding: 15px; text-align: center;">Carregando propostas de auditoria...</div>
+          </div>
+        </div>
+
+    </section>
+
+
+
+
+
+
+
+  
+
+
+
+    <!-- ========================================== -->
+
+
+
+    <!-- TAB: REMOTE COMMAND ORCHESTRATOR           -->
+
+
+
+    <!-- ========================================== -->
+
+
+
+    <section id="tab-remote-commands" class="content-section">
+
+
+
+
+
+
+
+      <!-- Host Selector Top Bar (Barra de Alvos Unificada) -->
+      <div class="rc-top-bar" style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: var(--radius-md); padding: 14px 18px; margin-bottom: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+          <!-- Left: Title, Active Targets Summary & Security Lock -->
+          <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+            <div style="font-size: 15px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px;">
+              <span style="color: #38bdf8;">⚡</span> Orquestrador de Comandos Remotos
+            </div>
+            <span class="badge" id="selected-hosts-count" style="background: rgba(59, 130, 246, 0.2); color: #93c5fd; border: 1px solid rgba(59, 130, 246, 0.4); font-size: 11px; padding: 4px 10px;">
+              0 Alvo(s) Selecionado(s)
+            </span>
+            <span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #4ade80; border: 1px solid rgba(16, 185, 129, 0.4); font-size: 11px; padding: 4px 10px; display: inline-flex; align-items: center; gap: 5px;">
+              <i class="fas fa-lock"></i> Trava Anti-Disparo Global: ATIVA
+            </span>
+          </div>
+
+          <!-- Right: Actions & Clear Selection -->
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <button type="button" class="btn-secondary" onclick="clearAllHosts()" style="font-size: 11px; padding: 5px 12px; border-color: rgba(239, 68, 68, 0.4); color: #fca5a5;">
+              <i class="fas fa-trash-alt"></i> Limpar Alvos
+            </button>
+          </div>
+        </div>
+
+        <!-- Add Host Selector Dropdown & Selected Chips -->
+        <div style="display: flex; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <label style="font-size: 12px; font-weight: 600; color: var(--text-muted);"><i class="fas fa-plus"></i> Adicionar Alvo:</label>
+            <select class="rc-host-select" id="remote-host-select" onchange="addHostToSelection()" style="background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); color: #fff; border-radius: 6px; padding: 4px 10px; font-size: 12px;"></select>
+          </div>
+
+          <!-- Container dos Chips de Alvos Ativos -->
+          <div class="host-chips-container" id="selected-hosts-chips" style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center; flex: 1;">
+            <!-- Chips dinâmicos dos nós ativos -->
+          </div>
+        </div>
+
+        <!-- Barra de Atalhos Rápidos por Região (Sincronizada) -->
+        <div class="rc-region-pills-bar" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; padding-top: 10px; border-top: 1px dashed rgba(255,255,255,0.08);">
+          <span style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">
+            <i class="fas fa-layer-group"></i> Atalhos Regionais:
+          </span>
+          <button type="button" class="btn btn-sm btn-secondary" onclick="selectGroup('Brasil')" style="font-size: 11px; padding: 3px 10px; border-radius: 12px;">
+            🇧🇷 Brasil (<span id="pill-count-brasil">22</span>)
+          </button>
+          <button type="button" class="btn btn-sm btn-secondary" onclick="selectGroup('Sul')" style="font-size: 11px; padding: 3px 10px; border-radius: 12px;">
+            📍 Região Sul (<span id="pill-count-sul">5</span>)
+          </button>
+          <button type="button" class="btn btn-sm btn-secondary" onclick="selectGroup('Sudeste')" style="font-size: 11px; padding: 3px 10px; border-radius: 12px;">
+            📍 Região Sudeste (<span id="pill-count-sudeste">15</span>)
+          </button>
+          <button type="button" class="btn btn-sm btn-secondary" onclick="selectGroup('Nordeste')" style="font-size: 11px; padding: 3px 10px; border-radius: 12px;">
+            📍 Região Nordeste (<span id="pill-count-nordeste">1</span>)
+          </button>
+          <button type="button" class="btn btn-sm btn-secondary" onclick="selectGroup('Centro-Oeste')" style="font-size: 11px; padding: 3px 10px; border-radius: 12px;">
+            📍 Centro-Oeste (<span id="pill-count-co">1</span>)
+          </button>
+        </div>
+      </div>
+
+      <!-- Sub-tabs Navigation -->
+
+
+
+      <div class="rc-subtabs-nav">
+
+
+
+        <button class="rc-subtab-btn active" data-target="rc-tab-console" onclick="switchRemoteTab('rc-tab-console', this)">
+
+
+
+          <i class="fas fa-terminal"></i> Console & Execução
+
+
+
+        </button>
+
+
+
+        <button class="rc-subtab-btn" data-target="rc-tab-create" onclick="switchRemoteTab('rc-tab-create', this)">
+
+
+
+          <i class="fas fa-plus-circle"></i> Criar Novo Comando
+
+
+
+        </button>
+
+
+
+        <button class="rc-subtab-btn" data-target="rc-tab-ai" onclick="switchRemoteTab('rc-tab-ai', this)">
+
+
+
+          <i class="fas fa-brain text-purple"></i> Sugestões da IA de Diagnóstico
+
+
+
+        </button>
+
+
+
+        <button class="rc-subtab-btn" data-target="rc-tab-groups" onclick="switchRemoteTab('rc-tab-groups', this)">
+
+
+
+          <i class="fas fa-layer-group text-blue"></i> 📍 Grupos por Região & País
+
+
+
+        </button>
+        <button class="rc-subtab-btn" data-target="rc-tab-queue" onclick="switchRemoteTab('rc-tab-queue', this)">
+          <i class="fas fa-tasks text-cyan"></i> 📋 Fila de Execução & Acompanhamento (<span id="rc-queue-count">0</span>)
+        </button>
+
+
+
+      </div>
+
+
+
+
+
+
+
+      <!-- Subtab 1: Console & Execução (3 Colunas) -->
+
+
+
+      <div id="rc-tab-console" class="rc-subtab-content active" style="display: block;">
+
+
+
+        <div class="rc-console-grid">
+
+
+
+
+
+
+
+          <!-- Coluna 1: Comandos Pré-Definidos de Consulta -->
+
+
+
+          <div>
+
+
+
+            <div class="panel-header" style="margin-bottom: 12px;">
+
+
+
+              <div class="panel-title" style="font-size: 14px;"><span>🔍</span> Consultas Rápidas</div>
+
+
+
+            </div>
+
+
+
+            <div class="rc-column-panel" id="rc-consultas-cards">
+
+
+
+              <!-- Cards de Consultas renderizados dinamicamente -->
+
+
+
+            </div>
+
+
+
+          </div>
+
+
+
+
+
+
+
+          <!-- Coluna 2 (Centro): Terminal PowerShell / CMD e Resultados -->
+
+
+
+          <div class="rc-terminal-container">
+
+
+
+            <div class="rc-terminal-header">
+
+
+
+              <div style="display: flex; align-items: center; gap: 10px;">
+
+
+
+                <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #22c55e;"></span>
+
+
+
+                <span style="font-size: 12px; font-weight: 600; color: #94a3b8;">Terminal Remoto</span>
+
+
+
+              </div>
+
+
+
+              <div class="rc-shell-switch">
+
+
+
+                <button class="shell-type-btn active" data-shell="powershell" onclick="setShellType('powershell')">PowerShell</button>
+
+
+
+                <button class="shell-type-btn" data-shell="cmd" onclick="setShellType('cmd')">CMD Prompt</button>
+
+
+
+              </div>
+
+
+
+            </div>
+
+
+
+
+
+
+
+                        <!-- Co-Piloto Conversacional de Engenharia (Linguagem Natural -> PowerShell Seguro) -->
+            <div style="background: rgba(99, 102, 241, 0.12); border: 1px solid rgba(99, 102, 241, 0.35); border-radius: 8px; margin: 10px 16px; padding: 10px 14px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
+                <span style="font-size: 11px; font-weight: 700; color: #a5b4fc; text-transform: uppercase;">
+                  <i class="fas fa-magic text-purple"></i> Co-Piloto de Engenharia IA (Linguagem Natural &rarr; PowerShell Seguro)
+                </span>
+                <span style="font-size: 10px; color: var(--text-muted);">Zero Custo • Validação de Blast Radius</span>
+              </div>
+              <div style="display: flex; gap: 8px;">
+                <input type="text" id="rc-copilot-input" class="form-input" style="flex: 1; font-size: 12px; background: rgba(0,0,0,0.5);" placeholder="Ex: Verifique se o processo da Atria consumiu mais de 2GB de RAM e se há erros no Event Viewer..." onkeyup="if(event.key==='Enter') compileCopilotPrompt()">
+                <button type="button" class="btn-primary" onclick="compileCopilotPrompt()" style="padding: 6px 14px; font-size: 11px; background: linear-gradient(135deg, #6366f1, #4f46e5); font-weight: 700; white-space: nowrap;">
+                  <i class="fas fa-brain"></i> Compilar Comando
+                </button>
+                <button type="button" class="btn-primary" onclick="compileAndRunCopilotPrompt()" style="padding: 6px 14px; font-size: 11px; background: linear-gradient(135deg, #2563eb, #1d4ed8); font-weight: 700; white-space: nowrap;" title="Compilar comando e disparar execução imediatamente">
+                  <i class="fas fa-bolt"></i> ⚡ Compilar &amp; Executar
+                </button>
+              </div>
+              <div id="rc-copilot-preview-box" style="display: none; margin-top: 8px; padding: 8px 10px; background: rgba(0,0,0,0.4); border-radius: 6px; border: 1px solid rgba(255,255,255,0.08);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                  <span id="rc-copilot-badge" class="badge" style="font-size: 10px; font-weight: 700; background: rgba(16, 185, 129, 0.2); color: #10b981; border: 1px solid #10b981;">🟢 SEGURO (APENAS LEITURA)</span>
+                  <div style="display: flex; gap: 6px;">
+                    <button type="button" class="btn-secondary" onclick="applyCopilotCompiledCommand()" style="padding: 2px 8px; font-size: 10px; color: #38bdf8; border-color: #38bdf8;">
+                      <i class="fas fa-level-down-alt"></i> Inserir no Editor
+                    </button>
+                    <button type="button" class="btn-primary" onclick="applyAndExecuteCopilotCommand()" style="padding: 2px 10px; font-size: 10px; background: linear-gradient(135deg, #2563eb, #1d4ed8); font-weight: 700;">
+                      <i class="fas fa-bolt"></i> Executar Agora
+                    </button>
+                  </div>
+                </div>
+                <div id="rc-copilot-desc" style="font-size: 11px; color: #cbd5e1; margin-bottom: 4px;"></div>
+                <pre id="rc-copilot-code" style="margin: 0; font-family: monospace; font-size: 11px; color: #34d399; white-space: pre-wrap; word-break: break-all;"></pre>
+              </div>
+            </div>
+
+            <div class="rc-terminal-input-wrapper">
+
+
+
+              <div id="terminal-prompt-label" style="font-family: 'Consolas', monospace; font-size: 12px; color: #38bdf8; margin-bottom: 6px;">PS C:\MediaDNA_V2&gt;</div>
+
+
+
+              <textarea id="rc-terminal-input" class="rc-terminal-input" placeholder="Digite comandos livres (ex: Get-Process | select -first 5, dir D:\MediaDNA_V2, Get-Service...)" spellcheck="false"></textarea>
+
+
+
+            </div>
+
+
+
+
+
+
+
+                        <div class="rc-terminal-actions">
+              <div style="display: flex; gap: 8px;">
+                <button class="btn-secondary" onclick="clearTerminalEditor()"><i class="fas fa-eraser"></i> Limpar</button>
+                <button class="btn-secondary" onclick="copyTerminalCommand()"><i class="fas fa-copy"></i> Copiar</button>
+                <button class="btn-secondary" id="btn-validate-syntax" onclick="validateTerminalSyntax()" style="border-color: rgba(56, 189, 248, 0.4); color: #38bdf8;">
+                  <i class="fas fa-vial"></i> Validar Sintaxe / Dry-Run
+                </button>
+              </div>
+              <button class="btn-primary" id="btn-run-remote-cmd" onclick="executeTerminalCommand()" style="padding: 8px 20px; font-weight: 700; background: linear-gradient(135deg, #2563eb, #1d4ed8);">
+                <i class="fas fa-bolt"></i> <span id="btn-run-cmd-label">Executar na(s) Praça(s)</span>
+              </button>
+            </div>
+
+            <!-- Syntax Validation & Dry-Run Feedback Box -->
+            <div id="rc-syntax-validation-box" style="display: none; margin: 10px 16px; padding: 10px 14px; border-radius: 6px; font-size: 12px; line-height: 1.45;"></div>
+
+
+
+
+
+
+
+            <!-- Header dos Resultados e Exportação -->
+
+
+
+            <div style="padding: 10px 16px; background: #0c1222; border-bottom: 1px solid #1e293b; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+
+
+
+              <span style="font-size: 12px; font-weight: 600; color: #94a3b8;"><i class="fas fa-satellite-dish"></i> Retorno em Tempo Real:</span>
+
+
+
+              <div style="display: flex; gap: 8px;">
+
+
+
+                <button class="btn-secondary btn-export-rc" onclick="exportExecutionResults('txt')" disabled><i class="fas fa-file-alt"></i> Exportar TXT</button>
+
+
+
+                <button class="btn-secondary btn-export-rc" onclick="exportExecutionResults('csv')" disabled><i class="fas fa-file-excel"></i> Exportar Excel / CSV</button>
+                <button type="button" class="btn-secondary btn-export-rc" id="btn-synthesize-multihost" onclick="synthesizeMultiHostOutput()" style="border-color: rgba(99,102,241,0.5); color: #a5b4fc;" disabled><i class="fas fa-wand-magic-sparkles"></i> ✨ Sintetizar Retorno Multi-Host</button>
+
+
+
+              </div>
+
+
+
+            </div>
+
+
+
+
+
+
+
+            <!-- Abas por Host dos Resultados -->
+
+
+
+            <div id="rc-results-host-tabs" style="padding: 8px 16px; background: #080c14; border-bottom: 1px solid #1e293b; display: flex; flex-wrap: wrap;"></div>
+
+
+
+
+
+
+
+            <!-- Output Box -->
+
+
+
+            <div class="rc-console-output-box" id="rc-console-output">
+
+
+
+              <div class="text-muted" style="padding: 10px;">Aguardando envio de comando... Selecione as praças e clique em Executar.</div>
+
+
+
+            </div>
+
+
+
+          </div>
+
+
+
+
+
+
+
+          <!-- Coluna 3: Comandos Pré-Definidos de Correção e Auto-Cura -->
+
+
+
+          <div>
+
+
+
+            <div class="panel-header" style="margin-bottom: 12px;">
+
+
+
+              <div class="panel-title" style="font-size: 14px;"><span>🛠️</span> Correções & Self-Healing</div>
+
+
+
+            </div>
+
+
+
+            <div class="rc-column-panel" id="rc-correcoes-cards">
+
+
+
+              <!-- Cards de Correções renderizados dinamicamente -->
+
+
+
+            </div>
+
+
+
+          </div>
+
+
+
+
+
+
+
+        </div>
+
+
+
+      </div>
+
+
+
+
+
+
+
+      <!-- Subtab 2: Criar Novo Comando Pré-Definido -->
+
+
+
+      <div id="rc-tab-create" class="rc-subtab-content" style="display: none;">
+
+
+
+        <div class="panel-card" style="max-width: 800px; margin: 0 auto;">
+
+
+
+          <div class="panel-header">
+
+
+
+            <div class="panel-title"><span>➕</span> Salvar Novo Comando no Catálogo da Equipe</div>
+
+
+
+          </div>
+
+
+
+          <form id="form-create-remote-cmd" onsubmit="saveCustomCommand(event)">
+            <div class="form-group">
+              <label class="form-label">Título do Comando</label>
+              <input type="text" class="form-input" id="new-cmd-title" placeholder="Ex: Reiniciar Tuner TBS #1" required>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Descrição / Finalidade</label>
+              <input type="text" class="form-input" id="new-cmd-desc" placeholder="Ex: Força o reload do driver de captura digital USB/PCIe">
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+              <div class="form-group">
+                <label class="form-label">Categoria</label>
+                <select class="form-input" id="new-cmd-category" onchange="onCategoryChange(this.value)">
+                  <option value="consulta">🔍 Consulta e Diagnóstico (Read-Only)</option>
+                  <option value="correcao">🛠️ Correção e Auto-Cura (Modificação)</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Nível de Criticidade (Risco)</label>
+                <select class="form-input" id="new-cmd-criticality" onchange="onCriticalityChange(this.value)">
+                  <option value="informativo">🟢 Informativo (Verde) - Consulta Read-Only</option>
+                  <option value="operacional">🟡 Operacional (Amarelo) - Ação com Impacto Controlado</option>
+                  <option value="critico">🔴 Crítico / Destrutivo (Vermelho) - Reinicialização / Expurgo</option>
+                </select>
+              </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+              <div class="form-group">
+                <label class="form-label">Interpretador (Shell)</label>
+                <select class="form-input" id="new-cmd-shell">
+                  <option value="powershell">PowerShell (.ps1)</option>
+                  <option value="cmd">Prompt do CMD (.bat/.cmd)</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Variáveis de Template Aceitas (Opcional)</label>
+                <input type="text" class="form-input" id="new-cmd-template-vars" placeholder="Ex: $CanalId, $Horas, $Servico">
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 3px;">Declare variáveis para parametrização dinâmica do script.</div>
+              </div>
+            </div>
+
+            <!-- Trava de Segurança Obrigatória para Comandos Críticos -->
+            <div class="form-group" id="grp-new-cmd-confirm-check" style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px; padding: 10px 14px; margin-bottom: 16px;">
+              <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; color: #fca5a5; cursor: pointer; margin: 0;">
+                <input type="checkbox" id="new-cmd-requires-confirm" style="width: 16px; height: 16px;">
+                <span>🔒 Exigir confirmação de segurança com palavra-chave ('EXECUTAR') antes da execução remota</span>
+              </label>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Script / Comando a Executar</label>
+
+
+
+              <textarea class="form-input" id="new-cmd-script" rows="6" style="font-family: 'Consolas', monospace;" placeholder="Get-Service -Name DNA.* | Restart-Service" required></textarea>
+
+
+
+            </div>
+
+
+
+            <button type="submit" class="btn-primary" style="width: 100%;"><i class="fas fa-save"></i> Salvar no Catálogo</button>
+
+
+
+          </form>
+
+
+
+        </div>
+
+
+
+      </div>
+
+
+
+
+
+
+
+      <!-- Subtab 3: Sugestões Inteligentes da IA -->
+
+
+
+      <div id="rc-tab-ai" class="rc-subtab-content" style="display: none;">
+
+
+
+        <div class="panel-header" style="margin-bottom: 16px;">
+
+
+
+          <div class="panel-title"><span>🧠</span> Comandos Sugeridos pela Inteligência Artificial Baseados no Parque</div>
+
+
+
+          <button class="btn-secondary" onclick="loadAiCommandSuggestions(true)"><i class="fas fa-sync-alt"></i> Atualizar Análise da IA</button>
+
+
+
+        </div>
+
+
+
+        <div class="ai-cmd-grid" id="rc-ai-suggestions-container">
+
+
+
+          <!-- Cards gerados pela IA -->
+
+
+
+        </div>
+
+
+
+      </div>
+
+
+
+
+
+
+
+      <!-- Subtab 4: Grupos por Região & País -->
+
+
+
+      <div id="rc-tab-groups" class="rc-subtab-content" style="display: none;">
+
+
+
+        <div class="panel-header" style="margin-bottom: 16px;">
+
+
+
+          <div>
+
+
+
+            <div class="panel-title"><span>📍</span> Grupos de Execução Rápida por Região e País</div>
+
+
+
+            <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Selecione praças em lote com 1 clique para automações, diagnósticos e deploys regionais</div>
+
+
+
+          </div>
+
+
+
+        </div>
+
+
+
+        <div class="ai-cmd-grid" id="rc-groups-grid-container">
+
+
+
+          <!-- Cards de Grupos Regionais e País renderizados dinamicamente via remote_commands.js -->
+
+
+
+        </div>
+
+
+
+      </div>
+
+
+
+    
+      <!-- Subtab 5: Fila de Execução & Acompanhamento de Comandos -->
+      <div id="rc-tab-queue" class="rc-subtab-content" style="display: none;">
+        <div class="panel-header" style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+          <div>
+            <div class="panel-title" style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 18px;">📋</span> Fila de Execução & Acompanhamento em Tempo Real
+              <span class="badge badge-blue" id="rcQueueActiveBadge">0 Ativos</span>
+            </div>
+            <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+              Histórico detalhado de comandos disparados, progresso de execução nas praças, logs de saída e telemetria de resposta
+            </div>
+          </div>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <select id="rcQueueStatusFilter" class="form-input" style="padding: 6px 10px; font-size: 12px;" onchange="loadRemoteExecutionsQueue()">
+              <option value="all">Todos os Status</option>
+              <option value="em_execucao">⏳ Em Execução</option>
+              <option value="concluido">✅ Concluídos</option>
+              <option value="falha">❌ Com Falha</option>
+            </select>
+            <button class="btn-secondary" style="padding: 6px 12px; font-size: 12px;" onclick="loadRemoteExecutionsQueue()">
+              <i class="fas fa-sync-alt"></i> Atualizar Fila
+            </button>
+          </div>
+        </div>
+
+        <div class="table-responsive">
+          <table class="table" style="width: 100%; border-collapse: collapse;">
+            <thead>
+              <tr style="border-bottom: 1px solid rgba(255,255,255,0.08); text-align: left; font-size: 11px; text-transform: uppercase; color: var(--text-muted);">
+                <th style="padding: 10px;">ID / Horário</th>
+                <th style="padding: 10px;">Título do Comando / Ação</th>
+                <th style="padding: 10px;">Shell</th>
+                <th style="padding: 10px;">Operador</th>
+                <th style="padding: 10px;">Praças Alvo</th>
+                <th style="padding: 10px;">Duração Média</th>
+                <th style="padding: 10px;">Status</th>
+                <th style="padding: 10px; text-align: center;">Ações</th>
+              </tr>
+            </thead>
+            <tbody id="rcQueueTableBody">
+              <tr>
+                <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 24px;">Carregando fila de execuções...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+
+
+
+
+
+
+  
+    <!-- ============================================================================== -->
+    <!-- TAB: MONITORAMENTO DE LINK & CAPACIDADE DE UPLOAD DOS CAPTURE SITES            -->
+    <!-- ============================================================================== -->
+    <section class="content-section" id="tab-network">
+      <!-- KPIs de Conectividade de Rede -->
+      <div class="kpi-grid" style="margin-bottom: 20px;">
+        <div class="kpi-card blue">
+          <div class="kpi-icon">🚀</div>
+          <div class="kpi-info">
+            <div class="kpi-value" id="kpiNetAvgUpload">-- Mbps</div>
+            <div class="kpi-label">Throughput Médio de Upload</div>
+          </div>
+        </div>
+        <div class="kpi-card purple">
+          <div class="kpi-icon">💾</div>
+          <div class="kpi-info">
+            <div class="kpi-value" id="kpiNetTotalVolume24h">-- GB</div>
+            <div class="kpi-label">Volume Gerado em 24h</div>
+          </div>
+        </div>
+        <div class="kpi-card green">
+          <div class="kpi-icon">📦</div>
+          <div class="kpi-info">
+            <div class="kpi-value" id="kpiNetSlaSentPct">--%</div>
+            <div class="kpi-label">Mídias no Prazo (.SENT &lt; 10min)</div>
+          </div>
+        </div>
+        <div class="kpi-card red">
+          <div class="kpi-icon">⚠️</div>
+          <div class="kpi-info">
+            <div class="kpi-value" id="kpiNetAtRiskCount">0 CS</div>
+            <div class="kpi-label">Capture Sites com Risco de Gargalo</div>
+          </div>
+        </div>
+      </div>
+
       <!-- Barra de Filtros de Rede -->
       <div class="panel-card" style="margin-bottom: 18px; padding: 14px;">
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
@@ -7843,7 +9731,7 @@
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
           <div style="background: rgba(0,0,0,0.3); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color);">
             <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Versão Instalada</div>
-            <div id="sys-update-local-version" style="font-size: 14px; font-weight: 700; color: #38bdf8; margin-top: 2px;">v3.9.60 (<span id="sys-update-local-sha">...</span>)</div>
+            <div id="sys-update-local-version" style="font-size: 14px; font-weight: 700; color: #38bdf8; margin-top: 2px;">v3.9.62 (<span id="sys-update-local-sha">...</span>)</div>
           </div>
           <div style="background: rgba(0,0,0,0.3); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color);">
             <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Última Versão no GitHub</div>
@@ -7997,6 +9885,7 @@
               <strong style="color: #c084fc;">TBS Quad DVB/ISDB-T</strong>
             </div>
           </div>
+          <button type="button" class="btn-primary" onclick="openTopologyAiTradeoffModal()" style="display: inline-flex; align-items: center; gap: 6px; font-size: 11px; padding: 6px 12px; background: linear-gradient(135deg, #7c3aed, #2563eb); border: none; font-weight: 700; border-radius: var(--radius-sm); cursor: pointer; white-space: nowrap;" title="Otimização de apontamento e trade-off com IA para torres dispersas em azimutes opostos"><i class="fas fa-brain"></i> ✨ Aprimorar Análise com IA</button>
           <button type="button" class="btn-secondary" style="padding: 6px 12px; font-weight: 700;" onclick="closeMarketRfModal()">✕</button>
         </div>
       </div>
@@ -8124,17 +10013,17 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=3.9.61"></script>
-  <script src="/static/js/ai_insights.js?v=3.9.61"></script>
-  <script src="/static/js/fleet_ops.js?v=3.9.61"></script>
-  <script src="/static/js/remote_commands.js?v=3.9.61"></script>
-  <script src="/static/js/signals_analysis.js?v=3.9.61"></script>
-  <script src="/static/js/mosaic_wall.js?v=3.9.61"></script>
-  <script src="/static/js/topology_map.js?v=3.9.61"></script>
-  <script src="/static/js/network_link.js?v=3.9.40"></script>
-  <script src="/static/js/fiscalizacao.js?v=3.9.49"></script>
-  <script src="/static/js/classificador_falhas.js?v=3.9.50"></script>
-  <script src="/static/js/audio_sync.js?v=3.9.58"></script>
+  <script src="/static/js/app.js?v=3.9.62"></script>
+  <script src="/static/js/ai_insights.js?v=3.9.62"></script>
+  <script src="/static/js/fleet_ops.js?v=3.9.62"></script>
+  <script src="/static/js/remote_commands.js?v=3.9.62"></script>
+  <script src="/static/js/signals_analysis.js?v=3.9.62"></script>
+  <script src="/static/js/mosaic_wall.js?v=3.9.62"></script>
+  <script src="/static/js/topology_map.js?v=3.9.62"></script>
+  <script src="/static/js/network_link.js?v=3.9.62"></script>
+  <script src="/static/js/fiscalizacao.js?v=3.9.62"></script>
+  <script src="/static/js/classificador_falhas.js?v=3.9.62"></script>
+  <script src="/static/js/audio_sync.js?v=3.9.62"></script>
 
 <!-- MODAL: DIAGNÓSTICO DE IA DE LINK & CONECTIVIDADE DE REDE -->
   <div class="modal-overlay" id="networkAiDiagModal" style="display: none; align-items: center; justify-content: center; z-index: 10000;">
@@ -8284,7 +10173,7 @@
 
       <!-- Modal Footer -->
       <div style="padding: 14px 20px; background: rgba(15, 23, 42, 0.95); border-top: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center;">
-        <span style="font-size: 11px; color: var(--text-muted);">MediaDNA Incident Cockpit • Handover Engine v3.9.60</span>
+        <span style="font-size: 11px; color: var(--text-muted);">MediaDNA Incident Cockpit • Handover Engine v3.9.62</span>
         <div style="display: flex; gap: 10px;">
           <button type="button" class="btn-secondary" onclick="closeHandoverReportModal()" style="padding: 8px 16px;">Fechar</button>
           <button type="button" class="btn-primary" onclick="copyHandoverReportToClipboard()" style="padding: 8px 18px; background: linear-gradient(135deg, #4f46e5, #2563eb); font-weight: 700; display: flex; align-items: center; gap: 8px;">
@@ -8455,6 +10344,34 @@
 
       <div style="display: flex; justify-content: flex-end; gap: 8px;">
         <button type="button" class="btn-secondary" onclick="closeAudioSyncDetailModal()" style="padding: 7px 16px; font-size: 12px;">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+
+<!-- MODAL: OTIMIZAÇÃO DE APONTAMENTO & TRADE-OFF MULTI-TORRE COM IA -->
+  <div class="modal-overlay" id="topologyAiTradeoffModal" style="display: none; align-items: center; justify-content: center; z-index: 10005;">
+    <div class="modal" style="max-width: 920px; width: 95%; max-height: 90vh; display: flex; flex-direction: column; background: #0b1329; border: 1px solid rgba(168, 85, 247, 0.5); border-radius: 12px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.9); overflow: hidden; padding: 0;">
+      <!-- Topo -->
+      <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px 22px; border-bottom: 1px solid rgba(255,255,255,0.08); background: linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.9)); flex-shrink: 0;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <span style="font-size: 26px;">🧠</span>
+          <div>
+            <h3 style="margin: 0; font-size: 16px; font-weight: 800; color: #fff;" id="topoAiTradeoffModalTitle">Otimização de Apontamento &amp; Trade-Off Multi-Torre com IA</h3>
+            <div style="font-size: 11px; color: #38bdf8;" id="topoAiTradeoffModalSub">Análise de geometria vetorial, lóbulos de irradiação e soluções de hardware para torres dispersas</div>
+          </div>
+        </div>
+        <button type="button" class="btn-secondary" onclick="closeTopologyAiTradeoffModal()" style="padding: 5px 12px; font-size: 13px; font-weight: 700;">✕</button>
+      </div>
+
+      <!-- Conteúdo Scrollável -->
+      <div style="padding: 22px; overflow-y: auto; flex: 1;" id="topoAiTradeoffModalBody">
+      </div>
+
+      <!-- Rodapé -->
+      <div style="padding: 12px 22px; border-top: 1px solid rgba(255,255,255,0.08); background: rgba(15, 23, 42, 0.8); display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
+        <span style="font-size: 11px; color: #94a3b8;"><i class="fas fa-microchip" style="color: #c084fc;"></i> Motor Heurístico Gemini Pro • ITU-R P.1546 / ABERT ISDB-Tb</span>
+        <button type="button" class="btn-secondary" onclick="closeTopologyAiTradeoffModal()" style="padding: 6px 18px; font-size: 12px;">Fechar Laudo</button>
       </div>
     </div>
   </div>

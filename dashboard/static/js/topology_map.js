@@ -906,8 +906,13 @@ function renderRfModalChannelsTable(market) {
                 <div style="color: var(--text-muted);">${c.rx_level_expected_dbm} dBm</div>
             </td>
             <td style="padding: 6px 6px; white-space: nowrap;">
-                <strong style="color: ${signalColor}; font-size: 11px;">${c.rx_level_measured_pct}%</strong>
-                <div style="font-size: 9px; color: var(--text-muted);">Q: ${c.signal_quality_pct || c.rx_level_measured_pct}%</div>
+                ${(c.rx_level_measured_pct === 0 && (c.rx_quality_pct === 0 || !c.rx_quality_pct)) ? `
+                    <strong style="color: #ef4444; font-size: 11px;">0% (Sem Sinal)</strong>
+                    <div style="font-size: 9px; color: #ef4444; font-weight: 700;">Perda de Lock</div>
+                ` : `
+                    <strong style="color: ${signalColor}; font-size: 11px;">${c.rx_level_measured_pct}%</strong>
+                    <div style="font-size: 9px; color: var(--text-muted);">Q: ${c.rx_quality_pct != null ? c.rx_quality_pct : (c.signal_quality_pct || c.rx_level_measured_pct)}%</div>
+                `}
             </td>
             <td style="padding: 6px 6px;">
                 <span class="${badgeClass}" style="font-size: 9.5px;">${escapeHtml(c.los_status)}</span>
@@ -2166,3 +2171,143 @@ function jumpToCityIncidents() {
     }
 }
 window.jumpToCityIncidents = jumpToCityIncidents;
+
+
+// ==============================================================================
+// MOTOR DE IA: OTIMIZAÇÃO DE APONTAMENTO & TRADE-OFF MULTI-TORRE
+// ==============================================================================
+
+async function openTopologyAiTradeoffModal() {
+    const modal = document.getElementById("topologyAiTradeoffModal");
+    const body = document.getElementById("topoAiTradeoffModalBody");
+    const title = document.getElementById("topoAiTradeoffModalTitle");
+    if (!modal || !body) return;
+
+    modal.style.display = "flex";
+    const currentMarket = (typeof currentRfModalMarket !== "undefined" && currentRfModalMarket) ? currentRfModalMarket : null;
+    const cidade = currentMarket ? currentMarket.cidade : (document.getElementById("rfModalTitle")?.textContent.replace("Perfil Geográfico & Topografia RF — ", "").split("—")[0].trim() || "Praça Atual");
+    if (title) title.innerHTML = `🧠 Otimização de Apontamento & Trade-Off Multi-Torre • <span style="color: #38bdf8;">${escapeHtml(cidade)}</span>`;
+
+    body.innerHTML = `
+        <div style="text-align: center; padding: 60px 20px; color: #c084fc;">
+            <i class="fas fa-brain fa-spin fa-3x" style="color: #a855f7; margin-bottom: 16px;"></i>
+            <h4 style="color: #fff; margin: 0 0 8px 0; font-size: 17px; font-weight: 800;">IA Gemini Analisando Geometria de Enlaces & Lóbulos RF...</h4>
+            <p style="color: #94a3b8; font-size: 12px; max-width: 580px; margin: 0 auto; line-height: 1.5;">
+                Avaliando a dispersão angular das torres transmissoras, cálculo de atenuação por razão frente-costas (Front-to-Back Ratio) e simulando soluções de hardware (Antenas Bidirecionais, Dual-Antenna e Combinadores Seletivos).
+            </p>
+        </div>
+    `;
+
+    try {
+        const token = (typeof getAuthToken === "function") ? getAuthToken() : (localStorage.getItem("fleet_token") || localStorage.getItem("token") || "");
+        const resp = await fetch("/api/topology/ai-aiming-tradeoff", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...(token ? { "Authorization": `Bearer ${token}` } : {})
+            },
+            body: JSON.stringify({
+                cidade: cidade,
+                current_mast_m: (typeof currentSimulatedMastM !== "undefined" && currentSimulatedMastM) ? currentSimulatedMastM : 25.0
+            })
+        });
+
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        const data = await resp.json();
+        renderTopologyAiTradeoffResult(data);
+    } catch (err) {
+        body.innerHTML = `
+            <div style="text-align: center; padding: 40px; color: #ef4444;">
+                <i class="fas fa-exclamation-triangle fa-3x" style="margin-bottom: 12px;"></i>
+                <h4 style="color: #fff; margin: 0 0 8px 0;">Erro ao gerar laudo com IA</h4>
+                <p style="color: #94a3b8; font-size: 12px;">${escapeHtml(err.message)}</p>
+                <button class="btn-secondary" onclick="openTopologyAiTradeoffModal()" style="margin-top: 14px; padding: 6px 14px;">Tentar Novamente</button>
+            </div>
+        `;
+    }
+}
+window.openTopologyAiTradeoffModal = openTopologyAiTradeoffModal;
+
+window.closeTopologyAiTradeoffModal = function() {
+    const modal = document.getElementById("topologyAiTradeoffModal");
+    if (modal) modal.style.display = "none";
+};
+
+function renderTopologyAiTradeoffResult(data) {
+    const body = document.getElementById("topoAiTradeoffModalBody");
+    if (!body) return;
+
+    const hasConflict = data.has_aiming_conflict;
+    const spread = data.angular_spread_deg || 0;
+    const clusters = data.clusters || [];
+
+    const conflictColor = hasConflict ? "#ef4444" : "#10b981";
+    const conflictBadge = hasConflict 
+        ? `<span class="badge badge-red" style="font-size: 11px; padding: 3px 8px;"><i class="fas fa-exclamation-triangle"></i> Conflito Crítico Multi-Torre (${spread}° de Dispersão)</span>`
+        : `<span class="badge badge-green" style="font-size: 11px; padding: 3px 8px;"><i class="fas fa-check-circle"></i> Geometria Concentrada (${spread}° de Dispersão)</span>`;
+
+    let reportHtml = escapeHtml(data.ai_report_markdown || "");
+    reportHtml = reportHtml
+        .replace(/^### (.*$)/gim, '<h4 style="color: #38bdf8; font-size: 14px; font-weight: 800; margin: 18px 0 8px 0; border-bottom: 1px solid rgba(56, 189, 248, 0.2); padding-bottom: 4px;">$1</h4>')
+        .replace(/^#### (.*$)/gim, '<h5 style="color: #c084fc; font-size: 13px; font-weight: 700; margin: 14px 0 6px 0;">$1</h5>')
+        .replace(/\*\*(.*?)\*\*/g, '<strong style="color: #fff;">$1</strong>')
+        .replace(/\*(.*?)\*/g, '<em style="color: #cbd5e1;">$1</em>')
+        .replace(/^- (.*$)/gim, '<div style="margin-left: 12px; margin-bottom: 4px; font-size: 12px; color: #cbd5e1;">• $1</div>')
+        .replace(/---/g, '<hr style="border: none; border-top: 1px solid rgba(255,255,255,0.08); margin: 16px 0;">')
+        .replace(/\n/g, '<br>');
+
+    body.innerHTML = `
+        <!-- Faixa de Resumo e Dispersão Angular -->
+        <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid ${conflictColor}; border-left: 5px solid ${conflictColor}; border-radius: 8px; padding: 14px 18px; margin-bottom: 18px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 8px;">
+                <div style="font-size: 14px; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 8px;">
+                    <span>📐 Geometria de Apontamento &amp; Cobertura</span>
+                    ${conflictBadge}
+                </div>
+                <div style="font-size: 12px; color: #94a3b8; font-family: monospace;">
+                    Mastro: <strong style="color: #38bdf8;">${data.current_mast_m}m</strong> | Canais: <strong style="color: #fff;">${data.total_channels}</strong>
+                </div>
+            </div>
+            <div style="font-size: 12px; color: #cbd5e1; line-height: 1.4;">
+                ${escapeHtml(data.actionable_summary || "")}
+            </div>
+        </div>
+
+        <!-- Clusters de Torres Identificados -->
+        <div style="margin-bottom: 18px;">
+            <h4 style="font-size: 13px; font-weight: 800; color: #fff; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 10px 0; display: flex; align-items: center; gap: 6px;">
+                <i class="fas fa-project-diagram" style="color: #a855f7;"></i> Centros de Irradiação (Clusters de Azimute)
+            </h4>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px;">
+                ${clusters.map((cl, i) => {
+                    const clColor = i === 0 ? "#38bdf8" : (i === 1 ? "#f59e0b" : "#ec4899");
+                    return `
+                    <div style="background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(255,255,255,0.08); border-top: 3px solid ${clColor}; border-radius: 8px; padding: 12px 14px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <strong style="color: ${clColor}; font-size: 13px;">${escapeHtml(cl.id)} • ${escapeHtml(cl.cardinal || 'Direção')}</strong>
+                            <span class="badge" style="background: rgba(255,255,255,0.08); font-family: monospace; font-size: 11px; font-weight: 700; color: #fff;">Az ${cl.avg_azimuth}°</span>
+                        </div>
+                        <div style="font-size: 11px; color: #94a3b8; margin-bottom: 6px;">
+                            Distância Média: <strong style="color: #e2e8f0;">${cl.avg_dist_km} km</strong> | Nível TBS Médio: <strong style="color: ${cl.avg_level_pct >= 50 ? '#10b981' : '#ef4444'};">${cl.avg_level_pct}%</strong>
+                        </div>
+                        <div style="font-size: 11px; color: #cbd5e1; font-weight: 600;">
+                            Canais no Cluster: <span style="color: #fff;">${cl.channel_names.map(name => escapeHtml(name)).join(", ")}</span>
+                        </div>
+                    </div>
+                    `;
+                }).join("")}
+            </div>
+        </div>
+
+        <!-- Parecer Completo da IA Gemini Pro -->
+        <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(168, 85, 247, 0.35); border-radius: 10px; padding: 20px; box-shadow: inset 0 2px 8px rgba(0,0,0,0.4);">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+                <i class="fas fa-certificate" style="color: #facc15; font-size: 16px;"></i>
+                <h4 style="margin: 0; font-size: 14px; font-weight: 800; color: #fff;">Laudo Técnico de Engenharia de RF e Playbook de Campo</h4>
+            </div>
+            <div style="font-size: 12.5px; line-height: 1.6; color: #e2e8f0;">
+                ${reportHtml}
+            </div>
+        </div>
+    `;
+}

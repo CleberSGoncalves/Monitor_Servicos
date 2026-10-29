@@ -248,11 +248,28 @@ async function onSignalsPracaChanged() {
         ];
     }
 
+    const distinctCs = Array.from(new Set(channels.map(c => Number(c.id_cs || c.cs || 1)))).sort();
+    let csInfoPill = document.getElementById("signalsCsTopologyNotice");
+    if (!csInfoPill) {
+        csInfoPill = document.createElement("div");
+        csInfoPill.id = "signalsCsTopologyNotice";
+        csInfoPill.style.cssText = "font-size: 11px; margin-top: 5px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;";
+        canalSelect.parentElement.appendChild(csInfoPill);
+    }
+    if (distinctCs.length === 1) {
+        const csNum = distinctCs[0];
+        const csLabel = csNum === 2 ? "CS02 (BKP)" : (csNum === 1 ? "CS01 (Principal)" : `CS0${csNum}`);
+        csInfoPill.innerHTML = `<span class="badge badge-purple" style="font-size: 10px; font-weight: 700;">ℹ️ Topologia Single-CS: ${csLabel}</span> <span style="color: var(--text-muted); font-size: 10px;">(Nó único ativo em campo para esta praça)</span>`;
+    } else {
+        csInfoPill.innerHTML = `<span class="badge badge-blue" style="font-size: 10px; font-weight: 700;">✨ Praça Multi-CS: ${distinctCs.map(n => `CS0${n}`).join(" e ")}</span> <span style="color: var(--text-muted); font-size: 10px;">(Redundância física ativa)</span>`;
+    }
+
     canalSelect.innerHTML = channels.map(c => {
         const outageIcon = c.has_outage ? "⚠️ " : "";
         const q = (c.qualidade_sinal !== null && c.qualidade_sinal !== undefined) ? `${c.qualidade_sinal}%` : "N/A";
-        const csVal = c.id_cs || 1;
-        return `<option value="${escapeHtml(c.canal)}" data-cs="${csVal}">${outageIcon}${escapeHtml(c.canal)} (Q: ${q} | CS ${csVal})</option>`;
+        const csVal = Number(c.id_cs || c.cs || 1);
+        const csTag = csVal === 2 ? "CS 2 - BKP" : (csVal === 1 ? "CS 1 - Principal" : `CS ${csVal}`);
+        return `<option value="${escapeHtml(c.canal)}" data-cs="${csVal}">${outageIcon}${escapeHtml(c.canal)} (Q: ${q} | ${csTag})</option>`;
     }).join("");
 
     const problemChannel = channels.find(c => c.has_outage) || channels[0];
