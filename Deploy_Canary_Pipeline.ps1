@@ -73,17 +73,47 @@ function Get-AllServiceItems {
             if ($resp.value) { $items += $resp.value }
             $next = $resp.'@odata.nextLink'
         } catch {
-            Write-Host "Erro ao consultar itens: $($_.Exception.Message)" -ForegroundColor Red
+            Write-Host "Aviso: Consulta Graph API limitada/throttled ($($_.Exception.Message)). Usando cache local..." -ForegroundColor Yellow
             break
         }
     }
-    return $items | Where-Object {
+    $filtered = $items | Where-Object {
         $_.fields.Nome_Servico -and (
             $_.fields.Nome_Servico -eq $Srv -or
             $_.fields.Nome_Servico -eq "DNA.$Srv" -or
             $_.fields.Nome_Servico.Replace(" ", "").ToLower() -eq $Srv.Replace(" ", "").ToLower()
         )
     }
+
+    if (-not $filtered -or $filtered.Count -eq 0) {
+        $cachePath = Join-Path $PSScriptRoot "data\fleet_cache.json"
+        if (Test-Path $cachePath) {
+            Write-Host "Carregando registros do cache local ($cachePath)..." -ForegroundColor Cyan
+            $cacheJson = Get-Content $cachePath -Raw -Encoding UTF8 | ConvertFrom-Json
+            $filtered = $cacheJson.services | Where-Object {
+                $_.nome_servico -and (
+                    $_.nome_servico -eq $Srv -or
+                    $_.nome_servico -eq "DNA.$Srv" -or
+                    $_.nome_servico.Replace(" ", "").ToLower() -eq $Srv.Replace(" ", "").ToLower()
+                )
+            } | ForEach-Object {
+                [PSCustomObject]@{
+                    id = $_.id
+                    fields = [PSCustomObject]@{
+                        Nome_Servico = $_.nome_servico
+                        Hostname = $_.hostname
+                        Title = $_.hostname
+                        Versao_Instalada = $_.versao_instalada
+                        Versao_Desejada = $_.versao_desejada
+                        Status_Servico = $_.status_servico
+                        Acao_Solicitada = $_.acao_solicitada
+                    }
+                }
+            }
+        }
+    }
+
+    return $filtered
 }
 
 function Update-ItemVersionAndAction {

@@ -207,13 +207,14 @@ def sync_fleet_data():
             if not p_lower or (active_monitored_pracas and p_lower not in active_monitored_pracas):
                 continue  # Descarta cidades desativadas/não monitoradas (ex: Manaus)
 
-            # FILTRO DE TELEMETRIA FRESCA: Descarta registros órfãos sem atualização há mais de 3 horas
+            # FILTRO DE TELEMETRIA FRESCA: Preserva canais cadastrados da praça! Marca se telemetria estiver estagnada
+            is_stale = False
             at_str = str(f.get("Atualizacao", "") or "")
             if at_str:
                 try:
                     dt = datetime.fromisoformat(at_str.replace("Z", "+00:00"))
                     if (now_utc - dt).total_seconds() > 3 * 3600:
-                        continue  # Registro congelado/abandonado
+                        is_stale = True
                 except Exception:
                     pass
             is_frozen = "sim" in str(f.get("VideoCongelado", "")).lower()
@@ -277,7 +278,10 @@ def sync_fleet_data():
             is_degraded = False
             motivo = "Estável"
 
-            if is_frozen:
+            if is_stale:
+                has_outage = True
+                motivo = "Telemetria Estagnada (>3h sem reporte)"
+            elif is_frozen:
                 has_outage = True
                 motivo = "Vídeo Congelado"
             elif is_mute and not is_radio and not is_rec_mp3:
@@ -438,20 +442,29 @@ def sync_fleet_data():
         with _cache_lock:
             _cached_data["last_sync"] = datetime.now().isoformat()
             
-            # Guarda de integridade estrita para serviços: preserva dados se busca vier parcial ou vazia
-            if len(services_list) >= len(_cached_data.get("services", [])) * 0.5 or not _cached_data.get("services"):
-                _cached_data["services"] = services_list
-                _cached_data["stats"] = stats
-            else:
-                print(f"[SharePointSync Warning] Lista de servicos veio reduzida ({len(services_list)} itens). Preservando anteriores.", flush=True)
+            # 1. MERGE CUMULATIVO DE SERVIÇOS: Atualiza serviços recebidos e preserva os anteriores
+            existing_servs = {
+                (str(s.get("hostname", "")).strip().lower(), str(s.get("nome_servico", "")).strip().lower()): s
+                for s in _cached_data.get("services", [])
+            }
+            for s in services_list:
+                k = (str(s.get("hostname", "")).strip().lower(), str(s.get("nome_servico", "")).strip().lower())
+                existing_servs[k] = s
+            _cached_data["services"] = list(existing_servs.values())
+            _cached_data["stats"] = stats
 
-            # Guarda de integridade estrita para canais (Anti-Flicker de Incidentes): preserva cache se vier vazio ou reduzido por throttling
-            prev_channels = _cached_data.get("channels", [])
-            if len(channels_list) >= len(prev_channels) * 0.5 or not prev_channels:
-                _cached_data["channels"] = channels_list
-                _cached_data["recent_outages"] = outages
-            else:
-                print(f"[SharePointSync Alert] Busca de canais veio reduzida ({len(channels_list)} canais vs {len(prev_channels)} no cache). Preservando canais anteriores para evitar desaparecimento de incidentes.", flush=True)
+            # 2. MERGE CUMULATIVO DE CANAIS (Anti-Perda de Veículos): Atualiza canais e JAMAIS descarta os existentes
+            existing_chans = {
+                (str(c.get("cidade", "")).strip().lower(), str(c.get("canal", "")).strip().lower(), int(float(c.get("id_cs") or c.get("cs") or 1))): c
+                for c in _cached_data.get("channels", [])
+            }
+            for c in channels_list:
+                k = (str(c.get("cidade", "")).strip().lower(), str(c.get("canal", "")).strip().lower(), int(float(c.get("id_cs") or c.get("cs") or 1)))
+                existing_chans[k] = c
+            
+            _cached_data["channels"] = list(existing_chans.values())
+            _cached_data["recent_outages"] = [c for c in _cached_data["channels"] if c.get("has_outage")]
+            _cached_data["last_sync"] = now.isoformat()
 
         try:
             # So grava em disco se houver canais e servicos validos para nunca corromper o cache persistente com listas vazias

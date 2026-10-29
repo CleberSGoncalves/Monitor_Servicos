@@ -1,7 +1,7 @@
 {
-    "version": "3.9.62",
+    "version": "3.9.63",
     "agent_version": "1.0.18.0",
     "commit_sha": "auto",
-    "updated_at": "2026-10-29T04:20:00.000000",
-    "description": "v3.9.62 - Resolução de inconsistência de sinal de RF (remoção de fallback artificial de 78% na Topologia e esclarecimento de topologia Single-CS BKP); Módulo de IA para resolução de trade-offs de apontamento e dispersão angular multi-torre (apontamento bidirecional e combinadores seletivos); Correção de autenticação e feedback visual de carregamento no Classificador de Falhas (sub-abas 1 e 2); Expansão do Link WAN para 200+ estações da frota com visão 15 Piores (Foco NOC), filtros por Região/Praça/SLA e spinners de carregamento."
+    "updated_at": "2026-10-29T15:25:00.000000",
+    "description": "v3.9.63 - Restauração completa do canal de Cachoeiro de Itapemirim (Rede Globo UHF 21 515MHz BRES-CIM-DT02 CS02); Resolução definitiva de Throttling Microsoft Graph 429 com sincronização assíncrona a cada 180s e backoff exponencial; Implementação de Merge Cumulativo anti-perda de canais e serviços da frota; Remoção do descarte agressivo de telemetria estagnada (>3h); Calibração de limiares anti-ruído no ThresholdsManager (eliminação de 162 falsos positivos operacionais de RF e disco); Limpeza de blocos duplicados de abas no index.html."
 }

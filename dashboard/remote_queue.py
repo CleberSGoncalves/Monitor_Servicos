@@ -294,6 +294,34 @@ def trigger_canary_rollout_sharepoint(
             matching.append(it)
 
     if not matching:
+        # Fallback de alta resiliência para o cache do SharePoint já sincronizado
+        try:
+            from sharepoint_sync import get_cached_data
+            c_data = get_cached_data()
+            c_services = c_data.get("services", [])
+            for cs_item in c_services:
+                ns = (cs_item.get("nome_servico") or "").strip()
+                if ns.lower().replace(" ", "") in (
+                    service_name.lower().replace(" ", ""),
+                    f"dna.{service_name}".lower().replace(" ", ""),
+                    service_name.lower().replace("svc", "").replace(" ", ""),
+                ) or service_name.lower().replace("svc", "") in ns.lower():
+                    matching.append({
+                        "id": cs_item.get("id"),
+                        "fields": {
+                            "Nome_Servico": ns,
+                            "Hostname": cs_item.get("hostname"),
+                            "Title": cs_item.get("title") or cs_item.get("hostname"),
+                            "Versao_Instalada": cs_item.get("versao_instalada"),
+                            "Versao_Desejada": cs_item.get("versao_desejada"),
+                            "Status_Servico": cs_item.get("status_servico"),
+                            "Acao_Solicitada": cs_item.get("acao_solicitada"),
+                        }
+                    })
+        except Exception as e_cache:
+            logger.warning(f"Erro ao buscar do cache local: {e_cache}")
+
+    if not matching:
         return {"success": False, "detail": f"Nenhum registro encontrado para '{service_name}' no SharePoint."}
 
     candidates = []
