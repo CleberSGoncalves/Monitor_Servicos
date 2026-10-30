@@ -159,29 +159,26 @@ foreach ($item in $matchingItems) {
     if ($isUpToDate) {
         $upToDateCount++
         $diagnostico = "Atualizado ($instVer)"
+        $recomendacao = "Nenhuma"
     }
-    elseif ($isOffline) {
-        $hoursStr = [Math]::Round($diffHours, 1)
-        $diagnostico = "OFFLINE (Sem telemetria ha $hoursStr horas)"
-        $recomendacao = "Necessário Update Manual"
+    elseif ($updStatus -eq "Em Progresso") {
+        $diagnostico = "EM PROGRESSO (Agente executando atualizacao)"
+        $recomendacao = "Aguardar Ciclo"
     }
-    elseif ($isServiceStopped) {
+    elseif ($isServiceStopped -and $ServiceName -ne "DNA.MonitorServiceSVC") {
         $diagnostico = "SERVICO PARADO ($srvStatus)"
-        $recomendacao = "Necessário Update Manual"
-    }
-    elseif ($isError) {
-        $logErr = Get-LatestLogError -Hostname $hName -Srv $ServiceName
-        $diagnostico = if ($logErr) { "FALHA NO AGENTE ($logErr)" } else { "FALHA RECENTE NA ATUALIZACAO" }
-        $recomendacao = "Necessário Update Manual"
+        $recomendacao = "Iniciar Servico"
     }
     else {
-        $diagnostico = "DESATUALIZADO (Online, versao $instVer)"
-        if ($updStatus -eq "Em Progresso") {
-            $diagnostico = "EM PROGRESSO (Agente executando atualizacao)"
-            $recomendacao = "Aguardar Ciclo"
+        $hoursStr = [Math]::Round($diffHours, 1)
+        if ($isOffline) {
+            $diagnostico = "OFFLINE ($hoursStr h sem telemetria) - Versão $instVer"
+        } elseif ($isServiceStopped) {
+            $diagnostico = "AGENTE PARADO ($srvStatus) - Versão $instVer"
         } else {
-            $recomendacao = "Auto-Recuperacao"
+            $diagnostico = "DESATUALIZADO (Online, versao $instVer)"
         }
+        $recomendacao = "Auto-Recuperacao"
     }
 
     $entry = [PSCustomObject]@{
@@ -197,9 +194,9 @@ foreach ($item in $matchingItems) {
     $auditReport += $entry
 }
 
-# 6. Execucao de Remediacao e Classificacao (Com Governanca Canario de 5 Pilotos)
+# 6. Execucao de Remediacao e Governanca Canario (100% SharePoint Corporate Compliance)
 Write-Host ""
-Write-Host "[Passo 3/3] Aplicando acoes de remediacao e governanca canario (5 pilotos -> frota)..." -ForegroundColor Cyan
+Write-Host "[Passo 3/3] Aplicando acoes de remediacao remota via SharePoint (Zero GitHub)..." -ForegroundColor Cyan
 
 $canarySize = 5
 $canaryApproved = ($upToDateCount -ge $canarySize)
@@ -210,23 +207,21 @@ foreach ($item in $auditReport) {
     $itemId = $item.Id
     $hName = $item.Hostname
 
-    if ($item.Acao -eq "Necessário Update Manual") {
-        if ($item.Status_Atualizacao -ne "Necessário Update Manual") {
-            try {
-                $patchBody = @{
-                    Status_Atualizacao = "Necessário Update Manual"
-                    Acao_Solicitada = "Nenhuma"
-                    Ultima_atualizacao = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-                } | ConvertTo-Json
+    if ($item.Acao -eq "Iniciar Servico" -and $doAutoRecover) {
+        try {
+            $patchBody = @{
+                Acao_Solicitada = "Iniciar"
+                Ultima_atualizacao = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+            } | ConvertTo-Json
 
-                $patchUrl = "https://graph.microsoft.com/v1.0/sites/$siteId/lists/$listId/items/$itemId/fields"
-                Invoke-RestMethod -Uri $patchUrl -Method Patch -Headers $headers -Body $patchBody | Out-Null
-                Write-Host "  [MANUAL] $hName -> Marcado como 'Necessario Update Manual' ($($item.Diagnostico))" -ForegroundColor Red
-            } catch {
-                Write-Host "  [ERRO] Falha ao atualizar $hName`: $($_.Exception.Message)" -ForegroundColor Red
-            }
+            $patchUrl = "https://graph.microsoft.com/v1.0/sites/$siteId/lists/$listId/items/$itemId/fields"
+            Invoke-RestMethod -Uri $patchUrl -Method Patch -Headers $headers -Body $patchBody | Out-Null
+            Write-Host "  [START] $hName -> Acao 'Iniciar' disparada para servico $($item.Diagnostico)" -ForegroundColor Cyan
+            $recoveredList += $item
+            Start-Sleep -Milliseconds 150
+        } catch {
+            Write-Host "  [ERRO] Falha ao disparar inicio para $hName`: $($_.Exception.Message)" -ForegroundColor Red
         }
-        $manualUpdateList += $item
     }
     elseif ($item.Acao -eq "Auto-Recuperacao" -and $doAutoRecover) {
         if (-not $canaryApproved -and $currentActivePilots -ge $allowedActivePilots) {
@@ -244,10 +239,14 @@ foreach ($item in $auditReport) {
 
             $patchUrl = "https://graph.microsoft.com/v1.0/sites/$siteId/lists/$listId/items/$itemId/fields"
             Invoke-RestMethod -Uri $patchUrl -Method Patch -Headers $headers -Body $patchBody | Out-Null
-            Write-Host "  [RECOVER/PILOT] $hName -> Disparada Atualizacao para versao $TargetVersion" -ForegroundColor Yellow
+            Write-Host "  [RECOVER/UPDATE] $hName -> Disparada Atualizacao para versao $TargetVersion ($($item.Diagnostico))" -ForegroundColor Yellow
             $recoveredList += $item
+            Start-Sleep -Milliseconds 150
         } catch {
             Write-Host "  [ERRO] Falha ao disparar recuperacao para $hName`: $($_.Exception.Message)" -ForegroundColor Red
+        }
+    }
+}
         }
     }
 }

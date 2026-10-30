@@ -67,6 +67,11 @@ while ($nextUrl) {
         }
         $nextUrl = $resp.'@odata.nextLink'
     } catch {
+        if ($_.Exception.Response.StatusCode.value__ -eq 429 -or $_.Exception.Message -match "429") {
+            Write-Host "⏳ Throttling (429) na paginação. Aguardando 6s..." -ForegroundColor Yellow
+            Start-Sleep -Seconds 6
+            continue
+        }
         Write-Host "Erro ao consultar lista: $($_.Exception.Message)" -ForegroundColor Red
         break
     }
@@ -103,30 +108,54 @@ foreach ($item in $matchingItems) {
     $currentInstalled = $item.fields.Versao_Instalada
     $currentDesired = $item.fields.Versao_Desejada
 
-    # Se ja estiver com a versao desejada correta, pula
-    if ($currentDesired -eq $NewVersion) {
+    # Se ja estiver instalado na versao alvo e com acao Nenhuma, contabiliza e pula
+    $isUpToDate = ($currentInstalled -eq $NewVersion)
+    $currentAction = $item.fields.Acao_Solicitada
+
+    if ($isUpToDate -and $currentDesired -eq $NewVersion -and ($currentAction -eq "Nenhuma" -or [string]::IsNullOrWhiteSpace($currentAction))) {
         $alreadyCurrent++
-        Write-Host "  [$count/$($matchingItems.Count)] ⏩ $hostName ja esta com Versao Desejada = $NewVersion" -ForegroundColor DarkGray
+        Write-Host "  [$count/$($matchingItems.Count)] ⏩ $hostName ja esta 100% atualizado ($NewVersion)" -ForegroundColor DarkGray
         continue
     }
 
-    $isUpToDate = ($currentInstalled -eq $NewVersion)
     $statusAtualizacao = if ($isUpToDate) { "Atualizado" } else { "Desatualizado" }
+    $acaoSolicitada = if ($isUpToDate) { "Nenhuma" } else { "Atualizar" }
 
-    $patchBody = @{
+    $patchFields = @{
         Versao_Desejada = $NewVersion
         Status_Atualizacao = $statusAtualizacao
+        Acao_Solicitada = $acaoSolicitada
         Ultima_atualizacao = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-    } | ConvertTo-Json
+    }
+    $patchBody = $patchFields | ConvertTo-Json
 
     $patchUrl = "https://graph.microsoft.com/v1.0/sites/$siteId/lists/$listId/items/$itemId/fields"
-    try {
-        Invoke-RestMethod -Uri $patchUrl -Method Patch -Headers $headers -Body $patchBody | Out-Null
-        $updated++
-        Write-Host "  [$count/$($matchingItems.Count)] ✅ $hostName -> Versao Desejada: $NewVersion ($statusAtualizacao)" -ForegroundColor Green
-    } catch {
-        Write-Host "  [$count/$($matchingItems.Count)] ❌ Erro ao atualizar $hostName`: $($_.Exception.Message)" -ForegroundColor Red
+    $maxAttempts = 5
+    $attempt = 0
+    $success = $false
+    while ($attempt -lt $maxAttempts -and -not $success) {
+        $attempt++
+        try {
+            Invoke-RestMethod -Uri $patchUrl -Method Patch -Headers $headers -Body $patchBody | Out-Null
+            $success = $true
+            $updated++
+            Write-Host "  [$count/$($matchingItems.Count)] ✅ $hostName -> Versao Desejada: $NewVersion ($statusAtualizacao - Acao: $acaoSolicitada)" -ForegroundColor Green
+        } catch {
+            if ($_.Exception.Response.StatusCode.value__ -eq 429 -or $_.Exception.Message -match "429") {
+                $retryAfter = 5
+                try {
+                    $retryHeader = $_.Exception.Response.Headers["Retry-After"]
+                    if ($retryHeader) { $retryAfter = [int]$retryHeader }
+                } catch { }
+                Write-Host "  [$count/$($matchingItems.Count)] ⏳ Throttling (429) em $hostName. Aguardando ${retryAfter}s (Tentativa $attempt/$maxAttempts)..." -ForegroundColor Yellow
+                Start-Sleep -Seconds $retryAfter
+            } else {
+                Write-Host "  [$count/$($matchingItems.Count)] ❌ Erro ao atualizar $hostName`: $($_.Exception.Message)" -ForegroundColor Red
+                break
+            }
+        }
     }
+    Start-Sleep -Milliseconds 250
 }
 
 Write-Host ""

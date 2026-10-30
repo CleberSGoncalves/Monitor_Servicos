@@ -1,4 +1,4 @@
-"""
+r"""
 Módulo de Auto-Healing da Frota (DNA Monitor Fleet)
 Kantar IBOPE Media — Monitor_Servicos NOC LATAM
 
@@ -123,12 +123,11 @@ def audit_and_diagnose_fleet() -> Dict[str, Any]:
     critical_svc_keywords = ["fastmatching", "detectionsvc", "trackingsvc", "configmonitorsvc", "atriacapture"]
 
     for h, data in hosts_map.items():
-        is_agent_online = data["comm_state"] in ("ONLINE", "DELAY")
         ver = data["agent_version"]
 
         if ver == TARGET_AGENT_VERSION:
             up_to_date_count += 1
-        elif is_agent_online and ver != "N/A":
+        elif ver != "N/A":
             data["eligible_auto_update"] = True
             eligible_update_count += 1
 
@@ -184,6 +183,16 @@ def execute_auto_healing_batch(max_hosts: int = 50) -> Dict[str, Any]:
     actions_taken = []
     errors = []
 
+    def _resilient_patch(url: str, body: dict) -> requests.Response:
+        for attempt in range(4):
+            r = requests.patch(url, json=body, headers=headers, timeout=15)
+            if r.status_code == 429:
+                wait_sec = int(r.headers.get("Retry-After", 4 + attempt * 4))
+                time.sleep(wait_sec)
+                continue
+            return r
+        return r
+
     processed = 0
     for h in eligible_hosts[:max_hosts]:
         h_name = h["hostname"]
@@ -191,7 +200,6 @@ def execute_auto_healing_batch(max_hosts: int = 50) -> Dict[str, Any]:
 
         # 1. Auto-Update do Agente
         if h["eligible_auto_update"]:
-            # Localiza o ID do item do MonitorService no SharePoint
             agent_svc_id = None
             for s_name, s_info in h["services"].items():
                 if "monitorservice" in s_name.lower():
@@ -199,13 +207,15 @@ def execute_auto_healing_batch(max_hosts: int = 50) -> Dict[str, Any]:
                     break
 
             if agent_svc_id:
-                patch_url = f"https://graph.microsoft.com/v1.0/sites/{SITE_ID}/lists/{LIST_SERVICES_ID}/items/{agent_svc_id}/fields"
+                clean_agent_id = str(agent_svc_id).split('_')[0]
+                patch_url = f"https://graph.microsoft.com/v1.0/sites/{SITE_ID}/lists/{LIST_SERVICES_ID}/items/{clean_agent_id}/fields"
                 payload = {
                     "Acao_Solicitada": "Atualizar",
-                    "Versao_Desejada": TARGET_AGENT_VERSION
+                    "Versao_Desejada": TARGET_AGENT_VERSION,
+                    "Status_Atualizacao": "Desatualizado"
                 }
                 try:
-                    res = requests.patch(patch_url, json=payload, headers=headers, timeout=12)
+                    res = _resilient_patch(patch_url, payload)
                     if res.ok:
                         actions_taken.append({
                             "hostname": h_name,
@@ -223,10 +233,11 @@ def execute_auto_healing_batch(max_hosts: int = 50) -> Dict[str, Any]:
             for s_name in h["stopped_critical_services"]:
                 s_id = h["services"][s_name].get("id")
                 if s_id:
-                    patch_url = f"https://graph.microsoft.com/v1.0/sites/{SITE_ID}/lists/{LIST_SERVICES_ID}/items/{s_id}/fields"
+                    clean_s_id = str(s_id).split('_')[0]
+                    patch_url = f"https://graph.microsoft.com/v1.0/sites/{SITE_ID}/lists/{LIST_SERVICES_ID}/items/{clean_s_id}/fields"
                     payload = {"Acao_Solicitada": "Iniciar"}
                     try:
-                        res = requests.patch(patch_url, json=payload, headers=headers, timeout=12)
+                        res = _resilient_patch(patch_url, payload)
                         if res.ok:
                             actions_taken.append({
                                 "hostname": h_name,
@@ -238,7 +249,7 @@ def execute_auto_healing_batch(max_hosts: int = 50) -> Dict[str, Any]:
                         errors.append(f"Exceção ao iniciar {s_name} em {h_name}: {e}")
 
         processed += 1
-        time.sleep(0.3)  # Evita throttling 429 no Graph
+        time.sleep(0.35)  # Evita throttling 429 no Graph
 
     result = {
         "status": "success",

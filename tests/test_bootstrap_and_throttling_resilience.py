@@ -28,10 +28,13 @@ def test_bootstrap_script_resilience():
     assert "Retry-After" in content, "Erro: Extração de Retry-After ausente."
     print("  -> Deteccao de HTTP 429 e extracao de header Retry-After implementadas [OK]")
 
-    # 3. Rota de contingência para GitHub Oficial
-    assert "GITHUB_RAW_BASE" in content, "Erro: GITHUB_RAW_BASE ausente."
+    # 3. Compliance Corporativo Estrito: ZERO GitHub (100% Microsoft SharePoint Online / Graph API)
+    assert "raw.githubusercontent.com" not in content.lower(), "Erro: raw.githubusercontent.com proibido em conformidade corporativa."
+    assert "github.com" not in content.lower(), "Erro: Referência a github.com proibida por auditoria de segurança."
+    assert "graph.microsoft.com" in content, "Erro: Endpoint Microsoft Graph ausente."
+    assert "login.microsoftonline.com" in content, "Erro: Autenticação OAuth2 SPN Microsoft Online ausente."
     assert "DNA.MonitorServiceSVC_v1.0.18.0.zip" in content, "Erro: Referência a pacote v1.0.18.0 ausente."
-    print("  -> Rota de contingência direta de alta velocidade via GitHub Oficial [OK]")
+    print("  -> Conformidade estrita de segurança: ZERO GitHub e 100% Microsoft 365 SharePoint Online [OK]")
 
     # 4. Validação criptográfica SHA-256 estrita
     assert "Get-FileHash" in content, "Erro: Verificação Get-FileHash ausente."

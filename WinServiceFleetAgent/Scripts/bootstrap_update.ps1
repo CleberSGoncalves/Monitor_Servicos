@@ -1,11 +1,11 @@
 # ==============================================================================
-#  BOOTSTRAP DE ATUALIZACAO CORPORATIVA HOMOLOGADA (SHAREPOINT + FALLBACK GITHUB)
+#  BOOTSTRAP DE ATUALIZACAO CORPORATIVA HOMOLOGADA (100% SHAREPOINT ONLINE)
 #  DNA.MonitorServiceSVC - Kantar IBOPE Media
-#  Resiliência Total: Anti-Throttling HTTP 429 + Contingência Direta + SHA-256
+#  Compliance: Microsoft 365 Graph API OAuth2 (SPN) + SHA-256 Verified
+#  Segurança Corporativa: Zero conexões com redes externas / Zero GitHub em campo
 # ==============================================================================
 
 param(
-    [string]$Source = "Auto", # Auto | SharePoint | GitHub
     [string]$ServiceName = "DNA.MonitorServiceSVC",
     [switch]$Force
 )
@@ -19,18 +19,18 @@ $ENC_SECRET   = "pmGCK1dfa+FaAQAtlvRow3fpazdGco1b5BlFcuBrkhvGnneyKLXk93FsMzUJZWE
 $DRIVE_ID     = "b!R5fko7abk0yZMN2ibI0QUFX-yDT-LPxOjOApWP13XuB7rzp8hYGATLhyYvhIJ0iG"
 $FOLDER_NAME  = "Releases_Servicos_CS"
 $WORK         = "C:\TempStaging\dna_sp_update_$(Get-Random)"
-$GITHUB_RAW_BASE = "https://raw.githubusercontent.com/CleberSGoncalves/Monitor_Servicos/main/publish"
 
 Write-Host ""
 Write-Host "==========================================================" -ForegroundColor Cyan
-Write-Host "  DNA.MonitorServiceSVC - Corporate Bootstrap v1.0.18.0" -ForegroundColor Cyan
-Write-Host "  Resiliencia HTTP 429 + Integridade Criptografica SHA-256" -ForegroundColor Cyan
+Write-Host "  DNA.MonitorServiceSVC - SharePoint Corporate Bootstrap" -ForegroundColor Cyan
+Write-Host "  Compliance: Microsoft 365 Graph API + SHA-256 Verified" -ForegroundColor Cyan
+Write-Host "  Seguranca: 100% SharePoint Online M365 (Zero GitHub)" -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Cyan
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 # ------------------------------------------------------------------------------
-# Helpers Resilientes com deteccao e backoff para HTTP 429 (Too Many Requests)
+# Helpers Resilientes com deteccao e backoff estrito para HTTP 429
 # ------------------------------------------------------------------------------
 function Invoke-ResilientRestMethod {
     param(
@@ -38,8 +38,8 @@ function Invoke-ResilientRestMethod {
         [string]$Method = "Get",
         [hashtable]$Headers = @{},
         [object]$Body = $null,
-        [int]$MaxRetries = 2,
-        [int]$TimeoutSec = 15
+        [int]$MaxRetries = 5,
+        [int]$TimeoutSec = 20
     )
     for ($attempt = 1; $attempt -le $MaxRetries; $attempt++) {
         try {
@@ -70,16 +70,17 @@ function Invoke-ResilientRestMethod {
                 } catch {}
             }
             if ($is429) {
-                if ($attempt -lt $MaxRetries -and $retryAfter -gt 0 -and $retryAfter -le 15) {
-                    Write-Host "[AVISO] SharePoint Graph com Throttling (HTTP 429). Aguardando ${retryAfter}s para retry ($attempt/$MaxRetries)..." -ForegroundColor Yellow
-                    Start-Sleep -Seconds ($retryAfter + 1)
+                $wait = if ($retryAfter -gt 0 -and $retryAfter -le 35) { $retryAfter + 1 } else { ($attempt * 4) + (Get-Random -Minimum 2 -Maximum 5) }
+                if ($attempt -lt $MaxRetries) {
+                    Write-Host "[AVISO] SharePoint Graph Throttled (HTTP 429). Aguardando ${wait}s (Tentativa $attempt/$MaxRetries)..." -ForegroundColor Yellow
+                    Start-Sleep -Seconds $wait
                     continue
                 }
-                Write-Host "[AVISO] SharePoint Graph temporariamente limitado por quota (HTTP 429, Retry-After: ${retryAfter}s)." -ForegroundColor Yellow
+                Write-Host "[AVISO] Limite temporario do SharePoint Graph atingido. Postergando consulta direta." -ForegroundColor Yellow
                 return $null
             }
             if ($attempt -lt $MaxRetries) {
-                Start-Sleep -Seconds 2
+                Start-Sleep -Seconds 3
             }
         }
     }
@@ -91,8 +92,8 @@ function Invoke-ResilientDownload {
         [string]$Uri,
         [string]$OutFile,
         [hashtable]$Headers = @{},
-        [int]$MaxRetries = 2,
-        [int]$TimeoutSec = 90
+        [int]$MaxRetries = 5,
+        [int]$TimeoutSec = 120
     )
     for ($attempt = 1; $attempt -le $MaxRetries; $attempt++) {
         try {
@@ -125,10 +126,15 @@ function Invoke-ResilientDownload {
                 } catch {}
             }
             if ($is429) {
-                Write-Host "[AVISO] Download via SharePoint limitado por quota (HTTP 429, Retry-After: ${retryAfter}s)." -ForegroundColor Yellow
+                $wait = if ($retryAfter -gt 0 -and $retryAfter -le 35) { $retryAfter + 1 } else { ($attempt * 5) + (Get-Random -Minimum 2 -Maximum 5) }
+                if ($attempt -lt $MaxRetries) {
+                    Write-Host "[AVISO] Download do SharePoint limitado por quota (HTTP 429). Aguardando ${wait}s para retry ($attempt/$MaxRetries)..." -ForegroundColor Yellow
+                    Start-Sleep -Seconds $wait
+                    continue
+                }
                 return $false
             }
-            if ($attempt -lt $MaxRetries) { Start-Sleep -Seconds 2 }
+            if ($attempt -lt $MaxRetries) { Start-Sleep -Seconds 3 }
         }
     }
     return $false
@@ -190,23 +196,24 @@ try {
         Write-Host "[OK] Autenticacao Microsoft 365 estabelecida com sucesso." -ForegroundColor Green
     }
 } catch {
-    Write-Host "[AVISO] Falha na autenticacao Entra ID: $($_.Exception.Message)" -ForegroundColor Yellow
+    Write-Host "[ERRO] Falha na autenticacao Entra ID: $($_.Exception.Message)" -ForegroundColor Red
+    exit 1
 }
 
 # ------------------------------------------------------------------------------
-# 3. Consulta de Manifesto e Metadados do Pacote Homologado
+# 3. Consulta de Manifesto Homologado no SharePoint Online
 # ------------------------------------------------------------------------------
 $pkgFileName = "DNA.MonitorServiceSVC_v1.0.18.0.zip"
-$expectedSha = "0e236395f7b42709cc3bac4e7767bf01f76673eda89bef0119cfc82eab120a65"
+$expectedSha = "cad32a231e583ac4a6ed7d029c8a4bec8394dde1e2a8f73ca22da25fca99d047"
 $validHashes = @(
+    "cad32a231e583ac4a6ed7d029c8a4bec8394dde1e2a8f73ca22da25fca99d047",
     "0e236395f7b42709cc3bac4e7767bf01f76673eda89bef0119cfc82eab120a65",
     "b0741e8d8a25e8bd80448775f18cfba90bc1edb696825e5966b5423d876bd718",
-    "cad32a231e583ac4a6ed7d029c8a4bec8394dde1e2a8f73ca22da25fca99d047",
     "3b9ab881194ce3a374f2753eed5f74da4de91c2343454809cc3a250690825b65"
 )
 $manifestLoaded = $false
 
-if ($headers.Count -gt 0 -and $Source -ne "GitHub") {
+if ($headers.Count -gt 0) {
     Write-Host "[INFO] Consultando manifesto oficial no SharePoint ($FOLDER_NAME/manifest_sha256.json)..."
     $manifestUrl = "https://graph.microsoft.com/v1.0/drives/$DRIVE_ID/root:/$FOLDER_NAME/manifest_sha256.json:/content"
     $manifest = Invoke-ResilientRestMethod -Uri $manifestUrl -Headers $headers -TimeoutSec 15
@@ -225,53 +232,35 @@ if ($headers.Count -gt 0 -and $Source -ne "GitHub") {
 }
 
 if (-not $manifestLoaded) {
-    Write-Host "[INFO] Utilizando catalogo homologado de contingencia: $pkgFileName (v1.0.18.0)" -ForegroundColor Cyan
+    Write-Host "[INFO] Utilizando catalogo homologado corporativo M365: $pkgFileName (v1.0.18.0)" -ForegroundColor Cyan
 }
 
 # ------------------------------------------------------------------------------
-# 4. Download do Pacote Homologado (SharePoint -> Fallback GitHub Oficial)
+# 4. Download do Pacote 100% via SharePoint Online (M365 Graph API)
 # ------------------------------------------------------------------------------
 New-Item -ItemType Directory -Path $WORK -Force | Out-Null
 $zipPath = Join-Path $WORK $pkgFileName
 $downloadSuccess = $false
 
-# Rota 1: SharePoint Online (M365 Graph)
-if ($headers.Count -gt 0 -and $Source -ne "GitHub") {
-    Write-Host "[INFO] Tentando download via SharePoint Corporativo..."
-    $spDownloadUrl = "https://graph.microsoft.com/v1.0/drives/$DRIVE_ID/root:/$FOLDER_NAME/$pkgFileName`:/content"
-    $downloadSuccess = Invoke-ResilientDownload -Uri $spDownloadUrl -OutFile $zipPath -Headers $headers -MaxRetries 2 -TimeoutSec 45
-    if ($downloadSuccess) {
-        Write-Host "[OK] Pacote baixado com sucesso do SharePoint Corporativo." -ForegroundColor Green
-    } else {
-        Write-Host "[AVISO] Download via SharePoint indisponivel ou limitado por quota (HTTP 429)." -ForegroundColor Yellow
-    }
-}
+Write-Host "[INFO] Baixando pacote homologado diretamente do SharePoint Corporativo ($FOLDER_NAME/$pkgFileName)..." -ForegroundColor Cyan
+$spDownloadUrl = "https://graph.microsoft.com/v1.0/drives/$DRIVE_ID/root:/$FOLDER_NAME/$pkgFileName`:/content"
+$downloadSuccess = Invoke-ResilientDownload -Uri $spDownloadUrl -OutFile $zipPath -Headers $headers -MaxRetries 5 -TimeoutSec 90
 
-# Rota 2: Fallback GitHub Oficial de Alta Velocidade (Zero Throttling)
 if (-not $downloadSuccess) {
-    Write-Host "[INFO] Ativando rota de contingencia direta via GitHub Oficial..." -ForegroundColor Cyan
-    $candidateUrls = @(
-        "$GITHUB_RAW_BASE/$pkgFileName",
-        "$GITHUB_RAW_BASE/DNA.MonitorServiceSVC_v1.0.18.0.zip",
-        "$GITHUB_RAW_BASE/DNA.MonitorServiceSVC.zip",
-        "$GITHUB_RAW_BASE/DNA.MonitorServiceSVC_v1.0.17.0.zip"
-    )
-
-    foreach ($ghUrl in $candidateUrls) {
-        Write-Host "[INFO] Baixando: $ghUrl..."
-        $downloadSuccess = Invoke-ResilientDownload -Uri $ghUrl -OutFile $zipPath -MaxRetries 2 -TimeoutSec 60
-        if ($downloadSuccess) {
-            Write-Host "[OK] Pacote baixado com sucesso via GitHub Oficial de contingencia!" -ForegroundColor Green
-            break
-        }
-    }
+    # Tenta nome generico homologado no SharePoint
+    $fallbackName = "DNA.MonitorServiceSVC.zip"
+    Write-Host "[INFO] Tentando pacote generico homologado no SharePoint ($FOLDER_NAME/$fallbackName)..." -ForegroundColor Yellow
+    $spFallbackUrl = "https://graph.microsoft.com/v1.0/drives/$DRIVE_ID/root:/$FOLDER_NAME/$fallbackName`:/content"
+    $zipPath = Join-Path $WORK $fallbackName
+    $downloadSuccess = Invoke-ResilientDownload -Uri $spFallbackUrl -OutFile $zipPath -Headers $headers -MaxRetries 3 -TimeoutSec 90
 }
 
 if (-not $downloadSuccess -or -not (Test-Path $zipPath)) {
-    Write-Host "[ERRO CRITICO] Nao foi possivel baixar o pacote de instalacao por nenhuma das rotas." -ForegroundColor Red
+    Write-Host "[ERRO CRITICO] Nao foi possivel baixar o pacote de instalacao do SharePoint Corporativo." -ForegroundColor Red
     Remove-Item -Path $WORK -Recurse -Force -ErrorAction SilentlyContinue
     exit 1
 }
+Write-Host "[OK] Download concluido com sucesso em disco." -ForegroundColor Green
 
 # ------------------------------------------------------------------------------
 # 5. Validacao Estrita de Hash Criptografico SHA-256
@@ -288,7 +277,7 @@ foreach ($valid in $validHashes) {
 }
 
 if (-not $isHashValid) {
-    Write-Host "[ERRO CRITICO] Checksum SHA-256 nao reconhecido no catalogo homologado!" -ForegroundColor Red
+    Write-Host "[ERRO CRITICO] Checksum SHA-256 divergente do homologado no SharePoint!" -ForegroundColor Red
     Write-Host "  Calculado: $actualHash" -ForegroundColor Red
     Write-Host "  Validos  : $($validHashes -join ', ')" -ForegroundColor Red
     Remove-Item -Path $WORK -Recurse -Force -ErrorAction SilentlyContinue
@@ -337,7 +326,7 @@ if ($isFreshInstall) {
     sc.exe failure $ServiceName reset= 86400 actions= restart/5000/restart/5000/restart/5000 | Out-Null
     Start-Service -Name $ServiceName
     Start-Sleep -Seconds 3
-    Write-Host "[SUCESSO] Instalacao limpa concluida na versao v$targetVer!" -ForegroundColor Green
+    Write-Host "[SUCESSO] Instalacao limpa concluida na versao v$targetVer (100% SharePoint M365)!" -ForegroundColor Green
     Remove-Item -Path $WORK -Recurse -Force -ErrorAction SilentlyContinue
     exit 0
 }
@@ -367,6 +356,7 @@ schtasks /Run /TN "DNA_SharePoint_AtomicUpdate" | Out-Null
 Write-Host ""
 Write-Host "==========================================================" -ForegroundColor Green
 Write-Host "  [SUCESSO] Atualizacao para v$targetVer Agendada via SYSTEM!" -ForegroundColor Green
+Write-Host "  100% SharePoint Online M365 Compliance (Zero GitHub)" -ForegroundColor Green
 Write-Host "  O servico sera reiniciado de forma atomica em 3 segundos." -ForegroundColor Green
 Write-Host "==========================================================" -ForegroundColor Green
 exit 0
