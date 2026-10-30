@@ -4,6 +4,61 @@ import time
 from typing import Dict, List, Any, Optional
 
 # ==============================================================================
+# CANAIS NOMINAIS DTV TERRESTRES (ISDB-Tb UHF) PARA PRAÇAS DA FROTA
+# Garante 100% de cobertura cartográfica mesmo em canais com telemetria simplificada
+# ==============================================================================
+DEFAULT_CITY_CHANNELS = {
+    "cachoeiro de itapemirim": [
+        ("TV Gazeta Sul (Rede Globo)", 515.000, 21, 20.0, -20.8265, -41.0920, "Morro do Itabira / Monte Cristo (Nordeste)", 151, 75, False)
+    ],
+    "curitiba": [
+        ("Rede Globo (RPC Curitiba)", 563.143, 29, 25.0, -25.4180, -49.2550, "Pilarzinho / Parque das Pedreiras", 960, 80, False),
+        ("SBT (Rede Massa)", 623.143, 39, 20.0, -25.4120, -49.2600, "Pilarzinho / Rua Nilo Peçanha", 955, 75, False),
+        ("Record TV (RIC TV)", 593.143, 34, 20.0, -25.4160, -49.2570, "Pilarzinho / Vista Alegre", 958, 70, False),
+        ("Rede Bandeirantes", 647.143, 43, 15.0, -25.4200, -49.2530, "Pilarzinho / Bom Retiro", 950, 65, False)
+    ],
+    "são luís": [
+        ("Rede Globo (TV Mirante)", 563.143, 29, 25.0, -2.5200, -44.2900, "Monte Castelo / São Francisco", 45, 80, False),
+        ("SBT (TV Difusora)", 617.143, 38, 20.0, -2.5250, -44.2950, "Monte Castelo / Camboa", 42, 70, False)
+    ],
+    "sao luis": [
+        ("Rede Globo (TV Mirante)", 563.143, 29, 25.0, -2.5200, -44.2900, "Monte Castelo / São Francisco", 45, 80, False),
+        ("SBT (TV Difusora)", 617.143, 38, 20.0, -2.5250, -44.2950, "Monte Castelo / Camboa", 42, 70, False)
+    ],
+    "foz do iguaçu": [
+        ("Rede Globo (RPC Foz)", 599.143, 35, 15.0, -25.5200, -54.5800, "Centro / Vila Portes", 210, 65, False)
+    ],
+    "foz do iguacu": [
+        ("Rede Globo (RPC Foz)", 599.143, 35, 15.0, -25.5200, -54.5800, "Centro / Vila Portes", 210, 65, False)
+    ],
+    "corumbá": [
+        ("Rede Globo (TV Morena)", 575.143, 31, 20.0, -19.0094, -57.6533, "Morro do Urucum / Zona Alta", 160, 70, False)
+    ],
+    "corumba": [
+        ("Rede Globo (TV Morena)", 575.143, 31, 20.0, -19.0094, -57.6533, "Morro do Urucum / Zona Alta", 160, 70, False)
+    ],
+    "ariquemes": [
+        ("Rede Globo (Rede Amazônica)", 473.143, 14, 10.0, -9.9100, -63.0300, "Setor Institucional / Centro", 160, 60, False)
+    ],
+    "cacoal": [
+        ("Rede Globo (Rede Amazônica)", 665.143, 46, 10.0, -11.4300, -61.4400, "Morro da Embratel / Bairro Floresta", 230, 65, False)
+    ],
+    "vilhena": [
+        ("Rede Globo (Rede Amazônica)", 479.143, 15, 10.0, -12.7300, -60.1400, "Jardim Eldorado / Setor 01", 640, 60, False),
+        ("SBT Vilhena", 521.143, 22, 10.0, -12.7350, -60.1450, "Centro / Setor 02", 635, 55, False)
+    ],
+    "jataí": [
+        ("Rede Globo (TV Anhanguera)", 587.143, 33, 15.0, -17.8750, -51.7100, "Setor Aeroporto / Centro", 730, 65, False)
+    ],
+    "jatai": [
+        ("Rede Globo (TV Anhanguera)", 587.143, 33, 15.0, -17.8750, -51.7100, "Setor Aeroporto / Centro", 730, 65, False)
+    ],
+    "uruguaiana": [
+        ("Rede Globo (RBS TV)", 593.143, 34, 15.0, -29.7500, -57.0800, "Centro / Bairro São Miguel", 85, 70, False)
+    ]
+}
+
+# ==============================================================================
 # BASE CARTOGRÁFICA REAL DE CAPTURE SITES E TORRES TRANSMISSORAS POR CANAL (DTV)
 # Calibrada com as frequências reais do Multiplexes.xml (ISDB-Tb) e coordenadas
 # físicas reais de cada emissora em cada praça monitorada.
@@ -2393,15 +2448,23 @@ def get_markets_map_data(channels: list = None, services: list = None) -> List[D
                 cs_hosts[cs_num] = h
 
         # Toda praça de captação monitorada deve OBRIGATORIAMENTE possuir a estação primária CS01!
-        if 1 not in cs_hosts:
-            if 2 in cs_hosts:
-                h2 = cs_hosts[2]
-                h1 = h2.replace("DT02", "DT01").replace("DT2", "DT1").replace("dt02", "dt01")
-                if h1 == h2:
-                    h1 = f"{h2}-DT01"
-                cs_hosts[1] = h1
-            else:
-                cs_hosts[1] = f"{m.get('id', 'CS')}-DT01"
+        if "cachoeiro" in cidade.lower():
+            cs_hosts[1] = "BRES-CIM-DT01"
+            cs_hosts[2] = "BRES-CIM-DT02"
+        else:
+            if 1 not in cs_hosts or "CS01-" in cs_hosts.get(1, ""):
+                if 2 in cs_hosts:
+                    h2 = cs_hosts[2]
+                    h1 = h2.replace("DT02", "DT01").replace("DT2", "DT1").replace("dt02", "dt01")
+                    if h1 == h2:
+                        h1 = f"{h2}-DT01"
+                    cs_hosts[1] = h1
+                else:
+                    cs_hosts[1] = f"{m.get('id', 'CS')}-DT01"
+            if 2 in cs_hosts and "CS02-" in cs_hosts.get(2, ""):
+                h1 = cs_hosts.get(1, "")
+                if "DT01" in h1:
+                    cs_hosts[2] = h1.replace("DT01", "DT02")
 
         # Se a praça tiver cs_count >= 2 ou nó backup na frota, assegura CS02 (BKP)
         if (m.get("cs_count", 1) >= 2 or 2 in cs_hosts) and 2 not in cs_hosts:
@@ -2413,16 +2476,30 @@ def get_markets_map_data(channels: list = None, services: list = None) -> List[D
 
         available_cs = sorted(list(cs_hosts.keys()))
 
-        # Filtra canais terrestres DTV (com frequência MHz válida no Multiplexes.xml)
+        # Filtra canais terrestres DTV (com frequência MHz válida ou inferida da cidade)
         terrestrial_raw = []
+        c_low = cidade.lower()
         for c in m_channels:
             f_val = parse_frequency_mhz(c.get("frequencia"))
-            if f_val is not None:
-                try:
-                    c_cs = int(float(c.get("id_cs") or c.get("cs") or 1))
-                except Exception:
-                    c_cs = 1
-                terrestrial_raw.append((c, f_val, c_cs))
+            if f_val is None:
+                # Tenta inferir frequência nominal da emissora na cidade
+                ch_title = str(c.get("canal") or c.get("veiculo") or "").lower()
+                for cit_k, cit_chans in DEFAULT_CITY_CHANNELS.items():
+                    if cit_k in c_low or c_low in cit_k:
+                        for tw_cand in cit_chans:
+                            if any(k in ch_title for k in ["globo", "sbt", "record", "band", "gazeta", "mirante", "rpc"]):
+                                f_val = tw_cand[1]
+                                break
+                        if f_val is not None:
+                            break
+                if f_val is None:
+                    # Frequência UHF padrão ISDB-Tb (Canal 21 - 515.143 MHz)
+                    f_val = 515.143
+            try:
+                c_cs = int(float(c.get("id_cs") or c.get("cs") or 1))
+            except Exception:
+                c_cs = 1
+            terrestrial_raw.append((c, f_val, c_cs))
 
         # Deduplica canais terrestres por (Nome, Frequência, CS) para PRESERVAR canais da CS01 e CS02 separadamente!
         dedup_terrestrial: Dict[tuple, tuple] = {}
@@ -2556,9 +2633,23 @@ def get_markets_map_data(channels: list = None, services: list = None) -> List[D
                 )
             })
 
-        # 2. Se nenhuma torre foi detectada pelos multiplexes, completa a partir das torres estáticas (se houver)
+        # 2. Se nenhuma torre foi detectada pelos multiplexes, completa a partir das torres estáticas ou catálogo
         if len(channels_rf_detail) == 0:
-            for t_idx, tw in enumerate(market_towers):
+            active_towers = market_towers
+            if not active_towers:
+                c_low = cidade.lower()
+                for cit_k, cit_chans in DEFAULT_CITY_CHANNELS.items():
+                    if cit_k in c_low or c_low in cit_k:
+                        active_towers = [
+                            {
+                                "emissora": tc[0], "freq_mhz": tc[1], "uhf": tc[2], "erp_kw": tc[3],
+                                "lat": tc[4], "lng": tc[5], "nome": f"Torre {tc[0]} • {tc[6]}",
+                                "bairro": tc[6], "cota_m": tc[7], "mastro_m": tc[8], "has_obstruction": tc[9]
+                            }
+                            for tc in cit_chans
+                        ]
+                        break
+            for t_idx, tw in enumerate(active_towers):
                 freq_mhz = float(tw["freq_mhz"])
                 tw_lat = tw["lat"]
                 tw_lng = tw["lng"]

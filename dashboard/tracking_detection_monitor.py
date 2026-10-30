@@ -490,10 +490,13 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
         "total_cs01_sites": total_sites,
         "summary": {
             "total_sites": total_sites,
+            "total_cs01": total_sites,
             "nominal": nominal_count,
             "warning": warning_count,
             "critical": critical_count,
             "stalled": stalled_count,
+            "stalled_tracking": stalled_count,
+            "compliance_rate": round((nominal_count / max(1, total_sites)) * 100.0, 1),
             "comm_lost": comm_lost_count,
             "nominal_fastmatching": nominal_fastmatching,
             "fallback_detection_svc": fallback_detection_svc,
@@ -501,7 +504,8 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
             "inoperant_p0": inoperant_p0,
             "config_monitor_ok": config_monitor_ok_count,
             "tracking_svc_ok": tracking_svc_ok_count,
-            "agent_comm_offline": agent_comm_offline_count
+            "agent_comm_offline": agent_comm_offline_count,
+            "threshold_minutes": threshold_minutes
         },
         "kpis": {
             "total_sites": total_sites,

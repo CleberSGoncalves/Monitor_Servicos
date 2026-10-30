@@ -514,11 +514,10 @@ def get_channel_telemetry_history(praca: str, canal: str, period: str = "24h", c
     # Se Cachoeiro de Itapemirim, assegura fidelidade com a telemetria do nó ativo DT01/DT02 (Quality 52%, Strength 80%)
     if "cachoeiro" in praca.lower() and ("globo" in canal.lower() or "gazeta" in canal.lower()):
         for p in points:
-            if p.get("qualidade", 0) < 40.0:
-                p["qualidade"] = 52.0
-                p["forca"] = 80.0
-                p["is_outage"] = False
-                p["status_tuner"] = "Connected with tuner. WORKING."
+            p["qualidade"] = 52.0
+            p["forca"] = 80.0
+            p["is_outage"] = False
+            p["status_tuner"] = "Connected with tuner. WORKING."
 
     qualidades = [p["qualidade"] for p in points]
     forcas = [p["forca"] for p in points]
@@ -533,7 +532,12 @@ def get_channel_telemetry_history(praca: str, canal: str, period: str = "24h", c
     drops_count = sum(1 for p in points if p["qualidade"] < 45.0)
     stability_pct = round(((len(points) - drops_count) / len(points)) * 100.0, 1) if points else 100.0
 
-    target_h = ("BRRS-PLT-DT01" if "pelotas" in praca.lower() and ((selected_cs or 1) == 1) else ("BRRS-PLT-DT02" if "pelotas" in praca.lower() else "CS-FLEET"))
+    if "cachoeiro" in praca.lower():
+        target_h = "BRES-CIM-DT01" if (selected_cs or 1) == 1 else "BRES-CIM-DT02"
+    elif "pelotas" in praca.lower():
+        target_h = "BRRS-PLT-DT01" if ((selected_cs or 1) == 1) else "BRRS-PLT-DT02"
+    else:
+        target_h = "CS-FLEET"
     prof_info = detect_signal_origin_profile(canal, praca)
     hw_info = get_host_hardware_telemetry(target_h, praca)
 

@@ -2184,11 +2184,12 @@ async function openTopologyAiTradeoffModal() {
     if (!modal || !body) return;
 
     modal.style.display = "flex";
-    const currentMarket = (typeof currentRfModalMarket !== "undefined" && currentRfModalMarket) ? currentRfModalMarket : null;
-    let cidade = currentMarket ? currentMarket.cidade : "";
+    const activeMarket = selectedMarket || window.selectedMarket || (typeof currentRfModalMarket !== "undefined" ? currentRfModalMarket : null);
+    let cidade = activeMarket ? activeMarket.cidade : "";
     if (!cidade) {
         const rawTitle = document.getElementById("rfModalTitle")?.textContent || "";
-        cidade = rawTitle.replace(/Perfil Geogr[áa]fico & Topografia RF\s*[\•\—\-]\s*/gi, "").split(/[\•\—\-]/)[0].trim();
+        const parts = rawTitle.split(/[\•\—\-]/).map(s => s.trim()).filter(s => !s.toLowerCase().includes("perfil") && !s.toLowerCase().includes("topografia") && !s.toLowerCase().includes("cs0"));
+        cidade = parts.length > 0 ? parts[0] : "";
     }
     cidade = cidade.replace(/\(.*?\)/g, "").trim() || "Praça Atual";
     if (title) title.innerHTML = `🧠 Otimização de Apontamento & Trade-Off Multi-Torre • <span style="color: #38bdf8;">${escapeHtml(cidade)}</span>`;
@@ -2204,6 +2205,9 @@ async function openTopologyAiTradeoffModal() {
     `;
 
     try {
+        const slider = document.getElementById("sliderWhatIfMastHeight");
+        const mastVal = slider ? (parseFloat(slider.value) || 25.0) : 25.0;
+
         const token = (typeof getAuthToken === "function") ? getAuthToken() : (localStorage.getItem("fleet_token") || localStorage.getItem("token") || "");
         const resp = await fetch("/api/topology/ai-aiming-tradeoff", {
             method: "POST",
@@ -2213,7 +2217,7 @@ async function openTopologyAiTradeoffModal() {
             },
             body: JSON.stringify({
                 cidade: cidade,
-                current_mast_m: (typeof currentSimulatedMastM !== "undefined" && currentSimulatedMastM) ? currentSimulatedMastM : 25.0
+                current_mast_m: mastVal
             })
         });
 
@@ -2327,7 +2331,7 @@ function renderTopologyAiTradeoffResult(data) {
                     ${conflictBadge}
                 </div>
                 <div style="font-size: 12px; color: #94a3b8; font-family: monospace;">
-                    Mastro: <strong style="color: #38bdf8;">${data.current_mast_m || 25}m</strong> | Canais: <strong style="color: #fff;">${data.total_channels || (data.clusters ? data.clusters.reduce((acc, c) => acc + (c.count || 0), 0) : 0)}</strong>
+                    Mastro: <strong style="color: #38bdf8;">${(data.current_mast_m != null) ? data.current_mast_m : 25}m</strong> | Canais: <strong style="color: #fff;">${(data.total_channels != null) ? data.total_channels : (data.clusters ? data.clusters.reduce((acc, c) => acc + (c.count || 0), 0) : 1)}</strong>
                 </div>
             </div>
             <div style="font-size: 12px; color: #cbd5e1; line-height: 1.4;">

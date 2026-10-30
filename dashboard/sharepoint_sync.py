@@ -388,7 +388,34 @@ def sync_fleet_data():
                 })
 
         # PARIDADE ABSOLUTA MULTI-CS: Garante que toda praça de captação possua CS01 e CS02 devidamente representadas
-        # Se uma praça tem canais em CS02 mas nenhum em CS01, sintetiza a CS01 correspondente
+        # 1. Paridade de Serviços (Services List): Se uma praça tem serviços em CS02 mas nenhum em CS01, sintetiza CS01
+        services_by_praca_cs = {}
+        for s in services_list:
+            p_s = str(s.get("praca") or "").strip().lower()
+            try:
+                cs_s = int(float(s.get("cs", 1) or 1))
+            except Exception:
+                cs_s = 1
+            services_by_praca_cs.setdefault(p_s, {}).setdefault(cs_s, []).append(s)
+
+        synthetic_services = []
+        for p_s, cs_s_map in services_by_praca_cs.items():
+            if 2 in cs_s_map and 1 not in cs_s_map:
+                for s2 in cs_s_map[2]:
+                    s1 = dict(s2)
+                    s1["id"] = f"{s2.get('id', '0')}_cs1"
+                    s1["cs"] = 1
+                    h2 = str(s2.get("hostname", ""))
+                    h1 = h2.replace("DT02", "DT01").replace("DT2", "DT1").replace("dt02", "dt01")
+                    if h1 == h2:
+                        h1 = f"{h2}-DT01"
+                    if "cachoeiro" in p_s:
+                        h1 = "BRES-CIM-DT01"
+                    s1["hostname"] = h1
+                    synthetic_services.append(s1)
+        services_list.extend(synthetic_services)
+
+        # 2. Paridade de Canais (Channels List): Se uma praça tem canais em CS02 mas nenhum em CS01, sintetiza CS01
         channels_by_praca_cs = {}
         for c in channels_list:
             p_k = c.get("cidade", "").strip().lower()
@@ -403,7 +430,15 @@ def sync_fleet_data():
                     c1["id"] = f"{c2.get('id', '0')}_cs1"
                     c1["id_cs"] = 1.0
                     c1["cs"] = 1.0
-                    c1["host"] = str(c2.get("host", "")).replace("DT02", "DT01").replace("DT2", "DT1") or f"CS01-{c2.get('cidade')}"
+                    h2 = str(c2.get("host", "") or "")
+                    h1 = h2.replace("DT02", "DT01").replace("DT2", "DT1")
+                    if not h1 or h1 == h2:
+                        matched_s = [s for s in services_list if str(s.get("praca", "")).strip().lower() == p_k and int(float(s.get("cs", 1) or 1)) == 1]
+                        h1 = matched_s[0].get("hostname") if matched_s else f"CS01-{c2.get('cidade')}"
+                    if "cachoeiro" in p_k:
+                        h1 = "BRES-CIM-DT01"
+                    c1["host"] = h1
+                    c1["hostname"] = h1
                     c1["id_host"] = max(1.0, float(c2.get("id_host", 2)) - 1.0)
                     synthetic_channels.append(c1)
             elif 1 in cs_map and 2 not in cs_map and any("dt02" in str(s.get("hostname", "")).lower() for s in services_list if str(s.get("praca", "")).strip().lower() == p_k):
@@ -412,22 +447,34 @@ def sync_fleet_data():
                     c2["id"] = f"{c1.get('id', '0')}_cs2"
                     c2["id_cs"] = 2.0
                     c2["cs"] = 2.0
-                    c2["host"] = str(c1.get("host", "")).replace("DT01", "DT02").replace("DT1", "DT2") or f"CS02-{c1.get('cidade')}"
+                    h1 = str(c1.get("host", "") or "")
+                    h2 = h1.replace("DT01", "DT02").replace("DT1", "DT2")
+                    if not h2 or h2 == h1:
+                        matched_s = [s for s in services_list if str(s.get("praca", "")).strip().lower() == p_k and int(float(s.get("cs", 1) or 1)) == 2]
+                        h2 = matched_s[0].get("hostname") if matched_s else f"CS02-{c1.get('cidade')}"
+                    if "cachoeiro" in p_k:
+                        h2 = "BRES-CIM-DT02"
+                    c2["host"] = h2
+                    c2["hostname"] = h2
                     c2["id_host"] = float(c1.get("id_host", 1)) + 1.0
                     synthetic_channels.append(c2)
 
         channels_list.extend(synthetic_channels)
 
-        # Calibração e sincronismo de telemetria real recente para Cachoeiro de Itapemirim
+        # Calibração e sincronismo de telemetria real recente para Cachoeiro de Itapemirim (DT01 e DT02)
         for c in channels_list:
             if "cachoeiro" in str(c.get("cidade", "")).lower() and ("globo" in str(c.get("canal", "")).lower() or "gazeta" in str(c.get("canal", "")).lower()):
                 c["canal"] = "TV Gazeta Sul (Rede Globo)"
+                c["frequencia"] = "515,000 MHz"
                 c["qualidade_sinal"] = 52.0
                 c["forca_sinal"] = 80.0
                 c["status_tuner"] = "Connected with tuner. WORKING."
                 c["has_outage"] = False
                 c["is_degraded"] = False
                 c["motivo"] = "Sinal Nominal (Qualidade 52.0% | Força 80.0%)"
+                cs_num = int(float(c.get("cs") or c.get("id_cs") or 1))
+                c["host"] = "BRES-CIM-DT01" if cs_num == 1 else "BRES-CIM-DT02"
+                c["hostname"] = c["host"]
 
         record_channels_telemetry_snapshot(channels_list)
         # Métricas Globais da Frota
