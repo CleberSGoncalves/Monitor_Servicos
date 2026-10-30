@@ -154,6 +154,184 @@ async function triggerPromoteFleetFromDashboard() {
     }
 }
 
+let cachedAutoHealingData = null;
+let currentAutoHealingFilter = "all";
+
+async function loadFleetAutoHealingStatus() {
+    const grid = document.getElementById("fleetAutoHealingGrid");
+    const listEl = document.getElementById("fleetAutoHealingHostsList");
+    const btnRun = document.getElementById("btnRunAutoHealingBatch");
+
+    try {
+        const resp = await fetch("/api/fleet/auto-healing/status", {
+            headers: { "Authorization": `Bearer ${getFleetAuthToken()}` }
+        });
+        if (!resp.ok) return;
+        const data = await resp.json();
+        cachedAutoHealingData = data;
+
+        const summary = data.summary || {};
+        if (grid) {
+            grid.innerHTML = `
+                <div style="background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 8px; padding: 12px; cursor: pointer;" onclick="filterAutoHealingList('up_to_date')" title="Clique para filtrar">
+                    <div style="font-size: 10px; color: #34d399; text-transform: uppercase; font-weight: 700;">🟢 Atualizados (v${data.target_version})</div>
+                    <div style="font-size: 22px; font-weight: 800; color: #10b981; margin-top: 4px;">${summary.up_to_date || 0} <span style="font-size: 11px; font-weight: 500; color: #94a3b8;">/ ${summary.total_hosts || 0}</span></div>
+                    <div style="font-size: 10px; color: #6ee7b7; margin-top: 2px;">Agentes 100% Nominais</div>
+                </div>
+                <div style="background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 8px; padding: 12px; cursor: pointer;" onclick="filterAutoHealingList('eligible')" title="Clique para filtrar">
+                    <div style="font-size: 10px; color: #fbbf24; text-transform: uppercase; font-weight: 700;">🟠 Desatualizados Elegíveis</div>
+                    <div style="font-size: 22px; font-weight: 800; color: #f59e0b; margin-top: 4px;">${summary.eligible_for_update || 0} <span style="font-size: 11px; font-weight: 500; color: #94a3b8;">hosts</span></div>
+                    <div style="font-size: 10px; color: #fcd34d; margin-top: 2px;">Online na v1.0.10 - v1.0.15</div>
+                </div>
+                <div style="background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 8px; padding: 12px; cursor: pointer;" onclick="filterAutoHealingList('delay')" title="Clique para filtrar">
+                    <div style="font-size: 10px; color: #38bdf8; text-transform: uppercase; font-weight: 700;">🟡 Em Delay (2h a 6h)</div>
+                    <div style="font-size: 22px; font-weight: 800; color: #38bdf8; margin-top: 4px;">${summary.in_delay || 0} <span style="font-size: 11px; font-weight: 500; color: #94a3b8;">hosts</span></div>
+                    <div style="font-size: 10px; color: #bae6fd; margin-top: 2px;">Oscilação WAN / Intervalo</div>
+                </div>
+                <div style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 8px; padding: 12px; cursor: pointer;" onclick="filterAutoHealingList('offline')" title="Clique para filtrar">
+                    <div style="font-size: 10px; color: #f87171; text-transform: uppercase; font-weight: 700;">🔴 Offline Crítico (>24h)</div>
+                    <div style="font-size: 22px; font-weight: 800; color: #ef4444; margin-top: 4px;">${summary.offline || 0} <span style="font-size: 11px; font-weight: 500; color: #94a3b8;">hosts</span></div>
+                    <div style="font-size: 10px; color: #fca5a5; margin-top: 2px;">Sem comunicação recente</div>
+                </div>
+                <div style="background: rgba(168, 85, 247, 0.12); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 8px; padding: 12px; cursor: pointer;" onclick="filterAutoHealingList('stopped_services')" title="Clique para filtrar">
+                    <div style="font-size: 10px; color: #c084fc; text-transform: uppercase; font-weight: 700;">⚠️ Serviços Parados</div>
+                    <div style="font-size: 22px; font-weight: 800; color: #a855f7; margin-top: 4px;">${summary.stopped_services || 0} <span style="font-size: 11px; font-weight: 500; color: #94a3b8;">serviços</span></div>
+                    <div style="font-size: 10px; color: #e9d5ff; margin-top: 2px;">FastMatching / Detection / WCF</div>
+                </div>
+            `;
+        }
+
+        renderAutoHealingHostsList();
+
+        if (btnRun) {
+            btnRun.disabled = (summary.eligible_for_update === 0 && summary.stopped_services === 0);
+        }
+    } catch (e) {
+        console.error("Erro ao carregar telemetria de Auto-Healing da Frota:", e);
+    }
+}
+
+function filterAutoHealingList(filterType) {
+    currentAutoHealingFilter = filterType;
+    renderAutoHealingHostsList();
+}
+
+function renderAutoHealingHostsList() {
+    const listEl = document.getElementById("fleetAutoHealingHostsList");
+    if (!listEl || !cachedAutoHealingData) return;
+
+    const hosts = cachedAutoHealingData.hosts || [];
+    let filtered = hosts;
+
+    if (currentAutoHealingFilter === "up_to_date") {
+        filtered = hosts.filter(h => h.agent_version === cachedAutoHealingData.target_version);
+    } else if (currentAutoHealingFilter === "eligible") {
+        filtered = hosts.filter(h => h.eligible_auto_update);
+    } else if (currentAutoHealingFilter === "delay") {
+        filtered = hosts.filter(h => h.comm_state === "DELAY");
+    } else if (currentAutoHealingFilter === "offline") {
+        filtered = hosts.filter(h => h.comm_state === "OFFLINE_CRITICAL" || h.comm_state === "OFFLINE_RECENT");
+    } else if (currentAutoHealingFilter === "stopped_services") {
+        filtered = hosts.filter(h => h.eligible_service_restart);
+    }
+
+    if (filtered.length === 0) {
+        listEl.innerHTML = `<span style="font-size: 11px; color: #94a3b8; padding: 6px;">Nenhum host encontrado para o filtro selecionado.</span>`;
+        return;
+    }
+
+    listEl.innerHTML = filtered.map(h => {
+        let badgeColor = "#94a3b8";
+        let badgeBg = "rgba(148,163,184,0.15)";
+        let icon = "⚪";
+
+        if (h.agent_version === cachedAutoHealingData.target_version) {
+            badgeColor = "#10b981";
+            badgeBg = "rgba(16,185,129,0.15)";
+            icon = "✅";
+        } else if (h.eligible_auto_update) {
+            badgeColor = "#f59e0b";
+            badgeBg = "rgba(245,158,11,0.15)";
+            icon = "🟠";
+        } else if (h.comm_state === "DELAY") {
+            badgeColor = "#38bdf8";
+            badgeBg = "rgba(56,189,248,0.15)";
+            icon = "🟡";
+        } else if (h.comm_state.startsWith("OFFLINE")) {
+            badgeColor = "#ef4444";
+            badgeBg = "rgba(239,68,68,0.15)";
+            icon = "🔴";
+        }
+
+        const stoppedStr = (h.stopped_critical_services && h.stopped_critical_services.length > 0)
+            ? ` • <span style="color:#f87171;">⚠️ ${h.stopped_critical_services.length} parado(s)</span>`
+            : "";
+
+        return `
+            <span style="display:inline-flex; align-items:center; gap:4px; padding:4px 8px; border-radius:4px; font-size:11px; font-family:monospace; background:${badgeBg}; border:1px solid ${badgeColor}55; color:#f8fafc;" title="Último reporte: ${h.last_update || 'N/A'} (${h.hours_offline}h atrás)">
+                ${icon} <strong>${h.hostname}</strong> (${h.praca} CS${h.cs}) • inst: <span style="color:${badgeColor}; font-weight:700;">${h.agent_version}</span>${stoppedStr}
+            </span>
+        `;
+    }).join("");
+}
+
+async function triggerFleetAutoHealingBatch() {
+    const logBox = document.getElementById("canaryLogOutput");
+    const btn = document.getElementById("btnRunAutoHealingBatch");
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Executando Auto-Healing...`;
+    }
+
+    if (logBox) {
+        logBox.innerText += `\n[${new Date().toLocaleTimeString()}] 🏥 Disparando Ciclo Automático de Auto-Healing da Frota (Atualização em Lote & Restart de Serviços Críticos)...`;
+    }
+
+    try {
+        const resp = await fetch("/api/fleet/auto-healing/run", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${getFleetAuthToken()}`
+            }
+        });
+        const data = await resp.json();
+
+        if (resp.ok && data.status === "success") {
+            if (logBox) {
+                logBox.innerText += `\n[${new Date().toLocaleTimeString()}] ✅ ${data.message}`;
+                if (data.actions && data.actions.length > 0) {
+                    logBox.innerText += `\n[${new Date().toLocaleTimeString()}] 📋 Detalhe das ações aplicadas no SharePoint:`;
+                    data.actions.forEach(act => {
+                        logBox.innerText += `\n   - [${act.tipo}] ${act.hostname} (${act.praca}): ${act.detalhe}`;
+                    });
+                }
+            }
+            if (typeof showToast === "function") showToast(data.message || "Auto-Healing executado com sucesso!", "success");
+            await loadFleetAutoHealingStatus();
+            await loadCanaryPipelineStatus();
+        } else {
+            if (logBox) logBox.innerText += `\n[${new Date().toLocaleTimeString()}] ❌ Erro: ${data.message || data.detail || 'Falha ao executar auto-healing'}`;
+            if (typeof showToast === "function") showToast(data.message || "Erro no auto-healing", "error");
+        }
+    } catch (e) {
+        if (logBox) logBox.innerText += `\n[${new Date().toLocaleTimeString()}] ❌ Falha de comunicação: ${e.message}`;
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<span>🚀</span> Executar Auto-Healing da Frota (Atualizar Agentes &amp; Recuperar Serviços)`;
+        }
+    }
+}
+
+window.loadFleetAutoHealingStatus = loadFleetAutoHealingStatus;
+window.filterAutoHealingList = filterAutoHealingList;
+window.triggerFleetAutoHealingBatch = triggerFleetAutoHealingBatch;
+
 document.addEventListener("DOMContentLoaded", () => {
-    setTimeout(loadCanaryPipelineStatus, 1200);
+    setTimeout(() => {
+        loadCanaryPipelineStatus();
+        loadFleetAutoHealingStatus();
+    }, 1200);
 });

@@ -283,6 +283,17 @@ _CLASSIFIER_CACHE: Dict[str, Any] = {
 CLASSIFIER_CACHE_TTL_SECONDS = 15.0
 
 
+def _normalize_host_lookup_key(praca: str, cs: Any) -> tuple:
+    p = str(praca or "").strip().lower()
+    for ac, no_ac in [("á", "a"), ("é", "e"), ("í", "i"), ("ó", "o"), ("ú", "u"), ("ã", "a"), ("õ", "o"), ("ç", "c")]:
+        p = p.replace(ac, no_ac)
+    try:
+        cs_clean = str(int(float(str(cs).strip())))
+    except Exception:
+        cs_clean = str(cs).strip()
+    return (p, cs_clean)
+
+
 def classify_fleet_quality_failures(force_refresh: bool = False) -> Dict[str, Any]:
     """
     Analisa todos os canais da frota sob a ótica estrita de falhas de qualidade broadcast.
@@ -340,13 +351,18 @@ def classify_fleet_quality_failures(force_refresh: bool = False) -> Dict[str, An
 
     # Mapeamento dinâmico de Praça + CS para Hostname físico real
     fleet_services = fleet_data.get("services", [])
-    host_map = {}
+    host_map: Dict[tuple, str] = {}
     for s in fleet_services:
-        p_k = str(s.get("praca", "")).strip().lower()
-        cs_k = str(s.get("cs", 1)).strip()
+        p_raw = str(s.get("praca", "")).strip()
+        cs_raw = s.get("cs", 1)
         h_val = str(s.get("hostname") or s.get("host") or "").strip()
-        if p_k and h_val and (p_k, cs_k) not in host_map:
-            host_map[(p_k, cs_k)] = h_val
+        if p_raw and h_val and h_val != "N/A":
+            k_norm = _normalize_host_lookup_key(p_raw, cs_raw)
+            if k_norm not in host_map:
+                host_map[k_norm] = h_val
+            k_orig = (p_raw.lower(), str(cs_raw).strip())
+            if k_orig not in host_map:
+                host_map[k_orig] = h_val
 
     for ch in channels:
         ch_name = ch.get("canal", "Canal")
@@ -358,10 +374,19 @@ def classify_fleet_quality_failures(force_refresh: bool = False) -> Dict[str, An
         ch_low = ch_name.lower()
 
         # Resolução exata do Hostname daquele CS naquela praça
-        cs_str = str(int(float(cs))) if str(cs).replace(".", "").isdigit() else str(cs)
-        matched_hostname = host_map.get((praca.strip().lower(), cs_str), "")
+        cs_clean = str(int(float(cs))) if str(cs).replace(".", "").isdigit() else str(cs)
+        lookup_k = _normalize_host_lookup_key(praca, cs)
+        matched_hostname = host_map.get(lookup_k, "")
         if not matched_hostname:
-            matched_hostname = str(ch.get("host") or ch.get("hostname") or f"CS-{praca[:3].upper()}-0{cs_str}")
+            matched_hostname = host_map.get((praca.strip().lower(), cs_clean), "")
+        if not matched_hostname:
+            p_clean = lookup_k[0]
+            for (p_cand, c_cand), h_cand in host_map.items():
+                if (p_clean in p_cand or p_cand in p_clean) and c_cand == cs_clean:
+                    matched_hostname = h_cand
+                    break
+        if not matched_hostname:
+            matched_hostname = str(ch.get("host") or ch.get("hostname") or f"CS-{praca[:3].upper()}-0{cs_clean}")
 
         # Classificação precisa de Meio e Dispositivo Físico Real (Sem generalizações incorretas de "Yuan")
         is_radio = (
@@ -378,11 +403,15 @@ def classify_fleet_quality_failures(force_refresh: bool = False) -> Dict[str, An
         # Hardware Físico Real Especificado (Respeitando a topologia real de Florianópolis e frota)
         if is_radio:
             # Em rádios analógicas, o dispositivo de captura de áudio é Sonifex FM Radcap PCIe (ex: Florianópolis CS01)
-            # Apenas rotula Yuan se expressamente cadastrado e sem vestígios de Sonifex/IEI/Radcap
+            # Rádios gravam estritamente MP3
             if any(k in dev_analog for k in ["tw6802", "yuan", "tm6802"]) and not any(k in dev_analog for k in ["sonifex", "radcap", "iei", "ivce"]):
                 hardware_brand = "Yuan TW6802 PCI (Rádio Legado)"
                 hardware_tag = "yuan"
                 mdo_display = "🔌 Yuan TW6802"
+            elif any(k in dev_analog for k in ["iei", "ivce"]):
+                hardware_brand = "Sonifex FM Radcap PCIe / IEI IVCE"
+                hardware_tag = "sonifex"
+                mdo_display = "📻 Sonifex FM"
             else:
                 hardware_brand = "Sonifex FM Radcap PCIe"
                 hardware_tag = "sonifex"
@@ -577,7 +606,7 @@ def classify_fleet_quality_failures(force_refresh: bool = False) -> Dict[str, An
                 "pattern_id": assigned_pattern,
                 "enum_number": pat_data["enum_number"],
                 "pattern_num": f"#{pat_data['enum_number']:02d}",
-                "pattern_name": pat_data["name"],
+                "pattern_name": channel_entry.get("pattern_name", pat_data["name"]),
                 "category": pat_data["category"],
                 "scope_meio": pat_data["scope_meio"],
                 "icon": pat_data["icon"],

@@ -2131,7 +2131,8 @@ async def get_detection_sites(
 
         return {
             "status": "success",
-            "summary": data["summary"],
+            "summary": data.get("summary") or data.get("kpis", {}),
+            "kpis": data.get("kpis") or data.get("summary", {}),
             "total_filtered": len(sites),
             "sites": sites
         }

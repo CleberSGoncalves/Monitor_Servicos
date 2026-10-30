@@ -563,7 +563,7 @@ async function executeDetectionAction(actionType, hostname) {
 // SISTEMA DE AUTO-HEALING INTELIGENTE DA FROTA
 // ==============================================================================
 async function triggerFleetAutoHealing() {
-    if (!confirm("⚡ Deseja executar o Auto-Healing em lote na frota?\n\nO sistema identificará agentes desatualizados (< 1.0.18.0) e nós em delay/parados, despachando a atualização e reciclagem de serviços essenciais via Microsoft Graph.")) {
+    if (!confirm("⚡ Deseja executar o Auto-Healing em lote na frota?\n\nO sistema identificará agentes desatualizados (< 1.0.16.0) e nós em delay/parados, despachando a atualização e reciclagem de serviços essenciais via Microsoft Graph.")) {
         return;
     }
     const btn = document.getElementById("btnAutoHealingFleet");
@@ -584,7 +584,7 @@ async function triggerFleetAutoHealing() {
         });
         const res = await resp.json();
         if (resp.ok && res.status === "success") {
-            alert(`✅ Auto-Healing executado com sucesso!\n\n• Hosts auditados: ${res.audit.total_hosts}\n• Agentes atualizados (1.0.18.0): ${res.audit.hosts_updated_v18}\n• Auto-updates despachados agora: ${res.executed_updates_count}\n• Ações em lote aplicadas: ${res.actions_dispatched.length}`);
+            alert(`✅ Auto-Healing executado com sucesso!\n\n• Hosts auditados: ${res.audit.total_hosts}\n• Agentes atualizados (v1.0.16.0): ${res.audit.hosts_updated_v18}\n• Auto-updates despachados agora: ${res.executed_updates_count}\n• Ações em lote aplicadas: ${res.actions_dispatched.length}`);
             await loadDetectionFleetData();
         } else {
             alert(`⚠️ Resposta do Auto-Healing: ${res.detail || res.message || "Execução concluída com avisos."}`);

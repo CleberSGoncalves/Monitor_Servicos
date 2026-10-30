@@ -29,7 +29,7 @@ from sharepoint_sync import get_graph_token, get_cached_data
 
 logger = logging.getLogger("fleet_auto_healing")
 
-TARGET_AGENT_VERSION = "1.0.18.0"
+TARGET_AGENT_VERSION = "1.0.16.0"
 AUTO_HEALING_LOG_FILE = DATA_DIR / "auto_healing_history.json"
 
 

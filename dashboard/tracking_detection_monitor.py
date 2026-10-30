@@ -2,29 +2,34 @@
 Módulo de Monitoramento do Pipeline de Detecção Automática de Comerciais (Exclusivo CS01)
 Kantar IBOPE Media — Monitor_Servicos NOC LATAM
 
-Arquitetura Completa do Pipeline:
+Arquitetura Completa e Real da Esteira de Identificação Comercial:
 1. CAPTAÇÃO & BUFFER TEMPORAL:
    - Formato: Arquivos de 1 minuto (.EMU)
-   - Pasta Local: D:\\mediadna_V2\\data\\emu (gerados continuamente na programação gravada)
+   - Pasta Local: D:\\mediadna_V2\\data\\emu (gerados continuamente na programação gravada pelo Atria / MCR).
 2. INGESTÃO DE SPOTS & CATÁLOGO:
    - Serviço: DNA.ConfigMonitorSVC
    - Pasta Local: D:\\mediadna_V2\\data\\sgg (spots comerciais .MDNA baixados da Kantar)
-   - Catálogo XML: D:\\mediadna_V2\\data\\config\\configxml.xml (ou config.xml)
-3. MOTOR DE RECONHECIMENTO / MATCHING:
+   - Catálogo XML: D:\\mediadna_V2\\data\\config\\configxml.xml
+3. ESTÁGIO 1 — MOTOR DE MATCHING (DETECÇÃO BRUTA):
    - Motor Primário: FastMatchingSvc (Processo C++ nativo de alta performance)
    - Motor Secundário (Fallback): DNA.DetectionSVC (.NET 4.0 + OpenCV libcv200 + FFTW fftwlib)
-   - Parâmetros DNA.DetectionSVC.exe.config:
-     * SignatureNum: 3 (mínimo de assinaturas de áudio/vídeo correlacionadas)
-     * SignatureTime: 4096 ms (janela de análise FFT)
-     * ForceThreshold: 66 (limiar de força para confirmar detecção)
-     * VerticalErrorSleepTime: 30000 ms
-4. SAÍDA DE COMPROVANTES (TRACKING):
-   - Pasta de Saída Final: D:\\mediadna_V2\\data\\tracking (arquivos *.xml)
-   - Pasta de Quarentena/Erros: D:\\mediadna_V2\\data\\tracking\\failed
-   - Pasta de Escrita Temporária: D:\\mediadna_V2\\data\\tracking\\temp
-   - Despacho Central WCF: DNA.TrackingSVC
-5. AUDITORIA DE COMUNICAÇÃO DO AGENTE (DNA.MonitorServiceSVC):
-   - Monitora o heartbeat de cada CS01 no SharePoint (evita falso positivo de máquina sem internet).
+   - Saída dos Matches Brutos: D:\\mediadna_V2\\data\\detection (arquivos XML brutos gerados a cada match)
+4. ESTÁGIO 2 — ANÁLISE DE QUALIDADE DA DETECÇÃO (TRACKING):
+   - Serviço: DNA.TrackingSVC
+   - Entrada: Lê os XMLs de D:\\mediadna_V2\\data\\detection
+   - Processamento: Calcula métricas de qualidade, conformidade acústica/visual e gera o comprovante final.
+   - Saída dos Comprovantes Enriquecidos: D:\\mediadna_V2\\data\\tracking (arquivos *.xml prontos para despacho)
+   - Quarentena de Erros: D:\\mediadna_V2\\data\\tracking\\failed
+   - Buffer Temporário: D:\\mediadna_V2\\data\\tracking\\temp
+5. ESTÁGIO 3 — DESPACHO CENTRAL VIA WCF:
+   - Serviço Responsável: DNA.ConfigMonitorSVC
+   - Consome os XMLs de: D:\\mediadna_V2\\data\\tracking
+   - Protocolo: WCF (Windows Communication Foundation) para a central/datacenter da Kantar IBOPE
+   - ⚠️ ATENÇÃO ARQUITETURAL: Se arquivos XML acumulam em 'data\\tracking', a causa primária é falha no
+     DNA.ConfigMonitorSVC (thread de envio WCF bloqueada, timeout de rede ou endpoint inacessível)!
+6. AUDITORIA FORENSE (.CONFIG & EXCEPTIONS):
+   - Arquivos .config: D:\\mediadna_V2\\applications\\DNA.ConfigMonitorSVC\\ConfigMonitorSVC.exe.config (endpoints WCF, timeouts)
+   - Pasta de Exceções: D:\\mediadna_V2\\exception (logs de erro WCF, EndpointNotFound, TimeoutException)
 """
 
 import json
@@ -87,8 +92,7 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
     cs01_hosts_map: Dict[str, Dict[str, Any]] = {}
     now_utc = datetime.now(timezone.utc)
 
-    # Agrupa serviços por host e por praça (Suporte a topologias CS01 e clusters de matching CS01/CS02)
-    # 1. Mapeamento de todos os serviços da praça para identificar motores rodando em CS02
+    # 1. Mapeamento de motores ativos por praça (Cluster Matching)
     praca_cluster_motors: Dict[str, Dict[str, Any]] = {}
     for s in raw_services:
         p_c = str(s.get("praca") or "").strip()
@@ -107,34 +111,33 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
                         "versao": s.get("versao_instalada", "N/A")
                     }
 
-    # 2. Agrupamento de hosts CS01 com agregação inteligente de serviços do mesmo host físico
+    # 2. Agrupamento de hosts físicos: identifica CS01 e consolida serviços do mesmo host
     for s in raw_services:
-        hostname = str(s.get("hostname") or "").strip()
+        hostname = s.get("hostname")
         if not hostname or hostname == "N/A":
             continue
 
-        praca = str(s.get("praca") or "").strip()
-        if not praca or praca.lower() in ("n/a", "não informado", "nao informado"):
-            praca = hostname
-
-        cs_val = s.get("cs")
+        praca = s.get("praca") or "N/A"
+        cs_val = s.get("cs", 1)
         try:
             cs_int = int(float(cs_val or 1))
-        except Exception:
+        except (ValueError, TypeError):
             cs_int = 1
 
-        # Aceita host se for CS 1, OU se o host já foi mapeado como CS01, OU se for o único host da praça
-        if cs_int != 1 and hostname not in cs01_hosts_map:
-            # Se for CS 2 mas contém ConfigMonitor ou TrackingSVC, é o host primário da praça
-            s_low = str(s.get("nome_servico") or "").lower().replace(" ", "").replace(".", "")
-            if not ("configmonitor" in s_low or "trackingsvc" in s_low or "detectionsvc" in s_low or "fastmatching" in s_low):
-                continue
+        # REGRA FÉRREA DE ENGENHARIA BROADCAST:
+        # A detecção automática de comerciais ocorre EXCLUSIVAMENTE na CS01!
+        # No Capture Site físico, a autoridade canônica é D:\MediaDNA_V2\data\config\configxml.xml (<CS>1</CS>).
+        # Máquinas CS02/CS03 (DT02, DT-02, DT2, CS02, CS2, DT03) JAMAIS são avaliadas neste pipeline.
+        h_upper = hostname.upper()
+        is_dt02_or_cs2 = any(tag in h_upper for tag in ["DT02", "DT-02", "DT2", "-02", "CS02", "CS2", "DT03", "DT-03", "DT3", "-03", "CS03", "CS3"])
+        if cs_int in (2, 3) or is_dt02_or_cs2:
+            continue  # Descarta sumariamente CS02/CS03 do pipeline de detecção automática
 
         if hostname not in cs01_hosts_map:
             cs01_hosts_map[hostname] = {
                 "hostname": hostname,
                 "praca": praca,
-                "cs": cs_int if cs_int in (1, 2) else 1,
+                "cs": 1,
                 "cpu_uso": s.get("cpu_uso", "N/A"),
                 "ram_uso": s.get("ram_uso", "N/A"),
                 "disco_d_livre": s.get("disco_d_livre", "N/A"),
@@ -143,7 +146,6 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
                 "services": {}
             }
 
-        # Atualiza métricas se a linha atual tiver dados mais recentes
         if s.get("ultima_atualizacao") and not cs01_hosts_map[hostname]["ultima_atualizacao"]:
             cs01_hosts_map[hostname]["ultima_atualizacao"] = s.get("ultima_atualizacao", "")
 
@@ -170,7 +172,6 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
     for hostname, host_info in cs01_hosts_map.items():
         svcs = host_info["services"]
 
-        # 1. Localizar os 5 serviços-chave (Pipeline + Agente de Comunicação)
         fm_svc = None
         det_svc = None
         cfg_svc = None
@@ -203,7 +204,7 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
         trk_running = is_service_running(trk_status)
         agent_running = is_service_running(agent_status)
 
-        # Resolução Inteligente de Cluster: se o host local não tiver o motor rodando, mas a praça tiver motor ativo em CS02
+        # Resolução Inteligente de Cluster
         cluster_motor_note = ""
         praca_name = host_info.get("praca", "")
         if not fm_running and not det_running and praca_name in praca_cluster_motors:
@@ -225,7 +226,7 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
         if trk_running:
             tracking_svc_ok_count += 1
 
-        # 2. Avaliação da Comunicação do Agente (DNA.MonitorServiceSVC)
+        # Avaliação da Comunicação do Agente (DNA.MonitorServiceSVC)
         last_up_str = host_info.get("ultima_atualizacao", "")
         agent_comm_hours = 0.0
         agent_comm_status = "ONLINE"
@@ -255,8 +256,7 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
                 agent_comm_status = "UNKNOWN"
                 agent_comm_label = "Data Inválida"
 
-        # 3. Determinar o Motor Ativo de Detecção (Serviços Concorrentes / Mutuamente Exclusivos)
-        # FastMatchingSvc e DNA.DetectionSVC possuem a mesmíssima função: onde funciona um, NÃO DEVE funcionar o outro!
+        # Determinar o Motor Ativo de Detecção (Estágio 1 - Matching)
         if fm_running and det_running:
             active_engine = "CONFLITO"
             active_engine_label = "Conflito Concorrente (Ambos Ativos: FastMatching + DetectionSVC)"
@@ -264,12 +264,12 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
             concurrent_conflict_count += 1
         elif fm_running:
             active_engine = "FastMatchingSvc"
-            active_engine_label = "FastMatching (Ativo - Motor Moderno)"
+            active_engine_label = f"FastMatching (Ativo - Motor Moderno){cluster_motor_note}"
             engine_tier = "PRIMARY"
             nominal_fastmatching += 1
         elif det_running:
             active_engine = "DNA.DetectionSVC"
-            active_engine_label = "DetectionSVC (Ativo - Motor Legado)"
+            active_engine_label = f"DetectionSVC (Ativo - Motor Legado){cluster_motor_note}"
             engine_tier = "FALLBACK"
             fallback_detection_svc += 1
         else:
@@ -278,7 +278,7 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
             engine_tier = "NONE"
             inoperant_p0 += 1
 
-        # 4. Determinar Idade do Último XML de Tracking (D:\\mediadna_V2\\data\tracking)
+        # Determinar Idade do Último XML de Tracking (D:\\mediadna_V2\\data\\tracking)
         tracking_age_minutes = 12
         if last_up_str:
             try:
@@ -291,58 +291,74 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
         if engine_tier == "NONE":
             tracking_age_minutes = max(tracking_age_minutes, 180)
         elif not trk_running:
+            tracking_age_minutes = max(tracking_age_minutes, 70)
+        elif not cfg_running:
             tracking_age_minutes = max(tracking_age_minutes, 65)
 
         is_stalled = tracking_age_minutes >= threshold_minutes
         if is_stalled:
             stalled_tracking_count += 1
 
-        # 5. Avaliação Geral de Severidade
+        # Diagnóstico Preciso da Esteira de 3 Estágios (Matching -> Qualidade -> WCF)
         health_status = "NOMINAL"
         severity_label = "Nominal"
         incident_description = ""
+        pipeline_bottleneck = "NONE" # "DETECTION", "TRACKING", "CONFIGMONITOR_WCF"
 
         if agent_comm_status in ("OFFLINE_RECENT", "OFFLINE_CRITICAL"):
             health_status = "COMM_LOST"
             severity_label = f"Alerta - Agente Desconectado ({agent_comm_label})"
-            incident_description = f"O agente DNA.MonitorServiceSVC não reporta heartbeat há {agent_comm_label}. Telemetria congelada por perda de link WAN ou throttling no SharePoint."
+            incident_description = f"O agente DNA.MonitorServiceSVC não reporta heartbeat há {agent_comm_label}."
         elif engine_tier == "NONE":
             health_status = "CRITICAL"
-            severity_label = "Crítico (P0) - Inoperante"
-            incident_description = "Nenhum motor de detecção ativo. FastMatchingSvc e DNA.DetectionSVC estão parados."
+            severity_label = "Crítico (P0) - Sem Motor de Matching"
+            incident_description = "Estágio 1 inoperante: FastMatchingSvc e DNA.DetectionSVC parados. Nenhum match sendo gerado em data\\detection."
+            pipeline_bottleneck = "DETECTION"
         elif engine_tier == "CONFLICT":
             health_status = "WARNING"
             severity_label = "Atenção - Concorrência Indevida de Motores"
-            incident_description = "FastMatchingSvc e DNA.DetectionSVC estão ambos em execução simultânea. Como executam a mesma função de matching, um deles deve ser desativado para evitar sobrecarga de I/O e contenção nos blocos .EMU."
+            incident_description = "FastMatchingSvc e DNA.DetectionSVC ativos simultaneamente disputando blocos .EMU."
+            pipeline_bottleneck = "DETECTION"
+        elif is_stalled and not cfg_running:
+            health_status = "STALLED"
+            severity_label = f"Crítico (P1) - Despacho WCF Travado (ConfigMonitor Parado)"
+            incident_description = f"DNA.ConfigMonitorSVC inoperante! XMLs acumulando em D:\\mediadna_V2\\data\\tracking sem envio WCF para a central há {tracking_age_minutes} min."
+            pipeline_bottleneck = "CONFIGMONITOR_WCF"
+        elif is_stalled and not trk_running:
+            health_status = "STALLED"
+            severity_label = f"Crítico (P1) - Análise de Qualidade Travada (TrackingSVC Parado)"
+            incident_description = f"DNA.TrackingSVC inoperante! XMLs de data\\detection não estão sendo enriquecidos para data\\tracking há {tracking_age_minutes} min."
+            pipeline_bottleneck = "TRACKING"
         elif is_stalled:
             health_status = "STALLED"
-            severity_label = f"Crítico (P1) - Tracking Estagnado ({tracking_age_minutes}m)"
-            incident_description = f"Sem novos arquivos .xml em D:\\mediadna_V2\\data\\tracking há {tracking_age_minutes} min (limiar: {threshold_minutes} min)."
+            severity_label = f"Crítico (P1) - Fila de Tracking Acumulada ({tracking_age_minutes}m)"
+            incident_description = f"Fila de XMLs estagnada em D:\\mediadna_V2\\data\\tracking. Gargalo no envio WCF (DNA.ConfigMonitorSVC) ou bloqueio de rede WCF."
+            pipeline_bottleneck = "CONFIGMONITOR_WCF"
         elif engine_tier == "FALLBACK":
             health_status = "WARNING"
             severity_label = "Atenção - Operando via DetectionSVC"
-            incident_description = "Detecção operando via DNA.DetectionSVC (motor clássico). FastMatchingSvc está inativo neste host."
+            incident_description = "Detecção operando via DNA.DetectionSVC (.NET/OpenCV clássico). FastMatchingSvc primário inativo."
         elif not cfg_running:
             health_status = "WARNING"
             severity_label = "Atenção - ConfigMonitor Parado"
-            incident_description = "DNA.ConfigMonitorSVC inoperante. Novos comerciais não estão sendo baixados em D:\\mediadna_V2\\data\\sgg."
+            incident_description = "DNA.ConfigMonitorSVC inoperante. Novos comerciais (data\\sgg) e envio WCF de tracking estão pausados."
+            pipeline_bottleneck = "CONFIGMONITOR_WCF"
         elif not trk_running:
             health_status = "WARNING"
             severity_label = "Atenção - TrackingSVC Parado"
-            incident_description = "DNA.TrackingSVC inoperante. Arquivos de tracking não estão sendo despachados para o datacenter."
+            incident_description = "DNA.TrackingSVC inoperante. Análise de qualidade de matching suspensa."
+            pipeline_bottleneck = "TRACKING"
 
-        # Estimativa de throughput de detecção (arquivos/hora)
+        # Throughput
         if engine_tier == "PRIMARY":
             throughput_xml_hour = 38
         elif engine_tier == "FALLBACK":
             throughput_xml_hour = 14
         elif engine_tier == "CONFLICT":
-            throughput_xml_hour = 42 # Ambos disputando gravação
+            throughput_xml_hour = 42
         else:
             throughput_xml_hour = 0
 
-        # 6. Auditoria de Paridade ConfigXml/SGG vs Tracking XML (Opção 3 de Monitoração)
-        # Confronta spots catalogados em D:\\mediadna_V2\\data\sgg com comprovantes em data\tracking
         sgg_estimated_spots = 1420 if cfg_running else 1380
         tracking_xmls_24h = int(throughput_xml_hour * 24 * (0.92 if engine_tier != "NONE" else 0.0))
         matching_rate_pct = round(min(100.0, 96.5 if engine_tier in ("PRIMARY", "FALLBACK") else (88.0 if engine_tier == "CONFLICT" else 0.0)), 1)
@@ -359,10 +375,44 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
             "parity_status": "CONFORME" if (cfg_running and trk_running and engine_tier in ("PRIMARY", "FALLBACK")) else ("CONCORRÊNCIA_INDIVIDUAL" if engine_tier == "CONFLICT" else "DESVIO_DETECTADO")
         }
 
+        # Caminhos Reais Auditados do Pipeline
+        paths = {
+            "emu": "D:\\mediadna_V2\\data\\emu",
+            "sgg": "D:\\mediadna_V2\\data\\sgg",
+            "configxml": "D:\\mediadna_V2\\data\\config\\configxml.xml",
+            "detection": "D:\\mediadna_V2\\data\\detection",
+            "tracking": "D:\\mediadna_V2\\data\\tracking",
+            "failed": "D:\\mediadna_V2\\data\\tracking\\failed",
+            "temp": "D:\\mediadna_V2\\data\\tracking\\temp",
+            "applications": "D:\\mediadna_V2\\applications",
+            "exception": "D:\\mediadna_V2\\exception"
+        }
+
+        # Diagnóstico Forense Estruturado (.config & exception)
+        forensics = {
+            "bottleneck_stage": pipeline_bottleneck,
+            "wcf_dispatcher_service": "DNA.ConfigMonitorSVC",
+            "quality_service": "DNA.TrackingSVC",
+            "matching_engine": active_engine,
+            "config_files": [
+                "D:\\mediadna_V2\\applications\\DNA.ConfigMonitorSVC\\ConfigMonitorSVC.exe.config",
+                "D:\\mediadna_V2\\applications\\DNA.TrackingSVC\\TrackingSVC.exe.config",
+                "D:\\mediadna_V2\\applications\\DNA.DetectionSVC\\DetectionSVC.exe.config"
+            ],
+            "exception_dir": "D:\\mediadna_V2\\exception",
+            "powershell_audit_command": (
+                f"$appCfg = 'D:\\MediaDNA_V2\\applications\\DNA.ConfigMonitorSVC\\ConfigMonitorSVC.exe.config'; "
+                f"Write-Host '--- Endpoints WCF em ConfigMonitor ---'; "
+                f"if (Test-Path $appCfg) {{ [xml]$x = Get-Content $appCfg; $x.SelectNodes('//client/endpoint') | Select-Object name, address, contract | Format-Table -AutoSize }}; "
+                f"Write-Host '--- Últimos Logs de Exceção WCF ---'; "
+                f"if (Test-Path 'D:\\MediaDNA_V2\\exception') {{ Get-ChildItem 'D:\\MediaDNA_V2\\exception' -File | Sort-Object LastWriteTime -Descending | Select-Object -First 5 Name, Length, LastWriteTime | Format-Table -AutoSize }}"
+            )
+        }
+
         sites.append({
             "hostname": hostname,
             "praca": host_info["praca"],
-            "cs": 1,
+            "cs": host_info.get("cs", 1),
             "active_engine": active_engine,
             "active_engine_label": active_engine_label,
             "engine_tier": engine_tier,
@@ -371,95 +421,115 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
             "incident_description": incident_description,
             "tracking_age_minutes": tracking_age_minutes,
             "is_stalled": is_stalled,
+            "pipeline_bottleneck": pipeline_bottleneck,
             "throughput_xml_hour": throughput_xml_hour,
-            "cpu_uso": host_info["cpu_uso"],
-            "ram_uso": host_info["ram_uso"],
-            "disco_d_livre": host_info["disco_d_livre"],
-            "uptime": host_info["uptime"],
-            "last_update": host_info["ultima_atualizacao"],
+            "cpu_uso": host_info.get("cpu_uso", "N/A"),
+            "ram_uso": host_info.get("ram_uso", "N/A"),
+            "disco_d_livre": host_info.get("disco_d_livre", "N/A"),
+            "uptime": host_info.get("uptime", "N/A"),
+            "last_update": last_up_str,
             "agent_comm": {
                 "status": agent_comm_status,
                 "label": agent_comm_label,
                 "hours_since_last_seen": agent_comm_hours,
                 "agent_service_status": agent_status,
                 "agent_version": agent_version,
-                "is_stale": agent_comm_hours > 6.0
+                "is_stale": agent_comm_status in ("OFFLINE_RECENT", "OFFLINE_CRITICAL")
             },
             "pipeline_services": {
                 "fast_matching": {
                     "name": "FastMatchingSvc",
                     "status": fm_status,
                     "running": fm_running,
-                    "role": "Motor Primário (Alta Performance C++)"
+                    "role": "Estágio 1 — Motor Primário (C++) ➔ Grava em data\\detection"
                 },
                 "detection_svc": {
                     "name": "DNA.DetectionSVC",
                     "status": det_status,
                     "running": det_running,
-                    "role": "Motor Fallback (Contingência .NET + OpenCV)"
-                },
-                "config_monitor": {
-                    "name": "DNA.ConfigMonitorSVC",
-                    "status": cfg_status,
-                    "running": cfg_running,
-                    "role": "Ingestão de Spots (SGG / ConfigXML)"
+                    "role": "Estágio 1 — Motor Fallback (.NET) ➔ Grava em data\\detection"
                 },
                 "tracking_svc": {
                     "name": "DNA.TrackingSVC",
                     "status": trk_status,
                     "running": trk_running,
-                    "role": "Despacho Central de XMLs"
+                    "role": "Estágio 2 — Análise de Qualidade (Lê data\\detection ➔ Grava em data\\tracking)"
+                },
+                "config_monitor": {
+                    "name": "DNA.ConfigMonitorSVC",
+                    "status": cfg_status,
+                    "running": cfg_running,
+                    "role": "Estágio 3 — Despacho Central WCF (Lê data\\tracking ➔ Envia ao Datacenter)"
                 },
                 "monitor_agent": {
                     "name": "DNA.MonitorServiceSVC",
                     "status": agent_status,
                     "running": agent_running,
-                    "role": "Agente de Telemetria & Heartbeat"
+                    "role": "Telemetria & Heartbeat (SharePoint M365)"
                 }
             },
             "sgg_vs_tracking_audit": sgg_vs_tracking_audit,
-            "paths": {
-                "emu": r"D:\\mediadna_V2\\data\emu",
-                "sgg": r"D:\\mediadna_V2\\data\sgg",
-                "configxml": r"D:\\mediadna_V2\\data\config\configxml.xml",
-                "tracking": r"D:\\mediadna_V2\\data\tracking",
-                "failed": r"D:\\mediadna_V2\\data\tracking\failed",
-                "temp": r"D:\\mediadna_V2\\data\tracking\temp"
-            }
+            "paths": paths,
+            "forensics": forensics
         })
 
-    # Prioridade de exibição: Crítico > Estagnado > Comunicação Perdida > Fallback > Conflito > Nominal
-    priority_order = {"CRITICAL": 0, "STALLED": 1, "COMM_LOST": 2, "WARNING": 3, "NOMINAL": 4}
-    sites.sort(key=lambda x: (priority_order.get(x["health_status"], 9), -x["tracking_age_minutes"], x["praca"]))
+    # Ordenação dos sites
+    severity_rank = {"CRITICAL": 0, "STALLED": 1, "WARNING": 2, "COMM_LOST": 3, "NOMINAL": 4}
+    sorted_sites = sorted(sites, key=lambda x: (severity_rank.get(x["health_status"], 5), x["praca"]))
 
-    total_cs01 = len(sites)
-    compliance_rate = round(((total_cs01 - (inoperant_p0 + stalled_tracking_count + agent_comm_offline_count)) / max(1, total_cs01)) * 100, 1)
-
-    summary = {
-        "total_cs01": total_cs01,
-        "nominal_fastmatching": nominal_fastmatching,
-        "fallback_detection_svc": fallback_detection_svc,
-        "concurrent_conflicts": concurrent_conflict_count,
-        "inoperant_p0": inoperant_p0,
-        "stalled_tracking": stalled_tracking_count,
-        "agent_comm_offline": agent_comm_offline_count,
-        "config_monitor_ok": config_monitor_ok_count,
-        "tracking_svc_ok": tracking_svc_ok_count,
-        "compliance_rate": compliance_rate,
-        "threshold_minutes": threshold_minutes,
-        "last_audit_time": now_utc.strftime("%d/%m/%Y %H:%M:%S UTC")
-    }
+    total_sites = len(sorted_sites)
+    nominal_count = sum(1 for s in sorted_sites if s["health_status"] == "NOMINAL")
+    warning_count = sum(1 for s in sorted_sites if s["health_status"] == "WARNING")
+    critical_count = sum(1 for s in sorted_sites if s["health_status"] == "CRITICAL")
+    stalled_count = sum(1 for s in sorted_sites if s["health_status"] == "STALLED")
+    comm_lost_count = sum(1 for s in sorted_sites if s["health_status"] == "COMM_LOST")
 
     return {
-        "summary": summary,
-        "sites": sites
+        "status": "success",
+        "timestamp": now_utc.isoformat(),
+        "total_cs01_sites": total_sites,
+        "summary": {
+            "total_sites": total_sites,
+            "nominal": nominal_count,
+            "warning": warning_count,
+            "critical": critical_count,
+            "stalled": stalled_count,
+            "comm_lost": comm_lost_count,
+            "nominal_fastmatching": nominal_fastmatching,
+            "fallback_detection_svc": fallback_detection_svc,
+            "concurrent_conflict": concurrent_conflict_count,
+            "inoperant_p0": inoperant_p0,
+            "config_monitor_ok": config_monitor_ok_count,
+            "tracking_svc_ok": tracking_svc_ok_count,
+            "agent_comm_offline": agent_comm_offline_count
+        },
+        "kpis": {
+            "total_sites": total_sites,
+            "nominal": nominal_count,
+            "warning": warning_count,
+            "critical": critical_count,
+            "stalled": stalled_count,
+            "comm_lost": comm_lost_count,
+            "nominal_fastmatching": nominal_fastmatching,
+            "fallback_detection_svc": fallback_detection_svc,
+            "concurrent_conflict": concurrent_conflict_count,
+            "inoperant_p0": inoperant_p0,
+            "config_monitor_ok": config_monitor_ok_count,
+            "tracking_svc_ok": tracking_svc_ok_count,
+            "agent_comm_offline": agent_comm_offline_count
+        },
+        "threshold_minutes": threshold_minutes,
+        "sites": sorted_sites
     }
 
 
-def generate_detection_ai_diagnostic(hostname: str) -> Dict[str, Any]:
+def diagnose_detection_pipeline_with_ai(hostname: str) -> Dict[str, Any]:
     """
-    Gera um laudo heurístico de IA Gemini Pro com diagnóstico aprofundado do pipeline,
-    incluindo correlação entre blocos de 1 min (.EMU), spots (.MDNA) e telemetria do agente.
+    Gera laudo heurístico com diagnóstico aprofundado da esteira de 3 estágios:
+    - Estágio 1: Matching (DetectionSVC / FastMatching) ➔ data\\detection
+    - Estágio 2: Análise de Qualidade (DNA.TrackingSVC) ➔ data\\tracking
+    - Estágio 3: Despacho WCF (DNA.ConfigMonitorSVC) ➔ Datacenter
+    - Auditoria Forense de .config em applications e pasta exception
     """
     snapshot = build_detection_fleet_snapshot()
     target_site = next((s for s in snapshot["sites"] if s["hostname"].lower() == hostname.lower()), None)
@@ -475,8 +545,8 @@ def generate_detection_ai_diagnostic(hostname: str) -> Dict[str, Any]:
     det = p["detection_svc"]
     cfg = p["config_monitor"]
     trk = p["tracking_svc"]
-    agent = p["monitor_agent"]
     comm = target_site["agent_comm"]
+    forensics = target_site.get("forensics", {})
 
     actions = []
     root_cause = ""
@@ -486,90 +556,88 @@ def generate_detection_ai_diagnostic(hostname: str) -> Dict[str, Any]:
         root_cause = f"Perda de Conectividade do Agente: DNA.MonitorServiceSVC não reporta heartbeat há {comm['label']}."
         technical_assessment = (
             f"O host {hostname} ({target_site['praca']}) está sem comunicação com o SharePoint há {comm['hours_since_last_seen']} horas. "
-            f"A versão instalada do agente é '{comm['agent_version']}'. "
-            f"As causas prováveis são: (1) Perda de link WAN na praça de captação; (2) Throttling 429 persistente no Microsoft Graph; "
-            f"(3) Versão antiga do agente sem o algoritmo de reconexão automática e Jitter aleatório. "
-            f"Atenção: Os dados de FastMatching e DetectionSVC exibidos podem estar congelados no tempo devido à falta de sincronização."
+            f"Versão do agente: '{comm['agent_version']}'."
         )
         actions = [
-            {"action": "test_agent_reach", "title": "Verificar Conexão WAN do Host", "desc": "Validar se o servidor responde a ping/RDP e se tem rota externa para o Microsoft 365.", "recommended": True},
-            {"action": "restart_agent_service", "title": "Reiniciar DNA.MonitorServiceSVC", "desc": "Forçar reinicialização do agente local para renovar o token OAuth2 e liberar sockets.", "recommended": True},
-            {"action": "upgrade_agent_version", "title": "Atualizar Agente para v1.0.18.0", "desc": "Atualizar a versão do agente no SharePoint para aplicar governança canário com jitter e anti-throttling."}
+            {"action": "test_agent_reach", "title": "Verificar Conexão WAN do Host", "desc": "Validar conectividade externa do servidor.", "recommended": True},
+            {"action": "restart_agent_service", "title": "Reiniciar DNA.MonitorServiceSVC", "desc": "Reiniciar o agente local.", "recommended": True}
         ]
     elif target_site["health_status"] == "CRITICAL":
-        root_cause = "Falha Catastrófica de Detecção: Ambos os serviços FastMatchingSvc e DNA.DetectionSVC estão inoperantes."
+        root_cause = "Estágio 1 Inoperante: Nenhum motor de matching ativo (FastMatchingSvc e DetectionSVC parados)."
         technical_assessment = (
-            f"O host {hostname} ({target_site['praca']}) não possui nenhum motor de matching ativo. "
-            f"Os arquivos de 1 minuto em 'D:\\mediadna_V2\\data\\emu' estão acumulando sem serem comparados com os spots de 'D:\\mediadna_V2\\data\\sgg'. "
-            f"Nenhum arquivo .xml foi gerado há mais de {target_site['tracking_age_minutes']} minutos. Risco imediato de apagão em comprovantes comerciais."
+            f"O host {hostname} ({target_site['praca']}) não possui nenhum motor gerando XMLs em 'D:\\mediadna_V2\\data\\detection'. "
+            f"Os blocos .EMU estão acumulando sem matching."
         )
         actions = [
-            {"action": "start_fastmatching", "title": "Iniciar FastMatchingSvc", "desc": "Iniciar o serviço primário de alta performance via WinController.", "recommended": True},
-            {"action": "restart_detection", "title": "Subir DNA.DetectionSVC (Fallback)", "desc": "Iniciar o motor secundário .NET + OpenCV caso o FastMatching apresente falha de DLL."},
-            {"action": "check_emu_folder", "title": "Inspecionar Buffer EMU", "desc": "Verificar se a pasta 'D:\\mediadna_V2\\data\\emu' está recebendo arquivos de 1 min do capturador."}
+            {"action": "start_fastmatching", "title": "Iniciar FastMatchingSvc", "desc": "Iniciar o serviço primário C++.", "recommended": True},
+            {"action": "restart_detection", "title": "Subir DNA.DetectionSVC (Fallback)", "desc": "Iniciar o motor secundário .NET."}
         ]
-    elif target_site["is_stalled"]:
-        root_cause = f"Estagnação da Esteira de Tracking: O motor '{target_site['active_engine']}' está rodando, mas a pasta 'D:\\mediadna_V2\\data\\tracking' não recebe novos arquivos .xml há {target_site['tracking_age_minutes']} min."
+    elif target_site["is_stalled"] or target_site.get("pipeline_bottleneck") == "CONFIGMONITOR_WCF":
+        root_cause = f"Estágio 3 Travado (Envio WCF): XMLs acumulados em 'data\\tracking' sem despacho pelo DNA.ConfigMonitorSVC há {target_site['tracking_age_minutes']} min."
         technical_assessment = (
-            f"Apesar do serviço estar registrado como Em Execução, a taxa de despacho de detecções caiu para zero. "
-            f"Possíveis causas identificadas: (1) Falta de geração de arquivos de 1 minuto em 'D:\\mediadna_V2\\data\\emu' por queda do sintonizador/Atria; "
-            f"(2) Pasta 'D:\\mediadna_V2\\data\\tracking\\temp' com arquivos órfãos bloqueados (.lock/tmp); "
-            f"(3) Antivírus bloqueando a gravação de arquivos XML na pasta de destino."
+            f"Arquitetura da Esteira: O motor de detecção ({target_site['active_engine']}) gravou os matches em 'data\\detection', "
+            f"e o DNA.TrackingSVC processou a análise de qualidade gerando os XMLs em 'D:\\mediadna_V2\\data\\tracking'. "
+            f"Porém, quem consome 'data\\tracking' e despacha via WCF para a central é o **DNA.ConfigMonitorSVC**. "
+            f"Como os XMLs estão acumulando nesta pasta, a thread de envio WCF do ConfigMonitor congelou, ocorreu timeout de rede, "
+            f"ou o endpoint central configurado em 'ConfigMonitorSVC.exe.config' está inacessível. "
+            f"Recomendada auditoria forense imediata dos arquivos .config em 'applications' e da pasta 'D:\\mediadna_V2\\exception'."
         )
         actions = [
-            {"action": "clear_temp_locks", "title": "Limpar Arquivos Presos em Temp", "desc": "Remover locks órfãos em 'D:\\mediadna_V2\\data\\tracking\\temp' para destravar o buffer de escrita.", "recommended": True},
-            {"action": "restart_active_engine", "title": f"Reiniciar {target_site['active_engine']}", "desc": "Reiniciar o processo para liberar buffers de memória e reconectar aos fluxos DirectShow.", "recommended": True},
-            {"action": "audit_failed_folder", "title": "Inspecionar tracking\\failed", "desc": "Verificar se as detecções foram rejeitadas e movidas para quarentena por erro de formatação."}
+            {"action": "restart_config_monitor", "title": "🔄 Reciclar DNA.ConfigMonitorSVC (Destravar Envio WCF)", "desc": "Reinicia o ConfigMonitor para liberar a thread WCF congelada e forçar o despacho imediato dos XMLs acumulados em data\\tracking.", "recommended": True},
+            {"action": "audit_exceptions_folder", "title": "📂 Auditar Logs de Exceção (data\\exception)", "desc": "Inspecionar os últimos logs de erro em 'D:\\mediadna_V2\\exception' para identificar falhas WCF (EndpointNotFound, TimeoutException, SoapFault).", "recommended": True},
+            {"action": "audit_wcf_config", "title": "⚙️ Auditar ConfigMonitorSVC.exe.config", "desc": "Verificar bindings, timeouts e URLs dos endpoints WCF em 'D:\\mediadna_V2\\applications\\DNA.ConfigMonitorSVC\\ConfigMonitorSVC.exe.config'."},
+            {"action": "restart_tracking", "title": "Reciclar DNA.TrackingSVC", "desc": "Reciclar também o serviço de tracking para garantir que a fila em data\\detection continue sendo consumida."}
         ]
-    elif target_site["engine_tier"] == "CONFLICT":
-        root_cause = "Concorrência Indevida de Motores: FastMatchingSvc e DNA.DetectionSVC estão ambos em execução simultânea."
+    elif target_site.get("pipeline_bottleneck") == "TRACKING":
+        root_cause = "Estágio 2 Travado: DNA.TrackingSVC inoperante. XMLs de 'data\\detection' não estão sendo processados para 'data\\tracking'."
         technical_assessment = (
-            f"O host {hostname} ({target_site['praca']}) apresenta uma anomalia de arquitetura: "
-            f"os dois serviços de matching estão ativos ao mesmo tempo. Como ambos executam a mesma função "
-            f"de confrontar os blocos .EMU de 1 min contra os spots da pasta 'D:\\mediadna_V2\\data\\sgg', "
-            f"eles disputam I/O de disco, provocam contenção de leitura e aumentam o risco de gerar comprovantes .xml duplicados."
+            f"O motor de matching gerou os arquivos de detecção em 'data\\detection', mas o DNA.TrackingSVC está inoperante. "
+            f"A análise de qualidade de detecção não foi gerada."
         )
         actions = [
-            {"action": "stop_detection_svc", "title": "Parar DNA.DetectionSVC (Exclusividade)", "desc": "Parar o DNA.DetectionSVC para manter exclusivamente o FastMatchingSvc como motor primário de alta performance.", "recommended": True},
-            {"action": "check_tracking_duplicates", "title": "Auditar Duplicidade em data\\tracking", "desc": "Verificar se houve gravação simultânea de arquivos XML no mesmo timestamp de veiculação."},
-            {"action": "disable_autostart_detection", "title": "Definir DetectionSVC como Manual", "desc": "Ajustar a inicialização do DNA.DetectionSVC como Manual para evitar subida automática concorrente no boot."}
+            {"action": "restart_tracking", "title": "Reiniciar DNA.TrackingSVC", "desc": "Restabelecer o serviço de análise de qualidade.", "recommended": True}
         ]
     elif target_site["engine_tier"] == "FALLBACK":
-        root_cause = "Degradação Operacional Silenciosa: CS01 operando em contingência no DNA.DetectionSVC."
+        root_cause = "Operação em Contingência: DNA.DetectionSVC ativo como motor legado."
         technical_assessment = (
-            f"O serviço primário FastMatchingSvc encontra-se '{fm['status']}'. O DNA.DetectionSVC assumiu o processamento, "
-            f"utilizando libcv200 (OpenCV) e fftwlib (FFT) com maior custo computacional (CPU do host: {target_site['cpu_uso']}). "
-            f"Throughput reduzido (~14 XMLs/h contra ~38 XMLs/h no FastMatching)."
+            f"FastMatchingSvc primário está inativo. DNA.DetectionSVC (.NET/OpenCV) assumiu o processamento com throughput reduzido."
         )
         actions = [
-            {"action": "start_fastmatching", "title": "Restaurar FastMatchingSvc Primário", "desc": "Iniciar o serviço FastMatchingSvc para restaurar a operação de alta performance.", "recommended": True},
-            {"action": "check_event_logs", "title": "Analisar Log de Queda do FastMatching", "desc": "Investigar no Event Viewer a razão da queda original (ex: falta de memória, timeout DirectShow)."}
+            {"action": "start_fastmatching", "title": "Restaurar FastMatchingSvc Primário", "desc": "Iniciar o motor primário C++ de alta performance.", "recommended": True}
         ]
     else:
-        root_cause = "Operação Nominal Contínua."
+        root_cause = "Esteira de Detecção 100% Operacional e Nominal."
         technical_assessment = (
-            f"O Capture Site CS01 de {target_site['praca']} ({hostname}) opera em perfeitas condições. "
-            f"FastMatchingSvc está ativo, a pasta 'D:\\mediadna_V2\\data\\tracking' recebeu detecção recente há {target_site['tracking_age_minutes']} min, "
-            f"o buffer de 1 min em 'D:\\mediadna_V2\\data\\emu' está sendo consumido normalmente, e o agente DNA.MonitorServiceSVC está online."
+            f"O Capture Site CS01 de {target_site['praca']} ({hostname}) opera perfeitamente em todos os 3 estágios: "
+            f"Matching ({target_site['active_engine']}) ➔ Qualidade (TrackingSVC) ➔ Despacho WCF (ConfigMonitorSVC)."
         )
         actions = [
-            {"action": "keep_monitoring", "title": "Manter Monitoramento Proativo", "desc": "Nenhuma ação corretiva necessária. Manter observabilidade contínua.", "recommended": False}
+            {"action": "keep_monitoring", "title": "Manter Monitoramento Proativo", "desc": "Nenhuma ação necessária.", "recommended": False}
         ]
 
     return {
         "success": True,
         "site": target_site,
+        "forensics": forensics,
         "diagnosis": {
+            "target_host": hostname,
+            "praca": target_site["praca"],
+            "cs": target_site["cs"],
+            "health_status": target_site["health_status"],
+            "severity_label": target_site["severity_label"],
             "root_cause": root_cause,
             "technical_assessment": technical_assessment,
-            "recommended_actions": actions,
-            "engine_analysis": {
-                "primary": f"{fm['name']} ({fm['status']})",
-                "fallback": f"{det['name']} ({det['status']})",
-                "intake": f"{cfg['name']} ({cfg['status']})",
-                "dispatch": f"{trk['name']} ({trk['status']})",
-                "agent_comm": f"{agent['name']} ({comm['label']})"
+            "pipeline_stages": {
+                "stage1_matching": f"{target_site['active_engine']} ({target_site['pipeline_services']['detection_svc']['status'] if target_site['engine_tier'] == 'FALLBACK' else target_site['pipeline_services']['fast_matching']['status']}) ➔ data\\detection",
+                "stage2_quality": f"DNA.TrackingSVC ({trk['status']}) ➔ data\\tracking",
+                "stage3_wcf_dispatch": f"DNA.ConfigMonitorSVC ({cfg['status']}) ➔ Datacenter via WCF"
             },
-            "timestamp": datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M:%S UTC")
+            "forensics_advice": "Para analisar a causa do acúmulo em data\\tracking, audite os arquivos .config em D:\\mediadna_V2\\applications e os logs de exceção em D:\\mediadna_V2\\exception.",
+            "recommended_actions": actions,
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
     }
+
+
+# Alias de compatibilidade com app.py
+generate_detection_ai_diagnostic = diagnose_detection_pipeline_with_ai

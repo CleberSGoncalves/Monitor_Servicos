@@ -45,6 +45,20 @@ LOG_LOCATIONS = {
         Path(r"E:\desenvolvimento\Monitor_Servicos\servicos\DNA.MonitorServiceSVC"),
         Path(r"C:\Program Files\MediaDNA\MonitorService\logs"),
         Path(r"D:\\MediaDNA_V2\Applications\MonitorService\logs")
+    ],
+    "fastmatching": [
+        Path(r"D:\\MediaDNA_V2\Applications\DTVCapture64\FastMachingSvc"),
+        Path(r"D:\\MediaDNA_V2\Applications\DTVCapture64\FastMatchingSvc")
+    ],
+    "configmonitor": [
+        Path(r"D:\\MediaDNA_V2\Applications\DNA.ConfigMonitorSVC\Logs")
+    ],
+    "tracking": [
+        Path(r"D:\\MediaDNA_V2\Applications\DNA.TrackingSVC\Logs")
+    ],
+    "exception": [
+        Path(r"D:\\MediaDNA_V2\Exception"),
+        Path(r"D:\\MediaDNA_V2\exception")
     ]
 }
 
@@ -327,7 +341,11 @@ def generate_fleet_host_logs(
         "filetransfer": (r"D:\\MediaDNA_V2\Applications\FileTransfer\Logs", f"FileTransfer_{now.strftime('%Y%m%d')}.log"),
         "mediarecorder": (r"D:\\MediaDNA_V2\Applications\MediaRecorder\Logs", f"MediaRecorder_{now.strftime('%Y%m%d')}.log"),
         "detection": (r"D:\\MediaDNA_V2\Applications\DetectionSVC\Logs", f"Detection_{now.strftime('%Y%m%d')}.log"),
-        "monitorservice": (r"D:\\MediaDNA_V2\Applications\MonitorService\logs", f"MonitorService_{now.strftime('%Y%m%d')}.log")
+        "monitorservice": (r"D:\\MediaDNA_V2\Applications\MonitorService\logs", f"MonitorService_{now.strftime('%Y%m%d')}.log"),
+        "fastmatching": (r"D:\\MediaDNA_V2\Applications\DTVCapture64\FastMachingSvc", "fma.log"),
+        "configmonitor": (r"D:\\MediaDNA_V2\Applications\DNA.ConfigMonitorSVC\Logs", f"ConfigMonitorSVC_{now.strftime('%Y%m%d')}.log"),
+        "tracking": (r"D:\\MediaDNA_V2\Applications\DNA.TrackingSVC\Logs", f"TrackingSVC_{now.strftime('%Y%m%d')}.log"),
+        "exception": (r"D:\\MediaDNA_V2\Exception", f"Exception_{now.strftime('%Y%m%d')}.log")
     }
     dir_path, file_name = service_paths.get(source, (r"D:\\MediaDNA_V2\Logs", f"{source}_{now.strftime('%Y%m%d')}.log"))
     actual_file = f"[{host_name} ({cidade} - {uf})] {dir_path}\\{file_name}"
