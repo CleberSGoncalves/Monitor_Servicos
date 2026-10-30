@@ -324,10 +324,10 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
             severity_label = f"Crítico (P1) - Despacho WCF Travado (ConfigMonitor Parado)"
             incident_description = f"DNA.ConfigMonitorSVC inoperante! XMLs acumulando em D:\\mediadna_V2\\data\\tracking sem envio WCF para a central há {tracking_age_minutes} min."
             pipeline_bottleneck = "CONFIGMONITOR_WCF"
-        elif is_stalled and not trk_running:
+        elif is_stalled and not trk_running and engine_tier == "FALLBACK":
             health_status = "STALLED"
             severity_label = f"Crítico (P1) - Análise de Qualidade Travada (TrackingSVC Parado)"
-            incident_description = f"DNA.TrackingSVC inoperante! XMLs de data\\detection não estão sendo enriquecidos para data\\tracking há {tracking_age_minutes} min."
+            incident_description = f"DNA.TrackingSVC inoperante! Em modo Fallback (.NET), os XMLs de data\\detection não estão sendo enriquecidos para data\\tracking há {tracking_age_minutes} min."
             pipeline_bottleneck = "TRACKING"
         elif is_stalled:
             health_status = "STALLED"
@@ -343,10 +343,10 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
             severity_label = "Atenção - ConfigMonitor Parado"
             incident_description = "DNA.ConfigMonitorSVC inoperante. Novos comerciais (data\\sgg) e envio WCF de tracking estão pausados."
             pipeline_bottleneck = "CONFIGMONITOR_WCF"
-        elif not trk_running:
+        elif not trk_running and engine_tier == "FALLBACK":
             health_status = "WARNING"
-            severity_label = "Atenção - TrackingSVC Parado"
-            incident_description = "DNA.TrackingSVC inoperante. Análise de qualidade de matching suspensa."
+            severity_label = "Atenção - TrackingSVC Parado (Modo Fallback)"
+            incident_description = "DNA.TrackingSVC inoperante. Em modo DetectionSVC, a análise de qualidade em data\detection está suspensa."
             pipeline_bottleneck = "TRACKING"
 
         # Throughput
@@ -566,6 +566,21 @@ def diagnose_detection_pipeline_with_ai(hostname: str) -> Dict[str, Any]:
             {"action": "test_agent_reach", "title": "Verificar Conexão WAN do Host", "desc": "Validar conectividade externa do servidor.", "recommended": True},
             {"action": "restart_agent_service", "title": "Reiniciar DNA.MonitorServiceSVC", "desc": "Reiniciar o agente local.", "recommended": True}
         ]
+    elif target_site["engine_tier"] == "CONFLICT":
+        root_cause = "Conflito Concorrente Ativo: FastMatchingSvc e DNA.DetectionSVC estão ambos em execução no mesmo Capture Site CS01."
+        technical_assessment = (
+            f"Anomalia Arquitetural Severa em {target_site['praca']} ({hostname}): Ambos os motores de detecção estão ativos concorrentemente. "
+            f"O FastMatchingSvc registra os matches em 'D:\\mediadna_V2\\applications\\dtvcapture64\\fastmachingsvc\\fma.log' e entrega o XML de comprovação "
+            f"DIRETAMENTE na pasta 'D:\\mediadna_V2\\data\\tracking'. Ao mesmo tempo, o DNA.DetectionSVC lê os mesmos buffers .EMU em 'data\\emu', "
+            f"grava XMLs intermediários em 'data\\detection' e aciona o DNA.TrackingSVC para regravar em 'data\\tracking'. "
+            f"Essa concorrência gera disputa destrutiva de I/O em disco, duplicações de XML e elevação indevida de CPU. "
+            f"Ação Imediata: Desativar o DNA.DetectionSVC e fixar inicialização Manual para manter exclusivamente o FastMatchingSvc operando."
+        )
+        actions = [
+            {"action": "stop_detection_svc", "title": "⛔ Parar e Desativar DNA.DetectionSVC", "desc": "Encerrar o DNA.DetectionSVC para preservar exclusivamente o FastMatchingSvc como motor primário C++ de alta performance.", "recommended": True},
+            {"action": "audit_fma_log", "title": "📄 Auditar Log do FastMatching (fma.log)", "desc": "Inspecionar 'D:\\mediadna_V2\\applications\\dtvcapture64\\fastmachingsvc\\fma.log' para confirmar a integridade e taxa de matching em tempo real.", "recommended": True},
+            {"action": "verify_tracking_flow", "title": "📁 Validar Fluxo em data\\tracking", "desc": "Confirmar que o DNA.ConfigMonitorSVC está coletando normalmente os XMLs finais entregues pelo FastMatching."}
+        ]
     elif target_site["health_status"] == "CRITICAL":
         root_cause = "Estágio 1 Inoperante: Nenhum motor de matching ativo (FastMatchingSvc e DetectionSVC parados)."
         technical_assessment = (
@@ -632,10 +647,20 @@ def diagnose_detection_pipeline_with_ai(hostname: str) -> Dict[str, Any]:
             "root_cause": root_cause,
             "technical_assessment": technical_assessment,
             "pipeline_stages": {
-                "stage1_matching": f"{target_site['active_engine']} ({target_site['pipeline_services']['detection_svc']['status'] if target_site['engine_tier'] == 'FALLBACK' else target_site['pipeline_services']['fast_matching']['status']}) ➔ data\\detection",
-                "stage2_quality": f"DNA.TrackingSVC ({trk['status']}) ➔ data\\tracking",
-                "stage3_wcf_dispatch": f"DNA.ConfigMonitorSVC ({cfg['status']}) ➔ Datacenter via WCF"
+                "stage1_matching": (
+                    f"FastMatchingSvc ({fm['status']}) ➔ Log em dtvcapture64\\fastmachingsvc\\fma.log ➔ Entrega DIRETA em data\\tracking"
+                    if target_site['engine_tier'] == 'PRIMARY' else
+                    (f"DNA.DetectionSVC ({det['status']}) ➔ data\\detection" if target_site['engine_tier'] == 'FALLBACK' else f"CONFLITO CONCORRENTE: FastMatchingSvc + DetectionSVC")
+                ),
+                "stage2_quality": (
+                    "Embutido no FastMatching (Dispensa TrackingSVC)"
+                    if target_site['engine_tier'] == 'PRIMARY' else
+                    f"DNA.TrackingSVC ({trk['status']}) ➔ Lê data\\detection ➔ Grava data\\tracking"
+                ),
+                "stage3_wcf_dispatch": f"DNA.ConfigMonitorSVC ({cfg['status']}) ➔ Datacenter via WCF (RemoteHostsService.svc)"
             },
+            "canonical_cs_identification": f"Identificado como CS01 canônico via tag <CS>1</CS> em D:\\mediadna_v2\\data\\config\\configxml.xml.",
+            "wcf_endpoint_info": "https://mediadna.ibope.com/mediadnawcfcs/RemoteHostsService.svc (Binding: wsHttpBinding / secureHttpBinding, sendTimeout=05:20:00). Acúmulos em data\\tracking indicam falha neste transporte, auditável em D:\\mediadna_v2\\Data\\exception.",
             "forensics_advice": "Para analisar a causa do acúmulo em data\\tracking, audite os arquivos .config em D:\\mediadna_V2\\applications e os logs de exceção em D:\\mediadna_V2\\exception.",
             "recommended_actions": actions,
             "timestamp": datetime.now(timezone.utc).isoformat()
