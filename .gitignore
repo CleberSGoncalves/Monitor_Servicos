@@ -25,6 +25,9 @@ publish/servicos/*
 scratch/
 servicos/
 publish/*.zip
+!publish/DNA.MonitorServiceSVC.zip
+!publish/DNA.MonitorServiceSVC_v1.0.18.0.zip
+!publish/MonitorServiceSVC.zip
 publish/*.zip.sha256
 publish/agent_v*/
 
