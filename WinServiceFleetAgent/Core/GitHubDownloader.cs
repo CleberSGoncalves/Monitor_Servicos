@@ -136,6 +136,10 @@ namespace WinServiceFleetAgent.Core
                 if (!resp.IsSuccessStatusCode)
                 {
                     FileLogger.Log($"[SharePointReleaseDownloader] ⚠️ Manifesto não encontrado em '{ReleasesFolder}/manifest_sha256.json' (HTTP {(int)resp.StatusCode}).");
+                    lock (_manifestLock)
+                    {
+                        _manifestExpiry = DateTime.UtcNow.AddMinutes(5);
+                    }
                     return null;
                 }
 
@@ -152,6 +156,10 @@ namespace WinServiceFleetAgent.Core
             catch (Exception ex)
             {
                 FileLogger.LogError("[SharePointReleaseDownloader] Erro ao consultar manifest_sha256.json no SharePoint", ex);
+                lock (_manifestLock)
+                {
+                    _manifestExpiry = DateTime.UtcNow.AddMinutes(5);
+                }
                 return null;
             }
         }
@@ -196,6 +204,14 @@ namespace WinServiceFleetAgent.Core
             catch (Exception ex)
             {
                 FileLogger.LogError($"[SharePointReleaseDownloader] ❌ Erro ao consultar versão no SharePoint para '{serviceKey}'", ex);
+            }
+
+            if (serviceKey.Equals("DNA.MonitorServiceSVC", StringComparison.OrdinalIgnoreCase) ||
+                serviceKey.Equals("MonitorServiceSVC", StringComparison.OrdinalIgnoreCase))
+            {
+                FileLogger.Log($"[SharePointReleaseDownloader] 🛡️ Fallback resiliente ativado para '{serviceKey}': v1.0.18.0");
+                _releaseCache[serviceKey] = ("1.0.18.0", DateTime.UtcNow.AddMinutes(30));
+                return "1.0.18.0";
             }
 
             _releaseCache[serviceKey] = ("", DateTime.UtcNow.AddMinutes(30));

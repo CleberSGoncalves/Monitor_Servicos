@@ -170,7 +170,7 @@ def sync_pending_execution_results(exec_id: str) -> None:
 # ESTEIRA DE HOMOLOGAÇÃO CANÁRIO DE SERVIÇOS (5 Pilotos -> Despacho para Frota)
 # ==============================================================================
 
-def get_service_canary_status(service_name: str = "DNA.MonitorServiceSVC", target_version: str = "1.0.16.0") -> Dict[str, Any]:
+def get_service_canary_status(service_name: str = "DNA.MonitorServiceSVC", target_version: str = "1.0.18.0") -> Dict[str, Any]:
     """
     Calcula o estado atual da homologação gradual (5 pilotos -> frota completa)
     para um serviço específico a partir do cache do SharePoint.
@@ -252,7 +252,7 @@ def get_service_canary_status(service_name: str = "DNA.MonitorServiceSVC", targe
 
 def trigger_canary_rollout_sharepoint(
     service_name: str = "DNA.MonitorServiceSVC",
-    target_version: str = "1.0.16.0",
+    target_version: str = "1.0.18.0",
     phase: str = "canary",  # "canary" (5 máquinas piloto) ou "full" (demais máquinas da frota)
     pilot_count: int = 5,
 ) -> Dict[str, Any]:

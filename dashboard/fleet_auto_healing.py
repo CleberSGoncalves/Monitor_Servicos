@@ -25,11 +25,11 @@ from config import (
     CLIENT_SECRET,
     DATA_DIR
 )
-from sharepoint_sync import get_graph_token, get_cached_data
+from sharepoint_sync import get_graph_token, get_cached_data, get_graph_rate_limit_health
 
 logger = logging.getLogger("fleet_auto_healing")
 
-TARGET_AGENT_VERSION = "1.0.16.0"
+TARGET_AGENT_VERSION = "1.0.18.0"
 AUTO_HEALING_LOG_FILE = DATA_DIR / "auto_healing_history.json"
 
 
@@ -150,6 +150,7 @@ def audit_and_diagnose_fleet() -> Dict[str, Any]:
     return {
         "timestamp": now_utc.isoformat(),
         "target_version": TARGET_AGENT_VERSION,
+        "graph_rate_limit": get_graph_rate_limit_health(),
         "summary": {
             "total_hosts": len(hosts_map),
             "up_to_date": up_to_date_count,

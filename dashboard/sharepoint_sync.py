@@ -47,31 +47,57 @@ def get_graph_token() -> str:
     return resp.json().get("access_token", "")
 
 
+_graph_rate_limit_telemetry = {
+    "is_throttled": False,
+    "last_throttled_at": None,
+    "last_retry_after_s": 0,
+    "total_429_count": 0,
+    "status": "Healthy"
+}
+
+
+def get_graph_rate_limit_health() -> dict:
+    with _cache_lock:
+        return dict(_graph_rate_limit_telemetry)
+
+
 def fetch_all_items(token: str, list_id: str) -> list:
     """Busca todos os itens de uma lista SharePoint tratando paginacao com retry e backoff 429 rigoroso."""
     import time
+    global _graph_rate_limit_telemetry
     headers = {
         "Authorization": f"Bearer {token}",
         "Accept": "application/json"
     }
-    url = f"https://graph.microsoft.com/v1.0/sites/{SITE_ID}/lists/{list_id}/items?$expand=fields&$top=200"
+    url = f"https://graph.microsoft.com/v1.0/sites/{SITE_ID}/lists/{list_id}/items?$expand=fields&$top=500"
     items = []
     
     while url:
         success = False
-        for attempt in range(6):
+        for attempt in range(4):
             try:
                 resp = requests.get(url, headers=headers, timeout=25)
                 if resp.status_code == 429:
                     raw_wait = int(resp.headers.get("Retry-After", 10))
-                    retry_wait = min(raw_wait, 25)
-                    print(f"[SharePointSync 429] Throttled pela Microsoft (Retry-After: {raw_wait}s). Aguardando {retry_wait}s (Tentativa {attempt+1}/6)...", flush=True)
+                    retry_wait = min(raw_wait, 20)
+                    with _cache_lock:
+                        _graph_rate_limit_telemetry["is_throttled"] = True
+                        _graph_rate_limit_telemetry["last_throttled_at"] = datetime.now(timezone.utc).isoformat()
+                        _graph_rate_limit_telemetry["last_retry_after_s"] = raw_wait
+                        _graph_rate_limit_telemetry["total_429_count"] += 1
+                        _graph_rate_limit_telemetry["status"] = f"Throttled (Retry-After: {raw_wait}s)"
+
+                    print(f"[SharePointSync 429] Throttled pela Microsoft (Retry-After: {raw_wait}s). Aguardando {retry_wait}s (Tentativa {attempt+1}/4)...", flush=True)
                     time.sleep(retry_wait)
-                    if raw_wait > 60 and attempt >= 2:
+                    if raw_wait > 30:
                         print(f"[SharePointSync 429] Microsoft Graph com throttling severo ({raw_wait}s). Preservando cache existente e agendando próximo ciclo.", flush=True)
                         break
                     continue
                 if resp.ok:
+                    with _cache_lock:
+                        if _graph_rate_limit_telemetry["is_throttled"]:
+                            _graph_rate_limit_telemetry["is_throttled"] = False
+                            _graph_rate_limit_telemetry["status"] = "Healthy"
                     data = resp.json()
                     val = data.get("value", [])
                     items.extend(val)

@@ -7,7 +7,7 @@ function getFleetAuthToken() {
 
 async function loadCanaryPipelineStatus() {
     const targetInput = document.getElementById("canaryTargetVersion");
-    const targetVer = (targetInput && targetInput.value ? targetInput.value : "1.0.16.0").trim();
+    const targetVer = (targetInput && targetInput.value ? targetInput.value : "1.0.18.0").trim();
     const statusGrid = document.getElementById("canaryStatusSummaryGrid");
     const pilotsListEl = document.getElementById("canaryPilotsList");
     const logBox = document.getElementById("canaryLogOutput");
@@ -28,6 +28,10 @@ async function loadCanaryPipelineStatus() {
             };
             const st = stageLabels[data.stage] || stageLabels["aguardando_inicio_canario"];
 
+            const graphStatus = data.graph_rate_limit || { is_throttled: false, status: "Healthy" };
+            const graphColor = graphStatus.is_throttled ? "#f43f5e" : "#10b981";
+            const graphText = graphStatus.is_throttled ? (graphStatus.status || "Throttling 429") : "Cota Normal • Conectado";
+
             statusGrid.innerHTML = `
                 <div style="background: rgba(15,23,42,0.7); border: 1px solid rgba(148,163,184,0.2); border-radius: 8px; padding: 12px 14px;">
                     <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase;">Estágio da Esteira</div>
@@ -44,6 +48,10 @@ async function loadCanaryPipelineStatus() {
                 <div style="background: rgba(15,23,42,0.7); border: 1px solid rgba(148,163,184,0.2); border-radius: 8px; padding: 12px 14px;">
                     <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase;">Restante da Frota (Protegida)</div>
                     <div style="font-size: 20px; font-weight: 800; color: #e2e8f0; margin-top: 2px;">${data.pending_count} <span style="font-size: 12px; font-weight: 500; color: #64748b;">aguardando 5 pilotos</span></div>
+                </div>
+                <div style="background: rgba(15,23,42,0.7); border: 1px solid ${graphColor}; border-radius: 8px; padding: 12px 14px;">
+                    <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase;">MS Graph Cloud Sentinel</div>
+                    <div style="font-size: 13px; font-weight: 700; color: ${graphColor}; margin-top: 4px;">${graphText}</div>
                 </div>
             `;
         }
@@ -72,7 +80,7 @@ async function loadCanaryPipelineStatus() {
 }
 
 async function triggerCanaryFromDashboard() {
-    const targetVer = (document.getElementById("canaryTargetVersion")?.value || "1.0.16.0").trim();
+    const targetVer = (document.getElementById("canaryTargetVersion")?.value || "1.0.18.0").trim();
 
     const logBox = document.getElementById("canaryLogOutput");
     if (logBox) {
@@ -114,7 +122,7 @@ async function triggerCanaryFromDashboard() {
 }
 
 async function triggerPromoteFleetFromDashboard() {
-    const targetVer = (document.getElementById("canaryTargetVersion")?.value || "1.0.16.0").trim();
+    const targetVer = (document.getElementById("canaryTargetVersion")?.value || "1.0.18.0").trim();
 
     const logBox = document.getElementById("canaryLogOutput");
     if (logBox) {

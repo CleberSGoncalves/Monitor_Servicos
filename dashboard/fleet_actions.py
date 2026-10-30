@@ -104,7 +104,7 @@ def execute_predefined_action(
 
     # 4. Disparo do Canary Deployment (Grupo Piloto de 5 Máquinas -> Auto-Promoção após Homologação)
     elif action_type == "canary_deploy":
-        target_ver = (target_version or "1.0.16.0").strip().lstrip("vV")
+        target_ver = (target_version or "1.0.18.0").strip().lstrip("vV")
         srv_target = service_name or "DNA.MonitorServiceSVC"
         from remote_queue import trigger_canary_rollout_sharepoint
         res = trigger_canary_rollout_sharepoint(
@@ -142,7 +142,7 @@ def execute_predefined_action(
 
     # 5. Promoção para Toda a Frota
     elif action_type == "promote_fleet":
-        target_ver = (target_version or "1.0.16.0").strip().lstrip("vV")
+        target_ver = (target_version or "1.0.18.0").strip().lstrip("vV")
         srv_target = service_name or "DNA.MonitorServiceSVC"
         from remote_queue import trigger_canary_rollout_sharepoint
         res = trigger_canary_rollout_sharepoint(

@@ -3,6 +3,8 @@ import requests
 import json
 import sys
 
+sys.stdout.reconfigure(encoding='utf-8')
+
 BASE_URL = "http://127.0.0.1:8092"
 
 def test_suite():
@@ -46,7 +48,7 @@ def test_suite():
     heal_data = r_heal.json()
     sum_heal = heal_data.get("summary", {})
     assert sum_heal.get("total_hosts", 0) > 0, "Nenhum host auditado no auto-healing."
-    assert heal_data.get("target_version") == "1.0.16.0", f"Versão alvo incorreta: {heal_data.get('target_version')}"
+    assert heal_data.get("target_version") == "1.0.18.0", f"Versão alvo incorreta: {heal_data.get('target_version')}"
     print(f"4. [PASS] Central de Auto-Healing auditada: {sum_heal.get('total_hosts')} hosts mapeados. Versão alvo: v{heal_data.get('target_version')}.")
     print(f"   -> {sum_heal.get('up_to_date')} Atualizados | {sum_heal.get('eligible_for_update')} Desatualizados Elegíveis | {sum_heal.get('in_delay')} em Delay | {sum_heal.get('offline')} Offline.")
 

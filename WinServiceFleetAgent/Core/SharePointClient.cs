@@ -256,6 +256,7 @@ namespace WinServiceFleetAgent.Core
         private static List<JsonElement>? _cachedListItems = null;
         private static DateTime _cacheListExpiresAt = DateTime.MinValue;
         private static readonly object _cacheLock = new object();
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _serviceItemIdCache = new(StringComparer.OrdinalIgnoreCase);
 
         public static void InvalidateListCache()
         {
@@ -263,6 +264,7 @@ namespace WinServiceFleetAgent.Core
             {
                 _cachedListItems = null;
                 _cacheListExpiresAt = DateTime.MinValue;
+                _serviceItemIdCache.Clear();
             }
         }
 
@@ -291,9 +293,14 @@ namespace WinServiceFleetAgent.Core
                     if (response.Headers.RetryAfter != null && response.Headers.RetryAfter.Delta.HasValue)
                     {
                         int retrySecs = (int)response.Headers.RetryAfter.Delta.Value.TotalSeconds;
-                        if (retrySecs > 0 && retrySecs <= 60)
+                        if (retrySecs > 0)
                         {
-                            delayMs = retrySecs * 1000 + 500;
+                            if (retrySecs > 120)
+                            {
+                                FileLogger.Log($"[SharePointClient] ⚠️ Throttling severo da Microsoft (HTTP {statusCode}, Retry-After: {retrySecs}s). Postergando requisição para o próximo ciclo.");
+                                break;
+                            }
+                            delayMs = (retrySecs * 1000) + Random.Shared.Next(500, 2000);
                         }
                     }
 
@@ -309,7 +316,7 @@ namespace WinServiceFleetAgent.Core
             return response;
         }
 
-        private async Task<List<JsonElement>> GetAllListItemsAsync(HttpClient client)
+        private async Task<List<JsonElement>?> GetAllListItemsAsync(HttpClient client)
         {
             lock (_cacheLock)
             {
@@ -332,8 +339,24 @@ namespace WinServiceFleetAgent.Core
                         resp = await client.GetAsync(nextUrl);
                         if (resp != null && ((int)resp.StatusCode == 429 || resp.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable))
                         {
-                            int delay = attempt * 2500 + Random.Shared.Next(500, 1500);
-                            FileLogger.Log($"[SharePointClient] ⚠️ SharePoint Throttled ao consultar lista (HTTP {(int)resp.StatusCode}). Aguardando {delay}ms...");
+                            int delay = attempt * 3000 + Random.Shared.Next(1000, 2500);
+                            if (resp.Headers.RetryAfter != null && resp.Headers.RetryAfter.Delta.HasValue)
+                            {
+                                int waitSecs = (int)resp.Headers.RetryAfter.Delta.Value.TotalSeconds;
+                                if (waitSecs > 0 && waitSecs <= 30)
+                                {
+                                    delay = (waitSecs * 1000) + Random.Shared.Next(500, 1500);
+                                }
+                                else if (waitSecs > 30)
+                                {
+                                    FileLogger.Log($"[SharePointClient] ⚠️ SharePoint Throttled severo ao paginar lista (HTTP {(int)resp.StatusCode}, Retry-After: {waitSecs}s). Preservando cache existente.");
+                                    lock (_cacheLock)
+                                    {
+                                        return _cachedListItems;
+                                    }
+                                }
+                            }
+                            FileLogger.Log($"[SharePointClient] ⚠️ SharePoint Throttled ao consultar lista (HTTP {(int)resp.StatusCode}). Aguardando {delay}ms (Tentativa {attempt}/3)...");
                             await Task.Delay(delay);
                             continue;
                         }
@@ -347,7 +370,10 @@ namespace WinServiceFleetAgent.Core
                     catch (Exception ex)
                     {
                         FileLogger.LogError("[SharePointClient] ❌ Erro de conexão/DNS com Graph API (graph.microsoft.com)", ex);
-                        return list;
+                        lock (_cacheLock)
+                        {
+                            return _cachedListItems;
+                        }
                     }
                 }
 
@@ -364,10 +390,10 @@ namespace WinServiceFleetAgent.Core
                         FileLogger.Log($"[SharePointClient] ⚠️ Paginação do SharePoint interrompida com erro (HTTP {(resp != null ? (int)resp.StatusCode : 0)}). Mantendo cache anterior para evitar duplicações.");
                     }
 
-                    // Se a listagem falhou no meio, NÃO salva lista parcial no cache (evita criação de registros duplicados falsos)
+                    // Se a listagem falhou no meio, NÃO retorna lista vazia (evita criação indevida de novos registros em massa)
                     lock (_cacheLock)
                     {
-                        return _cachedListItems ?? list;
+                        return _cachedListItems;
                     }
                 }
 
@@ -388,7 +414,22 @@ namespace WinServiceFleetAgent.Core
             lock (_cacheLock)
             {
                 _cachedListItems = list;
-                _cacheListExpiresAt = DateTime.UtcNow.AddSeconds(15);
+                _cacheListExpiresAt = DateTime.UtcNow.AddMinutes(5);
+
+                // Mapeia IDs para busca O(1) sem varredura
+                foreach (var item in list)
+                {
+                    if (item.TryGetProperty("id", out var idProp) && item.TryGetProperty("fields", out var f))
+                    {
+                        string h = f.TryGetProperty("Hostname", out var hVal) ? hVal.GetString()?.Trim() ?? "" : "";
+                        string s = f.TryGetProperty("Nome_Servico", out var sVal) ? sVal.GetString()?.Trim() ?? "" : "";
+                        string idStr = idProp.GetString() ?? "";
+                        if (!string.IsNullOrEmpty(h) && !string.IsNullOrEmpty(s) && !string.IsNullOrEmpty(idStr))
+                        {
+                            _serviceItemIdCache[$"{h}_{s}"] = idStr;
+                        }
+                    }
+                }
             }
 
             return list;
@@ -425,6 +466,12 @@ namespace WinServiceFleetAgent.Core
                 try
                 {
                     var allItems = await GetAllListItemsAsync(client);
+                    if (allItems == null)
+                    {
+                        FileLogger.Log($"[SharePointClient] ⚠️ Consulta de lista indisponível por Throttling do Microsoft Graph (HTTP 429). Preservando registro [{cleanHost}_{cleanSrv}] para o próximo ciclo.");
+                        return "Não";
+                    }
+
                     var matchingItems = new List<JsonElement>();
 
                     foreach (var item in allItems)
@@ -647,7 +694,7 @@ namespace WinServiceFleetAgent.Core
                         if (createResp.IsSuccessStatusCode)
                         {
                             FileLogger.Log($"[SharePointClient] ✅ Novo item cadastrado no SharePoint: [{displayTitle}] {cleanHost}_{cleanSrv}");
-                            InvalidateListCache();
+                            // Preserva cache de 5min ativo para evitar re-download de 3000 itens nos próximos serviços
                         }
                         else
                         {
@@ -671,7 +718,7 @@ namespace WinServiceFleetAgent.Core
                         if (patchResp.IsSuccessStatusCode)
                         {
                             FileLogger.Log($"[SharePointClient] ✅ Registro atualizado no SharePoint (ID {itemId}): [{displayTitle}] {cleanHost}_{cleanSrv} -> AutoRestart: {safeAutoRestart}");
-                            InvalidateListCache();
+                            // Mantém o cache de lista (5 min) ativo para reutilização imediata nos próximos serviços sem sobrecarregar Graph API com HTTP 429
                         }
                         else
                         {
@@ -736,6 +783,7 @@ namespace WinServiceFleetAgent.Core
                 try
                 {
                     var itemsArray = await GetAllListItemsAsync(client);
+                    if (itemsArray == null) return list;
                     foreach (var item in itemsArray)
                     {
                         if (item.TryGetProperty("fields", out var fields))
@@ -795,6 +843,7 @@ namespace WinServiceFleetAgent.Core
                 try
                 {
                     var itemsArray = await GetAllListItemsAsync(client);
+                    if (itemsArray == null) return;
                     foreach (var item in itemsArray)
                     {
                         if (item.TryGetProperty("fields", out var fields))
@@ -825,7 +874,6 @@ namespace WinServiceFleetAgent.Core
 
                                 await client.SendAsync(request);
                                 FileLogger.Log($"[SharePointClient] Status de URL atualizado no SharePoint [{cleanHost}_{cleanSrv}]: Status={statusAtualizacao}, Pending={isPending}");
-                                InvalidateListCache();
                             }
                         }
                     }
@@ -855,6 +903,7 @@ namespace WinServiceFleetAgent.Core
                 try
                 {
                     var itemsArray = await GetAllListItemsAsync(client);
+                    if (itemsArray == null) return list;
                     foreach (var item in itemsArray)
                     {
                         if (item.TryGetProperty("fields", out var fields))
@@ -910,6 +959,7 @@ namespace WinServiceFleetAgent.Core
                 try
                 {
                     var itemsArray = await GetAllListItemsAsync(client);
+                    if (itemsArray == null) return;
                     foreach (var item in itemsArray)
                     {
                         if (item.TryGetProperty("fields", out var fields))
@@ -932,7 +982,6 @@ namespace WinServiceFleetAgent.Core
 
                                 await client.SendAsync(request);
                                 FileLogger.Log($"[SharePointClient] Status do serviço [{cleanHost}_{cleanSrv}] atualizado no SharePoint: {statusServico}");
-                                InvalidateListCache();
                                 break;
                             }
                         }
@@ -969,6 +1018,7 @@ namespace WinServiceFleetAgent.Core
                 try
                 {
                     var itemsArray = await GetAllListItemsAsync(client);
+                    if (itemsArray == null) return;
                     foreach (var item in itemsArray)
                     {
                         if (item.TryGetProperty("fields", out var fields))
@@ -996,7 +1046,6 @@ namespace WinServiceFleetAgent.Core
 
                                 await client.SendAsync(request);
                                 FileLogger.Log($"[SharePointClient] Status do serviço [{cleanHost}_{cleanSrv}] atualizado no SharePoint: {statusAtualizacao}");
-                                InvalidateListCache();
                             }
                         }
                     }
@@ -1116,13 +1165,17 @@ namespace WinServiceFleetAgent.Core
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
             try
             {
-                foreach (var item in await GetAllListItemsAsync(client))
+                var allItems = await GetAllListItemsAsync(client);
+                if (allItems != null)
                 {
-                    if (!item.TryGetProperty("fields", out var f)) continue;
-                    string h = f.TryGetProperty("Hostname", out var hp) ? hp.GetString()?.Trim() ?? "" : "";
-                    string s = f.TryGetProperty("Nome_Servico", out var sp) ? sp.GetString()?.Trim() ?? "" : "";
-                    if (h.Equals(hostname.Trim(), StringComparison.OrdinalIgnoreCase) && s.Equals(nomeServico.Trim(), StringComparison.OrdinalIgnoreCase))
-                        return f.TryGetProperty("Versao_Desejada", out var vd) ? vd.GetString()?.Trim() : null;
+                    foreach (var item in allItems)
+                    {
+                        if (!item.TryGetProperty("fields", out var f)) continue;
+                        string h = f.TryGetProperty("Hostname", out var hp) ? hp.GetString()?.Trim() ?? "" : "";
+                        string s = f.TryGetProperty("Nome_Servico", out var sp) ? sp.GetString()?.Trim() ?? "" : "";
+                        if (h.Equals(hostname.Trim(), StringComparison.OrdinalIgnoreCase) && s.Equals(nomeServico.Trim(), StringComparison.OrdinalIgnoreCase))
+                            return f.TryGetProperty("Versao_Desejada", out var vd) ? vd.GetString()?.Trim() : null;
+                    }
                 }
             }
             catch (Exception ex)
@@ -1203,6 +1256,11 @@ namespace WinServiceFleetAgent.Core
                 try
                 {
                     var items = await GetAllListItemsAsync(client);
+                    if (items == null)
+                    {
+                        FileLogger.Log("[SharePointClient] ⚠️ Limpeza cancelada: lista indisponível (Throttling HTTP 429).");
+                        return 0;
+                    }
                     FileLogger.Log($"[SharePointClient] 🧹 Iniciando limpeza geral: {items.Count} itens encontrados na lista do SharePoint.");
 
                     foreach (var item in items)

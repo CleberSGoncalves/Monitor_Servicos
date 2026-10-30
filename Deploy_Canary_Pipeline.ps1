@@ -8,7 +8,7 @@
 # ==============================================================================
 param(
     [string]$ServiceName = "DNA.MonitorServiceSVC",
-    [string]$TargetVersion = "1.0.14.0",
+    [string]$TargetVersion = "1.0.18.0",
     [int]$CanaryCount = 5,
     [int]$TimeoutMinutes = 10,
     $AutoPromote = $true
