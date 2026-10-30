@@ -505,8 +505,10 @@ function filterClassificadorRelacao() {
         // Filtro Meio
         if (meioFilter !== "all") {
             if (meioFilter === "digital" && !o.is_digital_rf) return false;
-            if (meioFilter === "yuan" && !o.is_analog_yuan) return false;
-            if (meioFilter === "stream" && (o.is_digital_rf || o.is_analog_yuan)) return false;
+            if (meioFilter === "sonifex" && o.hardware_tag !== "sonifex") return false;
+            if (meioFilter === "iei" && o.hardware_tag !== "iei") return false;
+            if (meioFilter === "yuan" && o.hardware_tag !== "yuan" && !o.is_analog_yuan) return false;
+            if (meioFilter === "stream" && o.hardware_tag !== "stream" && (o.is_digital_rf || o.is_analog_yuan || o.hardware_tag === "sonifex")) return false;
         }
 
         // Filtro Severidade

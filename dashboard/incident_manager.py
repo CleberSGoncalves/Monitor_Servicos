@@ -922,11 +922,39 @@ def track_channel_anomalies_cycle(channels_list: List[Dict[str, Any]]) -> None:
             cs = int(ch.get("id_cs", 1) or 1)
             ch_low = canal.lower()
 
-            is_frozen = (ch.get("video_congelado") or "").lower().startswith("sim")
+            meio = str(ch.get("meio", "")).lower()
+            is_radio = (
+                any(x in meio for x in ["radio", "fm", "mp3", "am", "rádio"])
+                or any(x in ch_low for x in [" fm", " am", "rádio", "radio"])
+                or ch_low.endswith("fm")
+                or ch_low.endswith("am")
+                or str(ch.get("gravando_mp3", "")).lower() in ["sim", "gravando"]
+            )
+            is_stream = any(x in meio for x in ["rtsp", "udp", "ip", "stream"]) or "rtsp" in str(ch.get("url_stream", "")).lower()
+            is_analog = any(x in meio for x in ["analóg", "analog", "directshow"]) and not is_radio
+            is_digital_rf = not is_analog and not is_stream and not is_radio
+
+            rec_mp4 = str(ch.get("gravando_mp4", "Sim"))
+            rec_mp3 = str(ch.get("gravando_mp3", "Não"))
+            is_rec_mp4_ok = any(w in rec_mp4.lower() for w in ["sim", "gravando", "asf", "mp4"]) and ("⚠️" not in rec_mp4)
+            is_rec_mp3_ok = any(w in rec_mp3.lower() for w in ["sim", "gravando", "mp3"]) and ("⚠️" not in rec_mp3)
+
+            is_frozen = not is_radio and (ch.get("video_congelado") or "").lower().startswith("sim")
             is_mute = (ch.get("audio_mudo") or "").lower().startswith("sim")
-            rec_status = str(ch.get("gravando_mp4", "Sim"))
-            is_storage_fault = "⚠️" in rec_status or "inacessível" in rec_status.lower() or "travado" in rec_status.lower()
-            is_rf_outage = (float(ch.get("qualidade_sinal", 0) or 0) == 0 and ("não" in rec_status.lower() or "sem gravação" in str(ch.get("motivo", "")).lower()))
+
+            if is_radio:
+                is_storage_fault = not is_rec_mp3_ok and any(k in rec_mp3.lower() for k in ["⚠️", "erro", "não", "nao", "inacessível"])
+                is_rf_outage = False  # Rádio FM Analógica (Sonifex Radcap) jamais sofre queda de portadora digital ISDB-Tb
+            elif is_stream:
+                is_storage_fault = not is_rec_mp4_ok and any(k in rec_mp4.lower() for k in ["⚠️", "erro", "inacessível"])
+                is_rf_outage = False
+            elif is_analog:
+                is_storage_fault = not is_rec_mp4_ok and any(k in rec_mp4.lower() for k in ["⚠️", "erro", "inacessível"])
+                is_rf_outage = False
+            else:
+                # Digital Terrestre RF
+                is_storage_fault = "⚠️" in rec_mp4 or "inacessível" in rec_mp4.lower() or "travado" in rec_mp4.lower()
+                is_rf_outage = (float(ch.get("qualidade_sinal", 0) or 0) == 0 and not is_rec_mp4_ok and ("não" in rec_mp4.lower() or "sem gravação" in str(ch.get("motivo", "")).lower()))
 
             # Detecta feeds de teste e monitoramento interno (não comerciais)
             is_monitoring_feed = any(k in ch_low for k in ["obs", "teste", "monitoramento", "stream_obs"])

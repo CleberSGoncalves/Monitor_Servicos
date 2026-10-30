@@ -87,18 +87,28 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
     cs01_hosts_map: Dict[str, Dict[str, Any]] = {}
     now_utc = datetime.now(timezone.utc)
 
-    # Agrupa serviços por host CS01
+    # Agrupa serviços por host e por praça (Suporte a topologias CS01 e clusters de matching CS01/CS02)
+    # 1. Mapeamento de todos os serviços da praça para identificar motores rodando em CS02
+    praca_cluster_motors: Dict[str, Dict[str, Any]] = {}
     for s in raw_services:
-        cs_val = s.get("cs")
-        try:
-            cs_int = int(float(cs_val or 1))
-        except Exception:
-            cs_int = 1
+        p_c = str(s.get("praca") or "").strip()
+        if not p_c or p_c.lower() in ("n/a", "não informado", "nao informado"):
+            p_c = str(s.get("hostname") or "").strip()
+        s_name_c = str(s.get("nome_servico") or "").strip().lower().replace(" ", "").replace(".", "")
+        if "fastmatching" in s_name_c or "detectionsvc" in s_name_c:
+            st_c = str(s.get("status_servico") or "").strip()
+            if any(w in st_c.lower() for w in ["execu", "running", "online", "ativo"]):
+                if p_c not in praca_cluster_motors:
+                    praca_cluster_motors[p_c] = {
+                        "service_name": s.get("nome_servico"),
+                        "hostname": s.get("hostname"),
+                        "cs": s.get("cs", 1),
+                        "status": st_c,
+                        "versao": s.get("versao_instalada", "N/A")
+                    }
 
-        # Filtro estrito: Somente CS01 executa detecção automática de novos comerciais
-        if cs_int != 1:
-            continue
-
+    # 2. Agrupamento de hosts CS01 com agregação inteligente de serviços do mesmo host físico
+    for s in raw_services:
         hostname = str(s.get("hostname") or "").strip()
         if not hostname or hostname == "N/A":
             continue
@@ -107,11 +117,24 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
         if not praca or praca.lower() in ("n/a", "não informado", "nao informado"):
             praca = hostname
 
+        cs_val = s.get("cs")
+        try:
+            cs_int = int(float(cs_val or 1))
+        except Exception:
+            cs_int = 1
+
+        # Aceita host se for CS 1, OU se o host já foi mapeado como CS01, OU se for o único host da praça
+        if cs_int != 1 and hostname not in cs01_hosts_map:
+            # Se for CS 2 mas contém ConfigMonitor ou TrackingSVC, é o host primário da praça
+            s_low = str(s.get("nome_servico") or "").lower().replace(" ", "").replace(".", "")
+            if not ("configmonitor" in s_low or "trackingsvc" in s_low or "detectionsvc" in s_low or "fastmatching" in s_low):
+                continue
+
         if hostname not in cs01_hosts_map:
             cs01_hosts_map[hostname] = {
                 "hostname": hostname,
                 "praca": praca,
-                "cs": 1,
+                "cs": cs_int if cs_int in (1, 2) else 1,
                 "cpu_uso": s.get("cpu_uso", "N/A"),
                 "ram_uso": s.get("ram_uso", "N/A"),
                 "disco_d_livre": s.get("disco_d_livre", "N/A"),
@@ -120,12 +143,17 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
                 "services": {}
             }
 
+        # Atualiza métricas se a linha atual tiver dados mais recentes
+        if s.get("ultima_atualizacao") and not cs01_hosts_map[hostname]["ultima_atualizacao"]:
+            cs01_hosts_map[hostname]["ultima_atualizacao"] = s.get("ultima_atualizacao", "")
+
         svc_name = str(s.get("nome_servico") or "").strip()
         cs01_hosts_map[hostname]["services"][svc_name] = {
             "status": s.get("status_servico", "Desconhecido"),
             "versao": s.get("versao_instalada", "N/A"),
             "log_erro": s.get("log_erro", ""),
-            "acao_solicitada": s.get("acao_solicitada", "Nenhuma")
+            "acao_solicitada": s.get("acao_solicitada", "Nenhuma"),
+            "cs": s.get("cs", 1)
         }
 
     sites: List[Dict[str, Any]] = []
@@ -174,6 +202,23 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
         cfg_running = is_service_running(cfg_status)
         trk_running = is_service_running(trk_status)
         agent_running = is_service_running(agent_status)
+
+        # Resolução Inteligente de Cluster: se o host local não tiver o motor rodando, mas a praça tiver motor ativo em CS02
+        cluster_motor_note = ""
+        praca_name = host_info.get("praca", "")
+        if not fm_running and not det_running and praca_name in praca_cluster_motors:
+            c_motor = praca_cluster_motors[praca_name]
+            c_m_name = str(c_motor.get("service_name") or "")
+            c_m_host = str(c_motor.get("hostname") or "")
+            c_m_cs = str(c_motor.get("cs") or "2")
+            if "fastmatching" in c_m_name.lower():
+                fm_running = True
+                fm_status = "Em Execução"
+                cluster_motor_note = f" (Cluster CS0{c_m_cs} • {c_m_host})"
+            elif "detectionsvc" in c_m_name.lower():
+                det_running = True
+                det_status = "Em Execução"
+                cluster_motor_note = f" (Cluster CS0{c_m_cs} • {c_m_host})"
 
         if cfg_running:
             config_monitor_ok_count += 1
@@ -233,7 +278,7 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
             engine_tier = "NONE"
             inoperant_p0 += 1
 
-        # 4. Determinar Idade do Último XML de Tracking (D:\mediadna_V2\data\tracking)
+        # 4. Determinar Idade do Último XML de Tracking (D:\\mediadna_V2\\data\tracking)
         tracking_age_minutes = 12
         if last_up_str:
             try:
@@ -297,7 +342,7 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
             throughput_xml_hour = 0
 
         # 6. Auditoria de Paridade ConfigXml/SGG vs Tracking XML (Opção 3 de Monitoração)
-        # Confronta spots catalogados em D:\mediadna_V2\data\sgg com comprovantes em data\tracking
+        # Confronta spots catalogados em D:\\mediadna_V2\\data\sgg com comprovantes em data\tracking
         sgg_estimated_spots = 1420 if cfg_running else 1380
         tracking_xmls_24h = int(throughput_xml_hour * 24 * (0.92 if engine_tier != "NONE" else 0.0))
         matching_rate_pct = round(min(100.0, 96.5 if engine_tier in ("PRIMARY", "FALLBACK") else (88.0 if engine_tier == "CONFLICT" else 0.0)), 1)
@@ -374,12 +419,12 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
             },
             "sgg_vs_tracking_audit": sgg_vs_tracking_audit,
             "paths": {
-                "emu": r"D:\mediadna_V2\data\emu",
-                "sgg": r"D:\mediadna_V2\data\sgg",
-                "configxml": r"D:\mediadna_V2\data\config\configxml.xml",
-                "tracking": r"D:\mediadna_V2\data\tracking",
-                "failed": r"D:\mediadna_V2\data\tracking\failed",
-                "temp": r"D:\mediadna_V2\data\tracking\temp"
+                "emu": r"D:\\mediadna_V2\\data\emu",
+                "sgg": r"D:\\mediadna_V2\\data\sgg",
+                "configxml": r"D:\\mediadna_V2\\data\config\configxml.xml",
+                "tracking": r"D:\\mediadna_V2\\data\tracking",
+                "failed": r"D:\\mediadna_V2\\data\tracking\failed",
+                "temp": r"D:\\mediadna_V2\\data\tracking\temp"
             }
         })
 

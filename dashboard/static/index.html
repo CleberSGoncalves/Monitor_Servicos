@@ -3763,8 +3763,10 @@
               <select id="clfRelFilterMeio" class="form-input" style="font-size: 11px; padding: 5px 8px;" onchange="filterClassificadorRelacao()">
                 <option value="all">Todos os Meios</option>
                 <option value="digital">📡 Digital Terrestre RF</option>
+                <option value="sonifex">📻 Rádio FM (Sonifex PCIe)</option>
+                <option value="iei">🔌 Vídeo Analógico (IEI IVCE)</option>
                 <option value="yuan">🔌 Analógico Yuan (TW6802)</option>
-                <option value="stream">🌐 Stream IP / FM</option>
+                <option value="stream">🌐 Stream IP</option>
               </select>
 
               <select id="clfRelFilterSeverity" class="form-input" style="font-size: 11px; padding: 5px 8px;" onchange="filterClassificadorRelacao()">
@@ -3849,6 +3851,9 @@
             </select>
           </div>
 
+          <button id="btnAutoHealingFleet" onclick="triggerFleetAutoHealing()" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed); color: #fff; border: none; padding: 8px 16px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 8px rgba(139, 92, 246, 0.35);" title="Aciona o Auto-Healing inteligente para atualizar agentes desatualizados e recuperar nós parados">
+            <span>⚡</span> Auto-Healing Frota
+          </button>
           <button id="btnRefreshDetection" onclick="loadDetectionFleetData()" class="btn-refresh" style="background: linear-gradient(135deg, #2563eb, #3b82f6); color: #fff; border: none; padding: 8px 16px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 8px rgba(37, 99, 235, 0.35);">
             <span>🔄</span> Atualizar Auditoria
           </button>
@@ -4031,6 +4036,14 @@
                 <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">Força o download de novos comerciais em D:\mediadna_V2\data\sgg.</div>
               </div>
               <button onclick="executeDetectionAction('restart_config_monitor')" style="background: #0284c7; color: #fff; border: none; padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer;">Executar</button>
+            </div>
+
+            <div style="padding: 12px; background: rgba(139, 92, 246, 0.12); border: 1px solid rgba(139, 92, 246, 0.35); border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <div style="font-weight: 700; font-size: 13px; color: #c084fc;">🔄 Destravar Fila de Tracking (Reciclar DNA.TrackingSVC)</div>
+                <div style="font-size: 11px; color: #cbd5e1; margin-top: 2px;">Consome e despacha os XMLs acumulados em D:\MediaDNA_V2\Data\tracking para a central via WCF.</div>
+              </div>
+              <button onclick="executeDetectionAction('recycle_tracking')" style="background: #8b5cf6; color: #fff; border: none; padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 700; cursor: pointer;">Destravar Fila</button>
             </div>
           </div>
 

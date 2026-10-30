@@ -508,7 +508,12 @@ async function executeDetectionAction(actionType, hostname) {
         const headers = token ? { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" } : { "Content-Type": "application/json" };
 
         let cmdPayload = {};
-        if (actionType === "start_fastmatching" || actionType === "restart_fastmatching") {
+        let endpoint = "/api/fleet/execute-action";
+
+        if (actionType === "recycle_tracking") {
+            endpoint = "/api/fleet/detection/recycle-tracking";
+            cmdPayload = { hostname: host };
+        } else if (actionType === "start_fastmatching" || actionType === "restart_fastmatching") {
             cmdPayload = {
                 hostname: host,
                 service_name: "FastMatchingSvc",
@@ -534,7 +539,7 @@ async function executeDetectionAction(actionType, hostname) {
             };
         }
 
-        const resp = await fetch("/api/fleet/execute-action", {
+        const resp = await fetch(endpoint, {
             method: "POST",
             headers,
             body: JSON.stringify(cmdPayload)
@@ -553,3 +558,45 @@ async function executeDetectionAction(actionType, hostname) {
         alert(`Erro ao despachar comando: ${e.message || e}`);
     }
 }
+
+// ==============================================================================
+// SISTEMA DE AUTO-HEALING INTELIGENTE DA FROTA
+// ==============================================================================
+async function triggerFleetAutoHealing() {
+    if (!confirm("⚡ Deseja executar o Auto-Healing em lote na frota?\n\nO sistema identificará agentes desatualizados (< 1.0.18.0) e nós em delay/parados, despachando a atualização e reciclagem de serviços essenciais via Microsoft Graph.")) {
+        return;
+    }
+    const btn = document.getElementById("btnAutoHealingFleet");
+    const originalText = btn ? btn.innerHTML : "";
+    if (btn) {
+        btn.innerHTML = "<span>⏳</span> Executando Auto-Healing...";
+        btn.disabled = true;
+    }
+
+    try {
+        const token = (typeof getAuthToken === "function") ? getAuthToken() : (localStorage.getItem("fleet_token") || "");
+        const headers = token ? { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" } : { "Content-Type": "application/json" };
+        
+        const resp = await fetch("/api/fleet/auto-healing/run", {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ max_hosts: 40 })
+        });
+        const res = await resp.json();
+        if (resp.ok && res.status === "success") {
+            alert(`✅ Auto-Healing executado com sucesso!\n\n• Hosts auditados: ${res.audit.total_hosts}\n• Agentes atualizados (1.0.18.0): ${res.audit.hosts_updated_v18}\n• Auto-updates despachados agora: ${res.executed_updates_count}\n• Ações em lote aplicadas: ${res.actions_dispatched.length}`);
+            await loadDetectionFleetData();
+        } else {
+            alert(`⚠️ Resposta do Auto-Healing: ${res.detail || res.message || "Execução concluída com avisos."}`);
+        }
+    } catch (e) {
+        alert(`Erro ao executar Auto-Healing: ${e.message || e}`);
+    } finally {
+        if (btn) {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
+    }
+}
+window.triggerFleetAutoHealing = triggerFleetAutoHealing;
+window.executeDetectionAction = executeDetectionAction;

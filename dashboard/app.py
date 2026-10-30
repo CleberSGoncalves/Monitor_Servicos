@@ -2155,3 +2155,45 @@ async def diagnose_detection_with_ai(payload: DetectionAIDiagnoseRequest):
     except Exception as e:
         logger.error(f"[DetectionAPI] Erro no diagnóstico de IA: {e}", exc_info=True)
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
+# ==============================================================================
+# Rotas do Sistema de Auto-Healing da Frota & Destravamento de Tracking
+# ==============================================================================
+from fleet_auto_healing import (
+    audit_and_diagnose_fleet,
+    execute_auto_healing_batch,
+    recycle_tracking_service_on_host
+)
+
+class RecycleTrackingRequest(BaseModel):
+    hostname: str
+
+@app.get("/api/fleet/auto-healing/status")
+async def get_fleet_auto_healing_status(user: dict = Depends(get_current_user)):
+    """Retorna o diagnóstico completo de saúde da frota e estações elegíveis para auto-healing."""
+    try:
+        return audit_and_diagnose_fleet()
+    except Exception as e:
+        logger.error(f"[AutoHealing] Erro ao auditar frota: {e}", exc_info=True)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+@app.post("/api/fleet/auto-healing/run")
+async def run_fleet_auto_healing(max_hosts: int = 50, user: dict = Depends(get_current_user)):
+    """Executa o ciclo de auto-healing em lote para agentes desatualizados e serviços críticos."""
+    try:
+        result = execute_auto_healing_batch(max_hosts=max_hosts)
+        return result
+    except Exception as e:
+        logger.error(f"[AutoHealing] Erro ao executar auto-healing: {e}", exc_info=True)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+@app.post("/api/fleet/detection/recycle-tracking")
+async def recycle_tracking_endpoint(payload: RecycleTrackingRequest, user: dict = Depends(get_current_user)):
+    """Solicita reciclagem imediata do DNA.TrackingSVC no host para destravar fila de XMLs acumulados."""
+    try:
+        result = recycle_tracking_service_on_host(payload.hostname)
+        return result
+    except Exception as e:
+        logger.error(f"[AutoHealing] Erro ao reciclar TrackingSVC: {e}", exc_info=True)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})

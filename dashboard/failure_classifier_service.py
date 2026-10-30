@@ -297,6 +297,9 @@ def classify_fleet_quality_failures(force_refresh: bool = False) -> Dict[str, An
     init_classifier_db()
     fleet_data = get_cached_data()
     channels = fleet_data.get("channels", [])
+    # Blindagem Anti-Flapping: Jamais processa se a lista de canais vier vazia ou truncada durante sync transitório
+    if len(channels) < 50 and _CLASSIFIER_CACHE.get("data"):
+        return _CLASSIFIER_CACHE["data"]
 
     catalog = get_failure_catalog()
     catalog_map = {c["pattern_id"]: c for c in catalog}
@@ -360,17 +363,30 @@ def classify_fleet_quality_failures(force_refresh: bool = False) -> Dict[str, An
         if not matched_hostname:
             matched_hostname = str(ch.get("host") or ch.get("hostname") or f"CS-{praca[:3].upper()}-0{cs_str}")
 
-        # Classificação precisa de Meio e Dispositivo Físico Real (Evita carimbar tudo como "Yuan")
-        is_radio = any(x in meio for x in ["radio", "fm", "mp3", "am", "rádio"]) or any(x in ch_low for x in [" fm", " am", "rádio", "radio"]) or str(ch.get("gravando_mp3", "")).lower() in ["sim", "gravando"]
+        # Classificação precisa de Meio e Dispositivo Físico Real (Sem generalizações incorretas de "Yuan")
+        is_radio = (
+            any(x in meio for x in ["radio", "fm", "mp3", "am", "rádio"])
+            or any(x in ch_low for x in [" fm", " am", "rádio", "radio"])
+            or ch_low.endswith("fm")
+            or ch_low.endswith("am")
+            or str(ch.get("gravando_mp3", "")).lower() in ["sim", "gravando"]
+        )
         is_stream = any(x in meio for x in ["rtsp", "udp", "ip", "stream"]) or "rtsp" in str(ch.get("url_stream", "")).lower()
         is_analog = any(x in meio for x in ["analóg", "analog", "directshow", "yuan", "iei", "sonifex", "radcap"]) or any(x in dev_analog for x in ["tw6802", "yuan", "analog", "directshow", "capture", "iei", "ivce", "radcap", "sonifex"])
         is_digital_rf = not is_analog and not is_stream and not is_radio
 
-        # Hardware Físico Real Especificado
-        if "sonifex" in dev_analog or "radcap" in dev_analog or "fm radcap" in dev_analog:
-            hardware_brand = "Sonifex FM Radcap PCIe"
-            hardware_tag = "sonifex"
-            mdo_display = "📻 Sonifex FM"
+        # Hardware Físico Real Especificado (Respeitando a topologia real de Florianópolis e frota)
+        if is_radio:
+            # Em rádios analógicas, o dispositivo de captura de áudio é Sonifex FM Radcap PCIe (ex: Florianópolis CS01)
+            # Apenas rotula Yuan se expressamente cadastrado e sem vestígios de Sonifex/IEI/Radcap
+            if any(k in dev_analog for k in ["tw6802", "yuan", "tm6802"]) and not any(k in dev_analog for k in ["sonifex", "radcap", "iei", "ivce"]):
+                hardware_brand = "Yuan TW6802 PCI (Rádio Legado)"
+                hardware_tag = "yuan"
+                mdo_display = "🔌 Yuan TW6802"
+            else:
+                hardware_brand = "Sonifex FM Radcap PCIe"
+                hardware_tag = "sonifex"
+                mdo_display = "📻 Sonifex FM"
         elif "iei" in dev_analog or "ivce" in dev_analog:
             hardware_brand = "IEI IVCE-8784 Video"
             hardware_tag = "iei"
@@ -379,10 +395,14 @@ def classify_fleet_quality_failures(force_refresh: bool = False) -> Dict[str, An
             hardware_brand = "Yuan TW6802 PCI"
             hardware_tag = "yuan"
             mdo_display = "🔌 Yuan TW6802"
-        elif is_radio:
+        elif "sonifex" in dev_analog or "radcap" in dev_analog:
             hardware_brand = "Sonifex FM Radcap PCIe"
             hardware_tag = "sonifex"
             mdo_display = "📻 Sonifex FM"
+        elif is_analog:
+            hardware_brand = "Placa Analógica DirectShow"
+            hardware_tag = "analog_other"
+            mdo_display = "🔌 Analógico"
         elif is_stream:
             hardware_brand = "Interface IP (Stream UDP/RTSP)"
             hardware_tag = "stream"
@@ -518,7 +538,16 @@ def classify_fleet_quality_failures(force_refresh: bool = False) -> Dict[str, An
         if assigned_pattern and assigned_pattern in classified_types:
             pat_data = classified_types[assigned_pattern]
             channel_entry["pattern_id"] = assigned_pattern
-            channel_entry["pattern_name"] = pat_data["name"]
+            # Refinamento de Nome de Falha por Hardware Real (Sem generalizações incorretas de Yuan)
+            if assigned_pattern == "lock_placa_analogica_yuan":
+                if hardware_tag == "sonifex":
+                    channel_entry["pattern_name"] = "Falha de Entrada Áudio FM (Placa Sonifex PCIe)"
+                elif hardware_tag == "iei":
+                    channel_entry["pattern_name"] = "Falha de Entrada Vídeo Analógico (Placa IEI IVCE)"
+                else:
+                    channel_entry["pattern_name"] = "Falha de Entrada Analógica (Placa Yuan TW6802)"
+            else:
+                channel_entry["pattern_name"] = pat_data["name"]
             channel_entry["enum_number"] = pat_data["enum_number"]
             channel_entry["category"] = pat_data["category"]
             channel_entry["color"] = pat_data["color"]
@@ -657,13 +686,21 @@ def classify_fleet_quality_failures(force_refresh: bool = False) -> Dict[str, An
                         occ["pattern_id"], occ["enum_number"], occ["pattern_name"], occ["category"],
                         occ["severity"], occ["symptom"], occ["duration_min"], occ["status"]
                     ))
+                else:
+                    # Atualiza em tempo real o registro ativo existente sem duplicar nem causar flapping
+                    cur.execute("""
+                        UPDATE failure_incidents_history 
+                        SET symptom = ?, duration_min = ?, timestamp_formatado = ? 
+                        WHERE id = ?
+                    """, (occ["symptom"], occ["duration_min"], occ["timestamp_formatado"], last_row[0]))
 
-            # Auto-resolução: se um canal estava com falha 'Ativa' no banco mas neste ciclo normalizou, marca como 'Resolvida'
-            cur.execute("SELECT id, canal, praca, pattern_id FROM failure_incidents_history WHERE status = 'Ativa'")
-            for r in cur.fetchall():
-                row_id, r_ch, r_praca, r_pat = r[0], r[1], r[2], r[3]
-                if (r_ch, r_praca, r_pat) not in active_keys:
-                    cur.execute("UPDATE failure_incidents_history SET status = 'Resolvida' WHERE id = ?", (row_id,))
+            # Auto-resolução com histerese: apenas se a lista foi avaliada de forma completa (> 100 canais)
+            if total_evaluated > 100:
+                cur.execute("SELECT id, canal, praca, pattern_id FROM failure_incidents_history WHERE status = 'Ativa'")
+                for r in cur.fetchall():
+                    row_id, r_ch, r_praca, r_pat = r[0], r[1], r[2], r[3]
+                    if (r_ch, r_praca, r_pat) not in active_keys:
+                        cur.execute("UPDATE failure_incidents_history SET status = 'Resolvida' WHERE id = ?", (row_id,))
 
             conn.commit()
     except Exception as e:
