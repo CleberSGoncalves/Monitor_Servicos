@@ -217,51 +217,6 @@ def get_fleet_pipeline_incidents(services: list = None, channels: list = None, t
                 "recommended_action": f"Reiniciar o serviço DNA.MediaRecorderSVC e verificar espaço no Disco D:\\."
             })
 
-    # 3. Incidentes sintetizados de simulação técnica realista para praças com histórico crônico
-    # Pelotas CS 1 (caso o scan local não encontre nada ou para manter coerência visual)
-    has_plt_incident = any("plt" in inc.get("hostname", "").lower() for inc in incidents)
-    if not has_plt_incident:
-        incidents.append({
-            "id": "delay_plt_globo_mp4",
-            "type": "atraso_envio_sent",
-            "category": "pipeline_midia",
-            "severity": "critico",
-            "badge_label": "ATRASO .SENT (18min)",
-            "title": "Atraso de Transmissão .SENT • MP4 (Vídeo)",
-            "praca": "Pelotas",
-            "hostname": "BRRS-PLT-DT01",
-            "cs": 1,
-            "target": "Rede Globo (Pelotas • CS 1)",
-            "filename": "H191_PV360_20261022130000_13_133000000_SZ19450122_CS1.mp4",
-            "size_mb": 18.5,
-            "elapsed_minutes": 18.0,
-            "threshold_minutes": threshold_delay_min,
-            "description": "Bloco das 13:00 às 13:30 gerado com 18.5 MB, porém não recebeu marcação .SENT após 18 min de tolerância.",
-            "recommended_action": "Verificar fila do FileTransferSVC na porta 80 e conexão de upload com uploadspot.aspx."
-        })
-
-    # Caxias do Sul CS 2 (Ausência de Gravação de MP3 de Rádio)
-    has_csl_incident = any("csl" in inc.get("hostname", "").lower() for inc in incidents)
-    if not has_csl_incident:
-        incidents.append({
-            "id": "missing_csl_radio_mp3",
-            "type": "ausencia_geracao_30min",
-            "category": "pipeline_midia",
-            "severity": "alerta",
-            "badge_label": "AUSÊNCIA MEIA HORA",
-            "title": "Ausência de Geração • MP3 (Áudio)",
-            "praca": "Caxias do Sul",
-            "hostname": "BRRS-CSL-DT02",
-            "cs": 2,
-            "target": "Rádio Atlântida FM (CS 2)",
-            "filename": "Bloco 13:00 - 13:30 não gerado",
-            "size_mb": 0.0,
-            "elapsed_minutes": 35.0,
-            "threshold_minutes": 30.0,
-            "description": "Nenhum arquivo MP3 gerado na pasta D:\\MediaDNA_V2\\Data\\Audio\\Registered nos últimos 30 minutos.",
-            "recommended_action": "Reiniciar encoder de áudio do Atria e validar ingestão da placa de captura."
-        })
-
     for inc in incidents:
         if "delay_minutes" not in inc or inc.get("delay_minutes") is None:
             inc["delay_minutes"] = round(inc.get("elapsed_minutes", 18.0))

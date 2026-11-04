@@ -54,7 +54,7 @@ from auth import (
     get_rbac_roles_matrix, store_session_nas_credentials,
     get_session_nas_credentials, DB_PATH
 )
-from sharepoint_sync import get_cached_data, start_background_syncer, sync_fleet_data
+from sharepoint_sync import get_cached_data, start_background_syncer, sync_fleet_data, sanitize_and_recalculate_cache
 from incident_manager import register_incident_action, get_incident_history, diagnose_incident_with_ai
 from thresholds_manager import get_all_thresholds, update_threshold, get_active_threshold_breaches, update_thresholds_batch, reset_thresholds_to_defaults
 from geo_topology import get_markets_map_data
@@ -356,7 +356,9 @@ async def create_user(req: UserCreateRequest, user: dict = Depends(get_current_u
 
 # Endpoints de Telemetria e Monitoração da Frota
 @app.get("/api/fleet/summary")
-async def get_summary(user: dict = Depends(get_current_user)):
+async def get_summary(refresh: Optional[int] = 0, user: dict = Depends(get_current_user)):
+    if refresh:
+        sanitize_and_recalculate_cache(force_refresh_time=True)
     data = get_cached_data()
     return {
         "stats": data.get("stats", {}),

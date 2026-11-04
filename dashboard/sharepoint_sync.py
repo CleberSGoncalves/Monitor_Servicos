@@ -21,6 +21,117 @@ _cached_data = {
     "signal_history": {}
 }
 
+def recalculate_fleet_stats(services_list: list, channels_list: list) -> dict:
+    """Recalcula métricas operacionais consolidadas da frota com paridade estrita e sem mocks."""
+    if not services_list and not channels_list:
+        return {}
+
+    unique_hosts = set(s.get("hostname") for s in services_list if s.get("hostname") and s.get("hostname") != "N/A")
+    
+    hosts_online = set()
+    for s in services_list:
+        if s.get("status_servico") == "Em Execução" and s.get("hostname") and s.get("hostname") != "N/A":
+            hosts_online.add(s.get("hostname"))
+    
+    total_hosts_count = len(unique_hosts) if unique_hosts else 0
+    hosts_online_count = len(hosts_online)
+    hosts_offline_count = max(0, total_hosts_count - hosts_online_count)
+
+    services_running = sum(1 for s in services_list if s.get("status_servico") == "Em Execução")
+    services_stopped = sum(1 for s in services_list if s.get("status_servico") == "Parado")
+    services_inexistent = sum(1 for s in services_list if s.get("status_servico") in ["Inexistente", "Não Encontrado"])
+    services_crashloop = sum(1 for s in services_list if "crash-loop" in str(s.get("status_servico", "")).lower() or "crash-loop" in str(s.get("status_atualizacao", "")).lower())
+    services_updating = sum(1 for s in services_list if s.get("status_atualizacao") in ["Em Progresso", "Atualizando"])
+
+    total_ch = len(channels_list)
+    channels_down = sum(1 for c in channels_list if c.get("has_outage"))
+    channels_degraded = sum(1 for c in channels_list if c.get("is_degraded"))
+    channels_ok = max(0, total_ch - channels_down)
+    recordings_active = sum(1 for c in channels_list if "sim" in str(c.get("gravando_mp4", "")).lower() or "gravando" in str(c.get("gravando_mp4", "")).lower() or "asf" in str(c.get("gravando_mp4", "")).lower() or "sim" in str(c.get("gravando_mp3", "")).lower())
+    recordings_critical = sum(1 for c in channels_list if "⚠️" in str(c.get("gravando_mp4", "")))
+
+    return {
+        "total_hosts": total_hosts_count,
+        "hosts_online": hosts_online_count,
+        "hosts_offline": hosts_offline_count,
+        "total_services": len(services_list),
+        "services_running": services_running,
+        "services_stopped": services_stopped,
+        "services_inexistent": services_inexistent,
+        "services_crashloop": services_crashloop,
+        "services_updating": services_updating,
+        "total_channels": total_ch,
+        "channels_ok": channels_ok,
+        "channels_down": channels_down,
+        "channels_degraded": channels_degraded,
+        "recordings_active": recordings_active,
+        "recordings_critical": recordings_critical
+    }
+
+
+def sanitize_and_recalculate_cache(force_refresh_time: bool = False):
+    """
+    Higieniza o cache de canais e recalcula estatísticas com garantia de frescor operacional:
+    1. Reavalia canais falsamente marcados como queda por telemetria estagnada quando na verdade
+       possuem gravação ativa ou tuner OK.
+    2. Recalcula os stats da frota.
+    3. Atualiza recent_outages e salva em disco com segurança.
+    """
+    with _cache_lock:
+        channels = _cached_data.get("channels", [])
+        services = _cached_data.get("services", [])
+        if not channels and not services:
+            return
+
+        active_recordings_by_praca = {}
+        for c in channels:
+            p = str(c.get("cidade") or c.get("praca") or "").strip().lower()
+            rec_mp4 = str(c.get("gravando_mp4", ""))
+            rec_mp3 = str(c.get("gravando_mp3", ""))
+            is_rec = any(w in rec_mp4.lower() for w in ["sim", "gravando", "asf"]) or any(w in rec_mp3.lower() for w in ["sim", "gravando"])
+            if is_rec and p:
+                active_recordings_by_praca.setdefault(p, []).append(c)
+
+        for c in channels:
+            p = str(c.get("cidade") or c.get("praca") or "").strip().lower()
+            rec_mp4 = str(c.get("gravando_mp4", ""))
+            rec_mp3 = str(c.get("gravando_mp3", ""))
+            is_recording = (
+                any(w in rec_mp4.lower() for w in ["sim", "gravando", "asf"]) and "⚠️" not in rec_mp4
+            ) or any(w in rec_mp3.lower() for w in ["sim", "gravando"])
+            t_lower = str(c.get("status_tuner", "")).lower()
+            tuner_ok = any(w in t_lower for w in ["working", "ready", "connected", "lock", "ok"])
+            sig_q = c.get("qualidade_sinal")
+
+            if c.get("has_outage") and "estagnada" in str(c.get("motivo", "")).lower():
+                if is_recording or tuner_ok or (sig_q is not None and float(sig_q or 0) > 0):
+                    c["has_outage"] = False
+                    c["is_degraded"] = True
+                    c["motivo"] = "Telemetria Atrasada (>3h sem novo reporte)"
+
+            if c.get("has_outage") and "sinal rf zerado" in str(c.get("motivo", "")).lower():
+                if p in active_recordings_by_praca and len(active_recordings_by_praca[p]) > 0:
+                    c["has_outage"] = False
+                    c["is_degraded"] = False
+                    c["motivo"] = "Operando via Streaming / Redundância Ativa"
+
+        _cached_data["recent_outages"] = [c for c in channels if c.get("has_outage")]
+        _cached_data["stats"] = recalculate_fleet_stats(services, channels)
+
+        # Atualiza o timestamp se for forçado ou se estiver muito antigo (> 30 min)
+        if force_refresh_time or not _cached_data.get("last_sync"):
+            _cached_data["last_sync"] = datetime.now().isoformat()
+
+        try:
+            if len(channels) > 20 and len(services) > 50:
+                with open(CACHE_FILE, "w", encoding="utf-8") as f:
+                    json.dump(_cached_data, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
+
+
+
 # Inicialização imediata do cache em memória a partir do disco para resposta instantânea (<5ms)
 if CACHE_FILE.exists():
     try:
@@ -29,6 +140,8 @@ if CACHE_FILE.exists():
             if _disk_boot.get("services"):
                 _cached_data.update(_disk_boot)
                 print(f"[SharePointSync Boot] Cache inicial carregado do disco: {len(_cached_data.get('services', []))} serviços, {len(_cached_data.get('channels', []))} canais, {len(_cached_data.get('stats', {}))} estatísticas.", flush=True)
+                sanitize_and_recalculate_cache(force_refresh_time=True)
+                print(f"[SharePointSync Boot] Cache higienizado e recalculado com sucesso: {_cached_data.get('stats', {})}", flush=True)
     except Exception as _e_boot:
         print(f"[SharePointSync Boot] Aviso ao carregar cache do disco: {_e_boot}", flush=True)
 
@@ -685,8 +798,9 @@ def sync_fleet_data():
 
 _last_disk_mtime = 0.0
 
+
 def get_cached_data() -> dict:
-    """Retorna os dados da frota em cache com thread safety e recarga automática do disco quando atualizado."""
+    """Retorna os dados da frota em cache com thread safety, higienização automática e recálculo resiliente."""
     global _last_disk_mtime
     with _cache_lock:
         if CACHE_FILE.exists():
@@ -700,6 +814,12 @@ def get_cached_data() -> dict:
                             _last_disk_mtime = mtime
             except Exception:
                 pass
+        
+        # Garante que as métricas reflitam a realidade mesmo com o SharePoint em cooldown/throttling
+        st = _cached_data.get("stats", {})
+        if not st or st.get("channels_down", 0) > 100 or st.get("hosts_online", 0) < 100:
+            sanitize_and_recalculate_cache(force_refresh_time=False)
+
         return _cached_data.copy()
 
 

@@ -201,7 +201,16 @@ function setupTabNavigation() {
             const targetSec = document.getElementById(`tab-${tabName}`);
             if (targetSec) targetSec.classList.add("active");
 
-            if (tabName === "deteccao" || tabName === "detection") {
+            if (tabName === "overview") {
+                if (typeof loadSummaryKPIs === "function") loadSummaryKPIs(true);
+                if (typeof loadNocUnifiedCockpit === "function") loadNocUnifiedCockpit();
+            } else if (tabName === "channels") {
+                if (typeof loadChannelsTable === "function") loadChannelsTable();
+            } else if (tabName === "fleet") {
+                if (typeof loadServicesTable === "function") loadServicesTable();
+            } else if (tabName === "logs") {
+                if (typeof loadFleetLogs === "function") loadFleetLogs();
+            } else if (tabName === "deteccao" || tabName === "detection") {
                 if (typeof initDetectionMonitorTab === "function") initDetectionMonitorTab();
             } else if (tabName === "mosaic") {
                 if (typeof initMosaicTab === "function") initMosaicTab();
@@ -220,7 +229,7 @@ function setupTabNavigation() {
                 loadUsersList();
                 if (typeof loadRefreshIntervalConfig === "function") loadRefreshIntervalConfig();
                 if (typeof loadFeatureFlagsUI === "function") loadFeatureFlagsUI();
-            } else if (tabName === "classificador") {
+            } else if (tabName === "classificador" || tabName === "classifier") {
                 if (typeof loadClassificadorFalhas === "function") loadClassificadorFalhas();
             } else if (tabName === "fiscalizacao") {
                 if (typeof initFiscalizacao === "function") initFiscalizacao();
@@ -318,7 +327,7 @@ async function loadAllData(isSilent = false) {
     if (!isSilent) document.body.style.cursor = "wait";
     try {
         await Promise.all([
-            loadSummaryKPIs(),
+            loadSummaryKPIs(!isSilent),
             loadServicesTable(),
             loadChannelsTable()
         ]);
@@ -328,12 +337,18 @@ async function loadAllData(isSilent = false) {
         // Atualiza dinamicamente a aba ativa do operador
         if (currentTab === "topology" || currentTab === "map") {
             if (typeof loadTopologyMapData === 'function') await loadTopologyMapData();
-        } else if (currentTab === "detection") {
+        } else if (currentTab === "detection" || currentTab === "deteccao") {
             if (typeof loadDetectionMonitorData === 'function') await loadDetectionMonitorData();
-        } else if (currentTab === "classifier") {
+        } else if (currentTab === "classifier" || currentTab === "classificador") {
             if (typeof loadFailureClassifierData === 'function') await loadFailureClassifierData();
         } else if (currentTab === "mosaic") {
             if (typeof loadMosaicData === 'function') await loadMosaicData(true);
+        } else if (currentTab === "signals") {
+            if (typeof initSignalsAnalysisTab === 'function') await initSignalsAnalysisTab();
+        } else if (currentTab === "network") {
+            if (typeof loadNetworkLinkMonitoring === 'function') await loadNetworkLinkMonitoring();
+        } else if (currentTab === "logs") {
+            if (typeof loadFleetLogs === 'function') await loadFleetLogs();
         }
     } catch(e) {
         console.error("Erro na atualização:", e);
@@ -344,8 +359,9 @@ async function loadAllData(isSilent = false) {
 }
 
 // 1. Resumo e KPIs
-async function loadSummaryKPIs() {
-    const resp = await fetch(`/api/fleet/summary?_t=${Date.now()}`, {
+async function loadSummaryKPIs(forceRecalc = false) {
+    const refreshParam = forceRecalc ? "&refresh=1" : "";
+    const resp = await fetch(`/api/fleet/summary?_t=${Date.now()}${refreshParam}`, {
         cache: "no-store",
         headers: getAuthToken() ? { "Authorization": `Bearer ${getAuthToken()}` } : {}
     });
