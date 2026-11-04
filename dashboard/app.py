@@ -215,8 +215,8 @@ def on_startup():
         init_remote_command_db()
     except Exception as e:
         logger.warning(f"Aviso ao inicializar banco de comandos remotos no startup: {e}")
-    # Inicia sincronização contínua com SharePoint em thread daemon não bloqueante
-    start_background_syncer(interval_seconds=180)
+    # Inicia sincronização contínua com SharePoint em thread daemon não bloqueante (5 min)
+    start_background_syncer(interval_seconds=300)
 
 
 @app.get("/", response_class=HTMLResponse)

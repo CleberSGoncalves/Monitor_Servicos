@@ -48,6 +48,7 @@ def get_graph_token() -> str:
 
 
 _global_graph_throttle_until = 0.0
+COOLDOWN_FILE = DATA_DIR / "graph_cooldown.json"
 
 _graph_rate_limit_telemetry = {
     "is_throttled": False,
@@ -58,9 +59,46 @@ _graph_rate_limit_telemetry = {
 }
 
 
+def get_global_cooldown_remain() -> float:
+    now_ts = time.time()
+    if COOLDOWN_FILE.exists():
+        try:
+            with open(COOLDOWN_FILE, "r", encoding="utf-8") as f:
+                d = json.load(f)
+                file_until = float(d.get("throttle_until", 0.0))
+                if file_until > now_ts:
+                    return file_until - now_ts
+        except Exception:
+            pass
+    if _global_graph_throttle_until > now_ts:
+        return _global_graph_throttle_until - now_ts
+    return 0.0
+
+
+def set_global_cooldown(wait_seconds: int):
+    global _global_graph_throttle_until
+    until = time.time() + wait_seconds
+    _global_graph_throttle_until = until
+    try:
+        with open(COOLDOWN_FILE, "w", encoding="utf-8") as f:
+            json.dump({
+                "throttle_until": until,
+                "wait_seconds": wait_seconds,
+                "set_at": datetime.now(timezone.utc).isoformat()
+            }, f, indent=2)
+    except Exception:
+        pass
+
+
 def get_graph_rate_limit_health() -> dict:
     with _cache_lock:
-        return dict(_graph_rate_limit_telemetry)
+        rem = get_global_cooldown_remain()
+        telemetry = dict(_graph_rate_limit_telemetry)
+        if rem > 0:
+            telemetry["is_throttled"] = True
+            telemetry["status"] = f"Throttled (Cooldown: {int(rem)}s)"
+            telemetry["last_retry_after_s"] = int(rem)
+        return telemetry
 
 
 def fetch_all_items(token: str, list_id: str) -> list:
@@ -69,9 +107,9 @@ def fetch_all_items(token: str, list_id: str) -> list:
     global _graph_rate_limit_telemetry, _global_graph_throttle_until
     
     # 1. Verificação de Cooldown Global: se o Graph API estiver throttled, NÃO fazer requisições
-    now_ts = time.time()
-    if now_ts < _global_graph_throttle_until:
-        wait_remain = int(_global_graph_throttle_until - now_ts)
+    rem = get_global_cooldown_remain()
+    if rem > 0:
+        wait_remain = int(rem)
         print(f"[SharePointSync Cooldown] Microsoft Graph throttled. Respeitando Retry-After (restam {wait_remain}s). Abortando fetch para evitar penalidade.", flush=True)
         return []
 
@@ -79,7 +117,15 @@ def fetch_all_items(token: str, list_id: str) -> list:
         "Authorization": f"Bearer {token}",
         "Accept": "application/json"
     }
-    url = f"https://graph.microsoft.com/v1.0/sites/{SITE_ID}/lists/{list_id}/items?$expand=fields&$top=500"
+    # Projeção seletiva com $select para reduzir payload em mais de 80%
+    if list_id == LIST_SERVICES_ID:
+        fields = "Title,Hostname,Pra_x00e7_a,CS,Nome_Servico,Versao_Instalada,Versao_Desejada,Status_Servico,Status_Atualizacao,Acao_Solicitada,Ultima_atualizacao,AutoRestart,Cpu_Uso,Ram_Uso,Disco_D_Livre_GB,Uptime_Dias,Status_WCF,Url_Comunicacao,Url_Comunicacao_Desejavel,Acao_Solicitada_Url"
+        url = f"https://graph.microsoft.com/v1.0/sites/{SITE_ID}/lists/{list_id}/items?$select=id,fields&$expand=fields($select={fields})&$top=500"
+    elif list_id == LIST_CHANNELS_ID:
+        fields = "Title,Veiculo,Pais,Pra_x00e7_a,IDHost,CS,Meio,Frequencia,TunerID,StatusTuner,QualidadeSinal,ForcaSinal,VideoCongelado,AudioMudo,GravandoMP4,GravandoMP3,PastaGravacaoMP4,PastaGravacaoMP3,UrlStreaming,SourceAnalogico,Atualizacao"
+        url = f"https://graph.microsoft.com/v1.0/sites/{SITE_ID}/lists/{list_id}/items?$select=id,fields&$expand=fields($select={fields})&$top=500"
+    else:
+        url = f"https://graph.microsoft.com/v1.0/sites/{SITE_ID}/lists/{list_id}/items?$expand=fields&$top=500"
     items = []
     
     while url:
@@ -90,7 +136,7 @@ def fetch_all_items(token: str, list_id: str) -> list:
                 if resp.status_code == 429:
                     raw_wait = int(resp.headers.get("Retry-After", 120))
                     # Respeitar integralmente o Retry-After da Microsoft com margem de segurança (+15s)
-                    _global_graph_throttle_until = time.time() + raw_wait + 15
+                    set_global_cooldown(raw_wait + 15)
                     with _cache_lock:
                         _graph_rate_limit_telemetry["is_throttled"] = True
                         _graph_rate_limit_telemetry["last_throttled_at"] = datetime.now(timezone.utc).isoformat()
@@ -533,14 +579,21 @@ def sync_fleet_data():
             h_services = [s for s in services_list if s["hostname"] == h]
             dates = []
             for s in h_services:
-                if s["ultima_atualizacao"]:
+                if s.get("ultima_atualizacao"):
                     try:
                         dates.append(datetime.fromisoformat(s["ultima_atualizacao"].replace("Z", "+00:00")))
                     except Exception:
                         pass
+            has_running = any(s.get("status_servico") == "Em Execução" for s in h_services)
             if dates:
                 last_dt = max(dates)
-                if (now - last_dt).total_seconds() > 3600 * 2: # Mais de 2 horas offline
+                # Resiliência a Throttling/Backoff: Só considera host offline se inativo há mais de 8 horas,
+                # ou há mais de 4 horas sem nenhum serviço em execução
+                diff_sec = (now - last_dt).total_seconds()
+                if diff_sec > 3600 * 8 or (diff_sec > 3600 * 4 and not has_running):
+                    hosts_offline += 1
+            else:
+                if not has_running:
                     hosts_offline += 1
 
         services_stopped = sum(1 for s in services_list if s["status_servico"] == "Parado")
@@ -650,10 +703,16 @@ def get_cached_data() -> dict:
         return _cached_data.copy()
 
 
-def start_background_syncer(interval_seconds: int = 180):
-    """Inicia thread em segundo plano para manter o cache sempre atualizado."""
+def start_background_syncer(interval_seconds: int = 300):
+    """Inicia thread em segundo plano com intervalo inteligente de 5 min e respeito a cooldown."""
     def worker():
+        time.sleep(10)
         while True:
+            rem = get_global_cooldown_remain()
+            if rem > 0:
+                print(f"[SharePointSyncer] Cooldown ativo ({int(rem)}s restantes). Aguardando liberação do Graph API...", flush=True)
+                time.sleep(rem + 5)
+                continue
             sync_fleet_data()
             time.sleep(interval_seconds)
 

@@ -158,14 +158,28 @@ def execute_predefined_action(
 
 
 def find_service_item_id(token: str, host: str, service_name: str) -> Optional[str]:
-    """Localiza o ID do item do serviço no SharePoint."""
+    """Localiza o ID do item do serviço no SharePoint utilizando primeiro o cache em memória (0ms, 0 chamadas HTTP)."""
+    # 1. Consulta em memória do cache consolidado
+    try:
+        from sharepoint_sync import get_cached_data
+        c_data = get_cached_data()
+        for s in c_data.get("services", []):
+            if (s.get("hostname", "").strip().lower() == host.strip().lower() and
+                s.get("nome_servico", "").strip().lower() == service_name.strip().lower()):
+                clean_id = str(s.get("id", "")).split("_")[0]
+                if clean_id:
+                    return clean_id
+    except Exception:
+        pass
+
+    # 2. Fallback de rede com projeção seletiva estrita
     headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
-    url = f"https://graph.microsoft.com/v1.0/sites/{SITE_ID}/lists/{LIST_SERVICES_ID}/items?$expand=fields&$top=150"
+    url = f"https://graph.microsoft.com/v1.0/sites/{SITE_ID}/lists/{LIST_SERVICES_ID}/items?$select=id,fields&$expand=fields($select=Hostname,Nome_Servico)&$top=150"
     resp = requests.get(url, headers=headers, timeout=8)
     if resp.ok:
         for item in resp.json().get("value", []):
             f = item.get("fields", {})
             if f.get("Hostname", "").strip().lower() == host.strip().lower() and \
                f.get("Nome_Servico", "").strip().lower() == service_name.strip().lower():
-                return item.get("id")
+                return str(item.get("id", "")).split("_")[0]
     return None

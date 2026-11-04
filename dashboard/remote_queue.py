@@ -272,16 +272,39 @@ def trigger_canary_rollout_sharepoint(
         "Accept": "application/json",
     }
 
-    # Busca itens atuais da lista de serviços no SharePoint
+    # 1. Busca imediata no cache de serviços já sincronizado (0ms, 0 requisições HTTP)
     items = []
-    next_url = f"https://graph.microsoft.com/v1.0/sites/{SITE_ID}/lists/{LIST_SERVICES_ID}/items?$expand=fields&$top=500"
-    while next_url:
-        r = requests.get(next_url, headers=headers, timeout=15)
-        if not r.ok:
-            break
-        d = r.json()
-        items.extend(d.get("value", []))
-        next_url = d.get("@odata.nextLink")
+    try:
+        from sharepoint_sync import get_cached_data
+        c_data = get_cached_data()
+        for cs_item in c_data.get("services", []):
+            clean_id = str(cs_item.get("id") or "").split("_")[0]
+            items.append({
+                "id": clean_id,
+                "fields": {
+                    "Nome_Servico": cs_item.get("nome_servico"),
+                    "Hostname": cs_item.get("hostname"),
+                    "Title": cs_item.get("title") or cs_item.get("hostname"),
+                    "Versao_Instalada": cs_item.get("versao_instalada"),
+                    "Versao_Desejada": cs_item.get("versao_desejada"),
+                    "Status_Servico": cs_item.get("status_servico"),
+                    "Acao_Solicitada": cs_item.get("acao_solicitada"),
+                }
+            })
+    except Exception as e_cache:
+        logger.warning(f"Erro ao buscar do cache local: {e_cache}")
+
+    # Fallback de rede caso o cache em memória esteja vazio
+    if not items:
+        fields_sel = "Title,Hostname,Nome_Servico,Versao_Instalada,Versao_Desejada,Status_Servico,Acao_Solicitada"
+        next_url = f"https://graph.microsoft.com/v1.0/sites/{SITE_ID}/lists/{LIST_SERVICES_ID}/items?$select=id,fields&$expand=fields($select={fields_sel})&$top=500"
+        while next_url:
+            r = requests.get(next_url, headers=headers, timeout=15)
+            if not r.ok:
+                break
+            d = r.json()
+            items.extend(d.get("value", []))
+            next_url = d.get("@odata.nextLink")
 
     matching = []
     for it in items:

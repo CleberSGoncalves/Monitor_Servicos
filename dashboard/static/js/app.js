@@ -305,7 +305,15 @@ function updateRefreshIntervalUI(secs) {
 let isRefreshingAllData = false;
 
 async function loadAllData(isSilent = false) {
-    if (isRefreshingAllData) return;
+    if (isRefreshingAllData) {
+        if (Date.now() - (window._lastRefreshStartTime || 0) > 15000) {
+            console.warn("[loadAllData] Resetando trava de refresh pendente.");
+            isRefreshingAllData = false;
+        } else {
+            return;
+        }
+    }
+    window._lastRefreshStartTime = Date.now();
     isRefreshingAllData = true;
     if (!isSilent) document.body.style.cursor = "wait";
     try {
@@ -343,6 +351,7 @@ async function loadSummaryKPIs() {
     });
     if (!resp.ok) return;
     const data = await resp.json();
+    window._lastCachedSummary = data;
     const st = data.stats || {};
 
     document.getElementById("kpiHostsOnline").innerText = `${st.hosts_online || 0} / ${st.total_hosts || 0}`;
@@ -508,8 +517,8 @@ window.loadMediaPipelineIncidents = loadMediaPipelineIncidents;
 let allCachedServices = [];
 
 async function loadServicesTable() {
-    let url = `/api/fleet/services`;
-    const resp = await fetch(url + `_t=${Date.now()}&`, { cache: "no-store", headers: getAuthToken() ? { "Authorization": `Bearer ${getAuthToken()}` } : {} });
+    let url = `/api/fleet/services?_t=${Date.now()}&`;
+    const resp = await fetch(url, { cache: "no-store", headers: getAuthToken() ? { "Authorization": `Bearer ${getAuthToken()}` } : {} });
     if (!resp.ok) return;
     allCachedServices = await resp.json();
     syncAllPracasAndHostsDropdowns(allCachedServices);
@@ -774,6 +783,9 @@ async function loadChannelsTable() {
     const resp = await fetch(url + `_t=${Date.now()}&`, { cache: "no-store", headers: getAuthToken() ? { "Authorization": `Bearer ${getAuthToken()}` } : {} });
     if (!resp.ok) return;
     const channels = await resp.json();
+    if (Array.isArray(channels) && channels.length > 0) {
+        window._lastValidChannelsCache = channels;
+    }
 
     const tbody = document.getElementById("channelsTableBody");
     tbody.innerHTML = channels.map(c => {
@@ -2879,6 +2891,23 @@ function parseNumericMetric(val) {
     return match ? parseFloat(match[1].replace(',', '.')) : 0;
 }
 
+function parseRamMetric(val) {
+    if (!val || val === "N/A") return { isPct: false, pct: 0, mb: 0 };
+    const str = String(val).trim();
+    const pctMatch = str.match(/([0-9]+[.,]?[0-9]*)\s*%/);
+    if (pctMatch) {
+        return { isPct: true, pct: parseFloat(pctMatch[1].replace(',', '.')), mb: 0 };
+    }
+    const mbMatch = str.match(/([0-9]+[.,]?[0-9]*)\s*(mb|gb)/i);
+    if (mbMatch) {
+        const num = parseFloat(mbMatch[1].replace(',', '.'));
+        const unit = mbMatch[2].toUpperCase();
+        const mb = unit === 'GB' ? num * 1024 : num;
+        return { isPct: false, pct: 0, mb: mb };
+    }
+    return { isPct: false, pct: 0, mb: 0 };
+}
+
 function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pipelineIncidents, thresholdBreaches) {
     const incidents = [];
     const hostsMap = {};
@@ -2892,7 +2921,7 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
         return "Sudeste";
     }
 
-    // 1. Telemetria de Hosts e Hardware
+    // 1. Telemetria de Hosts e Hardware com diferenciação inteligente de % vs MB de Processo
     (servicesList || []).forEach(s => {
         const hName = s.hostname || s.host || "CS-DESCONHECIDO";
         if (hName === "CS-DESCONHECIDO" || !hName) return;
@@ -2903,7 +2932,7 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
                 cs: s.cs || 1,
                 region: getRegionForCity(s.praca),
                 cpu_val: parseNumericMetric(s.cpu_uso),
-                ram_val: parseNumericMetric(s.ram_uso),
+                ram_info: parseRamMetric(s.ram_uso),
                 disco_val: parseNumericMetric(s.disco_d_livre),
                 has_critical_hw: false,
                 critical_reasons: []
@@ -2911,7 +2940,9 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
         }
         const hObj = hostsMap[hName];
         if (s.cpu_uso && s.cpu_uso !== "N/A" && hObj.cpu_val === 0) hObj.cpu_val = parseNumericMetric(s.cpu_uso);
-        if (s.ram_uso && s.ram_uso !== "N/A" && hObj.ram_val === 0) hObj.ram_val = parseNumericMetric(s.ram_uso);
+        if (s.ram_uso && s.ram_uso !== "N/A" && (!hObj.ram_info || (!hObj.ram_info.isPct && hObj.ram_info.mb === 0))) {
+            hObj.ram_info = parseRamMetric(s.ram_uso);
+        }
         if (s.disco_d_livre && s.disco_d_livre !== "N/A" && hObj.disco_val === 0) hObj.disco_val = parseNumericMetric(s.disco_d_livre);
     });
 
@@ -2920,9 +2951,14 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
             h.has_critical_hw = true;
             h.critical_reasons.push(`CPU ${h.cpu_val}%`);
         }
-        if (h.ram_val >= 90) {
-            h.has_critical_hw = true;
-            h.critical_reasons.push(`RAM ${h.ram_val}%`);
+        if (h.ram_info) {
+            if (h.ram_info.isPct && h.ram_info.pct >= 90) {
+                h.has_critical_hw = true;
+                h.critical_reasons.push(`RAM ${h.ram_info.pct}%`);
+            } else if (!h.ram_info.isPct && h.ram_info.mb >= 3500) {
+                h.has_critical_hw = true;
+                h.critical_reasons.push(`RAM ${Math.round(h.ram_info.mb)}MB (Processo Alto)`);
+            }
         }
         if (h.disco_val > 0 && h.disco_val < 30) {
             h.has_critical_hw = true;
@@ -3226,24 +3262,27 @@ function updateNocTopKpis(summary, servicesList, channelsList) {
         return pracaLower && (monitoredPracas.size === 0 || monitoredPracas.has(pracaLower));
     });
 
-    const activeHostsCount = (allNocHostsTelemetryCache || []).length;
-    if (kpiServers) kpiServers.textContent = `${activeHostsCount > 0 ? activeHostsCount : 24}/${activeHostsCount > 0 ? activeHostsCount : 24} Online`;
+    const st = summary?.stats || {};
+    const totalHosts = st.total_hosts || (allNocHostsTelemetryCache || []).length || 24;
+    const onlineHosts = (st.hosts_online !== undefined) ? st.hosts_online : totalHosts;
+
+    if (kpiServers) kpiServers.textContent = `${onlineHosts}/${totalHosts} Online`;
     if (kpiServices) {
-        const totalSvc = servicesList?.length || 312;
-        const activeSvc = (servicesList || []).filter(s => (s.status_servico || s.status || "").toLowerCase().includes("run") || (s.status_servico || s.status || "").toLowerCase().includes("em exec") || (s.status_servico || s.status || "").toLowerCase().includes("ok")).length;
-        kpiServices.textContent = `${activeSvc > 0 ? activeSvc : 256}/${totalSvc} Ativos`;
+        const totalSvc = st.total_services || servicesList?.length || 312;
+        const activeSvc = (st.services_running !== undefined) ? st.services_running : (servicesList || []).filter(s => (s.status_servico || s.status || "").toLowerCase().includes("run") || (s.status_servico || s.status || "").toLowerCase().includes("em exec") || (s.status_servico || s.status || "").toLowerCase().includes("ok")).length;
+        kpiServices.textContent = `${activeSvc}/${totalSvc} Ativos`;
     }
     if (kpiSignals) {
-        const totalCh = activeChannels.length || 114;
-        const okCh = activeChannels.filter(c => !c.has_outage).length;
+        const totalCh = st.total_channels || activeChannels.length || 114;
+        const okCh = (st.channels_ok !== undefined) ? st.channels_ok : activeChannels.filter(c => !c.has_outage).length;
         kpiSignals.textContent = `${okCh}/${totalCh} MUX`;
     }
     if (kpiOutages) {
-        const outages = activeChannels.filter(c => c.has_outage).length;
+        const outages = (st.channels_down !== undefined) ? st.channels_down : activeChannels.filter(c => c.has_outage).length;
         kpiOutages.textContent = `${outages} Ocorrências`;
     }
     if (kpiRecordings) {
-        const recCount = (channelsList || []).filter(c => (c.status_gravacao || "").toLowerCase().includes("grav") || (c.status_gravacao || "").toLowerCase().includes("ok")).length;
+        const recCount = st.recordings_active || (channelsList || []).filter(c => (c.status_gravacao || "").toLowerCase().includes("grav") || (c.status_gravacao || "").toLowerCase().includes("ok")).length;
         kpiRecordings.textContent = `${recCount > 0 ? recCount : 57} Streams`;
     }
 }
@@ -3579,41 +3618,64 @@ function renderNocUnifiedQueue() {
 }
 
 
-async function loadNocUnifiedCockpit() {
+let _nocLastFetchTime = 0;
+let _nocCachedSummary = null;
+let _nocCachedServices = null;
+let _nocCachedChannels = null;
+let _nocCachedPipeline = null;
+let _nocCachedBreaches = null;
+
+async function loadNocUnifiedCockpit(optSummary = null, optServices = null, optChannels = null) {
     try {
         const token = (typeof getAuthToken === 'function' && getAuthToken()) ? { "Authorization": `Bearer ${getAuthToken()}` } : {};
+        const now = Date.now();
         
-        // Se allCachedServices já foi preenchido por loadServicesTable nesta rodada, reaproveita
-        let services = (Array.isArray(allCachedServices) && allCachedServices.length > 0) ? allCachedServices : null;
+        let summary = optSummary || window._lastCachedSummary || _nocCachedSummary;
+        let services = optServices || (Array.isArray(allCachedServices) && allCachedServices.length > 0 ? allCachedServices : _nocCachedServices);
+        let channels = optChannels || (Array.isArray(window._lastValidChannelsCache) && window._lastValidChannelsCache.length > 0 ? window._lastValidChannelsCache : _nocCachedChannels);
         
-        const promises = [
-            fetch("/api/fleet/summary", { headers: token }),
-            services ? Promise.resolve(null) : fetch("/api/fleet/services", { headers: token }),
-            fetch("/api/fleet/channels", { headers: token }),
-            fetch("/api/fleet/media-pipeline/incidents", { headers: token }),
-            fetch("/api/thresholds/breaches", { headers: token })
-        ];
+        const needFetchSummary = !summary || (now - _nocLastFetchTime > 45000);
+        const needFetchServices = !services || (now - _nocLastFetchTime > 45000);
+        const needFetchChannels = !channels || (now - _nocLastFetchTime > 45000);
+        const needFetchIncidents = !_nocCachedPipeline || (now - _nocLastFetchTime > 45000);
+        const needFetchBreaches = !_nocCachedBreaches || (now - _nocLastFetchTime > 45000);
+
+        const promises = [];
+        promises.push(needFetchSummary ? fetch(`/api/fleet/summary?_t=${now}`, { headers: token }) : Promise.resolve(null));
+        promises.push(needFetchServices ? fetch(`/api/fleet/services?_t=${now}`, { headers: token }) : Promise.resolve(null));
+        promises.push(needFetchChannels ? fetch(`/api/fleet/channels?_t=${now}`, { headers: token }) : Promise.resolve(null));
+        promises.push(needFetchIncidents ? fetch(`/api/fleet/media-pipeline/incidents?_t=${now}`, { headers: token }) : Promise.resolve(null));
+        promises.push(needFetchBreaches ? fetch(`/api/thresholds/breaches?_t=${now}`, { headers: token }) : Promise.resolve(null));
 
         const [sumRes, sRes, cRes, pRes, bRes] = await Promise.all(promises);
 
-        const summary = sumRes.ok ? await sumRes.json() : {};
-        if (!services) {
-            services = (sRes && sRes.ok) ? await sRes.json() : [];
+        if (sumRes && sumRes.ok) {
+            summary = await sumRes.json();
+            _nocCachedSummary = summary;
+            window._lastCachedSummary = summary;
         }
-        const rawChannels = cRes.ok ? await cRes.json() : [];
-        // Guarda Anti-Flicker: Se a API de canais retornar vazio em um ciclo transitório, preserva os canais em memória
-        let channels = rawChannels;
-        if (Array.isArray(rawChannels) && rawChannels.length > 0) {
-            window._lastValidChannelsCache = rawChannels;
-        } else if (window._lastValidChannelsCache && window._lastValidChannelsCache.length > 0) {
-            channels = window._lastValidChannelsCache;
+        if (sRes && sRes.ok) {
+            services = await sRes.json();
+            _nocCachedServices = services;
         }
+        if (cRes && cRes.ok) {
+            const rawChannels = await cRes.json();
+            if (Array.isArray(rawChannels) && rawChannels.length > 0) {
+                channels = rawChannels;
+                _nocCachedChannels = rawChannels;
+                window._lastValidChannelsCache = rawChannels;
+            }
+        }
+        if (pRes && pRes.ok) _nocCachedPipeline = await pRes.json();
+        if (bRes && bRes.ok) _nocCachedBreaches = await bRes.json();
 
-        const pipeline = pRes.ok ? await pRes.json() : [];
-        const breaches = bRes.ok ? await bRes.json() : [];
+        _nocLastFetchTime = now;
 
-        syncAllPracasAndHostsDropdowns(services);
-        processNocTelemetryAndIncidents(summary, services, channels, pipeline, breaches);
+        const pipeline = _nocCachedPipeline || [];
+        const breaches = _nocCachedBreaches || [];
+
+        syncAllPracasAndHostsDropdowns(services || []);
+        processNocTelemetryAndIncidents(summary || {}, services || [], channels || [], pipeline, breaches);
     } catch (e) {
         console.error("Erro ao consolidar NOC Cockpit:", e);
     }
