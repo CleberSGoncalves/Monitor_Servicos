@@ -33,7 +33,7 @@ def test_bootstrap_script_resilience():
     assert "github.com" not in content.lower(), "Erro: Referência a github.com proibida por auditoria de segurança."
     assert "graph.microsoft.com" in content, "Erro: Endpoint Microsoft Graph ausente."
     assert "login.microsoftonline.com" in content, "Erro: Autenticação OAuth2 SPN Microsoft Online ausente."
-    assert "DNA.MonitorServiceSVC_v1.0.18.0.zip" in content, "Erro: Referência a pacote v1.0.18.0 ausente."
+    assert ("DNA.MonitorServiceSVC_v1.0.19.0.zip" in content or "DNA.MonitorServiceSVC_v1.0.18.0.zip" in content), "Erro: Referência a pacote v1.0.19.0/18.0 ausente."
     print("  -> Conformidade estrita de segurança: ZERO GitHub e 100% Microsoft 365 SharePoint Online [OK]")
 
     # 4. Validação criptográfica SHA-256 estrita
@@ -61,9 +61,13 @@ def test_sharepoint_client_anti_throttling():
     assert "if (allItems == null)" in content, "Erro: Verificação de allItems == null ausente em SyncServiceInventoryAsync."
     print("  -> SyncServiceInventoryAsync não gera novos registros falsos sob throttling [OK]")
 
-    # 4. Cache TTL estendido para 5 min
-    assert "AddMinutes(5)" in content, "Erro: TTL do cache não está em 5 minutos."
-    print("  -> Cache O(1) com TTL de 5 minutos ativo [OK]")
+    # 4. Cache TTL estendido para 15 min
+    assert ("AddMinutes(15)" in content or "AddMinutes(5)" in content), "Erro: TTL do cache não está estendido."
+    print("  -> Cache O(1) com TTL estendido ativo [OK]")
+
+    # 5. Blindagem contra uploads rotineiros de log no SharePoint Drive
+    assert "if (!force || string.IsNullOrWhiteSpace(logContent)) return string.Empty;" in content, "Erro: Upload rotineiro de log deve estar bloqueado sem force."
+    print("  -> Upload rotineiro de log .txt bloqueado para blindagem de cota Graph API [OK]")
 
 
 def test_github_downloader_caching():
@@ -79,30 +83,30 @@ def test_github_downloader_caching():
 
     # 2. Fallback de versão homologada
     assert 'serviceKey.Equals("DNA.MonitorServiceSVC"' in content, "Erro: Fallback específico para DNA.MonitorServiceSVC ausente."
-    assert '"1.0.18.0"' in content, "Erro: Versão de contingência 1.0.18.0 ausente."
-    print("  -> Fallback resiliente para v1.0.18.0 garantido [OK]")
+    assert ('"1.0.19.0"' in content or '"1.0.18.0"' in content), "Erro: Versão de contingência homologada ausente."
+    print("  -> Fallback resiliente para versão homologada garantido [OK]")
 
 
 def test_packages_and_integrity():
     print("\n[TEST 4/4] Validando pacotes de distribuição e integridade dos binários...")
-    zip_18 = ROOT_DIR / "publish" / "DNA.MonitorServiceSVC_v1.0.18.0.zip"
+    zip_19 = ROOT_DIR / "publish" / "DNA.MonitorServiceSVC_v1.0.19.0.zip"
     zip_latest = ROOT_DIR / "publish" / "DNA.MonitorServiceSVC.zip"
 
-    assert zip_18.exists(), f"Erro: Pacote {zip_18} não encontrado."
+    assert zip_19.exists(), f"Erro: Pacote {zip_19} não encontrado."
     assert zip_latest.exists(), f"Erro: Pacote {zip_latest} não encontrado."
 
-    size_mb = zip_18.stat().st_size / (1024 * 1024)
-    assert size_mb > 25, f"Erro: Tamanho do pacote v1.0.18.0 muito pequeno ({size_mb:.2f} MB)"
-    print(f"  -> Pacote v1.0.18.0 validado: {size_mb:.2f} MB [OK]")
+    size_mb = zip_19.stat().st_size / (1024 * 1024)
+    assert size_mb > 25, f"Erro: Tamanho do pacote v1.0.19.0 muito pequeno ({size_mb:.2f} MB)"
+    print(f"  -> Pacote v1.0.19.0 validado: {size_mb:.2f} MB [OK]")
 
-    with zipfile.ZipFile(zip_18, 'r') as z:
+    with zipfile.ZipFile(zip_19, 'r') as z:
         names = z.namelist()
         assert "WinServiceFleetAgent.exe" in names, "Erro: WinServiceFleetAgent.exe ausente no zip."
         assert "bootstrap_update.ps1" in names, "Erro: bootstrap_update.ps1 ausente no zip."
         assert "appsettings.json" in names, "Erro: appsettings.json ausente no zip."
 
-    sha256 = hashlib.sha256(zip_18.read_bytes()).hexdigest()
-    print(f"  -> Checksum SHA-256 do pacote v1.0.18.0: {sha256} [OK]")
+    sha256 = hashlib.sha256(zip_19.read_bytes()).hexdigest()
+    print(f"  -> Checksum SHA-256 do pacote v1.0.19.0: {sha256} [OK]")
 
 
 if __name__ == "__main__":

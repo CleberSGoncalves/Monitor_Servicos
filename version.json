@@ -1,8 +1,8 @@
 {
-  "version": "3.9.68",
-  "agent_version": "1.0.18.0",
+  "version": "3.9.70",
+  "agent_version": "1.0.19.0",
   "commit_sha": "auto",
-  "updated_at": "2026-10-29T21:25:00.000000",
-  "description": "v3.9.68 - Nova aba de monitoramento 'Detecção Automática' exclusiva para Capture Sites CS01, cobrindo todo o pipeline de comerciais: ingestão de spots em D:\\mediadna_V2\\data\\sgg e catálogo configxml.xml, auditoria de motores FastMatchingSvc (primário) vs DNA.DetectionSVC (fallback contingencial), telemetria e cadência de emissão de arquivos de tracking .xml em D:\\mediadna_V2\\data\\tracking com limiar de estagnação e abertura proativa de incidentes N1/P0.",
-  "release_notes": "v3.9.68: Criação da aba 'Detecção Automática' (exclusiva CS01); monitoramento da esteira de comerciais e spots com rastreamento de FastMatchingSvc, DNA.DetectionSVC, DNA.ConfigMonitorSVC e DNA.TrackingSVC; cálculo dinâmico da idade do último XML de tracking com limiares configuráveis (30m, 45m, 60m, 90m); diagnóstico heurístico de IA Gemini Pro com causa raiz e playbook de remediação; ações operacionais de auto-cura em 1 clique; testes automatizados reais de ponta a ponta aprovados."
+  "updated_at": "2026-11-04T12:00:00.000000",
+  "description": "v3.9.70 - Agente v1.0.19.0 com remoção definitiva do upload rotineiro de logs .txt para o SharePoint Drive via Microsoft Graph API, eliminando saturação de cota (HTTP 429 - activityLimitReached), adição de jitter aleatório entre ciclos de heartbeat, ampliação do intervalo de polling para 180s e estabilização de telemetria da frota nacional.",
+  "release_notes": "v3.9.70: Agente v1.0.19.0 mitiga HTTP 429 removendo o envio contínuo de logs de 1000 linhas a cada 2 min para 200+ nós; adiciona Jitter (0-30s) e Polling de 180s; estende cache de lista de serviços para 15 minutos; central blindada com lock de cooldown e fallback seguro."
 }

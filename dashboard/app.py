@@ -545,7 +545,7 @@ async def trigger_action(req: FleetActionRequest, user: dict = Depends(get_curre
 @app.get("/api/fleet/canary-status")
 async def get_fleet_canary_status_endpoint(
     service_name: str = "DNA.MonitorServiceSVC",
-    target_version: str = "1.0.18.0",
+    target_version: str = "1.0.19.0",
     user: dict = Depends(get_current_user)
 ):
     try:

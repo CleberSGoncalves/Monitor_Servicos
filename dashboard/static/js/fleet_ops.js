@@ -7,7 +7,7 @@ function getFleetAuthToken() {
 
 async function loadCanaryPipelineStatus() {
     const targetInput = document.getElementById("canaryTargetVersion");
-    const targetVer = (targetInput && targetInput.value ? targetInput.value : "1.0.18.0").trim();
+    const targetVer = (targetInput && targetInput.value ? targetInput.value : "1.0.19.0").trim();
     const statusGrid = document.getElementById("canaryStatusSummaryGrid");
     const pilotsListEl = document.getElementById("canaryPilotsList");
     const logBox = document.getElementById("canaryLogOutput");
@@ -80,7 +80,7 @@ async function loadCanaryPipelineStatus() {
 }
 
 async function triggerCanaryFromDashboard() {
-    const targetVer = (document.getElementById("canaryTargetVersion")?.value || "1.0.18.0").trim();
+    const targetVer = (document.getElementById("canaryTargetVersion")?.value || "1.0.19.0").trim();
 
     const logBox = document.getElementById("canaryLogOutput");
     if (logBox) {
@@ -122,7 +122,7 @@ async function triggerCanaryFromDashboard() {
 }
 
 async function triggerPromoteFleetFromDashboard() {
-    const targetVer = (document.getElementById("canaryTargetVersion")?.value || "1.0.18.0").trim();
+    const targetVer = (document.getElementById("canaryTargetVersion")?.value || "1.0.19.0").trim();
 
     const logBox = document.getElementById("canaryLogOutput");
     if (logBox) {

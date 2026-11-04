@@ -23,9 +23,9 @@ if __name__ == "__main__":
     to_update = diag["summary"]["eligible_for_update"]
     stopped = diag["summary"]["stopped_services"]
 
-    print(f"Total Hosts: {total_hosts} | Atualizados (1.0.18.0): {up_to_date} | A Atualizar: {to_update} | Servicos Parados: {stopped}")
+    print(f"Total Hosts: {total_hosts} | Atualizados (1.0.19.0): {up_to_date} | A Atualizar: {to_update} | Servicos Parados: {stopped}")
 
-    print("\n[2/2] Executando lote de auto-healing remoto (Versao Alvo: 1.0.18.0)...")
+    print("\n[2/2] Executando lote de auto-healing remoto (Versao Alvo: 1.0.19.0)...")
     res = execute_auto_healing_batch(max_hosts=150)
 
     print(f"\nResultado:")

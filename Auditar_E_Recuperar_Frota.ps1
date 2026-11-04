@@ -23,7 +23,7 @@ $doAutoRecover = ($AutoRecover -eq $true -or $AutoRecover -eq "true" -or $AutoRe
 
 # 1. Resolucao Padrao da Versao Homologada (100% SharePoint Corporate Compliance)
 if ([string]::IsNullOrWhiteSpace($TargetVersion) -or $TargetVersion -eq "latest") {
-    $TargetVersion = "1.0.18.0"
+    $TargetVersion = "1.0.19.0"
 }
 
 Write-Host "==================================================================" -ForegroundColor Cyan

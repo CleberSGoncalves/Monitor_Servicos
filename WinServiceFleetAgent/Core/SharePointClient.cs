@@ -414,7 +414,7 @@ namespace WinServiceFleetAgent.Core
             lock (_cacheLock)
             {
                 _cachedListItems = list;
-                _cacheListExpiresAt = DateTime.UtcNow.AddMinutes(5);
+                _cacheListExpiresAt = DateTime.UtcNow.AddMinutes(15);
 
                 // Mapeia IDs para busca O(1) sem varredura
                 foreach (var item in list)
@@ -665,8 +665,6 @@ namespace WinServiceFleetAgent.Core
                         fieldsPayload["Ram_Uso"] = (procRam != "N/A" && procRam != "Inativo") ? $"{metrics.RamUso} ({procRam})" : metrics.RamUso;
                         fieldsPayload["Disco_D_Livre_GB"] = metrics.DiscoDLivreGB;
                         fieldsPayload["Uptime_Dias"] = metrics.UptimeDias;
-
-                        await UploadLogAttachmentAsync(cleanHost, cleanSrv, FileLogger.GetLastLogLines(1000));
                     }
                     else
                     {
@@ -1187,7 +1185,8 @@ namespace WinServiceFleetAgent.Core
 
         public async Task<string> UploadLogAttachmentAsync(string hostname, string nomeServico, string logContent, bool force = false)
         {
-            if (string.IsNullOrWhiteSpace(logContent)) return string.Empty;
+            // O upload rotineiro de logs .txt para o SharePoint Drive foi desativado para preservar a cota Microsoft Graph (HTTP 429)
+            if (!force || string.IsNullOrWhiteSpace(logContent)) return string.Empty;
 
             string key = $"{hostname}_{nomeServico}";
             lock (_lastLogAttachmentTimes)

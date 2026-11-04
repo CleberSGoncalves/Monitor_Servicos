@@ -161,7 +161,7 @@ if (-not $svc) {
 Write-Host "[INFO] InstallDir  : $installDir"
 Write-Host "[INFO] Versao atual: v$currentVer"
 
-if (-not $Force -and ($currentVer -eq "1.0.18.0")) {
+if (-not $Force -and ($currentVer -eq "1.0.19.0")) {
     Write-Host "[OK] O servico ja esta executando na versao homologada v$currentVer. Nenhuma atualizacao necessaria." -ForegroundColor Green
     exit 0
 }
@@ -203,9 +203,12 @@ try {
 # ------------------------------------------------------------------------------
 # 3. Consulta de Manifesto Homologado no SharePoint Online
 # ------------------------------------------------------------------------------
-$pkgFileName = "DNA.MonitorServiceSVC_v1.0.18.0.zip"
-$expectedSha = "cad32a231e583ac4a6ed7d029c8a4bec8394dde1e2a8f73ca22da25fca99d047"
+$pkgFileName = "DNA.MonitorServiceSVC_v1.0.19.0.zip"
+$expectedSha = "b8c071937e6cc3ec05e6c56cda17b4008197a50b892731efeb61968c6e2e8876"
 $validHashes = @(
+    "7cb80dc2e45aee50c0bf1349cf3e3f0f8d8c22ad951c54ae49ba139c64814a27",
+    "b8c071937e6cc3ec05e6c56cda17b4008197a50b892731efeb61968c6e2e8876",
+    "1a0d66161c7c7a982650249d7f7f0f5d5a159f1a27e719be0a0d62d6e9874828",
     "cad32a231e583ac4a6ed7d029c8a4bec8394dde1e2a8f73ca22da25fca99d047",
     "0e236395f7b42709cc3bac4e7767bf01f76673eda89bef0119cfc82eab120a65",
     "b0741e8d8a25e8bd80448775f18cfba90bc1edb696825e5966b5423d876bd718",
@@ -232,7 +235,7 @@ if ($headers.Count -gt 0) {
 }
 
 if (-not $manifestLoaded) {
-    Write-Host "[INFO] Utilizando catalogo homologado corporativo M365: $pkgFileName (v1.0.18.0)" -ForegroundColor Cyan
+    Write-Host "[INFO] Utilizando catalogo homologado corporativo M365: $pkgFileName (v1.0.19.0)" -ForegroundColor Cyan
 }
 
 # ------------------------------------------------------------------------------

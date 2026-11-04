@@ -209,9 +209,9 @@ namespace WinServiceFleetAgent.Core
             if (serviceKey.Equals("DNA.MonitorServiceSVC", StringComparison.OrdinalIgnoreCase) ||
                 serviceKey.Equals("MonitorServiceSVC", StringComparison.OrdinalIgnoreCase))
             {
-                FileLogger.Log($"[SharePointReleaseDownloader] 🛡️ Fallback resiliente ativado para '{serviceKey}': v1.0.18.0");
-                _releaseCache[serviceKey] = ("1.0.18.0", DateTime.UtcNow.AddMinutes(30));
-                return "1.0.18.0";
+                FileLogger.Log($"[SharePointReleaseDownloader] 🛡️ Fallback resiliente ativado para '{serviceKey}': v1.0.19.0");
+                _releaseCache[serviceKey] = ("1.0.19.0", DateTime.UtcNow.AddMinutes(30));
+                return "1.0.19.0";
             }
 
             _releaseCache[serviceKey] = ("", DateTime.UtcNow.AddMinutes(30));

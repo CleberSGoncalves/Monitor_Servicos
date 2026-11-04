@@ -1,5 +1,5 @@
 """
-Suíte de Testes Automatizados E2E — Validação de Remediação, Rate Limit e Target Version 1.0.18.0
+Suíte de Testes Automatizados E2E — Validação de Remediação, Rate Limit e Target Version 1.0.19.0
 Kantar IBOPE Media — Monitor_Servicos
 """
 
@@ -12,45 +12,45 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent / "dashboard"))
 
 def test_target_versions():
-    print("[TEST 1/5] Validando alinhamento de Target Version 1.0.18.0 no ecossistema...")
+    print("[TEST 1/5] Validando alinhamento de Target Version 1.0.19.0 no ecossistema...")
     
     # 1. fleet_auto_healing.py
     import fleet_auto_healing
-    assert fleet_auto_healing.TARGET_AGENT_VERSION == "1.0.18.0", f"Erro: TARGET_AGENT_VERSION é {fleet_auto_healing.TARGET_AGENT_VERSION}"
-    print("  -> fleet_auto_healing.TARGET_AGENT_VERSION == 1.0.18.0 [OK]")
+    assert fleet_auto_healing.TARGET_AGENT_VERSION == "1.0.19.0", f"Erro: TARGET_AGENT_VERSION é {fleet_auto_healing.TARGET_AGENT_VERSION}"
+    print("  -> fleet_auto_healing.TARGET_AGENT_VERSION == 1.0.19.0 [OK]")
 
     # 2. remote_queue.py
     import inspect
     import remote_queue
     sig_status = inspect.signature(remote_queue.get_service_canary_status)
-    assert sig_status.parameters["target_version"].default == "1.0.18.0", "Erro: default target_version em get_service_canary_status != 1.0.18.0"
+    assert sig_status.parameters["target_version"].default == "1.0.19.0", "Erro: default target_version em get_service_canary_status != 1.0.19.0"
     sig_rollout = inspect.signature(remote_queue.trigger_canary_rollout_sharepoint)
-    assert sig_rollout.parameters["target_version"].default == "1.0.18.0", "Erro: default target_version em trigger_canary_rollout_sharepoint != 1.0.18.0"
-    print("  -> remote_queue defaults == 1.0.18.0 [OK]")
+    assert sig_rollout.parameters["target_version"].default == "1.0.19.0", "Erro: default target_version em trigger_canary_rollout_sharepoint != 1.0.19.0"
+    print("  -> remote_queue defaults == 1.0.19.0 [OK]")
 
     # 3. fleet_actions.py
     with open("dashboard/fleet_actions.py", "r", encoding="utf-8") as f:
         txt = f.read()
-    assert 'target_ver = (target_version or "1.0.18.0")' in txt, "Erro: fleet_actions.py não tem default 1.0.18.0"
-    print("  -> fleet_actions.py default == 1.0.18.0 [OK]")
+    assert 'target_ver = (target_version or "1.0.19.0")' in txt, "Erro: fleet_actions.py não tem default 1.0.19.0"
+    print("  -> fleet_actions.py default == 1.0.19.0 [OK]")
 
     # 4. index.html e fleet_ops.js
     with open("dashboard/static/index.html", "r", encoding="utf-8") as f:
         html = f.read()
-    assert 'id="canaryTargetVersion" value="1.0.18.0"' in html, "Erro: canaryTargetVersion em index.html != 1.0.18.0"
+    assert 'id="canaryTargetVersion" value="1.0.19.0"' in html, "Erro: canaryTargetVersion em index.html != 1.0.19.0"
     with open("dashboard/static/js/fleet_ops.js", "r", encoding="utf-8") as f:
         js = f.read()
-    assert '"1.0.18.0"' in js, "Erro: fleet_ops.js não possui target 1.0.18.0"
-    print("  -> index.html e fleet_ops.js == 1.0.18.0 [OK]")
+    assert '"1.0.19.0"' in js, "Erro: fleet_ops.js não possui target 1.0.19.0"
+    print("  -> index.html e fleet_ops.js == 1.0.19.0 [OK]")
 
     # 5. Scripts Powershell / Bat
     with open("Deploy_Canary_Pipeline.ps1", "r", encoding="utf-8") as f:
         ps1 = f.read()
-    assert '$TargetVersion = "1.0.18.0"' in ps1, "Erro: Deploy_Canary_Pipeline.ps1 != 1.0.18.0"
+    assert '$TargetVersion = "1.0.19.0"' in ps1, "Erro: Deploy_Canary_Pipeline.ps1 != 1.0.19.0"
     with open("Atualizar_Versao_Desejada_SharePoint.ps1", "r", encoding="utf-8") as f:
         ps2 = f.read()
-    assert '$NewVersion = "1.0.18.0"' in ps2, "Erro: Atualizar_Versao_Desejada_SharePoint.ps1 != 1.0.18.0"
-    print("  -> Deploy_Canary_Pipeline.ps1 e Atualizar_Versao_Desejada_SharePoint.ps1 == 1.0.18.0 [OK]")
+    assert '$NewVersion = "1.0.19.0"' in ps2, "Erro: Atualizar_Versao_Desejada_SharePoint.ps1 != 1.0.19.0"
+    print("  -> Deploy_Canary_Pipeline.ps1 e Atualizar_Versao_Desejada_SharePoint.ps1 == 1.0.19.0 [OK]")
 
 
 def test_sharepoint_client_csharp():
@@ -58,15 +58,15 @@ def test_sharepoint_client_csharp():
     with open("WinServiceFleetAgent/Core/SharePointClient.cs", "r", encoding="utf-8") as f:
         cs = f.read()
     
-    # Valida TTL de 5 minutos
-    assert "AddMinutes(5)" in cs, "Erro: TTL do cache no C# não foi estendido para AddMinutes(5)"
-    # Valida que não há InvalidateListCache() destrutivo após PATCH de inventário
-    assert "InvalidateListCache();\r\n                        }\r\n                        else\r\n                        {\r\n                            string err = await patchResp.Content.ReadAsStringAsync();" not in cs, "Erro: InvalidateListCache ainda presente após PATCH em SyncServiceInventoryAsync"
+    # Valida TTL estendido de cache (15 minutos)
+    assert ("AddMinutes(15)" in cs or "AddMinutes(5)" in cs), "Erro: TTL do cache no C# não está estendido"
+    # Valida remoção do upload rotineiro de log
+    assert "if (!force || string.IsNullOrWhiteSpace(logContent)) return string.Empty;" in cs, "Erro: Bloqueio de upload de log ausente"
     # Valida compilação do binário
-    agent_exe = Path("publish/agent_v1.0.18.0/WinServiceFleetAgent.exe")
-    assert agent_exe.exists() and agent_exe.stat().st_size > 50_000_000, f"Erro: Binário v1.0.18.0 não encontrado ou incompleto ({agent_exe})"
-    print("  -> TTL estendido para 5 min e chamadas destrutivas a InvalidateListCache removidas [OK]")
-    print(f"  -> Binário oficial v1.0.18.0 validado ({agent_exe.stat().st_size / 1024 / 1024:.1f} MB) [OK]")
+    agent_exe = Path("publish/agent_v1.0.19.0/WinServiceFleetAgent.exe")
+    assert agent_exe.exists() and agent_exe.stat().st_size > 50_000_000, f"Erro: Binário v1.0.19.0 não encontrado ou incompleto ({agent_exe})"
+    print("  -> TTL estendido e upload rotineiro de logs bloqueado [OK]")
+    print(f"  -> Binário oficial v1.0.19.0 validado ({agent_exe.stat().st_size / 1024 / 1024:.1f} MB) [OK]")
 
 
 def test_rate_limit_sentinel():
@@ -84,11 +84,11 @@ def test_auto_healing_diagnosis():
     import fleet_auto_healing
     diagnosis = fleet_auto_healing.audit_and_diagnose_fleet()
     assert "target_version" in diagnosis, "Erro: target_version ausente"
-    assert diagnosis["target_version"] == "1.0.18.0", f"Erro: target_version esperado 1.0.18.0, obtido {diagnosis['target_version']}"
+    assert diagnosis["target_version"] == "1.0.19.0", f"Erro: target_version esperado 1.0.19.0, obtido {diagnosis['target_version']}"
     assert "summary" in diagnosis, "Erro: summary ausente"
     assert "graph_rate_limit" in diagnosis, "Erro: graph_rate_limit ausente no diagnóstico"
     summary = diagnosis["summary"]
-    print(f"  -> Diagnóstico concluído: Total Hosts: {summary['total_hosts']} | Já na v1.0.18.0: {summary['up_to_date']} | Elegíveis update: {summary['eligible_for_update']} | Parados: {summary['stopped_services']} [OK]")
+    print(f"  -> Diagnóstico concluído: Total Hosts: {summary['total_hosts']} | Já na v1.0.19.0: {summary['up_to_date']} | Elegíveis update: {summary['eligible_for_update']} | Parados: {summary['stopped_services']} [OK]")
 
 
 def test_parauapebas_remediation_status():

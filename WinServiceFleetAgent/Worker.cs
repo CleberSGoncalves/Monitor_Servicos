@@ -33,7 +33,7 @@ namespace WinServiceFleetAgent
             string clientSecret = _configuration["SharePoint:ClientSecret"] ?? string.Empty;
             string githubToken = _configuration["GitHub:Token"] ?? string.Empty;
 
-            _pollingIntervalSeconds = int.TryParse(_configuration["PollingIntervalSeconds"], out int interval) ? interval : 120;
+            _pollingIntervalSeconds = int.TryParse(_configuration["PollingIntervalSeconds"], out int interval) ? interval : 180;
 
             var servicesList = new List<ServiceDefinition>();
             var servicesSection = _configuration.GetSection("Services").GetChildren();
@@ -108,7 +108,8 @@ namespace WinServiceFleetAgent
                     _logger.LogError(ex, "WinServiceFleetAgent - Erro ao executar ciclo do orquestrador.");
                 }
 
-                await Task.Delay(TimeSpan.FromSeconds(_pollingIntervalSeconds), stoppingToken);
+                int jitterSeconds = Random.Shared.Next(0, 30);
+                await Task.Delay(TimeSpan.FromSeconds(_pollingIntervalSeconds + jitterSeconds), stoppingToken);
             }
 
             _logger.LogInformation("WinServiceFleetAgent - Serviço finalizado.");
