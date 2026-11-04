@@ -47,6 +47,8 @@ def get_graph_token() -> str:
     return resp.json().get("access_token", "")
 
 
+_global_graph_throttle_until = 0.0
+
 _graph_rate_limit_telemetry = {
     "is_throttled": False,
     "last_throttled_at": None,
@@ -62,9 +64,17 @@ def get_graph_rate_limit_health() -> dict:
 
 
 def fetch_all_items(token: str, list_id: str) -> list:
-    """Busca todos os itens de uma lista SharePoint tratando paginacao com retry e backoff 429 rigoroso."""
+    """Busca todos os itens de uma lista SharePoint tratando paginacao com respeito estrito a Retry-After 429."""
     import time
-    global _graph_rate_limit_telemetry
+    global _graph_rate_limit_telemetry, _global_graph_throttle_until
+    
+    # 1. Verificação de Cooldown Global: se o Graph API estiver throttled, NÃO fazer requisições
+    now_ts = time.time()
+    if now_ts < _global_graph_throttle_until:
+        wait_remain = int(_global_graph_throttle_until - now_ts)
+        print(f"[SharePointSync Cooldown] Microsoft Graph throttled. Respeitando Retry-After (restam {wait_remain}s). Abortando fetch para evitar penalidade.", flush=True)
+        return []
+
     headers = {
         "Authorization": f"Bearer {token}",
         "Accept": "application/json"
@@ -74,25 +84,22 @@ def fetch_all_items(token: str, list_id: str) -> list:
     
     while url:
         success = False
-        for attempt in range(4):
+        for attempt in range(3):
             try:
                 resp = requests.get(url, headers=headers, timeout=25)
                 if resp.status_code == 429:
-                    raw_wait = int(resp.headers.get("Retry-After", 10))
-                    retry_wait = min(raw_wait, 20)
+                    raw_wait = int(resp.headers.get("Retry-After", 120))
+                    # Respeitar integralmente o Retry-After da Microsoft com margem de segurança (+15s)
+                    _global_graph_throttle_until = time.time() + raw_wait + 15
                     with _cache_lock:
                         _graph_rate_limit_telemetry["is_throttled"] = True
                         _graph_rate_limit_telemetry["last_throttled_at"] = datetime.now(timezone.utc).isoformat()
                         _graph_rate_limit_telemetry["last_retry_after_s"] = raw_wait
                         _graph_rate_limit_telemetry["total_429_count"] += 1
-                        _graph_rate_limit_telemetry["status"] = f"Throttled (Retry-After: {raw_wait}s)"
+                        _graph_rate_limit_telemetry["status"] = f"Throttled (Cooldown: {raw_wait}s)"
 
-                    print(f"[SharePointSync 429] Throttled pela Microsoft (Retry-After: {raw_wait}s). Aguardando {retry_wait}s (Tentativa {attempt+1}/4)...", flush=True)
-                    time.sleep(retry_wait)
-                    if raw_wait > 30:
-                        print(f"[SharePointSync 429] Microsoft Graph com throttling severo ({raw_wait}s). Preservando cache existente e agendando próximo ciclo.", flush=True)
-                        break
-                    continue
+                    print(f"[SharePointSync 429] Throttled pela Microsoft (Retry-After: {raw_wait}s). Entrando em cooldown de {raw_wait + 15}s e preservando cache atual.", flush=True)
+                    return []  # Aborta imediatamente para respeitar o tempo da Microsoft sem insistir
                 if resp.ok:
                     with _cache_lock:
                         if _graph_rate_limit_telemetry["is_throttled"]:
@@ -125,6 +132,13 @@ def sync_fleet_data():
 
         raw_services = fetch_all_items(token, LIST_SERVICES_ID)
         raw_channels = fetch_all_items(token, LIST_CHANNELS_ID)
+
+        # PROTEÇÃO ANTI-CORRUPÇÃO DE CACHE (FAIL-SAFE):
+        # Se qualquer uma das listas vier vazia ou incompleta por throttling 429,
+        # aborta imediatamente sem recomputar estatísticas em lista vazia!
+        if len(raw_services) < 200 or len(raw_channels) < 50:
+            print(f"[SharePointSync Preservação] Dados parciais/throttled recebidos (Serviços: {len(raw_services)}, Canais: {len(raw_channels)}). Mantendo 100% do cache e métricas anteriores.", flush=True)
+            return
 
         services_list = []
         for it in raw_services:
@@ -304,10 +318,7 @@ def sync_fleet_data():
             is_degraded = False
             motivo = "Estável"
 
-            if is_stale:
-                has_outage = True
-                motivo = "Telemetria Estagnada (>3h sem reporte)"
-            elif is_frozen:
+            if is_frozen:
                 has_outage = True
                 motivo = "Vídeo Congelado"
             elif is_mute and not is_radio and not is_rec_mp3:
@@ -322,6 +333,16 @@ def sync_fleet_data():
             elif "⚠️" in rec_mp4:
                 has_outage = True
                 motivo = f"Erro de Gravação ({rec_mp4})"
+            elif is_stale:
+                # Telemetria com >3h sem novo reporte:
+                # Se o canal estava gravando ou com tuner conectado ou com sinal > 0, o sinal RF físico NÃO caiu.
+                # Apenas a telemetria do agente/SharePoint está atrasada.
+                if is_recording or tuner_ok or (sig_q is not None and sig_q > 0):
+                    is_degraded = True
+                    motivo = "Telemetria Atrasada (>3h sem novo reporte)"
+                else:
+                    has_outage = True
+                    motivo = "Telemetria Estagnada e Sem Gravação"
             elif is_rtsp:
                 # Streams IP / RTSP / UDP: Não possuem sinal RF / UHF. Integridade aferida por conexão e gravação.
                 if not tuner_ok and not is_recording:
@@ -629,7 +650,7 @@ def get_cached_data() -> dict:
         return _cached_data.copy()
 
 
-def start_background_syncer(interval_seconds: int = 60):
+def start_background_syncer(interval_seconds: int = 180):
     """Inicia thread em segundo plano para manter o cache sempre atualizado."""
     def worker():
         while True:
