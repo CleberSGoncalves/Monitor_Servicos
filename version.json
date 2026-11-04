@@ -1,8 +1,8 @@
 {
-  "version": "3.9.70",
+  "version": "3.9.71",
   "agent_version": "1.0.19.0",
   "commit_sha": "auto",
-  "updated_at": "2026-11-04T12:00:00.000000",
-  "description": "v3.9.70 - Agente v1.0.19.0 com remoção definitiva do upload rotineiro de logs .txt para o SharePoint Drive via Microsoft Graph API, eliminando saturação de cota (HTTP 429 - activityLimitReached), adição de jitter aleatório entre ciclos de heartbeat, ampliação do intervalo de polling para 180s e estabilização de telemetria da frota nacional.",
-  "release_notes": "v3.9.70: Agente v1.0.19.0 mitiga HTTP 429 removendo o envio contínuo de logs de 1000 linhas a cada 2 min para 200+ nós; adiciona Jitter (0-30s) e Polling de 180s; estende cache de lista de serviços para 15 minutos; central blindada com lock de cooldown e fallback seguro."
+  "updated_at": "2026-11-04T19:30:00.000000",
+  "description": "v3.9.71 - Otimização de latência da Central de Monitoração com GZipMiddleware (redução de 94.7% no tráfego de rede), correção de DOM da aba Link WAN (restauração do networkLinkTableBody e eliminação de IDs duplicados), remoção de I/O de disco bloqueante no recálculo de métricas e blindagem do parser de worklog.",
+  "release_notes": "v3.9.71: GZipMiddleware reduz payload de 2.4MB para 130KB em conexões móveis/remotas; correção da tabela de conectividade da aba Link WAN que ficava estagnada em 'Carregando'; recálculo de métricas 100% em memória sem travar I/O de disco durante leituras GET."
 }

@@ -69,7 +69,7 @@ def recalculate_fleet_stats(services_list: list, channels_list: list) -> dict:
     }
 
 
-def sanitize_and_recalculate_cache(force_refresh_time: bool = False):
+def sanitize_and_recalculate_cache(force_refresh_time: bool = False, save_to_disk: bool = False):
     """
     Higieniza o cache de canais e recalcula estatísticas com garantia de frescor operacional:
     1. Reavalia canais falsamente marcados como queda por telemetria estagnada quando na verdade
@@ -122,12 +122,13 @@ def sanitize_and_recalculate_cache(force_refresh_time: bool = False):
         if force_refresh_time or not _cached_data.get("last_sync"):
             _cached_data["last_sync"] = datetime.now().isoformat()
 
-        try:
-            if len(channels) > 20 and len(services) > 50:
-                with open(CACHE_FILE, "w", encoding="utf-8") as f:
-                    json.dump(_cached_data, f, ensure_ascii=False, indent=2)
-        except Exception:
-            pass
+        if save_to_disk or not CACHE_FILE.exists():
+            try:
+                if len(channels) > 20 and len(services) > 50:
+                    with open(CACHE_FILE, "w", encoding="utf-8") as f:
+                        json.dump(_cached_data, f, ensure_ascii=False)
+            except Exception:
+                pass
 
 
 
@@ -788,7 +789,7 @@ def sync_fleet_data():
             # So grava em disco se houver canais e servicos validos para nunca corromper o cache persistente com listas vazias
             if _cached_data.get("channels") and len(_cached_data.get("channels", [])) > 20 and _cached_data.get("services"):
                 with open(CACHE_FILE, "w", encoding="utf-8") as f:
-                    json.dump(_cached_data, f, ensure_ascii=False, indent=2)
+                    json.dump(_cached_data, f, ensure_ascii=False)
         except Exception as e_save:
             print(f"[SharePointSync Disk Error] {e_save}", flush=True)
 

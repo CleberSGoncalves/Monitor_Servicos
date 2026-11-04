@@ -998,24 +998,36 @@ async function saveIncidentWorklog(e) {
 }
 
 async function loadIncidentHistory() {
-    const resp = await fetch("/api/incidents/history", {
-        headers: getAuthToken() ? { "Authorization": `Bearer ${getAuthToken()}` } : {}
-    });
-    if (!resp.ok) return;
-    const history = await resp.json();
-
     const tbody = document.getElementById("incidentHistoryTableBody");
-    tbody.innerHTML = history.map(h => `
-        <tr>
-            <td><span style="font-size: 11px; color: var(--text-muted);">${h.created_at}</span></td>
-            <td><strong>${h.host}</strong></td>
-            <td><code>${h.target_name}</code></td>
-            <td><span class="badge badge-purple">${h.incident_type}</span></td>
-            <td>${h.operator_name}</td>
-            <td>${h.action_taken}</td>
-            <td><span class="badge badge-green">${h.resolution_status}</span></td>
-        </tr>
-    `).join("");
+    if (!tbody) return;
+
+    try {
+        const resp = await fetch("/api/incidents/history", {
+            headers: getAuthToken() ? { "Authorization": `Bearer ${getAuthToken()}` } : {}
+        });
+        if (!resp.ok) return;
+        const history = await resp.json();
+
+        const historyList = Array.isArray(history) ? history : (history.worklogs || history.items || []);
+        if (historyList.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 14px;">Nenhuma ação manual de operador registrada recentemente.</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = historyList.map(h => `
+            <tr>
+                <td><span style="font-size: 11px; color: var(--text-muted);">${h.created_at || ''}</span></td>
+                <td><strong>${h.host || '-'}</strong></td>
+                <td><code>${h.target_name || '-'}</code></td>
+                <td><span class="badge badge-purple">${h.incident_type || 'Ação'}</span></td>
+                <td>${h.operator_name || h.operator_assigned || '-'}</td>
+                <td>${h.action_taken || h.impact_summary || '-'}</td>
+                <td><span class="badge badge-green">${h.resolution_status || h.status || 'Concluído'}</span></td>
+            </tr>
+        `).join("");
+    } catch (e) {
+        console.error("Erro ao carregar histórico de incidentes/worklog:", e);
+    }
 }
 
 // 5. Limiares de Alerta (Calibração Ergonômica em Grelha Temática de 2 Colunas)
