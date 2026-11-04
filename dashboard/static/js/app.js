@@ -317,6 +317,16 @@ async function loadAllData(isSilent = false) {
         if (typeof loadNocUnifiedCockpit === 'function') {
             await loadNocUnifiedCockpit();
         }
+        // Atualiza dinamicamente a aba ativa do operador
+        if (currentTab === "topology" || currentTab === "map") {
+            if (typeof loadTopologyMapData === 'function') await loadTopologyMapData();
+        } else if (currentTab === "detection") {
+            if (typeof loadDetectionMonitorData === 'function') await loadDetectionMonitorData();
+        } else if (currentTab === "classifier") {
+            if (typeof loadFailureClassifierData === 'function') await loadFailureClassifierData();
+        } else if (currentTab === "mosaic") {
+            if (typeof loadMosaicData === 'function') await loadMosaicData(true);
+        }
     } catch(e) {
         console.error("Erro na atualização:", e);
     } finally {
@@ -327,7 +337,8 @@ async function loadAllData(isSilent = false) {
 
 // 1. Resumo e KPIs
 async function loadSummaryKPIs() {
-    const resp = await fetch("/api/fleet/summary", {
+    const resp = await fetch(`/api/fleet/summary?_t=${Date.now()}`, {
+        cache: "no-store",
         headers: getAuthToken() ? { "Authorization": `Bearer ${getAuthToken()}` } : {}
     });
     if (!resp.ok) return;
@@ -498,7 +509,7 @@ let allCachedServices = [];
 
 async function loadServicesTable() {
     let url = `/api/fleet/services`;
-    const resp = await fetch(url, { headers: getAuthToken() ? { "Authorization": `Bearer ${getAuthToken()}` } : {} });
+    const resp = await fetch(url + `_t=${Date.now()}&`, { cache: "no-store", headers: getAuthToken() ? { "Authorization": `Bearer ${getAuthToken()}` } : {} });
     if (!resp.ok) return;
     allCachedServices = await resp.json();
     syncAllPracasAndHostsDropdowns(allCachedServices);
@@ -760,7 +771,7 @@ async function loadChannelsTable() {
     let url = `/api/fleet/channels?`;
     if (city) url += `city=${encodeURIComponent(city)}&`;
 
-    const resp = await fetch(url, { headers: getAuthToken() ? { "Authorization": `Bearer ${getAuthToken()}` } : {} });
+    const resp = await fetch(url + `_t=${Date.now()}&`, { cache: "no-store", headers: getAuthToken() ? { "Authorization": `Bearer ${getAuthToken()}` } : {} });
     if (!resp.ok) return;
     const channels = await resp.json();
 

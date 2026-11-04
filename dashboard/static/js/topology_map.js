@@ -58,7 +58,8 @@ const CITY_LABEL_CONFIG = {
 async function loadTopologyMapData() {
     try {
         const token = (typeof getAuthToken === "function") ? getAuthToken() : (localStorage.getItem("fleet_token") || "");
-        const res = await fetch("/api/fleet/topology-map", {
+        const res = await fetch(`/api/fleet/topology-map?_t=${Date.now()}`, {
+            cache: "no-store",
             headers: token ? { "Authorization": `Bearer ${token}` } : {}
         });
         if (!res.ok) return;
