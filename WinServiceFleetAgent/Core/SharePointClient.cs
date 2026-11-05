@@ -577,6 +577,11 @@ namespace WinServiceFleetAgent.Core
                         {
                             _serviceItemIdCache.TryRemove(cacheKey, out _);
                         }
+                        else if ((int)singleResp.StatusCode == 429)
+                        {
+                            FileLogger.Log($"[SharePointClient] ⚠️ Consulta de item [{cleanHost}_{cleanSrv}] indisponível por Throttling (HTTP 429). Preservando para o próximo ciclo.");
+                            return "Não";
+                        }
                     }
 
                     // 2. SE NÃO TINHA NO CACHE, TENTA CONSULTAR A CENTRAL DE MONITORAÇÃO (http://10.1.30.1:8092)
@@ -1436,10 +1441,12 @@ namespace WinServiceFleetAgent.Core
 
                 var existingItems = new List<JsonElement>();
 
+                bool fetchCompletedSuccessfully = allChannelsCached;
                 // Apenas se ainda faltar algum ID e o cache estiver vazio é que faz o fetch completo no SharePoint
                 if (!allChannelsCached)
                 {
                     string queryUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{targetListId}/items?$expand=fields&$top=200";
+                    fetchCompletedSuccessfully = true;
 
                     while (!string.IsNullOrEmpty(queryUrl))
                     {
@@ -1451,10 +1458,15 @@ namespace WinServiceFleetAgent.Core
                         catch (Exception exFetch)
                         {
                             FileLogger.LogError($"[SharePointClient] Erro ao consultar itens da lista de canais: {exFetch.Message}");
+                            fetchCompletedSuccessfully = false;
                             break;
                         }
 
-                        if (resp == null || !resp.IsSuccessStatusCode) break;
+                        if (resp == null || !resp.IsSuccessStatusCode)
+                        {
+                            fetchCompletedSuccessfully = false;
+                            break;
+                        }
 
                         string json = await resp.Content.ReadAsStringAsync();
                         using var doc = JsonDocument.Parse(json);
@@ -1613,9 +1625,9 @@ namespace WinServiceFleetAgent.Core
                                 }
                             }
                         }
-                        else
+                        else if (fetchCompletedSuccessfully)
                         {
-                            // Não existe: cria novo via POST
+                            // Não existe: cria novo via POST (apenas se a lista foi baixada com 100% de sucesso)
                             string postUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{targetListId}/items";
                             HttpResponseMessage? postResp = null;
 
@@ -1645,6 +1657,10 @@ namespace WinServiceFleetAgent.Core
                             {
                                 FileLogger.Log($"[ChannelMonitor] ✅ Novo canal cadastrado via POST no SharePoint: [{ch.Cidade} | CS {ch.IDCS}] '{ch.Title}' ({ch.MeiodeTransmissao})");
                             }
+                        }
+                        else
+                        {
+                            FileLogger.Log($"[ChannelMonitor] ⚠️ Canal [{ch.Title}] não encontrado no cache e consulta Graph indisponível/incompleta por throttling. Preservando para o próximo ciclo sem criação via POST.");
                         }
                     }
                     catch (Exception exCh)
