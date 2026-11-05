@@ -530,6 +530,17 @@ namespace WinServiceFleetAgent.Core
             string nowIso = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ");
             string cleanHost = (hostname ?? "").Trim();
             string cleanSrv = (nomeServico ?? "").Trim();
+            string cacheKey = $"{cleanHost}_{cleanSrv}";
+            string shortInstalledVer = FormatShortVersion(versaoInstalada);
+
+            // DIRTY-CHECK PREVENTIVO (Bypass de rede se estado inalterado nos ultimos 30 min):
+            if (_lastReportedServiceState.TryGetValue(cacheKey, out var lastReport) &&
+                lastReport.Versao == shortInstalledVer &&
+                lastReport.Status == statusServico &&
+                (DateTime.UtcNow - lastReport.UltimoEnvio).TotalMinutes < 30)
+            {
+                return "Não";
+            }
 
             using (var client = new HttpClient())
             {
@@ -544,7 +555,6 @@ namespace WinServiceFleetAgent.Core
 
                 try
                 {
-                    string cacheKey = $"{cleanHost}_{cleanSrv}";
                     string itemId = string.Empty;
                     string existingVersaoDesejada = string.Empty;
                     string existingStatusAtualizacao = string.Empty;
@@ -871,6 +881,25 @@ namespace WinServiceFleetAgent.Core
             var list = new List<PendingActionItem>();
             string cleanHost = (hostname ?? "").Trim();
 
+            // Bypass Central: Consulta acoes de URL pendentes na Central para nao onerar Graph API
+            try
+            {
+                using (var centralClient = new HttpClient { Timeout = TimeSpan.FromSeconds(3) })
+                {
+                    var centralResp = await centralClient.GetAsync($"http://10.1.30.1:8092/api/fleet/pending-url-actions/{cleanHost}");
+                    if (centralResp.IsSuccessStatusCode)
+                    {
+                        var centralJson = await centralResp.Content.ReadAsStringAsync();
+                        var actions = JsonSerializer.Deserialize<List<PendingActionItem>>(centralJson);
+                        if (actions != null && actions.Count > 0)
+                        {
+                            return actions;
+                        }
+                    }
+                }
+            }
+            catch { }
+
             using (var client = new HttpClient())
             {
                 await EnsureGraphContextAsync(client);
@@ -990,6 +1019,25 @@ namespace WinServiceFleetAgent.Core
         {
             var list = new List<PendingActionItem>();
             string cleanHost = (hostname ?? "").Trim();
+
+            // Bypass Central: Consulta acoes pendentes na Central de Monitoracao para nao onerar Graph API
+            try
+            {
+                using (var centralClient = new HttpClient { Timeout = TimeSpan.FromSeconds(3) })
+                {
+                    var centralResp = await centralClient.GetAsync($"http://10.1.30.1:8092/api/fleet/pending-actions/{cleanHost}");
+                    if (centralResp.IsSuccessStatusCode)
+                    {
+                        var centralJson = await centralResp.Content.ReadAsStringAsync();
+                        var actions = JsonSerializer.Deserialize<List<PendingActionItem>>(centralJson);
+                        if (actions != null && actions.Count > 0)
+                        {
+                            return actions;
+                        }
+                    }
+                }
+            }
+            catch { }
 
             using (var client = new HttpClient())
             {

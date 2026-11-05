@@ -484,6 +484,53 @@ async def get_host_channel_ids(hostname: str):
                 res[f"{ch_name}_{cs_num}"] = item_id
     return res
 
+@app.get("/api/fleet/pending-actions/{hostname}")
+async def get_pending_actions_by_host(hostname: str):
+    """Retorna as acoes pendentes de servicos para o host."""
+    data = get_cached_data()
+    services = data.get("services", [])
+    h_clean = hostname.strip().lower()
+    res = []
+    for s in services:
+        h = str(s.get("hostname", "")).strip().lower()
+        if h == h_clean:
+            acao = str(s.get("acao_solicitada", "")).strip()
+            if acao and acao.lower() != "nenhuma":
+                res.append({
+                    "Id": int(s.get("id", 0)) if str(s.get("id")).isdigit() else 0,
+                    "Title": s.get("pais", "") or s.get("title", ""),
+                    "NomeServico": s.get("nome_servico", ""),
+                    "VersaoInstalada": s.get("versao_instalada", ""),
+                    "VersaoDesejada": s.get("versao_desejada", ""),
+                    "AcaoSolicitada": acao,
+                    "StatusAtualizacao": s.get("status_atualizacao", ""),
+                    "AutoRestart": s.get("autorestart", "Não"),
+                    "HoraAgendada": s.get("hora_agendada", "")
+                })
+    return res
+
+
+@app.get("/api/fleet/pending-url-actions/{hostname}")
+async def get_pending_url_actions_by_host(hostname: str):
+    """Retorna as acoes pendentes de URL para o host."""
+    data = get_cached_data()
+    services = data.get("services", [])
+    h_clean = hostname.strip().lower()
+    res = []
+    for s in services:
+        h = str(s.get("hostname", "")).strip().lower()
+        if h == h_clean:
+            acao = str(s.get("acao_solicitada_url", "")).strip()
+            if acao and acao.lower() == "atualizar":
+                res.append({
+                    "Id": int(s.get("id", 0)) if str(s.get("id")).isdigit() else 0,
+                    "Title": s.get("pais", "") or s.get("title", ""),
+                    "NomeServico": s.get("nome_servico", ""),
+                    "UrlComunicacaoDesejavel": s.get("url_comunicacao_desejavel", ""),
+                    "AcaoSolicitadaUrl": acao
+                })
+    return res
+
 
 @app.get("/api/fleet/channels")
 async def get_channels(city: Optional[str] = None, outage_only: bool = False, user: dict = Depends(get_current_user)):

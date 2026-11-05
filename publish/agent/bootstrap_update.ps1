@@ -142,7 +142,7 @@ function Invoke-ResilientRestMethod {
 
             if ($is429) {
 
-                $wait = if ($retryAfter -gt 0 -and $retryAfter -le 35) { $retryAfter + 1 } else { ($attempt * 4) + (Get-Random -Minimum 2 -Maximum 5) }
+                $wait = if ($retryAfter -gt 0) { [Math]::Min($retryAfter + 3, 180) } else { ($attempt * 5) + (Get-Random -Minimum 3 -Maximum 8) }
 
                 if ($attempt -lt $MaxRetries) {
 
@@ -254,7 +254,7 @@ function Invoke-ResilientDownload {
 
             if ($is429) {
 
-                $wait = if ($retryAfter -gt 0 -and $retryAfter -le 35) { $retryAfter + 1 } else { ($attempt * 5) + (Get-Random -Minimum 2 -Maximum 5) }
+                $wait = if ($retryAfter -gt 0) { [Math]::Min($retryAfter + 3, 240) } else { ($attempt * 6) + (Get-Random -Minimum 4 -Maximum 10) }
 
                 if ($attempt -lt $MaxRetries) {
 
@@ -338,6 +338,11 @@ if (-not $Force -and ($currentVer -eq "1.0.19.0") -and (Test-Path $spIdsFile)) {
 
 # ------------------------------------------------------------------------------
 
+# Escalonamento defensivo da frota para evitar colisao massiva no Microsoft Graph
+$initialJitter = Get-Random -Minimum 3 -Maximum 30
+Write-Host "[INFO] Escalonando execucao da frota com Jitter inicial de ${initialJitter}s (anti-colisao Graph)..." -ForegroundColor Cyan
+Start-Sleep -Seconds $initialJitter
+
 # 2. Descriptografia do Segredo SPN e Autenticacao OAuth2 Microsoft Entra ID
 
 # ------------------------------------------------------------------------------
@@ -415,6 +420,8 @@ $pkgFileName = "DNA.MonitorServiceSVC_v1.0.19.0.zip"
 $expectedSha = "0afb9104a3b07e14e2940fc6756c35e0e290b2ef465b42284234947b9ed5f4f5"
 
 $validHashes = @(
+    "510d94732214e39a99c4a04936f7ecb183e00c0153be481b8dbfa7a9258665f5",
+    "570858f16be8f38e31aa7e0e80c0a7285c72bd2277b2cfe9ee3d5a97b2b878bf",
     "950c36f374b0a97a21ad03ed9d07b0b78763bda275d65c4dda34db0137f37c99",
 
     "0d1c8b0bb2a10e2c4d642edab3766552d35894f1e5e1ee7c071f70b87b567b1f",
@@ -670,6 +677,16 @@ try {
         Set-Content -Path $spIdsFile -Value $idsJson -Encoding UTF8
 
         Write-Host "[OK] Mapeamento de IDs persistente salvo em $spIdsFile ($($dict.Count) servicos)." -ForegroundColor Green
+
+        $fullKey = "$($hostName)_DNA.MonitorServiceSVC"
+        if ($dict[$fullKey]) {
+            $agentItemId = "$($dict[$fullKey])".Split("_")[0]
+        } elseif ($dict["DNA.MonitorServiceSVC"]) {
+            $agentItemId = "$($dict["DNA.MonitorServiceSVC"])".Split("_")[0]
+        }
+        if ($agentItemId) {
+            Write-Host "[OK] ID do agente obtido da Central ($hostName): $agentItemId" -ForegroundColor Green
+        }
 
 
 
