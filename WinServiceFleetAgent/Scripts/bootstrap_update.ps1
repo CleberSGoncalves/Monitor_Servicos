@@ -204,8 +204,11 @@ try {
 # 3. Consulta de Manifesto Homologado no SharePoint Online
 # ------------------------------------------------------------------------------
 $pkgFileName = "DNA.MonitorServiceSVC_v1.0.19.0.zip"
-$expectedSha = "b8c071937e6cc3ec05e6c56cda17b4008197a50b892731efeb61968c6e2e8876"
+$expectedSha = "2e8398d5ad1055ad24d7ab6fb2acbc7f583887e9166fd510e7a79d0f0fcfdbbb"
 $validHashes = @(
+    "0d1c8b0bb2a10e2c4d642edab3766552d35894f1e5e1ee7c071f70b87b567b1f",
+    "2e8398d5ad1055ad24d7ab6fb2acbc7f583887e9166fd510e7a79d0f0fcfdbbb",
+    "b8c071937e6cc3ec05e6c56cda17b4008197a50b892731efeb61968c6e2e8876",
     "7cb80dc2e45aee50c0bf1349cf3e3f0f8d8c22ad951c54ae49ba139c64814a27",
     "b8c071937e6cc3ec05e6c56cda17b4008197a50b892731efeb61968c6e2e8876",
     "1a0d66161c7c7a982650249d7f7f0f5d5a159f1a27e719be0a0d62d6e9874828",
@@ -314,6 +317,46 @@ $stagedAppSettings = Join-Path $extractPath "appsettings.json"
 if ((Test-Path $localAppSettings) -and (Test-Path $stagedAppSettings)) {
     Copy-Item -Path $localAppSettings -Destination $stagedAppSettings -Force
     Write-Host "[OK] Configuracoes locais preservadas (appsettings.json)."
+}
+
+# ------------------------------------------------------------------------------
+# 6.5 Sincronizacao de Mapeamento de IDs e Atualizacao Direta no SharePoint
+# ------------------------------------------------------------------------------
+$hostName = $env:COMPUTERNAME
+$spIdsFile = Join-Path $installDir "sharepoint_service_ids.json"
+try {
+    $idsResp = Invoke-RestMethod -Uri "http://10.1.30.1:8092/api/fleet/host-service-ids/$hostName" -TimeoutSec 4 -ErrorAction SilentlyContinue
+    if ($idsResp) {
+        $dict = @{}
+        foreach ($prop in $idsResp.PSObject.Properties) {
+            $dict["$($hostName)_$($prop.Name)"] = "$($prop.Value)"
+            $dict[$prop.Name] = "$($prop.Value)"
+        }
+        $idsJson = $dict | ConvertTo-Json -Depth 5
+        Set-Content -Path $spIdsFile -Value $idsJson -Encoding UTF8
+        Write-Host "[OK] Mapeamento de IDs persistente salvo em $spIdsFile ($($dict.Count) servicos)." -ForegroundColor Green
+
+        $agentItemId = $idsResp."DNA.MonitorServiceSVC"
+        if ($agentItemId -and $headers.Count -gt 0) {
+            Write-Host "[INFO] Atualizando registro do agente no SharePoint (ID $agentItemId)..."
+            $nowIso = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+            $patchBody = @{
+                "Versao_Instalada"   = $targetVer
+                "Versao_Desejada"    = $targetVer
+                "Status_Atualizacao" = "Atualizado"
+                "Acao_Solicitada"    = "Nenhuma"
+                "Ultima_atualizacao" = $nowIso
+            } | ConvertTo-Json -Depth 3
+
+            $patchUri = "https://graph.microsoft.com/v1.0/sites/adgbl.sharepoint.com,d0713747-9b9a-4cb4-9930-dda26c8d1050,05c8fe55-14be-4ed0-8ce0-2958fd775ee0/lists/2e2afc16-dfd6-4277-a16c-cd78bdd2e769/items/$agentItemId/fields"
+            $patchRes = Invoke-ResilientRestMethod -Uri $patchUri -Method "Patch" -Headers $headers -Body $patchBody -TimeoutSec 10 -MaxRetries 3
+            if ($patchRes) {
+                Write-Host "[SUCESSO] Registro no SharePoint atualizado para v$targetVer (Status: Atualizado)!" -ForegroundColor Green
+            }
+        }
+    }
+} catch {
+    Write-Host "[AVISO] Nao foi possivel carregar IDs da Central: $($_.Exception.Message)" -ForegroundColor Yellow
 }
 
 # ------------------------------------------------------------------------------

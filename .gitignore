@@ -39,4 +39,7 @@ Thumbs.db
 .vscode/
 
 pacote_instalacao_dashboard_24x7/
+__pycache__/
+*.pyc
+
 

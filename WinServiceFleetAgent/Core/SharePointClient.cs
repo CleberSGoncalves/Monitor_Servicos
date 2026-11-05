@@ -257,6 +257,86 @@ namespace WinServiceFleetAgent.Core
         private static DateTime _cacheListExpiresAt = DateTime.MinValue;
         private static readonly object _cacheLock = new object();
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _serviceItemIdCache = new(StringComparer.OrdinalIgnoreCase);
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _channelItemIdCache = new(StringComparer.OrdinalIgnoreCase);
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string Versao, string Status, string Acao, DateTime UltimoEnvio)> _lastReportedServiceState = new(StringComparer.OrdinalIgnoreCase);
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string StatusTuner, string Gravando, DateTime UltimoEnvio)> _lastReportedChannelState = new(StringComparer.OrdinalIgnoreCase);
+
+        private static readonly string ServiceIdsFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "sharepoint_service_ids.json");
+        private static readonly string ChannelIdsFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "sharepoint_channel_ids.json");
+
+        static SharePointClient()
+        {
+            LoadLocalItemIds();
+        }
+
+        private static void LoadLocalItemIds()
+        {
+            try
+            {
+                if (File.Exists(ServiceIdsFilePath))
+                {
+                    string json = File.ReadAllText(ServiceIdsFilePath);
+                    var dict = JsonSerializer.Deserialize<Dictionary<string, string>>(json);
+                    if (dict != null)
+                    {
+                        foreach (var kvp in dict)
+                        {
+                            _serviceItemIdCache[kvp.Key] = kvp.Value;
+                        }
+                        FileLogger.Log($"[SharePointClient] 💾 {_serviceItemIdCache.Count} IDs de serviços carregados do cache persistente em disco ({ServiceIdsFilePath}).");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                FileLogger.Log($"[SharePointClient] Aviso ao ler {ServiceIdsFilePath}: {ex.Message}");
+            }
+
+            try
+            {
+                if (File.Exists(ChannelIdsFilePath))
+                {
+                    string json = File.ReadAllText(ChannelIdsFilePath);
+                    var dict = JsonSerializer.Deserialize<Dictionary<string, string>>(json);
+                    if (dict != null)
+                    {
+                        foreach (var kvp in dict)
+                        {
+                            _channelItemIdCache[kvp.Key] = kvp.Value;
+                        }
+                        FileLogger.Log($"[SharePointClient] 💾 {_channelItemIdCache.Count} IDs de canais carregados do cache persistente em disco ({ChannelIdsFilePath}).");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                FileLogger.Log($"[SharePointClient] Aviso ao ler {ChannelIdsFilePath}: {ex.Message}");
+            }
+        }
+
+        public static void SaveLocalServiceId(string key, string id)
+        {
+            _serviceItemIdCache[key] = id;
+            try
+            {
+                var dict = new Dictionary<string, string>(_serviceItemIdCache, StringComparer.OrdinalIgnoreCase);
+                string json = JsonSerializer.Serialize(dict, new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText(ServiceIdsFilePath, json);
+            }
+            catch { }
+        }
+
+        public static void SaveLocalChannelId(string key, string id)
+        {
+            _channelItemIdCache[key] = id;
+            try
+            {
+                var dict = new Dictionary<string, string>(_channelItemIdCache, StringComparer.OrdinalIgnoreCase);
+                string json = JsonSerializer.Serialize(dict, new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText(ChannelIdsFilePath, json);
+            }
+            catch { }
+        }
 
         public static void InvalidateListCache()
         {
@@ -264,7 +344,6 @@ namespace WinServiceFleetAgent.Core
             {
                 _cachedListItems = null;
                 _cacheListExpiresAt = DateTime.MinValue;
-                _serviceItemIdCache.Clear();
             }
         }
 
@@ -465,30 +544,7 @@ namespace WinServiceFleetAgent.Core
 
                 try
                 {
-                    var allItems = await GetAllListItemsAsync(client);
-                    if (allItems == null)
-                    {
-                        FileLogger.Log($"[SharePointClient] ⚠️ Consulta de lista indisponível por Throttling do Microsoft Graph (HTTP 429). Preservando registro [{cleanHost}_{cleanSrv}] para o próximo ciclo.");
-                        return "Não";
-                    }
-
-                    var matchingItems = new List<JsonElement>();
-
-                    foreach (var item in allItems)
-                    {
-                        if (item.TryGetProperty("fields", out var fields))
-                        {
-                            string itemHost = fields.TryGetProperty("Hostname", out var h) ? h.GetString()?.Trim() ?? "" : "";
-                            string itemSrv = fields.TryGetProperty("Nome_Servico", out var ns) ? ns.GetString()?.Trim() ?? "" : "";
-
-                            if (itemHost.Equals(cleanHost, StringComparison.OrdinalIgnoreCase) &&
-                                itemSrv.Equals(cleanSrv, StringComparison.OrdinalIgnoreCase))
-                            {
-                                matchingItems.Add(item);
-                            }
-                        }
-                    }
-
+                    string cacheKey = $"{cleanHost}_{cleanSrv}";
                     string itemId = string.Empty;
                     string existingVersaoDesejada = string.Empty;
                     string existingStatusAtualizacao = string.Empty;
@@ -497,75 +553,105 @@ namespace WinServiceFleetAgent.Core
                     string existingAcaoSolicitadaUrl = string.Empty;
                     string existingAutoRestart = string.Empty;
 
-                    if (matchingItems.Count > 0)
+                    // 1. TENTA OBTER O ID DO CACHE PERSISTENTE EM DISCO (Bypass de download massivo)
+                    if (_serviceItemIdCache.TryGetValue(cacheKey, out var cachedId) && !string.IsNullOrEmpty(cachedId))
                     {
-                        // 1. Seleciona o item primário: prioriza item com Acao_Solicitada pendente (diferente de "Nenhuma")
-                        JsonElement selectedItem = default;
-                        foreach (var m in matchingItems)
+                        string singleItemUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items/{cachedId}?$expand=fields";
+                        var singleResp = await ExecuteWithThrottlingRetryAsync(() => client.GetAsync(singleItemUrl));
+                        if (singleResp.IsSuccessStatusCode)
                         {
-                            if (m.TryGetProperty("fields", out var f))
+                            string singleJson = await singleResp.Content.ReadAsStringAsync();
+                            using var singleDoc = JsonDocument.Parse(singleJson);
+                            if (singleDoc.RootElement.TryGetProperty("fields", out var selectedFields))
                             {
-                                string ac = f.TryGetProperty("Acao_Solicitada", out var a) ? a.GetString()?.Trim() ?? "" : "";
-                                if (!string.IsNullOrWhiteSpace(ac) && !ac.Equals("Nenhuma", StringComparison.OrdinalIgnoreCase))
-                                {
-                                    selectedItem = m;
-                                    break;
-                                }
+                                itemId = cachedId;
+                                existingVersaoDesejada = selectedFields.TryGetProperty("Versao_Desejada", out var vd) ? vd.GetString() ?? "" : "";
+                                existingStatusAtualizacao = selectedFields.TryGetProperty("Status_Atualizacao", out var sa) ? sa.GetString() ?? "" : "";
+                                existingAcaoSolicitada = selectedFields.TryGetProperty("Acao_Solicitada", out var ac) ? ac.GetString() ?? "" : "";
+                                existingUrlComunicacaoDesejavel = selectedFields.TryGetProperty("Url_Comunicacao_Desejavel", out var ud) ? ud.GetString() ?? "" : "";
+                                existingAcaoSolicitadaUrl = selectedFields.TryGetProperty("Acao_Solicitada_Url", out var au) ? au.GetString() ?? "" : "";
+                                existingAutoRestart = selectedFields.TryGetProperty("AutoRestart", out var ar) ? ar.GetString() ?? "" : "";
                             }
                         }
-
-                        // 2. Se nenhuma ação pendente, seleciona o item com maior ID (mais recente)
-                        if (selectedItem.ValueKind == JsonValueKind.Undefined)
+                        else if (singleResp.StatusCode == System.Net.HttpStatusCode.NotFound)
                         {
-                            int highestId = -1;
-                            foreach (var m in matchingItems)
+                            _serviceItemIdCache.TryRemove(cacheKey, out _);
+                        }
+                    }
+
+                    // 2. SE NÃO TINHA NO CACHE, TENTA CONSULTAR A CENTRAL DE MONITORAÇÃO (http://10.1.30.1:8092)
+                    if (string.IsNullOrEmpty(itemId))
+                    {
+                        try
+                        {
+                            using (var centralClient = new HttpClient { Timeout = TimeSpan.FromSeconds(3) })
                             {
-                                if (m.TryGetProperty("id", out var idProp) && int.TryParse(idProp.GetString(), out int parsedId))
+                                string centralUrl = $"http://10.1.30.1:8092/api/fleet/host-service-ids/{cleanHost}";
+                                var centralResp = await centralClient.GetAsync(centralUrl);
+                                if (centralResp.IsSuccessStatusCode)
                                 {
-                                    if (parsedId > highestId)
+                                    string centralJson = await centralResp.Content.ReadAsStringAsync();
+                                    var dict = JsonSerializer.Deserialize<Dictionary<string, string>>(centralJson);
+                                    if (dict != null)
                                     {
-                                        highestId = parsedId;
-                                        selectedItem = m;
+                                        foreach (var kvp in dict)
+                                        {
+                                            SaveLocalServiceId($"{cleanHost}_{kvp.Key}", kvp.Value);
+                                        }
+                                        if (dict.TryGetValue(cleanSrv, out var fetchedId))
+                                        {
+                                            itemId = fetchedId;
+                                            SaveLocalServiceId(cacheKey, itemId);
+                                        }
                                     }
                                 }
                             }
                         }
+                        catch { }
+                    }
 
-                        if (selectedItem.ValueKind == JsonValueKind.Undefined)
+                    // 3. APENAS COMO ÚLTIMO RECURSO: Baixa a lista completa se o ID ainda for desconhecido
+                    if (string.IsNullOrEmpty(itemId))
+                    {
+                        var allItems = await GetAllListItemsAsync(client);
+                        if (allItems == null)
                         {
-                            selectedItem = matchingItems[0];
+                            FileLogger.Log($"[SharePointClient] ⚠️ Consulta de lista indisponível por Throttling do Microsoft Graph (HTTP 429). Preservando registro [{cleanHost}_{cleanSrv}] para o próximo ciclo.");
+                            return "Não";
                         }
 
-                        itemId = selectedItem.GetProperty("id").GetString() ?? "";
-                        if (selectedItem.TryGetProperty("fields", out var selectedFields))
+                        var matchingItems = new List<JsonElement>();
+                        foreach (var item in allItems)
                         {
-                            existingVersaoDesejada = selectedFields.TryGetProperty("Versao_Desejada", out var vd) ? vd.GetString() ?? "" : "";
-                            existingStatusAtualizacao = selectedFields.TryGetProperty("Status_Atualizacao", out var sa) ? sa.GetString() ?? "" : "";
-                            existingAcaoSolicitada = selectedFields.TryGetProperty("Acao_Solicitada", out var ac) ? ac.GetString() ?? "" : "";
-                            existingUrlComunicacaoDesejavel = selectedFields.TryGetProperty("Url_Comunicacao_Desejavel", out var ud) ? ud.GetString() ?? "" : "";
-                            existingAcaoSolicitadaUrl = selectedFields.TryGetProperty("Acao_Solicitada_Url", out var au) ? au.GetString() ?? "" : "";
-                            existingAutoRestart = selectedFields.TryGetProperty("AutoRestart", out var ar) ? ar.GetString() ?? "" : "";
-                        }
-
-                        // 3. DEDUPLICAÇÃO AUTOMÁTICA: Exclui todas as outras linhas duplicadas no SharePoint
-                        foreach (var dup in matchingItems)
-                        {
-                            string dupId = dup.GetProperty("id").GetString() ?? "";
-                            if (!string.IsNullOrEmpty(dupId) && !dupId.Equals(itemId, StringComparison.OrdinalIgnoreCase))
+                            if (item.TryGetProperty("fields", out var fields))
                             {
-                                try
+                                string itemHost = fields.TryGetProperty("Hostname", out var h) ? h.GetString()?.Trim() ?? "" : "";
+                                string itemSrv = fields.TryGetProperty("Nome_Servico", out var ns) ? ns.GetString()?.Trim() ?? "" : "";
+
+                                if (itemHost.Equals(cleanHost, StringComparison.OrdinalIgnoreCase) &&
+                                    itemSrv.Equals(cleanSrv, StringComparison.OrdinalIgnoreCase))
                                 {
-                                    string deleteUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items/{dupId}";
-                                    var delResp = await client.DeleteAsync(deleteUrl);
-                                    if (delResp.IsSuccessStatusCode)
-                                    {
-                                        FileLogger.Log($"[SharePointClient] 🧹 Item duplicado (ID {dupId}) excluído com sucesso do SharePoint para [{cleanHost}_{cleanSrv}].");
-                                    }
+                                    matchingItems.Add(item);
                                 }
-                                catch (Exception exDel)
-                                {
-                                    FileLogger.LogError($"[SharePointClient] Erro ao excluir item duplicado ID {dupId} para [{cleanHost}_{cleanSrv}]", exDel);
-                                }
+                            }
+                        }
+
+                        if (matchingItems.Count > 0)
+                        {
+                            JsonElement selectedItem = matchingItems[0];
+                            itemId = selectedItem.GetProperty("id").GetString() ?? "";
+                            if (selectedItem.TryGetProperty("fields", out var selectedFields))
+                            {
+                                existingVersaoDesejada = selectedFields.TryGetProperty("Versao_Desejada", out var vd) ? vd.GetString() ?? "" : "";
+                                existingStatusAtualizacao = selectedFields.TryGetProperty("Status_Atualizacao", out var sa) ? sa.GetString() ?? "" : "";
+                                existingAcaoSolicitada = selectedFields.TryGetProperty("Acao_Solicitada", out var ac) ? ac.GetString() ?? "" : "";
+                                existingUrlComunicacaoDesejavel = selectedFields.TryGetProperty("Url_Comunicacao_Desejavel", out var ud) ? ud.GetString() ?? "" : "";
+                                existingAcaoSolicitadaUrl = selectedFields.TryGetProperty("Acao_Solicitada_Url", out var au) ? au.GetString() ?? "" : "";
+                                existingAutoRestart = selectedFields.TryGetProperty("AutoRestart", out var ar) ? ar.GetString() ?? "" : "";
+                            }
+                            if (!string.IsNullOrEmpty(itemId))
+                            {
+                                SaveLocalServiceId(cacheKey, itemId);
                             }
                         }
                     }
@@ -702,6 +788,17 @@ namespace WinServiceFleetAgent.Core
                     }
                     else
                     {
+                        // DIRTY CHECK (Anti-Spam de Cota Graph API):
+                        // Se o serviço não mudou de versão nem de status e o último reporte ocorreu há menos de 15 min:
+                        if (_lastReportedServiceState.TryGetValue(cacheKey, out var lastState) &&
+                            lastState.Versao == shortInstalled &&
+                            lastState.Status == statusServico &&
+                            lastState.Acao == newAcaoSolicitada &&
+                            (DateTime.UtcNow - lastState.UltimoEnvio).TotalMinutes < 15)
+                        {
+                            return safeAutoRestart;
+                        }
+
                         string patchUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items/{itemId}/fields";
                         
                         var patchResp = await ExecuteWithThrottlingRetryAsync(() => 
@@ -716,7 +813,8 @@ namespace WinServiceFleetAgent.Core
                         if (patchResp.IsSuccessStatusCode)
                         {
                             FileLogger.Log($"[SharePointClient] ✅ Registro atualizado no SharePoint (ID {itemId}): [{displayTitle}] {cleanHost}_{cleanSrv} -> AutoRestart: {safeAutoRestart}");
-                            // Mantém o cache de lista (5 min) ativo para reutilização imediata nos próximos serviços sem sobrecarregar Graph API com HTTP 429
+                            SaveLocalServiceId(cacheKey, itemId);
+                            _lastReportedServiceState[cacheKey] = (shortInstalled, statusServico, newAcaoSolicitada, DateTime.UtcNow);
                         }
                         else
                         {
@@ -1305,36 +1403,71 @@ namespace WinServiceFleetAgent.Core
 
                 client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
 
-                // 1. Obter itens existentes da lista de canais
-                var existingItems = new List<JsonElement>();
-                string queryUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{targetListId}/items?$expand=fields&$top=200";
+                // 1. TENTA OBTER OS IDs DOS CANAIS DO CACHE PERSISTENTE OU DA CENTRAL
+                bool allChannelsCached = channels.All(ch => _channelItemIdCache.ContainsKey($"{ch.Title}_{cs}") || _channelItemIdCache.ContainsKey($"{ch.RawProgName}_{cs}"));
 
-                while (!string.IsNullOrEmpty(queryUrl))
+                if (!allChannelsCached)
                 {
-                    HttpResponseMessage? resp = null;
                     try
                     {
-                        resp = await ExecuteWithThrottlingRetryAsync(() => client.GetAsync(queryUrl));
-                    }
-                    catch (Exception exFetch)
-                    {
-                        FileLogger.LogError($"[SharePointClient] Erro ao consultar itens da lista de canais: {exFetch.Message}");
-                        break;
-                    }
-
-                    if (resp == null || !resp.IsSuccessStatusCode) break;
-
-                    string json = await resp.Content.ReadAsStringAsync();
-                    using var doc = JsonDocument.Parse(json);
-                    if (doc.RootElement.TryGetProperty("value", out var arr))
-                    {
-                        foreach (var el in arr.EnumerateArray())
+                        using (var centralClient = new HttpClient { Timeout = TimeSpan.FromSeconds(3) })
                         {
-                            existingItems.Add(el.Clone());
+                            string hName = Environment.MachineName;
+                            string centralUrl = $"http://10.1.30.1:8092/api/fleet/host-channel-ids/{hName}";
+                            var cResp = await centralClient.GetAsync(centralUrl);
+                            if (cResp.IsSuccessStatusCode)
+                            {
+                                string cJson = await cResp.Content.ReadAsStringAsync();
+                                var cDict = JsonSerializer.Deserialize<Dictionary<string, string>>(cJson);
+                                if (cDict != null)
+                                {
+                                    foreach (var kvp in cDict)
+                                    {
+                                        SaveLocalChannelId(kvp.Key, kvp.Value);
+                                    }
+                                }
+                            }
                         }
                     }
+                    catch { }
+                }
 
-                    queryUrl = doc.RootElement.TryGetProperty("@odata.nextLink", out var next) ? next.GetString() ?? "" : "";
+                allChannelsCached = channels.All(ch => _channelItemIdCache.ContainsKey($"{ch.Title}_{cs}") || _channelItemIdCache.ContainsKey($"{ch.RawProgName}_{cs}"));
+
+                var existingItems = new List<JsonElement>();
+
+                // Apenas se ainda faltar algum ID e o cache estiver vazio é que faz o fetch completo no SharePoint
+                if (!allChannelsCached)
+                {
+                    string queryUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{targetListId}/items?$expand=fields&$top=200";
+
+                    while (!string.IsNullOrEmpty(queryUrl))
+                    {
+                        HttpResponseMessage? resp = null;
+                        try
+                        {
+                            resp = await ExecuteWithThrottlingRetryAsync(() => client.GetAsync(queryUrl));
+                        }
+                        catch (Exception exFetch)
+                        {
+                            FileLogger.LogError($"[SharePointClient] Erro ao consultar itens da lista de canais: {exFetch.Message}");
+                            break;
+                        }
+
+                        if (resp == null || !resp.IsSuccessStatusCode) break;
+
+                        string json = await resp.Content.ReadAsStringAsync();
+                        using var doc = JsonDocument.Parse(json);
+                        if (doc.RootElement.TryGetProperty("value", out var arr))
+                        {
+                            foreach (var el in arr.EnumerateArray())
+                            {
+                                existingItems.Add(el.Clone());
+                            }
+                        }
+
+                        queryUrl = doc.RootElement.TryGetProperty("@odata.nextLink", out var next) ? next.GetString() ?? "" : "";
+                    }
                 }
 
                 // 2. Para cada canal monitorado
@@ -1397,14 +1530,41 @@ namespace WinServiceFleetAgent.Core
                             { "Atualizacao", ch.Atualizacao }
                         };
 
-                        if (matches.Count > 0)
+                        string chCacheKey = $"{ch.Title}_{cs}";
+                        string targetId = string.Empty;
+                        if (_channelItemIdCache.TryGetValue(chCacheKey, out var cId))
                         {
-                            // Item já existe: atualiza o mais recente via PATCH
+                            targetId = cId;
+                        }
+                        else if (!string.IsNullOrWhiteSpace(ch.RawProgName) && _channelItemIdCache.TryGetValue($"{ch.RawProgName}_{cs}", out var rawId))
+                        {
+                            targetId = rawId;
+                        }
+                        else if (matches.Count > 0)
+                        {
                             var targetItem = matches.OrderByDescending(m =>
                                 m.TryGetProperty("id", out var idProp) && int.TryParse(idProp.GetString(), out int id) ? id : 0
                             ).First();
+                            targetId = targetItem.GetProperty("id").GetString() ?? "";
+                            if (!string.IsNullOrEmpty(targetId))
+                            {
+                                SaveLocalChannelId(chCacheKey, targetId);
+                            }
+                        }
 
-                            string targetId = targetItem.GetProperty("id").GetString() ?? "";
+                        // DIRTY CHECK DE CANAIS (Anti-Spam de Cota Graph API):
+                        // Se a integridade do canal for a mesma e reportou nos últimos 15 min: suprime PATCH
+                        if (!string.IsNullOrEmpty(targetId) &&
+                            _lastReportedChannelState.TryGetValue(chCacheKey, out var lastChState) &&
+                            lastChState.StatusTuner == ch.StatusTuner &&
+                            lastChState.Gravando == ch.GravandoMP4 &&
+                            (DateTime.UtcNow - lastChState.UltimoEnvio).TotalMinutes < 15)
+                        {
+                            continue;
+                        }
+
+                        if (!string.IsNullOrEmpty(targetId))
+                        {
                             string patchUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{targetListId}/items/{targetId}/fields";
 
                             HttpResponseMessage? patchResp = null;
@@ -1433,6 +1593,8 @@ namespace WinServiceFleetAgent.Core
                             if (patchResp != null && patchResp.IsSuccessStatusCode)
                             {
                                 FileLogger.Log($"[ChannelMonitor] ✅ Canal atualizado via PATCH no SharePoint: [{ch.Cidade} | CS {ch.IDCS}] '{ch.Title}' ({ch.MeiodeTransmissao}) - Tuner: {ch.TunerID} | Sinal: Q={ch.QualidadeSinal}% F={ch.ForcaSinal}%");
+                                SaveLocalChannelId(chCacheKey, targetId);
+                                _lastReportedChannelState[chCacheKey] = (ch.StatusTuner, ch.GravandoMP4, DateTime.UtcNow);
                             }
 
                             // Se houver duplicatas excedentes no SharePoint, limpa automaticamente

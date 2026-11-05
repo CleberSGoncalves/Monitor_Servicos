@@ -450,6 +450,40 @@ async def get_fleet_catalog(user: dict = Depends(get_current_user)):
     }
 
 
+@app.get("/api/fleet/host-service-ids/{hostname}")
+async def get_host_service_ids(hostname: str):
+    """Retorna os IDs do SharePoint para os servicos do host para bypassar consultas pesadas no Graph."""
+    data = get_cached_data()
+    services = data.get("services", [])
+    h_clean = hostname.strip().lower()
+    res = {}
+    for s in services:
+        h = str(s.get("hostname", "")).strip().lower()
+        if h == h_clean:
+            svc_name = s.get("nome_servico")
+            item_id = str(s.get("id"))
+            if svc_name and item_id:
+                res[svc_name] = item_id
+    return res
+
+
+@app.get("/api/fleet/host-channel-ids/{hostname}")
+async def get_host_channel_ids(hostname: str):
+    """Retorna os IDs do SharePoint para os canais do host para bypassar consultas pesadas no Graph."""
+    data = get_cached_data()
+    channels = data.get("channels", [])
+    h_clean = hostname.strip().lower()
+    res = {}
+    for c in channels:
+        h = str(c.get("hostname") or c.get("host") or "").strip().lower()
+        if h == h_clean:
+            ch_name = c.get("canal")
+            cs_num = int(float(c.get("cs") or c.get("id_cs") or 1))
+            item_id = str(c.get("id"))
+            if ch_name and item_id:
+                res[f"{ch_name}_{cs_num}"] = item_id
+    return res
+
 
 @app.get("/api/fleet/channels")
 async def get_channels(city: Optional[str] = None, outage_only: bool = False, user: dict = Depends(get_current_user)):
