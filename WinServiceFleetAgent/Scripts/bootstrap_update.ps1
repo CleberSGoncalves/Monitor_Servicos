@@ -412,7 +412,7 @@ try {
 
 $pkgFileName = "DNA.MonitorServiceSVC_v1.0.19.0.zip"
 
-$expectedSha = "2e8398d5ad1055ad24d7ab6fb2acbc7f583887e9166fd510e7a79d0f0fcfdbbb"
+$expectedSha = "4d9bd20fa5b1d315ba2e869308fbe8082d511292aa2701b517bfd2d1ec875d11"
 
 $validHashes = @(
     "950c36f374b0a97a21ad03ed9d07b0b78763bda275d65c4dda34db0137f37c99",

@@ -204,7 +204,7 @@ try {
 # 3. Consulta de Manifesto Homologado no SharePoint Online
 # ------------------------------------------------------------------------------
 $pkgFileName = "DNA.MonitorServiceSVC_v1.0.19.0.zip"
-$expectedSha = "b8c071937e6cc3ec05e6c56cda17b4008197a50b892731efeb61968c6e2e8876"
+$expectedSha = "4d9bd20fa5b1d315ba2e869308fbe8082d511292aa2701b517bfd2d1ec875d11"
 $validHashes = @(
     "b8c071937e6cc3ec05e6c56cda17b4008197a50b892731efeb61968c6e2e8876",
     "1a0d66161c7c7a982650249d7f7f0f5d5a159f1a27e719be0a0d62d6e9874828",
