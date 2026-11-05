@@ -412,7 +412,7 @@ try {
 
 $pkgFileName = "DNA.MonitorServiceSVC_v1.0.19.0.zip"
 
-$expectedSha = "4d9bd20fa5b1d315ba2e869308fbe8082d511292aa2701b517bfd2d1ec875d11"
+$expectedSha = "0afb9104a3b07e14e2940fc6756c35e0e290b2ef465b42284234947b9ed5f4f5"
 
 $validHashes = @(
     "950c36f374b0a97a21ad03ed9d07b0b78763bda275d65c4dda34db0137f37c99",
@@ -528,13 +528,9 @@ if (-not $downloadSuccess) {
 
 
 if (-not $downloadSuccess -or -not (Test-Path $zipPath)) {
-
     Write-Host "[ERRO CRITICO] Nao foi possivel baixar o pacote de instalacao do SharePoint Corporativo." -ForegroundColor Red
-
     Remove-Item -Path $WORK -Recurse -Force -ErrorAction SilentlyContinue
-
     exit 1
-
 }
 
 Write-Host "[OK] Download concluido com sucesso em disco." -ForegroundColor Green
@@ -677,9 +673,29 @@ try {
 
 
 
-        $agentItemId = $idsResp."DNA.MonitorServiceSVC"
+    }
 
-        if ($agentItemId -and $headers.Count -gt 0) {
+    if (-not $idsResp) {
+        $bundledIdsPath = Join-Path $extractPath "sharepoint_service_ids.json"
+        if (-not (Test-Path $bundledIdsPath)) {
+            $bundledIdsPath = Join-Path $installDir "sharepoint_service_ids.json"
+        }
+        if (Test-Path $bundledIdsPath) {
+            Copy-Item -Path $bundledIdsPath -Destination $spIdsFile -Force -ErrorAction SilentlyContinue
+            $bundledContent = Get-Content $bundledIdsPath -Raw | ConvertFrom-Json
+            $fullKey = "$($hostName)_DNA.MonitorServiceSVC"
+            if ($bundledContent.$fullKey) {
+                $agentItemId = "$($bundledContent.$fullKey)".Split("_")[0]
+            } elseif ($bundledContent."DNA.MonitorServiceSVC") {
+                $agentItemId = "$($bundledContent."DNA.MonitorServiceSVC")".Split("_")[0]
+            }
+            if ($agentItemId) {
+                Write-Host "[OK] Mapeamento de IDs carregado do pacote local ($spIdsFile). ID do agente para $hostName: $agentItemId" -ForegroundColor Green
+            }
+        }
+    }
+
+    if ($agentItemId -and $headers.Count -gt 0) {
 
             Write-Host "[INFO] Atualizando registro do agente no SharePoint (ID $agentItemId)..."
 
