@@ -687,7 +687,7 @@ try {
             $agentItemId = "$($dict["DNA.MonitorServiceSVC"])".Split("_")[0]
         }
         if ($agentItemId) {
-            Write-Host "[OK] ID do agente obtido da Central ($hostName): $agentItemId" -ForegroundColor Green
+            Write-Host "[OK] ID do agente obtido da Central ($($hostName)): $agentItemId" -ForegroundColor Green
         }
 
 
@@ -709,7 +709,7 @@ try {
                 $agentItemId = "$($bundledContent."DNA.MonitorServiceSVC")".Split("_")[0]
             }
             if ($agentItemId) {
-                Write-Host "[OK] Mapeamento de IDs carregado do pacote local ($spIdsFile). ID do agente para $hostName: $agentItemId" -ForegroundColor Green
+                Write-Host "[OK] Mapeamento de IDs carregado do pacote local ($spIdsFile). ID do agente para $($hostName): $agentItemId" -ForegroundColor Green
             }
         }
     }
@@ -748,7 +748,7 @@ try {
 
         }
 
-    }
+    
 
 } catch {
 
