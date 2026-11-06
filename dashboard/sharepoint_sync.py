@@ -480,7 +480,14 @@ def sync_fleet_data():
             is_degraded = False
             motivo = "Estável"
 
-            if is_frozen:
+            # LEI DA VALIDADE DE TELEMETRIA:
+            # Se o canal/host está sem reporte (>3h), a telemetria do agente está estagnada/offline.
+            # Não é permitido inferir queda de vídeo, áudio ou sinal sem batimento recente.
+            if is_stale:
+                has_outage = False
+                is_degraded = True
+                motivo = "Telemetria Atrasada (>3h sem novo reporte)"
+            elif is_frozen:
                 has_outage = True
                 motivo = "Vídeo Congelado"
             elif is_mute and not is_radio and not is_rec_mp3:
@@ -495,16 +502,6 @@ def sync_fleet_data():
             elif "⚠️" in rec_mp4:
                 has_outage = True
                 motivo = f"Erro de Gravação ({rec_mp4})"
-            elif is_stale:
-                # Telemetria com >3h sem novo reporte:
-                # Se o canal estava gravando ou com tuner conectado ou com sinal > 0, o sinal RF físico NÃO caiu.
-                # Apenas a telemetria do agente/SharePoint está atrasada.
-                if is_recording or tuner_ok or (sig_q is not None and sig_q > 0):
-                    is_degraded = True
-                    motivo = "Telemetria Atrasada (>3h sem novo reporte)"
-                else:
-                    has_outage = True
-                    motivo = "Telemetria Estagnada e Sem Gravação"
             elif is_rtsp:
                 # Streams IP / RTSP / UDP: Não possuem sinal RF / UHF. Integridade aferida por conexão e gravação.
                 if not tuner_ok and not is_recording:

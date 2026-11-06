@@ -1097,10 +1097,10 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
         else:
             active_engine = "NENHUM"
             engine_tier = "NONE"
-            inoperant_p0 += 1
             if agent_comm_status in ("OFFLINE_RECENT", "OFFLINE_CRITICAL"):
                 active_engine_label = f"Telemetria Ausente ({agent_comm_label})"
             else:
+                inoperant_p0 += 1
                 active_engine_label = "Inoperante (Ambos Parados / Inexistentes)"
 
 
@@ -1115,28 +1115,20 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
 
         # Se ConfigMonitor e FastMatching estão em execução, o despacho WCF é contínuo e nominal (< 10 min).
 
-        if not cfg_running:
-
-            tracking_age_minutes = 65
-
-            is_stalled = True
-
-        elif not trk_running and engine_tier == "FALLBACK":
-
-            tracking_age_minutes = 70
-
-            is_stalled = True
-
-        elif engine_tier == "NONE":
-
-            tracking_age_minutes = 180
-
+        if agent_comm_status in ("OFFLINE_RECENT", "OFFLINE_CRITICAL"):
+            tracking_age_minutes = 0
             is_stalled = False
-
+        elif not cfg_running:
+            tracking_age_minutes = 65
+            is_stalled = True
+        elif not trk_running and engine_tier == "FALLBACK":
+            tracking_age_minutes = 70
+            is_stalled = True
+        elif engine_tier == "NONE":
+            tracking_age_minutes = 0
+            is_stalled = False
         else:
-
             tracking_age_minutes = 8
-
             is_stalled = False
 
 
@@ -1192,7 +1184,6 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
                 severity_label = "Crítico (P0) - Sem Motor de Matching"
                 incident_description = "Estágio 1 inoperante: FastMatchingSvc e DNA.DetectionSVC parados. Nenhum match sendo gerado em data\\detection."
                 pipeline_bottleneck = "DETECTION"
-
         elif engine_tier == "CONFLICT":
             health_status = "WARNING"
             severity_label = "Alerta (P1) - Concorrência de Motores (FastMatching + DetectionSVC)"

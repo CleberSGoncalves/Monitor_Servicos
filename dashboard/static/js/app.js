@@ -6009,90 +6009,91 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
     // 1. Telemetria de Hosts e Hardware com diferenciação inteligente de % vs MB de Processo
 
     (servicesList || []).forEach(s => {
-
         const hName = s.hostname || s.host || "CS-DESCONHECIDO";
-
         if (hName === "CS-DESCONHECIDO" || !hName) return;
 
         if (!hostsMap[hName]) {
-
             hostsMap[hName] = {
-
                 hostname: hName,
-
                 praca: s.praca || "Matriz",
-
                 cs: s.cs || 1,
-
                 region: getRegionForCity(s.praca),
-
                 cpu_val: parseNumericMetric(s.cpu_uso),
-
                 ram_info: parseRamMetric(s.ram_uso),
-
                 disco_val: parseNumericMetric(s.disco_d_livre),
-
                 has_critical_hw: false,
-
-                critical_reasons: []
-
+                critical_reasons: [],
+                max_timestamp: 0,
+                last_update_str: "",
+                is_offline: false,
+                diff_hours: 0
             };
-
         }
 
         const hObj = hostsMap[hName];
-
         if (s.cpu_uso && s.cpu_uso !== "N/A" && hObj.cpu_val === 0) hObj.cpu_val = parseNumericMetric(s.cpu_uso);
-
         if (s.ram_uso && s.ram_uso !== "N/A" && (!hObj.ram_info || (!hObj.ram_info.isPct && hObj.ram_info.mb === 0))) {
-
             hObj.ram_info = parseRamMetric(s.ram_uso);
-
         }
-
         if (s.disco_d_livre && s.disco_d_livre !== "N/A" && hObj.disco_val === 0) hObj.disco_val = parseNumericMetric(s.disco_d_livre);
 
+        // Rastrear timestamp mais recente do agente neste host
+        const sDate = s.ultima_atualizacao || s.data_hora || "";
+        if (sDate) {
+            try {
+                const sMs = new Date(sDate.replace("Z", "+00:00")).getTime();
+                if (!isNaN(sMs) && sMs > hObj.max_timestamp) {
+                    hObj.max_timestamp = sMs;
+                    hObj.last_update_str = sDate;
+                }
+            } catch(e) {}
+        }
     });
 
-
-
+    const nowMs = Date.now();
     Object.values(hostsMap).forEach(h => {
+        if (h.max_timestamp > 0) {
+            h.diff_hours = (nowMs - h.max_timestamp) / 3600000;
+        } else {
+            h.diff_hours = 999;
+        }
+
+        // LEI DA VALIDADE DE TELEMETRIA:
+        // Se o agente está sem comunicar há mais de 3 horas, o host é considerado OFFLINE.
+        // Métricas de CPU, RAM e Disco de telemetria estagnada NÃO refletem o estado em tempo real.
+        h.is_offline = h.diff_hours > 3.0;
+
+        if (h.is_offline) {
+            h.has_critical_hw = false;
+            return; // Host offline não polui a barra de gargalos de hardware em tempo real!
+        }
 
         if (h.cpu_val >= 85) {
-
             h.has_critical_hw = true;
-
             h.critical_reasons.push(`CPU ${h.cpu_val}%`);
-
         }
-
         if (h.ram_info) {
-
             if (h.ram_info.isPct && h.ram_info.pct >= 90) {
-
                 h.has_critical_hw = true;
-
                 h.critical_reasons.push(`RAM ${h.ram_info.pct}%`);
-
             } else if (!h.ram_info.isPct && h.ram_info.mb >= 3500) {
-
                 h.has_critical_hw = true;
-
                 h.critical_reasons.push(`RAM ${Math.round(h.ram_info.mb)}MB (Processo Alto)`);
-
             }
-
         }
-
         if (h.disco_val > 0 && h.disco_val < 30) {
-
             h.has_critical_hw = true;
-
             h.critical_reasons.push(`Disco D: ${h.disco_val}GB livres`);
-
         }
-
     });
+
+    // Conjuntos de Praças e Hosts Offline para Supressão Universal de Alarmes Falsos
+    const offlineHostsSet = new Set(
+        Object.values(hostsMap).filter(h => h.is_offline).map(h => (h.hostname || '').toLowerCase().trim())
+    );
+    const offlinePracasMap = new Set(
+        Object.values(hostsMap).filter(h => h.is_offline).map(h => `${(h.praca || '').toLowerCase().trim()}_${h.cs}`)
+    );
 
 
 
@@ -6117,35 +6118,30 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
     // 2. Classificação Preditiva & Anti-Alarme Fugaz no N1 (Cronicidade >= 4min / Flapping)
 
     (channelsList || []).filter(c => {
-
         if (!c.has_outage) return false;
-
         const pracaLower = (c.cidade || "").trim().toLowerCase();
+        const chHost = (c.host || c.hostname || "").toLowerCase().trim();
+        const chPracaCs = `${pracaLower}_${c.cs || c.id_cs || 1}`;
+
+        // Se o host físico do canal estiver offline, a telemetria é inválida/estagnada (suprime falso alarme de queda)
+        if (offlineHostsSet.has(chHost) || offlinePracasMap.has(chPracaCs)) {
+            return false;
+        }
 
         // Apenas canais de praças sendo ativamente monitoradas
-
         if (!pracaLower || (monitoredPracas.size > 0 && !monitoredPracas.has(pracaLower))) {
-
             return false;
-
         }
 
         // Descarta registros órfãos sem atualização há mais de 3 horas
-
         if (c.atualizacao) {
-
             try {
-
                 const diffMin = Math.floor((Date.now() - new Date(c.atualizacao.replace("Z", "+00:00")).getTime()) / 60000);
-
                 if (diffMin > 180) return false;
-
             } catch(e) {}
-
         }
 
         return true;
-
     }).forEach(c => {
 
         const meio = (c.meio || "Digital Terrestre").toLowerCase();
@@ -6465,13 +6461,14 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
         const meio = (c.meio || "Digital Terrestre").toLowerCase();
 
         const isDigital = meio.includes("digital") || meio.includes("terrestre");
-
         const isStream = meio.includes("rtsp") || meio.includes("udp") || meio.includes("ip");
-
         const isAnalog = meio.includes("analóg") || meio.includes("analog");
 
-        return isDigital && !isStream && !isAnalog && !c.has_outage && c.qualidade_sinal > 0 && c.qualidade_sinal < 45;
+        const chHost = (c.host || c.hostname || "").toLowerCase().trim();
+        const chPracaCs = `${(c.cidade || "").trim().toLowerCase()}_${c.cs || c.id_cs || 1}`;
+        if (offlineHostsSet.has(chHost) || offlinePracasMap.has(chPracaCs)) return false;
 
+        return isDigital && !isStream && !isAnalog && !c.has_outage && c.qualidade_sinal > 0 && c.qualidade_sinal < 45;
     }).forEach(c => {
 
         const fadeMargin = Math.round(c.qualidade_sinal * 1.15);
@@ -6538,7 +6535,11 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
 
     // 4. Incidentes P1: Pipeline & Atrasos de Escoamento WAN (MP3, MP4, ASF)
 
-    (pipelineIncidents || []).forEach(inc => {
+    (pipelineIncidents || []).filter(inc => {
+        const pHost = (inc.hostname || inc.host || "").toLowerCase().trim();
+        if (offlineHostsSet.has(pHost)) return false;
+        return true;
+    }).forEach(inc => {
 
         const mType = inc.media_type || (inc.filename && inc.filename.toLowerCase().endsWith(".asf") ? "ASF" : (inc.filename && inc.filename.toLowerCase().endsWith(".mp3") ? "MP3" : "MP4"));
 
@@ -6596,7 +6597,12 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
 
     // 5. Incidentes P2: Limiares de Hardware / Carga CPU / Disco D / Autonomia (Exclui RF para evitar falso alarme de 'Matriz')
 
-    (thresholdBreaches || []).filter(b => b.category !== "sinal_rf").forEach(b => {
+    (thresholdBreaches || []).filter(b => {
+        if (b.category === "sinal_rf") return false;
+        const bHost = (b.hostname || b.host || "").toLowerCase().trim();
+        if (offlineHostsSet.has(bHost)) return false;
+        return true;
+    }).forEach(b => {
 
         const pracaName = b.praca || b.hostname || "Matriz";
 
@@ -6753,47 +6759,57 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
 
 
         incidents.push({
-
             id: `det_${site.hostname}`,
-
             key: `deteccao_${site.hostname}`,
-
             severity: sev,
-
             severity_label: sevLabel,
-
             trigger_type: "deteccao",
-
-            category: "deteccao_comercial",
-
+            category: isOffline ? "host_conectividade" : "deteccao_comercial",
             category_label: catLabel,
-
             category_icon: catIcon,
-
             praca: site.praca,
-
             region: getRegionForCity(site.praca),
-
             cs: site.cs || 1,
-
             hostname: site.hostname,
-
             target: `CS01 • ${site.praca}`,
-
             title: title,
-
             summary: summaryText,
-
             telemetry: telText,
-
             time_ago: site.agent_comm?.label || "Em tempo real",
-
             is_detection: true,
-
             detection_data: site
-
         });
+    });
 
+    // 7. Incidentes de Hosts Desconectados (Telemetria Ausente) para nós secundários/CS02 não cobertos acima
+    const coveredDetHosts = new Set((detectionSites || []).map(s => (s.hostname || '').toLowerCase().trim()));
+    Object.values(hostsMap).forEach(h => {
+        if (!h.is_offline) return;
+        const hKey = (h.hostname || '').toLowerCase().trim();
+        if (coveredDetHosts.has(hKey)) return;
+
+        const days = (h.diff_hours / 24.0).toFixed(1);
+        const timeAgoStr = h.diff_hours >= 24 ? `Desconectado (${days}d atrás)` : `Offline (${Math.round(h.diff_hours)}h atrás)`;
+
+        incidents.push({
+            id: `offline_${h.hostname}`,
+            key: `host_offline_${h.hostname}`,
+            severity: "P1",
+            severity_label: "ALERTA (P1)",
+            trigger_type: "offline",
+            category: "host_conectividade",
+            category_label: "Host Desconectado",
+            category_icon: "fa-network-wired",
+            praca: h.praca,
+            region: h.region,
+            cs: h.cs || 2,
+            hostname: h.hostname,
+            target: `${h.praca} (CS ${h.cs || 2})`,
+            title: `Host Desconectado (Telemetria Ausente)`,
+            summary: `Host CS0${h.cs || 2} sem envio de telemetria há ${timeAgoStr}. O agente DNA.MonitorServiceSVC não reporta heartbeat. Métricas de hardware, canais e processos locais estão suspensas até o restabelecimento da comunicação.`,
+            telemetry: `Telemetria suspensa há ${timeAgoStr} | Processos locais indeterminados | Verifique DNA.MonitorServiceSVC`,
+            time_ago: timeAgoStr
+        });
     });
 
 
