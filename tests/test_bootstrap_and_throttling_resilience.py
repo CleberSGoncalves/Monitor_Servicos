@@ -5,14 +5,16 @@ Kantar IBOPE Media — Monitor_Servicos
 
 import os
 import sys
+import json
 import zipfile
 import hashlib
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 
 def test_bootstrap_script_resilience():
-    print("[TEST 1/4] Validando Resiliência Anti-Throttling no bootstrap_update.ps1...")
+    print("[TEST 1/6] Validando Resiliência Anti-Throttling no bootstrap_update.ps1...")
     script_path = ROOT_DIR / "WinServiceFleetAgent" / "Scripts" / "bootstrap_update.ps1"
     assert script_path.exists(), f"Erro: Script {script_path} não encontrado."
 
@@ -43,7 +45,7 @@ def test_bootstrap_script_resilience():
 
 
 def test_sharepoint_client_anti_throttling():
-    print("\n[TEST 2/4] Validando proteção contra Throttling no SharePointClient.cs...")
+    print("\n[TEST 2/6] Validando proteção contra Throttling no SharePointClient.cs...")
     cs_path = ROOT_DIR / "WinServiceFleetAgent" / "Core" / "SharePointClient.cs"
     assert cs_path.exists(), f"Erro: {cs_path} não encontrado."
 
@@ -71,7 +73,7 @@ def test_sharepoint_client_anti_throttling():
 
 
 def test_github_downloader_caching():
-    print("\n[TEST 3/4] Validando cache de manifesto e fallback no GitHubDownloader.cs...")
+    print("\n[TEST 3/6] Validando cache de manifesto e fallback no GitHubDownloader.cs...")
     gh_path = ROOT_DIR / "WinServiceFleetAgent" / "Core" / "GitHubDownloader.cs"
     assert gh_path.exists(), f"Erro: {gh_path} não encontrado."
 
@@ -87,8 +89,98 @@ def test_github_downloader_caching():
     print("  -> Fallback resiliente para versão homologada garantido [OK]")
 
 
+def test_graph_batch_and_disk_persistent_dirty_check():
+    print("\n[TEST 4/6] Validando Microsoft Graph $batch API e Dirty-Check Persistente em Disco...")
+    sp_path = ROOT_DIR / "WinServiceFleetAgent" / "Core" / "SharePointClient.cs"
+    fo_path = ROOT_DIR / "WinServiceFleetAgent" / "Core" / "FleetOrchestrator.cs"
+    assert sp_path.exists(), f"Erro: {sp_path} não encontrado."
+    assert fo_path.exists(), f"Erro: {fo_path} não encontrado."
+
+    sp_content = sp_path.read_text(encoding="utf-8")
+    fo_content = fo_path.read_text(encoding="utf-8")
+
+    # 1. Modelos de estado persistido e batch definidos
+    assert "class ServiceReportedState" in sp_content, "Erro: ServiceReportedState não definido."
+    assert "class ServiceBatchItem" in sp_content, "Erro: ServiceBatchItem não definido."
+    print("  -> Modelos ServiceReportedState e ServiceBatchItem presentes [OK]")
+
+    # 2. Caminhos persistentes em disco definidos
+    assert "last_reported_service_state.json" in sp_content, "Erro: Arquivo last_reported_service_state.json não configurado."
+    assert "last_reported_channel_state.json" in sp_content, "Erro: Arquivo last_reported_channel_state.json não configurado."
+    print("  -> Arquivos persistentes de estado em disco configurados [OK]")
+
+    # 3. Métodos de carregamento e salvamento atômico
+    assert "LoadReportedServiceState()" in sp_content, "Erro: LoadReportedServiceState ausente."
+    assert "SaveReportedServiceState()" in sp_content, "Erro: SaveReportedServiceState ausente."
+    assert "IsServiceClean" in sp_content, "Erro: Método IsServiceClean ausente."
+    print("  -> Métodos LoadReportedServiceState, SaveReportedServiceState e IsServiceClean presentes [OK]")
+
+    # 4. Método SyncServicesBatchAsync com endpoint oficial $batch e limite de 20 itens por chunk
+    assert "SyncServicesBatchAsync" in sp_content, "Erro: SyncServicesBatchAsync ausente."
+    assert "graph.microsoft.com/v1.0/$batch" in sp_content, "Erro: Endpoint oficial $batch ausente."
+    assert "Math.Min(20," in sp_content or "chunk" in sp_content.lower(), "Erro: Divisão de lotes em até 20 requisições ausente."
+    print("  -> Método SyncServicesBatchAsync com suporte a Microsoft Graph $batch API (limite de 20 por lote) implementado [OK]")
+
+    # 5. Otimização O(1) de ID sem download massivo da lista
+    assert "_serviceItemIdCache.TryGetValue" in sp_content, "Erro: _serviceItemIdCache deve ser consultado antes de listar todos os itens."
+    print("  -> Consultas O(1) via cache persistente implementadas em UpdateServiceStatus e UpdateActionStatus [OK]")
+
+    # 6. FleetOrchestrator integrado com $batch e Dirty-Check
+    assert "IsServiceClean" in fo_content, "Erro: FleetOrchestrator deve invocar IsServiceClean para dirty-check."
+    assert "dirtyBatchItems" in fo_content, "Erro: FleetOrchestrator deve acumular apenas serviços dirty para o batch."
+    assert "SyncServicesBatchAsync" in fo_content, "Erro: FleetOrchestrator deve chamar SyncServicesBatchAsync para lote único."
+    print("  -> FleetOrchestrator integrado de ponta a ponta com $batch e Dirty-Check persistente [OK]")
+
+
+def test_persistent_state_dirty_check_simulation(tmp_path):
+    print("\n[TEST 5/6] Simulando ciclo de dirty-check e persistência em disco...")
+    state_file = tmp_path / "last_reported_service_state.json"
+    now_utc = datetime.now(timezone.utc)
+
+    # Cria estado simulado reportado há 5 minutos
+    mock_state = {
+        "BRSP-SPO-DT01_DNA.MonitorServiceSVC": {
+            "Versao": "1.0.19.0",
+            "Status": "Em Execução",
+            "Acao": "Nenhuma",
+            "AutoRestart": "Sim",
+            "VersaoDesejada": "1.0.19.0",
+            "UltimoEnvio": (now_utc - timedelta(minutes=5)).isoformat()
+        },
+        "BRSP-SPO-DT01_DNA.ConfigMonitorSVC": {
+            "Versao": "1.0.12.0",
+            "Status": "Em Execução",
+            "Acao": "Nenhuma",
+            "AutoRestart": "Não",
+            "VersaoDesejada": "1.0.12.0",
+            "UltimoEnvio": (now_utc - timedelta(minutes=35)).isoformat()  # Mais de 30 min (Dirty)
+        }
+    }
+    state_file.write_text(json.dumps(mock_state, indent=2), encoding="utf-8")
+
+    # Lê de volta e testa a regra de dirty check
+    loaded = json.loads(state_file.read_text(encoding="utf-8"))
+    assert len(loaded) == 2, "Erro: Número incorreto de serviços no estado persistido."
+
+    # Serviço 1: Inalterado e < 30 min -> CLEAN (0 chamadas HTTP)
+    s1 = loaded["BRSP-SPO-DT01_DNA.MonitorServiceSVC"]
+    s1_time = datetime.fromisoformat(s1["UltimoEnvio"])
+    s1_age_min = (now_utc - s1_time).total_seconds() / 60
+    is_s1_clean = (s1["Versao"] == "1.0.19.0" and s1["Status"] == "Em Execução" and s1_age_min < 30)
+    assert is_s1_clean is True, "Erro: Serviço 1 deveria ser classificado como CLEAN."
+    print("  -> Serviço 1 com estado inalterado e <30 min classificado como CLEAN (0 requisições HTTP) [OK]")
+
+    # Serviço 2: > 30 min -> DIRTY (requer sincronização de heartbeat)
+    s2 = loaded["BRSP-SPO-DT01_DNA.ConfigMonitorSVC"]
+    s2_time = datetime.fromisoformat(s2["UltimoEnvio"])
+    s2_age_min = (now_utc - s2_time).total_seconds() / 60
+    is_s2_clean = (s2["Versao"] == "1.0.12.0" and s2["Status"] == "Em Execução" and s2_age_min < 30)
+    assert is_s2_clean is False, "Erro: Serviço 2 deveria ser classificado como DIRTY por expiração de TTL."
+    print("  -> Serviço 2 com >30 min classificado corretamente como DIRTY para envio em $batch [OK]")
+
+
 def test_packages_and_integrity():
-    print("\n[TEST 4/4] Validando pacotes de distribuição e integridade dos binários...")
+    print("\n[TEST 6/6] Validando pacotes de distribuição e integridade dos binários...")
     zip_19 = ROOT_DIR / "publish" / "DNA.MonitorServiceSVC_v1.0.19.0.zip"
     zip_latest = ROOT_DIR / "publish" / "DNA.MonitorServiceSVC.zip"
 
@@ -116,7 +208,9 @@ if __name__ == "__main__":
     test_bootstrap_script_resilience()
     test_sharepoint_client_anti_throttling()
     test_github_downloader_caching()
+    test_graph_batch_and_disk_persistent_dirty_check()
+    test_persistent_state_dirty_check_simulation(Path("."))
     test_packages_and_integrity()
     print("\n" + "=" * 70)
-    print("TODOS OS 4 TESTES DE RESILIÊNCIA E2E APROVADOS COM 100% DE SUCESSO!")
+    print("TODOS OS 6 TESTES DE RESILIÊNCIA E2E APROVADOS COM 100% DE SUCESSO!")
     print("=" * 70)

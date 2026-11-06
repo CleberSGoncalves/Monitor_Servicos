@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -9,6 +11,37 @@ using System.Security.Cryptography;
 
 namespace WinServiceFleetAgent.Core
 {
+    public class ServiceReportedState
+    {
+        public string Versao { get; set; } = string.Empty;
+        public string Status { get; set; } = string.Empty;
+        public string Acao { get; set; } = "Nenhuma";
+        public string AutoRestart { get; set; } = "Não";
+        public string VersaoDesejada { get; set; } = string.Empty;
+        public DateTime UltimoEnvio { get; set; } = DateTime.MinValue;
+    }
+
+    public class ChannelReportedState
+    {
+        public string StatusTuner { get; set; } = string.Empty;
+        public string Gravando { get; set; } = string.Empty;
+        public DateTime UltimoEnvio { get; set; } = DateTime.MinValue;
+    }
+
+    public class ServiceBatchItem
+    {
+        public string Title { get; set; } = string.Empty;
+        public string Hostname { get; set; } = string.Empty;
+        public string Praca { get; set; } = string.Empty;
+        public int CS { get; set; }
+        public string NomeServico { get; set; } = string.Empty;
+        public string VersaoInstalada { get; set; } = string.Empty;
+        public string? VersaoDesejada { get; set; }
+        public string StatusServico { get; set; } = string.Empty;
+        public string UrlComunicacao { get; set; } = string.Empty;
+        public string? ExeName { get; set; }
+    }
+
     public class PendingActionItem
     {
         public int Id { get; set; }
@@ -258,15 +291,19 @@ namespace WinServiceFleetAgent.Core
         private static readonly object _cacheLock = new object();
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _serviceItemIdCache = new(StringComparer.OrdinalIgnoreCase);
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _channelItemIdCache = new(StringComparer.OrdinalIgnoreCase);
-        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string Versao, string Status, string Acao, DateTime UltimoEnvio)> _lastReportedServiceState = new(StringComparer.OrdinalIgnoreCase);
-        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string StatusTuner, string Gravando, DateTime UltimoEnvio)> _lastReportedChannelState = new(StringComparer.OrdinalIgnoreCase);
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, ServiceReportedState> _lastReportedServiceState = new(StringComparer.OrdinalIgnoreCase);
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, ChannelReportedState> _lastReportedChannelState = new(StringComparer.OrdinalIgnoreCase);
 
         private static readonly string ServiceIdsFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "sharepoint_service_ids.json");
         private static readonly string ChannelIdsFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "sharepoint_channel_ids.json");
+        private static readonly string ServiceStateFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "last_reported_service_state.json");
+        private static readonly string ChannelStateFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "last_reported_channel_state.json");
 
         static SharePointClient()
         {
             LoadLocalItemIds();
+            LoadReportedServiceState();
+            LoadReportedChannelState();
         }
 
         private static void LoadLocalItemIds()
@@ -384,6 +421,104 @@ namespace WinServiceFleetAgent.Core
                 File.WriteAllText(ChannelIdsFilePath, json);
             }
             catch { }
+        }
+
+        private static void LoadReportedServiceState()
+        {
+            try
+            {
+                if (File.Exists(ServiceStateFilePath))
+                {
+                    string json = File.ReadAllText(ServiceStateFilePath);
+                    var dict = JsonSerializer.Deserialize<Dictionary<string, ServiceReportedState>>(json);
+                    if (dict != null)
+                    {
+                        foreach (var kvp in dict)
+                        {
+                            _lastReportedServiceState[kvp.Key] = kvp.Value;
+                        }
+                        FileLogger.Log($"[SharePointClient] 💾 {_lastReportedServiceState.Count} estados de serviços carregados do cache persistente em disco ({ServiceStateFilePath}).");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                FileLogger.Log($"[SharePointClient] Aviso ao ler {ServiceStateFilePath}: {ex.Message}");
+            }
+        }
+
+        public static void SaveReportedServiceState()
+        {
+            try
+            {
+                var dict = new Dictionary<string, ServiceReportedState>(_lastReportedServiceState, StringComparer.OrdinalIgnoreCase);
+                string json = JsonSerializer.Serialize(dict, new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText(ServiceStateFilePath, json);
+            }
+            catch (Exception ex)
+            {
+                FileLogger.Log($"[SharePointClient] Aviso ao salvar {ServiceStateFilePath}: {ex.Message}");
+            }
+        }
+
+        private static void LoadReportedChannelState()
+        {
+            try
+            {
+                if (File.Exists(ChannelStateFilePath))
+                {
+                    string json = File.ReadAllText(ChannelStateFilePath);
+                    var dict = JsonSerializer.Deserialize<Dictionary<string, ChannelReportedState>>(json);
+                    if (dict != null)
+                    {
+                        foreach (var kvp in dict)
+                        {
+                            _lastReportedChannelState[kvp.Key] = kvp.Value;
+                        }
+                        FileLogger.Log($"[SharePointClient] 💾 {_lastReportedChannelState.Count} estados de canais carregados do cache persistente em disco ({ChannelStateFilePath}).");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                FileLogger.Log($"[SharePointClient] Aviso ao ler {ChannelStateFilePath}: {ex.Message}");
+            }
+        }
+
+        public static void SaveReportedChannelState()
+        {
+            try
+            {
+                var dict = new Dictionary<string, ChannelReportedState>(_lastReportedChannelState, StringComparer.OrdinalIgnoreCase);
+                string json = JsonSerializer.Serialize(dict, new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText(ChannelStateFilePath, json);
+            }
+            catch { }
+        }
+
+        public bool IsServiceClean(string hostname, string serviceName, string installedVer, string statusServico, out string autoRestart)
+        {
+            string cleanHost = (hostname ?? "").Trim();
+            string cleanSrv = (serviceName ?? "").Trim();
+            string cacheKey = $"{cleanHost}_{cleanSrv}";
+            string shortInstalledVer = FormatShortVersion(installedVer);
+
+            if (_lastReportedServiceState.TryGetValue(cacheKey, out var lastReport))
+            {
+                autoRestart = string.IsNullOrWhiteSpace(lastReport.AutoRestart) ? "Não" : lastReport.AutoRestart;
+                if (lastReport.Versao == shortInstalledVer &&
+                    lastReport.Status == statusServico &&
+                    (DateTime.UtcNow - lastReport.UltimoEnvio).TotalMinutes < 30)
+                {
+                    return true;
+                }
+            }
+            else
+            {
+                autoRestart = "Não";
+            }
+
+            return false;
         }
 
         public static void InvalidateListCache()
@@ -587,7 +722,7 @@ namespace WinServiceFleetAgent.Core
                 lastReport.Status == statusServico &&
                 (DateTime.UtcNow - lastReport.UltimoEnvio).TotalMinutes < 30)
             {
-                return "Não";
+                return string.IsNullOrWhiteSpace(lastReport.AutoRestart) ? "Não" : lastReport.AutoRestart;
             }
 
             using (var client = new HttpClient())
@@ -877,7 +1012,16 @@ namespace WinServiceFleetAgent.Core
                         {
                             FileLogger.Log($"[SharePointClient] ✅ Registro atualizado no SharePoint (ID {itemId}): [{displayTitle}] {cleanHost}_{cleanSrv} -> AutoRestart: {safeAutoRestart}");
                             SaveLocalServiceId(cacheKey, itemId);
-                            _lastReportedServiceState[cacheKey] = (shortInstalled, statusServico, newAcaoSolicitada, DateTime.UtcNow);
+                            _lastReportedServiceState[cacheKey] = new ServiceReportedState
+                            {
+                                Versao = shortInstalled,
+                                Status = statusServico,
+                                Acao = newAcaoSolicitada,
+                                AutoRestart = safeAutoRestart,
+                                VersaoDesejada = shortTarget,
+                                UltimoEnvio = DateTime.UtcNow
+                            };
+                            SaveReportedServiceState();
                         }
                         else
                         {
@@ -922,6 +1066,208 @@ namespace WinServiceFleetAgent.Core
                     return "Não";
                 }
             }
+        }
+
+
+        public async Task<Dictionary<string, string>> SyncServicesBatchAsync(
+            List<ServiceBatchItem> items,
+            PerformanceMetrics metrics)
+        {
+            var autoRestartMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (items == null || items.Count == 0) return autoRestartMap;
+
+            using (var client = new HttpClient())
+            {
+                await EnsureGraphContextAsync(client);
+                if (string.IsNullOrEmpty(_accessToken) || string.IsNullOrEmpty(_listId))
+                {
+                    FileLogger.LogError("[SharePointClient] Falha ao obter credenciais/contexto Graph API para sincronização em lote.");
+                    return autoRestartMap;
+                }
+
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
+
+                var batchRequests = new List<object>();
+                var itemMap = new Dictionary<string, ServiceBatchItem>();
+                int reqCounter = 1;
+                string nowIso = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ");
+
+                foreach (var item in items)
+                {
+                    string cleanHost = item.Hostname.Trim();
+                    string cleanSrv = item.NomeServico.Trim();
+                    string cacheKey = $"{cleanHost}_{cleanSrv}";
+
+                    // Tenta ID local do cache persistente
+                    if (!_serviceItemIdCache.TryGetValue(cacheKey, out var itemId) || string.IsNullOrEmpty(itemId))
+                    {
+                        // Fallback pontual para item individual
+                        var fallbackAutoRestart = await SyncServiceInventoryAsync(
+                            item.Title, item.Hostname, item.Praca, item.CS,
+                            item.NomeServico, item.VersaoInstalada, item.VersaoDesejada,
+                            item.StatusServico, item.UrlComunicacao, metrics, item.ExeName);
+                        autoRestartMap[cleanSrv] = fallbackAutoRestart;
+                        continue;
+                    }
+
+                    string shortInstalled = FormatShortVersion(item.VersaoInstalada);
+                    string targetVerRaw = !string.IsNullOrWhiteSpace(item.VersaoDesejada)
+                        ? item.VersaoDesejada
+                        : item.VersaoInstalada;
+                    string shortTarget = FormatShortVersion(targetVerRaw);
+
+                    bool isUpToDate = IsInstalledUpToDate(shortInstalled, shortTarget);
+                    if (isUpToDate) shortTarget = shortInstalled;
+
+                    string statusAtualizacao = isUpToDate ? "Atualizado" : "Desatualizado";
+
+                    bool isConfigMonitor = cleanSrv.Equals("DNA.ConfigMonitorSVC", StringComparison.OrdinalIgnoreCase);
+                    bool isMonitorService = cleanSrv.Equals("DNA.MonitorServiceSVC", StringComparison.OrdinalIgnoreCase);
+                    bool isZabbix = cleanSrv.Contains("Zabbix", StringComparison.OrdinalIgnoreCase);
+
+                    string safeUrlComunicacao = "Nenhuma";
+                    if (isConfigMonitor) safeUrlComunicacao = string.IsNullOrWhiteSpace(item.UrlComunicacao) ? "Nenhuma" : item.UrlComunicacao;
+                    else if (isZabbix) safeUrlComunicacao = ConfigUrlUpdater.GetZabbixServerUrl(@"C:\Zabbix\config\zabbix_agentd.conf");
+
+                    var fieldsPayload = new Dictionary<string, object>
+                    {
+                        { "Title", string.IsNullOrWhiteSpace(item.Title) ? "Brasil" : item.Title },
+                        { "Hostname", cleanHost },
+                        { "Pra_x00e7_a", string.IsNullOrWhiteSpace(item.Praca) ? "Não Informado" : item.Praca },
+                        { "CS", item.CS <= 0 ? 1 : item.CS },
+                        { "Nome_Servico", cleanSrv },
+                        { "Versao_Instalada", shortInstalled },
+                        { "Versao_Desejada", shortTarget },
+                        { "Status_Servico", item.StatusServico },
+                        { "Status_Atualizacao", statusAtualizacao },
+                        { "Ultima_atualizacao", nowIso },
+                        { "Url_Comunicacao", safeUrlComunicacao }
+                    };
+
+                    if (isConfigMonitor)
+                    {
+                        fieldsPayload["Status_WCF"] = metrics.StatusWcf;
+                    }
+
+                    var (procRam, procCpu) = SystemPerformance.GetProcessTelemetry(!string.IsNullOrWhiteSpace(item.ExeName) ? item.ExeName : cleanSrv);
+                    if (isMonitorService)
+                    {
+                        fieldsPayload["Cpu_Uso"] = metrics.CpuUso;
+                        fieldsPayload["Ram_Uso"] = (procRam != "N/A" && procRam != "Inativo") ? $"{metrics.RamUso} ({procRam})" : metrics.RamUso;
+                        fieldsPayload["Disco_D_Livre_GB"] = metrics.DiscoDLivreGB;
+                        fieldsPayload["Uptime_Dias"] = metrics.UptimeDias;
+                    }
+                    else if (procRam != "N/A" && procRam != "Inativo")
+                    {
+                        fieldsPayload["Ram_Uso"] = procRam;
+                        fieldsPayload["Cpu_Uso"] = procCpu;
+                    }
+
+                    string reqId = reqCounter.ToString();
+                    reqCounter++;
+                    itemMap[reqId] = item;
+
+                    batchRequests.Add(new
+                    {
+                        id = reqId,
+                        method = "PATCH",
+                        url = $"/sites/{_siteId}/lists/{_listId}/items/{itemId}/fields",
+                        headers = new Dictionary<string, string> { { "Content-Type", "application/json" } },
+                        body = fieldsPayload
+                    });
+                }
+
+                if (batchRequests.Count == 0) return autoRestartMap;
+
+                // Divide em lotes de até 20 requisições (limite oficial do Microsoft Graph)
+                var chunks = new List<List<object>>();
+                for (int i = 0; i < batchRequests.Count; i += 20)
+                {
+                    chunks.Add(batchRequests.GetRange(i, Math.Min(20, batchRequests.Count - i)));
+                }
+
+                foreach (var chunk in chunks)
+                {
+                    var batchPayload = new { requests = chunk };
+                    string batchJson = JsonSerializer.Serialize(batchPayload);
+                    string batchUrl = "https://graph.microsoft.com/v1.0/$batch";
+
+                    var batchResp = await ExecuteWithThrottlingRetryAsync(() =>
+                    {
+                        var req = new HttpRequestMessage(HttpMethod.Post, batchUrl)
+                        {
+                            Content = new StringContent(batchJson, Encoding.UTF8, "application/json")
+                        };
+                        return client.SendAsync(req);
+                    });
+
+                    if (batchResp.IsSuccessStatusCode)
+                    {
+                        string respContent = await batchResp.Content.ReadAsStringAsync();
+                        using var respDoc = JsonDocument.Parse(respContent);
+
+                        if (respDoc.RootElement.TryGetProperty("responses", out var responsesArr))
+                        {
+                            int successCount = 0;
+                            foreach (var r in responsesArr.EnumerateArray())
+                            {
+                                string id = r.GetProperty("id").GetString() ?? "";
+                                int status = r.GetProperty("status").GetInt32();
+
+                                if (itemMap.TryGetValue(id, out var matchedItem))
+                                {
+                                    string cacheKey = $"{matchedItem.Hostname.Trim()}_{matchedItem.NomeServico.Trim()}";
+                                    string shortInstalled = FormatShortVersion(matchedItem.VersaoInstalada);
+
+                                    if (status >= 200 && status < 300)
+                                    {
+                                        successCount++;
+                                        string autoRestartVal = "Não";
+                                        string acaoVal = "Nenhuma";
+                                        string versaoDesejadaVal = "";
+
+                                        if (r.TryGetProperty("body", out var b))
+                                        {
+                                            if (b.TryGetProperty("AutoRestart", out var ar))
+                                                autoRestartVal = ar.GetString() ?? "Não";
+                                            if (b.TryGetProperty("Acao_Solicitada", out var ac))
+                                                acaoVal = ac.GetString() ?? "Nenhuma";
+                                            if (b.TryGetProperty("Versao_Desejada", out var vd))
+                                                versaoDesejadaVal = vd.GetString() ?? "";
+                                        }
+
+                                        autoRestartMap[matchedItem.NomeServico.Trim()] = autoRestartVal;
+
+                                        _lastReportedServiceState[cacheKey] = new ServiceReportedState
+                                        {
+                                            Versao = shortInstalled,
+                                            Status = matchedItem.StatusServico,
+                                            Acao = acaoVal,
+                                            AutoRestart = autoRestartVal,
+                                            VersaoDesejada = versaoDesejadaVal,
+                                            UltimoEnvio = DateTime.UtcNow
+                                        };
+                                    }
+                                    else
+                                    {
+                                        FileLogger.Log($"[SharePointClient] ⚠️ Sub-requisição batch ID {id} ({matchedItem.NomeServico}) retornou status {status}");
+                                    }
+                                }
+                            }
+
+                            FileLogger.Log($"[SharePointClient] 🚀 Sincronização em lote ($batch) concluída: {successCount}/{chunk.Count} serviços atualizados em 1 única chamada HTTP.");
+                            SaveReportedServiceState();
+                        }
+                    }
+                    else
+                    {
+                        string err = await batchResp.Content.ReadAsStringAsync();
+                        FileLogger.LogError($"[SharePointClient] ❌ Erro ao enviar requisição $batch: HTTP {(int)batchResp.StatusCode} - {err}");
+                    }
+                }
+            }
+
+            return autoRestartMap;
         }
 
         public async Task<List<PendingActionItem>> GetPendingUrlActionsAsync(string hostname)
@@ -1146,6 +1492,7 @@ namespace WinServiceFleetAgent.Core
         {
             string cleanHost = (hostname ?? "").Trim();
             string cleanSrv = (nomeServico ?? "").Trim();
+            string cacheKey = $"{cleanHost}_{cleanSrv}";
 
             using (var client = new HttpClient())
             {
@@ -1155,33 +1502,46 @@ namespace WinServiceFleetAgent.Core
                 client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
                 try
                 {
-                    var itemsArray = await GetAllListItemsAsync(client);
-                    if (itemsArray == null) return;
-                    foreach (var item in itemsArray)
+                    string itemId = string.Empty;
+                    if (_serviceItemIdCache.TryGetValue(cacheKey, out var cId) && !string.IsNullOrEmpty(cId))
                     {
-                        if (item.TryGetProperty("fields", out var fields))
+                        itemId = cId;
+                    }
+                    else
+                    {
+                        var itemsArray = await GetAllListItemsAsync(client);
+                        if (itemsArray == null) return;
+                        foreach (var item in itemsArray)
                         {
-                            string itemHost = fields.TryGetProperty("Hostname", out var h) ? h.GetString()?.Trim() ?? "" : "";
-                            string itemSrv = fields.TryGetProperty("Nome_Servico", out var ns) ? ns.GetString()?.Trim() ?? "" : "";
-
-                            if (itemHost.Equals(cleanHost, StringComparison.OrdinalIgnoreCase) && itemSrv.Equals(cleanSrv, StringComparison.OrdinalIgnoreCase))
+                            if (item.TryGetProperty("fields", out var fields))
                             {
-                                string itemId = item.GetProperty("id").GetString() ?? "";
-                                var patchData = new Dictionary<string, object>
+                                string itemHost = fields.TryGetProperty("Hostname", out var h) ? h.GetString()?.Trim() ?? "" : "";
+                                string itemSrv = fields.TryGetProperty("Nome_Servico", out var ns) ? ns.GetString()?.Trim() ?? "" : "";
+
+                                if (itemHost.Equals(cleanHost, StringComparison.OrdinalIgnoreCase) && itemSrv.Equals(cleanSrv, StringComparison.OrdinalIgnoreCase))
                                 {
-                                    { "Status_Servico", statusServico },
-                                    { "Ultima_atualizacao", DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ") }
-                                };
-
-                                string patchUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items/{itemId}/fields";
-                                var content = new StringContent(JsonSerializer.Serialize(patchData), Encoding.UTF8, "application/json");
-                                var request = new HttpRequestMessage(new HttpMethod("PATCH"), patchUrl) { Content = content };
-
-                                await client.SendAsync(request);
-                                FileLogger.Log($"[SharePointClient] Status do serviço [{cleanHost}_{cleanSrv}] atualizado no SharePoint: {statusServico}");
-                                break;
+                                    itemId = item.GetProperty("id").GetString() ?? "";
+                                    if (!string.IsNullOrEmpty(itemId)) SaveLocalServiceId(cacheKey, itemId);
+                                    break;
+                                }
                             }
                         }
+                    }
+
+                    if (!string.IsNullOrEmpty(itemId))
+                    {
+                        var patchData = new Dictionary<string, object>
+                        {
+                            { "Status_Servico", statusServico },
+                            { "Ultima_atualizacao", DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ") }
+                        };
+
+                        string patchUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items/{itemId}/fields";
+                        var patchContent = new StringContent(JsonSerializer.Serialize(patchData), Encoding.UTF8, "application/json");
+                        var request = new HttpRequestMessage(new HttpMethod("PATCH"), patchUrl) { Content = patchContent };
+
+                        await client.SendAsync(request);
+                        FileLogger.Log($"[SharePointClient] Status do serviço [{cleanHost}_{cleanSrv}] atualizado no SharePoint (ID {itemId}): {statusServico}");
                     }
                 }
                 catch (Exception ex)
@@ -1201,6 +1561,7 @@ namespace WinServiceFleetAgent.Core
         {
             string cleanHost = (hostname ?? "").Trim();
             string cleanSrv = (nomeServico ?? "").Trim();
+            string cacheKey = $"{cleanHost}_{cleanSrv}";
 
             using (var client = new HttpClient())
             {
@@ -1214,37 +1575,50 @@ namespace WinServiceFleetAgent.Core
 
                 try
                 {
-                    var itemsArray = await GetAllListItemsAsync(client);
-                    if (itemsArray == null) return;
-                    foreach (var item in itemsArray)
+                    string itemId = string.Empty;
+                    if (_serviceItemIdCache.TryGetValue(cacheKey, out var cId) && !string.IsNullOrEmpty(cId))
                     {
-                        if (item.TryGetProperty("fields", out var fields))
+                        itemId = cId;
+                    }
+                    else
+                    {
+                        var itemsArray = await GetAllListItemsAsync(client);
+                        if (itemsArray == null) return;
+                        foreach (var item in itemsArray)
                         {
-                            string itemHost = fields.TryGetProperty("Hostname", out var h) ? h.GetString()?.Trim() ?? "" : "";
-                            string itemSrv = fields.TryGetProperty("Nome_Servico", out var ns) ? ns.GetString()?.Trim() ?? "" : "";
-
-                            if (itemHost.Equals(cleanHost, StringComparison.OrdinalIgnoreCase) && itemSrv.Equals(cleanSrv, StringComparison.OrdinalIgnoreCase))
+                            if (item.TryGetProperty("fields", out var fields))
                             {
-                                string itemId = item.GetProperty("id").GetString() ?? "";
+                                string itemHost = fields.TryGetProperty("Hostname", out var h) ? h.GetString()?.Trim() ?? "" : "";
+                                string itemSrv = fields.TryGetProperty("Nome_Servico", out var ns) ? ns.GetString()?.Trim() ?? "" : "";
 
-                                var patchData = new Dictionary<string, object>
+                                if (itemHost.Equals(cleanHost, StringComparison.OrdinalIgnoreCase) && itemSrv.Equals(cleanSrv, StringComparison.OrdinalIgnoreCase))
                                 {
-                                    { "Status_Atualizacao", statusAtualizacao },
-                                    { "Ultima_atualizacao", DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ") }
-                                };
-
-                                if (acaoSolicitada != null) patchData["Acao_Solicitada"] = acaoSolicitada;
-                                if (versaoInstalada != null) patchData["Versao_Instalada"] = FormatShortVersion(versaoInstalada);
-                                if (versaoDesejada != null) patchData["Versao_Desejada"] = FormatShortVersion(versaoDesejada);
-
-                                string patchUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items/{itemId}/fields";
-                                var content = new StringContent(JsonSerializer.Serialize(patchData), Encoding.UTF8, "application/json");
-                                var request = new HttpRequestMessage(new HttpMethod("PATCH"), patchUrl) { Content = content };
-
-                                await client.SendAsync(request);
-                                FileLogger.Log($"[SharePointClient] Status do serviço [{cleanHost}_{cleanSrv}] atualizado no SharePoint: {statusAtualizacao}");
+                                    itemId = item.GetProperty("id").GetString() ?? "";
+                                    if (!string.IsNullOrEmpty(itemId)) SaveLocalServiceId(cacheKey, itemId);
+                                    break;
+                                }
                             }
                         }
+                    }
+
+                    if (!string.IsNullOrEmpty(itemId))
+                    {
+                        var patchData = new Dictionary<string, object>
+                        {
+                            { "Status_Atualizacao", statusAtualizacao },
+                            { "Ultima_atualizacao", DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ") }
+                        };
+
+                        if (acaoSolicitada != null) patchData["Acao_Solicitada"] = acaoSolicitada;
+                        if (versaoInstalada != null) patchData["Versao_Instalada"] = FormatShortVersion(versaoInstalada);
+                        if (versaoDesejada != null) patchData["Versao_Desejada"] = FormatShortVersion(versaoDesejada);
+
+                        string patchUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items/{itemId}/fields";
+                        var content = new StringContent(JsonSerializer.Serialize(patchData), Encoding.UTF8, "application/json");
+                        var request = new HttpRequestMessage(new HttpMethod("PATCH"), patchUrl) { Content = content };
+
+                        await client.SendAsync(request);
+                        FileLogger.Log($"[SharePointClient] Status do serviço [{cleanHost}_{cleanSrv}] atualizado no SharePoint (ID {itemId}): {statusAtualizacao}");
                     }
                 }
                 catch (Exception ex)
@@ -1362,6 +1736,22 @@ namespace WinServiceFleetAgent.Core
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
             try
             {
+                string cacheKey = $"{hostname.Trim()}_{nomeServico.Trim()}";
+                if (_serviceItemIdCache.TryGetValue(cacheKey, out var itemId) && !string.IsNullOrEmpty(itemId))
+                {
+                    string singleItemUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{_listId}/items/{itemId}?$expand=fields";
+                    var resp = await client.GetAsync(singleItemUrl);
+                    if (resp.IsSuccessStatusCode)
+                    {
+                        string json = await resp.Content.ReadAsStringAsync();
+                        using var doc = JsonDocument.Parse(json);
+                        if (doc.RootElement.TryGetProperty("fields", out var f))
+                        {
+                            return f.TryGetProperty("Versao_Desejada", out var vd) ? vd.GetString()?.Trim() : null;
+                        }
+                    }
+                }
+
                 var allItems = await GetAllListItemsAsync(client);
                 if (allItems != null)
                 {
@@ -1702,7 +2092,13 @@ namespace WinServiceFleetAgent.Core
                             {
                                 FileLogger.Log($"[ChannelMonitor] ✅ Canal atualizado via PATCH no SharePoint: [{ch.Cidade} | CS {ch.IDCS}] '{ch.Title}' ({ch.MeiodeTransmissao}) - Tuner: {ch.TunerID} | Sinal: Q={ch.QualidadeSinal}% F={ch.ForcaSinal}%");
                                 SaveLocalChannelId(chCacheKey, targetId);
-                                _lastReportedChannelState[chCacheKey] = (ch.StatusTuner, ch.GravandoMP4, DateTime.UtcNow);
+                                _lastReportedChannelState[chCacheKey] = new ChannelReportedState
+                                {
+                                    StatusTuner = ch.StatusTuner,
+                                    Gravando = ch.GravandoMP4,
+                                    UltimoEnvio = DateTime.UtcNow
+                                };
+                                SaveReportedChannelState();
                             }
 
                             // Se houver duplicatas excedentes no SharePoint, limpa automaticamente

@@ -157,7 +157,11 @@ namespace WinServiceFleetAgent.Core
             string healthBadge = SystemPerformance.CalculateHealthBadge(metrics, initialStatuses, hasUpdating: false);
             string paisTitle = $"Brasil [{healthBadge}]";
 
-            // Passo 2: Inventário, auto-recuperação (AutoRestart) e sincronização
+            // Passo 2: Inventário, auto-recuperação (AutoRestart) e sincronização resiliente ($batch)
+            var serviceStatuses = new List<(ServiceDefinition Def, string Status, string InstalledVer, string? DesiredVer, string ExeFullPath, bool ExeExists, bool ServiceExists, bool IsStandalone)>();
+            var dirtyBatchItems = new List<ServiceBatchItem>();
+            var cleanAutoRestartMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
             foreach (var srv in _services)
             {
                 string statusServico = WinController.GetServiceStatus(srv.ServiceName);
@@ -270,24 +274,56 @@ namespace WinServiceFleetAgent.Core
                     githubLatestVer = "2.0.0.2";
                 }
 
-                FileLogger.Log($"[FleetOrchestrator] Processando '{_hostname}_{srv.ServiceName}' -> País: '{paisTitle}', Status: '{statusServico}', Instalada: '{installedVer}', GitHub Desejada: '{githubLatestVer}'");
+                serviceStatuses.Add((srv, statusServico, installedVer, githubLatestVer, exeFullPath, exeExists, serviceExists, isStandaloneApp));
 
-                string autoRestartSetting = await _spClient.SyncServiceInventoryAsync(
-                    title: paisTitle,
-                    hostname: _hostname,
-                    praca: metadata.Praca,
-                    cs: metadata.CS,
-                    nomeServico: srv.ServiceName,
-                    versaoInstalada: installedVer,
-                    versaoDesejada: githubLatestVer,
-                    statusServico: statusServico,
-                    urlComunicacao: metadata.UrlComunicacao,
-                    metrics: metrics,
-                    exeName: srv.ExeName
-                );
+                // Dirty-check persistente em disco (Bypass de rede se estado inalterado nos últimos 30 min):
+                if (_spClient.IsServiceClean(_hostname, srv.ServiceName, installedVer, statusServico, out var cachedAutoRestart))
+                {
+                    cleanAutoRestartMap[srv.ServiceName] = cachedAutoRestart;
+                }
+                else
+                {
+                    dirtyBatchItems.Add(new ServiceBatchItem
+                    {
+                        Title = paisTitle,
+                        Hostname = _hostname,
+                        Praca = metadata.Praca,
+                        CS = metadata.CS,
+                        NomeServico = srv.ServiceName,
+                        VersaoInstalada = installedVer,
+                        VersaoDesejada = githubLatestVer,
+                        StatusServico = statusServico,
+                        UrlComunicacao = metadata.UrlComunicacao,
+                        ExeName = srv.ExeName
+                    });
+                }
+            }
+
+            Dictionary<string, string> batchAutoRestartMap;
+            if (dirtyBatchItems.Count > 0)
+            {
+                FileLogger.Log($"[FleetOrchestrator] 📦 {dirtyBatchItems.Count} serviços requerem sincronização (estado modificado ou >30 min). Enviando em lote único via Microsoft Graph $batch...");
+                batchAutoRestartMap = await _spClient.SyncServicesBatchAsync(dirtyBatchItems, metrics);
+            }
+            else
+            {
+                FileLogger.Log($"[FleetOrchestrator] 🛡️ Todos os {serviceStatuses.Count} serviços com estado inalterado nos últimos 30 min. Bypass total de rede (0 requisições Graph API).");
+                batchAutoRestartMap = cleanAutoRestartMap;
+            }
+
+            // Avaliação de AutoRestart para serviços detectados como Parado
+            foreach (var srvInfo in serviceStatuses)
+            {
+                var srv = srvInfo.Def;
+                string statusServico = srvInfo.Status;
+                bool isStandaloneApp = srvInfo.IsStandalone;
 
                 if (statusServico.Equals("Parado", StringComparison.OrdinalIgnoreCase))
                 {
+                    string autoRestartSetting = "Não";
+                    if (batchAutoRestartMap.TryGetValue(srv.ServiceName, out var ar)) autoRestartSetting = ar;
+                    else if (cleanAutoRestartMap.TryGetValue(srv.ServiceName, out var car)) autoRestartSetting = car;
+
                     bool isAutoRestartEnabled = autoRestartSetting.Equals("Sim", StringComparison.OrdinalIgnoreCase) ||
                                                 autoRestartSetting.Equals("True", StringComparison.OrdinalIgnoreCase);
 
@@ -327,7 +363,6 @@ namespace WinServiceFleetAgent.Core
                                 if (restarted)
                                 {
                                     restartList.Add(DateTime.UtcNow);
-                                    statusServico = "Em Execução";
                                     FileLogger.Log($"[FleetOrchestrator] 🩹 AutoRestart ativado: '{srv.ServiceName}' reiniciado com sucesso!");
                                     await _spClient.UpdateServiceStatusAsync(_hostname, srv.ServiceName, "Em Execução");
                                 }
@@ -343,8 +378,6 @@ namespace WinServiceFleetAgent.Core
                         FileLogger.Log($"[FleetOrchestrator] ℹ️ '{srv.ServiceName}' está PARADO, mas AutoRestart está configurado como '{autoRestartSetting}' no SharePoint. Nenhuma tentativa de inicialização necessária.");
                     }
                 }
-
-                await Task.Delay(200);
             }
 
             // Passo 2.5: Monitoramento de Canais DTV (Transmissões, Tuners, Sinal e Gravações)
