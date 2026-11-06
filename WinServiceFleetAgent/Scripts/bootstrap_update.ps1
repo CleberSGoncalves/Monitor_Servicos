@@ -326,7 +326,7 @@ Write-Host "[INFO] Versao atual: v$currentVer"
 
 $spIdsFile = Join-Path $installDir "sharepoint_service_ids.json"
 
-if (-not $Force -and ($currentVer -eq "1.0.19.0") -and (Test-Path $spIdsFile)) {
+if (-not $Force -and ($currentVer -eq "1.0.20.0") -and (Test-Path $spIdsFile)) {
 
     Write-Host "[OK] O servico ja esta executando na versao homologada v$currentVer com cache persistente ativo. Nenhuma atualizacao necessaria." -ForegroundColor Green
 
@@ -415,11 +415,13 @@ try {
 
 # ------------------------------------------------------------------------------
 
-$pkgFileName = "DNA.MonitorServiceSVC_v1.0.19.0.zip"
+$pkgFileName = "DNA.MonitorServiceSVC_v1.0.20.0.zip"
 
 $expectedSha = "0afb9104a3b07e14e2940fc6756c35e0e290b2ef465b42284234947b9ed5f4f5"
 
 $validHashes = @(
+    "6621b87f7ddfb560ec67c402ca78ff77e87327bacb1c7cc354ee854bb0a29df6",
+    "8891530129936512ff813acdc3aa42715dd4fea472ef43575e703f54873aaf79",
     "298a93f383f3b1995259b73b16f01268b4eb2d64c55922b66d746d3f25654b21",
     "0f45080c64819b13734babff8bbfe734bca3082dfdfec8508af9dd35724c164e",
     "9791181fd4c489b85d5098b5193bec7c536813abd9ba8bfda909cac656920227",
@@ -492,7 +494,7 @@ if ($headers.Count -gt 0) {
 
 if (-not $manifestLoaded) {
 
-    Write-Host "[INFO] Utilizando catalogo homologado corporativo M365: $pkgFileName (v1.0.19.0)" -ForegroundColor Cyan
+    Write-Host "[INFO] Utilizando catalogo homologado corporativo M365: $pkgFileName (v1.0.20.0)" -ForegroundColor Cyan
 
 }
 
