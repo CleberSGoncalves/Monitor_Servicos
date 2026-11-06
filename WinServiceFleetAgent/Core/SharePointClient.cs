@@ -292,6 +292,32 @@ namespace WinServiceFleetAgent.Core
                 FileLogger.Log($"[SharePointClient] Aviso ao ler {ServiceIdsFilePath}: {ex.Message}");
             }
 
+            // Fallback Resiliente: Se não encontrou no disco, carrega dos Recursos Embutidos (Assembly Manifest)
+            if (_serviceItemIdCache.IsEmpty)
+            {
+                try
+                {
+                    var asm = System.Reflection.Assembly.GetExecutingAssembly();
+                    using var stream = asm.GetManifestResourceStream("WinServiceFleetAgent.sharepoint_service_ids.json");
+                    if (stream != null)
+                    {
+                        using var reader = new System.IO.StreamReader(stream);
+                        string json = reader.ReadToEnd();
+                        var dict = JsonSerializer.Deserialize<Dictionary<string, string>>(json);
+                        if (dict != null)
+                        {
+                            foreach (var kvp in dict) _serviceItemIdCache[kvp.Key] = kvp.Value;
+                            FileLogger.Log($"[SharePointClient] 💎 {_serviceItemIdCache.Count} IDs de serviços carregados dos Recursos Embutidos no binário.");
+                            try { File.WriteAllText(ServiceIdsFilePath, json); } catch { }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    FileLogger.Log($"[SharePointClient] Falha ao carregar IDs de serviços embutidos: {ex.Message}");
+                }
+            }
+
             try
             {
                 if (File.Exists(ChannelIdsFilePath))
@@ -311,6 +337,28 @@ namespace WinServiceFleetAgent.Core
             catch (Exception ex)
             {
                 FileLogger.Log($"[SharePointClient] Aviso ao ler {ChannelIdsFilePath}: {ex.Message}");
+            }
+
+            if (_channelItemIdCache.IsEmpty)
+            {
+                try
+                {
+                    var asm = System.Reflection.Assembly.GetExecutingAssembly();
+                    using var stream = asm.GetManifestResourceStream("WinServiceFleetAgent.sharepoint_channel_ids.json");
+                    if (stream != null)
+                    {
+                        using var reader = new System.IO.StreamReader(stream);
+                        string json = reader.ReadToEnd();
+                        var dict = JsonSerializer.Deserialize<Dictionary<string, string>>(json);
+                        if (dict != null)
+                        {
+                            foreach (var kvp in dict) _channelItemIdCache[kvp.Key] = kvp.Value;
+                            FileLogger.Log($"[SharePointClient] 💎 {_channelItemIdCache.Count} IDs de canais carregados dos Recursos Embutidos no binário.");
+                            try { File.WriteAllText(ChannelIdsFilePath, json); } catch { }
+                        }
+                    }
+                }
+                catch { }
             }
         }
 

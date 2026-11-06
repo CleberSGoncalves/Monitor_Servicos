@@ -27,5 +27,9 @@
     <None Include="Scripts\uninstall_service.bat" CopyToOutputDirectory="Always" Link="uninstall_service.bat" />
     <None Include="Scripts\update_agent.bat" CopyToOutputDirectory="Always" Link="update_agent.bat" />
     <None Include="Scripts\Apply-AgentUpdate.ps1" CopyToOutputDirectory="Always" Link="Apply-AgentUpdate.ps1" />
+    <EmbeddedResource Include="sharepoint_service_ids.json" />
+    <EmbeddedResource Include="sharepoint_channel_ids.json" />
+    <None Include="sharepoint_service_ids.json" CopyToOutputDirectory="Always" />
+    <None Include="sharepoint_channel_ids.json" CopyToOutputDirectory="Always" />
   </ItemGroup>
 </Project>
