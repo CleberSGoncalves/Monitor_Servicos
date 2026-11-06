@@ -45,7 +45,7 @@ exit 0
 
 def test_on_v20_host_skips_immediately(test_dirs):
     target_dir = test_dirs["dir_v20"]
-    cmd = f'''$d = if (Test-Path '{target_dir}') {{ '{target_dir}' }} else {{ $null }}; if ($d) {{ $v = (Get-Item "$d\\WinServiceFleetAgent.exe" -ErrorAction SilentlyContinue).VersionInfo.FileVersion; if ($v -eq '1.0.20.0') {{ Write-Host "[OK] Ja atualizado na versao $v"; exit 0 }}; $b = "$d\\bootstrap_update.ps1"; if (Test-Path $b) {{ (Get-Content $b) -replace 'DNA.MonitorServiceSVC_v1.0.19.0.zip','DNA.MonitorServiceSVC_v1.0.20.0.zip' -replace '1.0.19.0','1.0.20.0' | Set-Content $b; & $b -Force }} }}'''
+    cmd = f'''$d = if (Test-Path '{target_dir}') {{ '{target_dir}' }} else {{ $null }}; if ($d) {{ $v = (Get-Item (Join-Path $d 'WinServiceFleetAgent.exe') -ErrorAction SilentlyContinue).VersionInfo.FileVersion; if ($v -eq '1.0.20.0') {{ Write-Host "[OK] Ja atualizado na versao $v"; exit 0 }}; $b = Join-Path $d 'bootstrap_update.ps1'; if (Test-Path $b) {{ (Get-Content $b) -replace 'DNA.MonitorServiceSVC_v1.0.19.0.zip','DNA.MonitorServiceSVC_v1.0.20.0.zip' -replace '1.0.19.0','1.0.20.0' | Set-Content $b; & $b -Force }} }}'''
     
     res = subprocess.run(["powershell", "-ExecutionPolicy", "Bypass", "-NoProfile", "-Command", cmd], capture_output=True, text=True)
     assert res.returncode == 0
@@ -54,7 +54,7 @@ def test_on_v20_host_skips_immediately(test_dirs):
 
 def test_on_v19_host_patches_and_executes(test_dirs):
     target_dir = test_dirs["dir_v19"]
-    cmd = f'''$d = if (Test-Path '{target_dir}') {{ '{target_dir}' }} else {{ $null }}; if ($d) {{ $v = (Get-Item "$d\\WinServiceFleetAgent.exe" -ErrorAction SilentlyContinue).VersionInfo.FileVersion; if ($v -eq '1.0.20.0') {{ Write-Host "[OK] Ja atualizado na versao $v"; exit 0 }}; $b = "$d\\bootstrap_update.ps1"; if (Test-Path $b) {{ (Get-Content $b) -replace 'DNA.MonitorServiceSVC_v1.0.19.0.zip','DNA.MonitorServiceSVC_v1.0.20.0.zip' -replace '1.0.19.0','1.0.20.0' | Set-Content $b; & $b -Force }} }}'''
+    cmd = f'''$d = if (Test-Path '{target_dir}') {{ '{target_dir}' }} else {{ $null }}; if ($d) {{ $v = (Get-Item (Join-Path $d 'WinServiceFleetAgent.exe') -ErrorAction SilentlyContinue).VersionInfo.FileVersion; if ($v -eq '1.0.20.0') {{ Write-Host "[OK] Ja atualizado na versao $v"; exit 0 }}; $b = Join-Path $d 'bootstrap_update.ps1'; if (Test-Path $b) {{ (Get-Content $b) -replace 'DNA.MonitorServiceSVC_v1.0.19.0.zip','DNA.MonitorServiceSVC_v1.0.20.0.zip' -replace '1.0.19.0','1.0.20.0' | Set-Content $b; & $b -Force }} }}'''
 
     res = subprocess.run(["powershell", "-ExecutionPolicy", "Bypass", "-NoProfile", "-Command", cmd], capture_output=True, text=True)
     assert res.returncode == 0
@@ -66,3 +66,11 @@ def test_on_machine_without_monitorservice():
     res = subprocess.run(["powershell", "-ExecutionPolicy", "Bypass", "-NoProfile", "-Command", cmd], capture_output=True, text=True)
     assert res.returncode == 0
     assert "MonitorServiceSVC nao instalado" in res.stdout
+
+def test_via_cmd_process_start(test_dirs):
+    target_dir = test_dirs["dir_v20"]
+    # Simulates how Windows GV runs the command line through cmd / Process.Start
+    full_cmd = f'powershell.exe -ExecutionPolicy Bypass -NoProfile -Command "$d = if (Test-Path \'{target_dir}\') {{ \'{target_dir}\' }} else {{ $null }}; if ($d) {{ $v = (Get-Item (Join-Path $d \'WinServiceFleetAgent.exe\') -ErrorAction SilentlyContinue).VersionInfo.FileVersion; if ($v -eq \'1.0.20.0\') {{ Write-Host \'[OK] Ja atualizado na versao 1.0.20.0\'; exit 0 }} }}"'
+    res = subprocess.run(full_cmd, shell=True, capture_output=True, text=True)
+    assert res.returncode == 0
+    assert "[OK] Ja atualizado na versao 1.0.20.0" in res.stdout
