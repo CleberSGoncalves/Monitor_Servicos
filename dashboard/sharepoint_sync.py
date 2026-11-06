@@ -258,8 +258,8 @@ def fetch_all_items(token: str, list_id: str) -> list:
                         _graph_rate_limit_telemetry["total_429_count"] += 1
                         _graph_rate_limit_telemetry["status"] = f"Throttled (Cooldown: {raw_wait}s)"
 
-                    print(f"[SharePointSync 429] Throttled pela Microsoft (Retry-After: {raw_wait}s). Entrando em cooldown de {raw_wait + 15}s e preservando cache atual.", flush=True)
-                    return []  # Aborta imediatamente para respeitar o tempo da Microsoft sem insistir
+                    print(f"[SharePointSync 429] Throttled pela Microsoft (Retry-After: {raw_wait}s). Entrando em cooldown de {raw_wait + 15}s e aproveitando {len(items)} itens já obtidos para merge.", flush=True)
+                    return items  # Retorna o que já obteve para merge cumulativo sem descartar
                 if resp.ok:
                     with _cache_lock:
                         if _graph_rate_limit_telemetry["is_throttled"]:
@@ -278,6 +278,8 @@ def fetch_all_items(token: str, list_id: str) -> list:
         if not success:
             print(f"[SharePointSync Warning] Falha ao paginar lista {list_id}. Retornando {len(items)} itens obtidos.", flush=True)
             break
+        if url:
+            time.sleep(0.5)  # Espaçamento suave para prevenir 429 burst rate da Microsoft
         
     return items
 
@@ -296,7 +298,7 @@ def sync_fleet_data():
         # PROTEÇÃO ANTI-CORRUPÇÃO DE CACHE (FAIL-SAFE):
         # Se qualquer uma das listas vier vazia ou incompleta por throttling 429,
         # aborta imediatamente sem recomputar estatísticas em lista vazia!
-        if len(raw_services) < 200 or len(raw_channels) < 50:
+        if len(raw_services) < 50 and len(raw_channels) < 20:
             print(f"[SharePointSync Preservação] Dados parciais/throttled recebidos (Serviços: {len(raw_services)}, Canais: {len(raw_channels)}). Mantendo 100% do cache e métricas anteriores.", flush=True)
             return
 
