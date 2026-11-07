@@ -590,11 +590,10 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
 
 
 
-        if s.get("ultima_atualizacao") and not cs01_hosts_map[hostname]["ultima_atualizacao"]:
-
-
-
-            cs01_hosts_map[hostname]["ultima_atualizacao"] = s.get("ultima_atualizacao", "")
+        new_up = s.get("ultima_atualizacao") or ""
+        curr_up = cs01_hosts_map[hostname].get("ultima_atualizacao") or ""
+        if new_up and (not curr_up or new_up > curr_up):
+            cs01_hosts_map[hostname]["ultima_atualizacao"] = new_up
 
 
 
@@ -911,211 +910,78 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
 
 
         # Avaliação da Comunicação do Agente (DNA.MonitorServiceSVC)
-
-
-
         last_up_str = host_info.get("ultima_atualizacao", "")
 
-
-
-        agent_comm_hours = 0.0
-
-
-
-        agent_comm_status = "ONLINE"
-
-
-
-        agent_comm_label = "Online (< 2h)"
-
-
-
-
-
-
+        agent_comm_hours = 9999.0
+        agent_comm_status = "UNKNOWN"
+        agent_comm_label = "Telemetria Indisponível"
 
         if last_up_str:
-
-
-
             try:
-
-
-
-                dt_up = datetime.fromisoformat(last_up_str.replace("Z", "+00:00"))
-
-
-
-                diff_sec = (now_utc - dt_up).total_seconds()
-
-
-
-                agent_comm_hours = round(diff_sec / 3600.0, 1)
-
-
-
-                if agent_comm_hours <= 2.0:
-
-
-
-                    agent_comm_status = "ONLINE"
-
-
-
-                    agent_comm_label = f"Online ({int(diff_sec/60)}m atrás)"
-
-
-
-                elif agent_comm_hours <= 6.0:
-
-
-
-                    agent_comm_status = "DELAY"
-
-
-
-                    agent_comm_label = f"Delay ({agent_comm_hours}h atrás)"
-
-
-
-                elif agent_comm_hours <= 24.0:
-
-
-
-                    agent_comm_status = "OFFLINE_RECENT"
-
-
-
-                    agent_comm_label = f"Offline ({agent_comm_hours}h atrás)"
-
-
-
-                    agent_comm_offline_count += 1
-
-
-
+                dt_str = str(last_up_str).strip().replace("Z", "+00:00")
+                if "/" in dt_str:
+                    dt = datetime.strptime(dt_str[:19], "%d/%m/%Y %H:%M:%S").replace(tzinfo=timezone.utc)
                 else:
+                    dt = datetime.fromisoformat(dt_str)
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                now_curr = datetime.now(timezone.utc)
+                agent_comm_hours = max(0.0, round((now_curr - dt).total_seconds() / 3600.0, 1))
 
-
-
-                    agent_comm_status = "OFFLINE_CRITICAL"
-
-
-
+                if agent_comm_hours <= 0.5:
+                    agent_comm_status = "ONLINE"
+                    agent_comm_label = f"Conectado ({int(agent_comm_hours * 60)} min atrás)"
+                elif agent_comm_hours <= 2.0:
+                    agent_comm_status = "ONLINE"
+                    agent_comm_label = f"Conectado ({agent_comm_hours:.1f}h atrás)"
+                elif agent_comm_hours <= 6.0:
+                    agent_comm_status = "DELAY"
+                    agent_comm_label = f"Atraso Telemetria ({agent_comm_hours:.1f}h atrás)"
+                elif agent_comm_hours <= 24.0:
+                    agent_comm_status = "OFFLINE_RECENT"
+                    agent_comm_label = f"Desconectado ({agent_comm_hours:.1f}h atrás)"
+                else:
                     days = round(agent_comm_hours / 24.0, 1)
-
-
-
+                    agent_comm_status = "OFFLINE_CRITICAL"
                     agent_comm_label = f"Desconectado ({days}d atrás)"
-
-
-
-                    agent_comm_offline_count += 1
-
-
-
             except Exception:
-
-
-
                 agent_comm_status = "UNKNOWN"
+                agent_comm_label = "Horário Indeterminado"
 
-
-
-                agent_comm_label = "Data Inválida"
-
-
-
-
-
-
-
-        # Determinar o Motor Ativo de Detecção (Estágio 1 - Matching)
-
-
+        # LEI DA VALIDADE DE TELEMETRIA:
+        # Se o host esta sem comunicacao recente, o estado dos processos locais e INDETERMINADO.
+        # Nao pode gerar falso P0 de Sem Motor, Conflito ou Fila Travada.
+        is_agent_stale = agent_comm_status in ("OFFLINE_RECENT", "OFFLINE_CRITICAL", "UNKNOWN") or agent_comm_hours > 2.0 or not agent_running
 
         if fm_running and det_running:
-
-
-
             active_engine = "CONFLITO"
-
-
-
             active_engine_label = "Conflito Concorrente (Ambos Ativos: FastMatching + DetectionSVC)"
-
-
-
             engine_tier = "CONFLICT"
-
-
-
-            concurrent_conflict_count += 1
-
-
-
+            if not is_agent_stale:
+                concurrent_conflict_count += 1
         elif fm_running:
-
-
-
             active_engine = "FastMatchingSvc"
-
-
-
             active_engine_label = f"FastMatching (Ativo - Motor Moderno){cluster_motor_note}"
-
-
-
             engine_tier = "PRIMARY"
-
-
-
-            nominal_fastmatching += 1
-
-
-
+            if not is_agent_stale:
+                nominal_fastmatching += 1
         elif det_running:
-
-
-
             active_engine = "DNA.DetectionSVC"
-
-
-
             active_engine_label = f"DetectionSVC (Ativo - Motor Legado){cluster_motor_note}"
-
-
-
             engine_tier = "FALLBACK"
-
-
-
-            fallback_detection_svc += 1
-
-
-
+            if not is_agent_stale:
+                fallback_detection_svc += 1
         else:
             active_engine = "NENHUM"
             engine_tier = "NONE"
-            if agent_comm_status in ("OFFLINE_RECENT", "OFFLINE_CRITICAL"):
-                active_engine_label = f"Telemetria Ausente ({agent_comm_label})"
-            else:
+            if not is_agent_stale:
                 inoperant_p0 += 1
                 active_engine_label = "Inoperante (Ambos Parados / Inexistentes)"
+            else:
+                active_engine_label = f"Telemetria Ausente ({agent_comm_label})"
 
-
-
-
-
-
-
-                # Determinar Idade Estimada do Último XML de Tracking (D:\mediadna_V2\data\tracking)
-
-        # Se ConfigMonitor está inoperante, o escoamento WCF é interrompido e a fila acumula (> 45 min).
-
-        # Se ConfigMonitor e FastMatching estão em execução, o despacho WCF é contínuo e nominal (< 10 min).
-
-        if agent_comm_status in ("OFFLINE_RECENT", "OFFLINE_CRITICAL"):
+        # Idade de Tracking e Fila
+        if is_agent_stale:
             tracking_age_minutes = 0
             is_stalled = False
         elif not cfg_running:
@@ -1131,44 +997,13 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
             tracking_age_minutes = 8
             is_stalled = False
 
-
-
-        if is_stalled:
-
+        if is_stalled and not is_agent_stale:
             stalled_tracking_count += 1
 
-
-
-
-
-
-
-        # Diagnóstico Preciso da Esteira de 3 Estágios (Matching -> Qualidade -> WCF)
-
-
-
-        health_status = "NOMINAL"
-
-
-
-        severity_label = "Nominal"
-
-
-
-        incident_description = ""
-
-
-
-        pipeline_bottleneck = "NONE" # "DETECTION", "TRACKING", "CONFIGMONITOR_WCF"
-
-
-
-
-
-
-
-        is_agent_stale = agent_comm_status in ("OFFLINE_RECENT", "OFFLINE_CRITICAL")
-
+        # Diagnostico da Esteira de Deteccao
+        # LEI DA VALIDADE DE TELEMETRIA:
+        # Se o host esta sem comunicacao recente, o estado dos processos locais e INDETERMINADO.
+        # Nao pode gerar falso P0 de Sem Motor, Conflito ou Fila Travada.
         if engine_tier == "NONE":
             if is_agent_stale:
                 health_status = "COMM_LOST"
@@ -1184,46 +1019,45 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
                 severity_label = "Crítico (P0) - Sem Motor de Matching"
                 incident_description = "Estágio 1 inoperante: FastMatchingSvc e DNA.DetectionSVC parados. Nenhum match sendo gerado em data\\detection."
                 pipeline_bottleneck = "DETECTION"
+        elif is_agent_stale and is_stalled:
+            health_status = "COMM_LOST"
+            severity_label = f"Alerta - Host Desconectado ({agent_comm_label})"
+            incident_description = f"Host CS01 inalcançável há {agent_comm_label}. Telemetria suspensa."
+            pipeline_bottleneck = "TELEMETRY_OFFLINE"
         elif engine_tier == "CONFLICT":
             health_status = "WARNING"
-            severity_label = "Alerta (P1) - Concorrência de Motores (FastMatching + DetectionSVC)"
+            severity_label = "Alerta (P1) - Concorrencia de Motores (FastMatching + DetectionSVC)"
             incident_description = "FastMatchingSvc e DNA.DetectionSVC ativos simultaneamente disputando blocos .EMU."
             pipeline_bottleneck = "DETECTION"
-
         elif not cfg_running:
             health_status = "STALLED"
-            severity_label = "Crítico (P1) - Despacho WCF Travado (ConfigMonitor Parado)"
-            incident_description = f"DNA.ConfigMonitorSVC inoperante! XMLs acumulando em D:\\mediadna_V2\\data\\tracking sem envio WCF para a central há {tracking_age_minutes} min."
+            severity_label = "Critico (P1) - Despacho WCF Travado (ConfigMonitor Parado)"
+            incident_description = f"DNA.ConfigMonitorSVC inoperante! XMLs acumulando em D:\\mediadna_V2\\data\\tracking sem envio WCF para a central ha {tracking_age_minutes} min."
             pipeline_bottleneck = "CONFIGMONITOR_WCF"
-
         elif is_stalled and not trk_running and engine_tier == "FALLBACK":
             health_status = "STALLED"
-            severity_label = f"Crítico (P1) - Análise de Qualidade Travada (TrackingSVC Parado)"
-            incident_description = f"DNA.TrackingSVC inoperante! Em modo Fallback (.NET), os XMLs de data\\detection não estão sendo enriquecidos para data\\tracking há {tracking_age_minutes} min."
+            severity_label = f"Critico (P1) - Analise de Qualidade Travada (TrackingSVC Parado)"
+            incident_description = f"DNA.TrackingSVC inoperante! Em modo Fallback (.NET), os XMLs de data\\detection nao estao sendo enriquecidos para data\\tracking ha {tracking_age_minutes} min."
             pipeline_bottleneck = "TRACKING"
-
         elif is_stalled:
             health_status = "STALLED"
             severity_label = f"Alerta (P1) - Fila de Tracking Acumulada ({tracking_age_minutes}m)"
             incident_description = f"Fila de XMLs estagnada em D:\\mediadna_V2\\data\\tracking. Gargalo no envio WCF (DNA.ConfigMonitorSVC) ou bloqueio de rede WCF."
             pipeline_bottleneck = "CONFIGMONITOR_WCF"
-
         elif engine_tier == "FALLBACK":
             health_status = "WARNING"
             severity_label = "Aviso (P2) - Operando via DetectionSVC (Legado)"
-            incident_description = "Detecção operando via DNA.DetectionSVC (.NET/OpenCV clássico). FastMatchingSvc primário inativo."
+            incident_description = "Deteccao operando via DNA.DetectionSVC (.NET/OpenCV classico). FastMatchingSvc primario inativo."
             pipeline_bottleneck = "NONE"
-
         elif not trk_running and engine_tier == "FALLBACK":
             health_status = "WARNING"
-            severity_label = "Atenção - TrackingSVC Parado (Modo Fallback)"
-            incident_description = "DNA.TrackingSVC inoperante. Em modo DetectionSVC, a análise de qualidade em data\\detection está suspensa."
+            severity_label = "Atencao - TrackingSVC Parado (Modo Fallback)"
+            incident_description = "DNA.TrackingSVC inoperante. Em modo DetectionSVC, a analise de qualidade em data\\detection esta suspensa."
             pipeline_bottleneck = "TRACKING"
-
         else:
             health_status = "NOMINAL"
             severity_label = "Nominal (FastMatching C++)"
-            incident_description = "Pipeline operando com motor primário FastMatchingSvc e despacho WCF nominais."
+            incident_description = "Pipeline operando com motor primario FastMatchingSvc e despacho WCF nominais."
             pipeline_bottleneck = "NONE"
 
         # Throughput
@@ -1566,11 +1400,14 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
 
 
 
-                "is_stale": agent_comm_status in ("OFFLINE_RECENT", "OFFLINE_CRITICAL")
-
-
-
+                "is_stale": is_agent_stale
             },
+            "is_offline": is_agent_stale,
+            "agent_comm_status": agent_comm_status
+
+
+
+            ,
 
 
 

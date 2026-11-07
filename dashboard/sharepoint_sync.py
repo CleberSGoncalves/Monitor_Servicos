@@ -11,7 +11,7 @@ from config import (
 
 CACHE_FILE = DATA_DIR / "fleet_cache.json"
 
-_cache_lock = threading.Lock()
+_cache_lock = threading.RLock()
 _cached_data = {
     "last_sync": None,
     "services": [],

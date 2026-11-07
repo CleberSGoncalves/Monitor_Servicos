@@ -163,59 +163,87 @@ def get_fleet_pipeline_incidents(services: list = None, channels: list = None, t
             "recommended_action": "Verificar serviço DNA.MediaConverter / FileTransferSVC e rota de upload."
         })
 
-    # 2. Avalia a frota remota baseada na telemetria dos serviços de transferência e gravação
-    unique_hosts = {}
+        # 2. Avalia a frota remota baseada na telemetria dos servicos de transferencia e gravacao
+    # LEI DA VALIDADE DE TELEMETRIA:
+    # Hosts desconectados / sem telemetria recente nao podem gerar incidentes locais de pipeline.
+    host_max_ts = {}
+    host_services = {}
+
     for s in services:
         h = s.get("hostname", "")
-        if h and h not in unique_hosts:
-            unique_hosts[h] = s
+        if not h:
+            continue
+        if h not in host_services:
+            host_services[h] = []
+        host_services[h].append(s)
 
-    for h_name, s_info in unique_hosts.items():
-        praca = s_info.get("praca", "Praça")
-        cs_id = s_info.get("cs", 1)
-        svc_name = str(s_info.get("nome_servico", "")).lower()
-        svc_status = str(s_info.get("status", "")).lower()
+        up_str = s.get("ultima_atualizacao") or ""
+        if up_str:
+            try:
+                dt = datetime.fromisoformat(up_str.replace("Z", "+00:00"))
+                ts = dt.timestamp()
+                if h not in host_max_ts or ts > host_max_ts[h]:
+                    host_max_ts[h] = ts
+            except Exception:
+                pass
 
-        # Falha de serviço crítico de pipeline: FileTransferSVC ou MediaRecorderSVC
-        if "filetransfer" in svc_name and svc_status in ["parado", "stopped", "erro"]:
-            incidents.append({
-                "id": f"svc_ft_{h_name}_{cs_id}",
-                "type": "servico_transfer_parado",
-                "category": "pipeline_midia",
-                "severity": "critico",
-                "badge_label": "FILETRANSFER PARADO",
-                "title": f"Transmissão Bloqueada: FileTransferSVC Parado",
-                "praca": praca,
-                "hostname": h_name,
-                "cs": cs_id,
-                "target": f"FileTransferSVC ({praca} CS {cs_id})",
-                "filename": "Fila de Mídias Acumulada",
-                "size_mb": 0.0,
-                "elapsed_minutes": 20.0,
-                "threshold_minutes": threshold_delay_min,
-                "description": f"O serviço DNA.FiletransferSVC está PARADO no host {h_name}. Nenhum arquivo de MP4, MP3 ou JPEG está sendo enviado.",
-                "recommended_action": f"Disparar reinício do serviço DNA.FiletransferSVC em {h_name}."
-            })
+    for h_name, s_list in host_services.items():
+        # Checa se o host esta online (comunicou ha menos de 2 horas)
+        max_ts = host_max_ts.get(h_name, 0)
+        if (now - max_ts) > 7200:  # > 2 horas = OFFLINE
+            continue
 
-        if "mediarecorder" in svc_name and svc_status in ["parado", "stopped", "erro"] and int(float(cs_id or 1)) != 2:
-            incidents.append({
-                "id": f"svc_mr_{h_name}_{cs_id}",
-                "type": "ausencia_geracao_30min",
-                "category": "pipeline_midia",
-                "severity": "critico",
-                "badge_label": "GRAVAÇÃO INTERROMPIDA",
-                "title": f"Ausência de Geração: MediaRecorder Parado",
-                "praca": praca,
-                "hostname": h_name,
-                "cs": cs_id,
-                "target": f"MediaRecorderSVC ({praca} CS {cs_id})",
-                "filename": "Sem arquivos nos últimos 30min",
-                "size_mb": 0.0,
-                "elapsed_minutes": 32.0,
-                "threshold_minutes": 30.0,
-                "description": f"O serviço DNA.MediaRecorderSVC está PARADO. Quebra total na gravação dos blocos de 30 minutos.",
-                "recommended_action": f"Reiniciar o serviço DNA.MediaRecorderSVC e verificar espaço no Disco D:\\."
-            })
+        # Checa se o agente DNA.MonitorServiceSVC esta ativo
+        agent_s = next((s for s in s_list if "monitorservice" in str(s.get("nome_servico", "")).lower()), None)
+        if agent_s and not any(w in str(agent_s.get("status_servico", "")).lower() for w in ["execu", "running"]):
+            continue  # Agente parado -> telemetria suspensa
+
+        for s_info in s_list:
+            praca = s_info.get("praca", "Praca")
+            cs_id = s_info.get("cs", 1)
+            svc_name = str(s_info.get("nome_servico", "")).lower()
+            svc_status = str(s_info.get("status_servico") or s_info.get("status", "")).lower()
+
+            # Falha de servico critico de pipeline: FileTransferSVC ou MediaRecorderSVC
+            if "filetransfer" in svc_name and any(w in svc_status for w in ["parado", "stopped", "erro"]):
+                incidents.append({
+                    "id": f"svc_ft_{h_name}_{cs_id}",
+                    "type": "servico_transfer_parado",
+                    "category": "pipeline_midia",
+                    "severity": "critico",
+                    "badge_label": "FILETRANSFER PARADO",
+                    "title": f"Transmissao Bloqueada: FileTransferSVC Parado",
+                    "praca": praca,
+                    "hostname": h_name,
+                    "cs": cs_id,
+                    "target": f"FileTransferSVC ({praca} CS {cs_id})",
+                    "filename": "Fila de Midias Acumulada",
+                    "size_mb": 0.0,
+                    "elapsed_minutes": 20.0,
+                    "threshold_minutes": threshold_delay_min,
+                    "description": f"O servico DNA.FiletransferSVC esta PARADO no host {h_name}. Nenhum arquivo de MP4, MP3 ou JPEG esta sendo enviado.",
+                    "recommended_action": f"Disparar reinicio do servico DNA.FiletransferSVC em {h_name}."
+                })
+
+            if "mediarecorder" in svc_name and any(w in svc_status for w in ["parado", "stopped", "erro"]) and int(float(cs_id or 1)) != 2:
+                incidents.append({
+                    "id": f"svc_mr_{h_name}_{cs_id}",
+                    "type": "ausencia_geracao_30min",
+                    "category": "pipeline_midia",
+                    "severity": "critico",
+                    "badge_label": "GRAVACAO INTERROMPIDA",
+                    "title": f"Ausencia de Geracao: MediaRecorder Parado",
+                    "praca": praca,
+                    "hostname": h_name,
+                    "cs": cs_id,
+                    "target": f"MediaRecorderSVC ({praca} CS {cs_id})",
+                    "filename": "Sem arquivos nos ultimos 30min",
+                    "size_mb": 0.0,
+                    "elapsed_minutes": 32.0,
+                    "threshold_minutes": 30.0,
+                    "description": f"O servico DNA.MediaRecorderSVC esta PARADO. Quebra total na gravacao dos blocos de 30 minutos.",
+                    "recommended_action": f"Reiniciar o servico DNA.MediaRecorderSVC e verificar espaco no Disco D:\\."
+                })
 
     for inc in incidents:
         if "delay_minutes" not in inc or inc.get("delay_minutes") is None:

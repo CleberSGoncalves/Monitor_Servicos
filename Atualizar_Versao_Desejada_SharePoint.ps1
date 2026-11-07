@@ -4,7 +4,7 @@
 # ==============================================================================
 param(
     [string]$ServiceName = "DNA.MonitorServiceSVC",
-    [string]$NewVersion = "1.0.19.0"
+    [string]$NewVersion = "1.0.20.0"
 )
 
 Add-Type -AssemblyName System.Security
@@ -57,7 +57,7 @@ $listId = "2e2afc16-dfd6-4277-a16c-cd78bdd2e769"
 Write-Host "[2/3] Buscando registros de '$ServiceName' na lista do SharePoint..." -ForegroundColor Cyan
 
 $allItems = @()
-$nextUrl = "https://graph.microsoft.com/v1.0/sites/$siteId/lists/$listId/items?expand=fields&`$top=500"
+$nextUrl = "https://graph.microsoft.com/v1.0/sites/$siteId/lists/$listId/items?expand=fields(`$select=id,Hostname,Nome_Servico,Versao_Instalada,Versao_Desejada,Status_Atualizacao,Acao_Solicitada)&`$top=200"
 
 while ($nextUrl) {
     try {
@@ -68,8 +68,13 @@ while ($nextUrl) {
         $nextUrl = $resp.'@odata.nextLink'
     } catch {
         if ($_.Exception.Response.StatusCode.value__ -eq 429 -or $_.Exception.Message -match "429") {
-            Write-Host "⏳ Throttling (429) na paginação. Aguardando 6s..." -ForegroundColor Yellow
-            Start-Sleep -Seconds 6
+            $retryWait = 30
+            try {
+                $hWait = $_.Exception.Response.Headers["Retry-After"]
+                if ($hWait) { $retryWait = [int]$hWait }
+            } catch {}
+            Write-Host "⏳ Throttling (429) na paginação. Aguardando ${retryWait}s..." -ForegroundColor Yellow
+            Start-Sleep -Seconds $retryWait
             continue
         }
         Write-Host "Erro ao consultar lista: $($_.Exception.Message)" -ForegroundColor Red

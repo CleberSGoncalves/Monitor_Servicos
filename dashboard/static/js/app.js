@@ -6026,11 +6026,18 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
                 max_timestamp: 0,
                 last_update_str: "",
                 is_offline: false,
-                diff_hours: 0
+                diff_hours: 0,
+                agent_running: false
             };
         }
 
         const hObj = hostsMap[hName];
+        if ((s.nome_servico || "").toLowerCase().includes("monitorservice")) {
+            const st = (s.status_servico || s.status || "").toLowerCase();
+            if (st.includes("execu") || st.includes("running")) {
+                hObj.agent_running = true;
+            }
+        }
         if (s.cpu_uso && s.cpu_uso !== "N/A" && hObj.cpu_val === 0) hObj.cpu_val = parseNumericMetric(s.cpu_uso);
         if (s.ram_uso && s.ram_uso !== "N/A" && (!hObj.ram_info || (!hObj.ram_info.isPct && hObj.ram_info.mb === 0))) {
             hObj.ram_info = parseRamMetric(s.ram_uso);
@@ -6059,9 +6066,9 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
         }
 
         // LEI DA VALIDADE DE TELEMETRIA:
-        // Se o agente está sem comunicar há mais de 3 horas, o host é considerado OFFLINE.
-        // Métricas de CPU, RAM e Disco de telemetria estagnada NÃO refletem o estado em tempo real.
-        h.is_offline = h.diff_hours > 3.0;
+        // Se o agente está sem comunicar há mais de 2 horas ou se DNA.MonitorServiceSVC não está ativo,
+        // o host é considerado OFFLINE. Métricas locais não refletem o estado em tempo real.
+        h.is_offline = h.diff_hours > 2.0 || !h.agent_running;
 
         if (h.is_offline) {
             h.has_critical_hw = false;
@@ -6682,7 +6689,22 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
 
 
 
-        const isOffline = hStatus === "COMM_LOST" || engTier === "COMM_LOST" || site.agent_comm?.is_stale || site.agent_comm?.status === "OFFLINE_CRITICAL" || site.agent_comm?.status === "OFFLINE_RECENT" || site.agent_comm_status === "OFFLINE_CRITICAL" || site.agent_comm_status === "OFFLINE_RECENT";
+        const pracaClean = (site.praca || '').toLowerCase().trim();
+        if (!pracaClean || pracaClean === 'não informado' || pracaClean === 'nao informado' || pracaClean === 'n/a') {
+            return; // Ignora registros órfãos de teste/laboratório sem praça
+        }
+
+        const hKey = (site.hostname || '').toLowerCase().trim();
+        const pKey = `${pracaClean}_1`;
+        const isOffline = hStatus === "COMM_LOST" || engTier === "COMM_LOST" || 
+                          site.agent_comm?.is_stale || 
+                          site.agent_comm?.status === "OFFLINE_CRITICAL" || 
+                          site.agent_comm?.status === "OFFLINE_RECENT" || 
+                          site.agent_comm_status === "OFFLINE_CRITICAL" || 
+                          site.agent_comm_status === "OFFLINE_RECENT" ||
+                          offlineHostsSet.has(hKey) ||
+                          offlinePracasMap.has(pKey) ||
+                          (site.agent_comm?.hours_since_last_seen > 2.0);
 
         if (isOffline) {
             sev = "P1";
@@ -6763,7 +6785,7 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
             key: `deteccao_${site.hostname}`,
             severity: sev,
             severity_label: sevLabel,
-            trigger_type: "deteccao",
+            trigger_type: isOffline ? "offline" : "deteccao", // trigger_type: "deteccao"
             category: isOffline ? "host_conectividade" : "deteccao_comercial",
             category_label: catLabel,
             category_icon: catIcon,
@@ -6776,7 +6798,7 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
             summary: summaryText,
             telemetry: telText,
             time_ago: site.agent_comm?.label || "Em tempo real",
-            is_detection: true,
+            is_detection: !isOffline,
             detection_data: site
         });
     });

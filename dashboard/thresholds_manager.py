@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+import time
 import sqlite3
 from typing import List, Dict, Any
 from config import DATA_DIR
@@ -196,11 +198,29 @@ def get_active_threshold_breaches(services: list = None, channels: list = None) 
     if not channels:
         channels = []
 
+        # LEI DA VALIDADE DE TELEMETRIA:
+    # Identifica hosts com telemetria ativa recente (<= 2 horas)
+    now_ts = time.time()
+    valid_hosts = set()
+    for s in services:
+        h = s.get("hostname", "")
+        up_str = s.get("ultima_atualizacao") or ""
+        if h and up_str:
+            try:
+                dt = datetime.fromisoformat(up_str.replace("Z", "+00:00"))
+                if (now_ts - dt.timestamp()) <= 7200:
+                    valid_hosts.add(h.lower().strip())
+            except Exception:
+                pass
+
     # 1. Limiar de Disco D: Mínimo
     disk_thresh = thresholds.get("disk_d_min_gb")
     if disk_thresh:
         limit_gb = float(disk_thresh["value"])
         for s in services:
+            h = (s.get("hostname") or "").lower().strip()
+            if h and h not in valid_hosts:
+                continue  # Host offline -> telemetria suspensa
             raw_d = str(s.get("disco_d_livre", "")).replace("GB", "").strip()
             try:
                 val = float(raw_d)
@@ -227,6 +247,17 @@ def get_active_threshold_breaches(services: list = None, channels: list = None) 
     rf_q_thresh = thresholds.get("rf_signal_quality_min")
     rf_s_thresh = thresholds.get("rf_signal_strength_min")
     for c in channels:
+        ch_host = (c.get("host") or c.get("hostname") or "").lower().strip()
+        ch_up = c.get("atualizacao") or ""
+        if ch_host and ch_host not in valid_hosts:
+            continue
+        if ch_up:
+            try:
+                dt_ch = datetime.fromisoformat(ch_up.replace("Z", "+00:00"))
+                if (now_ts - dt_ch.timestamp()) > 7200:
+                    continue
+            except Exception:
+                pass
         meio_str = str(c.get("meio", "Digital Terrestre")).lower()
         is_digital = any(x in meio_str for x in ["digital", "terrestre"])
         is_stream = any(x in meio_str for x in ["rtsp", "udp", "ip", "stream"])
@@ -288,6 +319,9 @@ def get_active_threshold_breaches(services: list = None, channels: list = None) 
     if autonomy_thresh:
         min_hours = float(autonomy_thresh["value"])
         for s in services:
+            h = (s.get("hostname") or "").lower().strip()
+            if h and h not in valid_hosts:
+                continue
             raw_d = str(s.get("disco_d_livre", "")).replace("GB", "").strip()
             try:
                 val = float(raw_d)
