@@ -113,18 +113,19 @@ foreach ($item in $matchingItems) {
     $currentInstalled = $item.fields.Versao_Instalada
     $currentDesired = $item.fields.Versao_Desejada
 
-    # Se ja estiver instalado na versao alvo e com acao Nenhuma, contabiliza e pula
+    # Se ja estiver com a versao desejada alinhada e status correspondente, contabiliza e pula
     $isUpToDate = ($currentInstalled -eq $NewVersion)
     $currentAction = $item.fields.Acao_Solicitada
-
-    if ($isUpToDate -and $currentDesired -eq $NewVersion -and ($currentAction -eq "Nenhuma" -or [string]::IsNullOrWhiteSpace($currentAction))) {
-        $alreadyCurrent++
-        Write-Host "  [$count/$($matchingItems.Count)] ⏩ $hostName ja esta 100% atualizado ($NewVersion)" -ForegroundColor DarkGray
-        continue
-    }
+    $currentStatus = $item.fields.Status_Atualizacao
 
     $statusAtualizacao = if ($isUpToDate) { "Atualizado" } else { "Desatualizado" }
     $acaoSolicitada = if ($isUpToDate) { "Nenhuma" } else { "Atualizar" }
+
+    if ($currentDesired -eq $NewVersion -and $currentStatus -eq $statusAtualizacao -and ($currentAction -eq $acaoSolicitada -or [string]::IsNullOrWhiteSpace($currentAction))) {
+        $alreadyCurrent++
+        Write-Host "  [$count/$($matchingItems.Count)] ⏩ $hostName ja alinhado (Desejada: $NewVersion, Status: $statusAtualizacao)" -ForegroundColor DarkGray
+        continue
+    }
 
     $patchFields = @{
         Versao_Desejada = $NewVersion
