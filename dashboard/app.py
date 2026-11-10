@@ -631,7 +631,7 @@ async def trigger_action(req: FleetActionRequest, user: dict = Depends(get_curre
 @app.get("/api/fleet/canary-status")
 async def get_fleet_canary_status_endpoint(
     service_name: str = "DNA.MonitorServiceSVC",
-    target_version: str = "1.0.19.0",
+    target_version: str = "1.0.20.0",
     user: dict = Depends(get_current_user)
 ):
     try:
@@ -642,6 +642,20 @@ async def get_fleet_canary_status_endpoint(
         return data
     except Exception as e:
         logger.error(f"Erro ao obter status canário: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/fleet/update-evolution")
+async def get_fleet_update_evolution_endpoint(
+    target_version: str = "1.0.20.0",
+    user: dict = Depends(get_current_user)
+):
+    """Retorna os dados consolidados de evolução de atualizações da frota em tempo real."""
+    try:
+        from fleet_actions import get_fleet_update_evolution
+        return get_fleet_update_evolution(target_version=target_version)
+    except Exception as e:
+        logger.error(f"Erro ao obter evolucao de updates da frota: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -104,7 +104,7 @@ def execute_predefined_action(
 
     # 4. Disparo do Canary Deployment (Grupo Piloto de 5 Máquinas -> Auto-Promoção após Homologação)
     elif action_type == "canary_deploy":
-        target_ver = (target_version or "1.0.19.0").strip().lstrip("vV")
+        target_ver = (target_version or "1.0.20.0").strip().lstrip("vV")
         srv_target = service_name or "DNA.MonitorServiceSVC"
         from remote_queue import trigger_canary_rollout_sharepoint
         res = trigger_canary_rollout_sharepoint(
@@ -116,7 +116,7 @@ def execute_predefined_action(
         # Inicia também o monitor background que acompanha as 5 piloto e promove para as demais automaticamente quando homologarem
         import re
         safe_srv = srv_target if re.match(r"^[A-Za-z0-9._-]+$", srv_target) else "DNA.MonitorServiceSVC"
-        safe_ver = target_ver if re.match(r"^[0-9.]+$", target_ver) else "1.0.19.0"
+        safe_ver = target_ver if re.match(r"^[0-9.]+$", target_ver) else "1.0.20.0"
         script_path = PARENT_DIR / "Deploy_Canary_Pipeline.ps1"
         if script_path.exists():
             subprocess.Popen(
@@ -142,7 +142,7 @@ def execute_predefined_action(
 
     # 5. Promoção para Toda a Frota
     elif action_type == "promote_fleet":
-        target_ver = (target_version or "1.0.19.0").strip().lstrip("vV")
+        target_ver = (target_version or "1.0.20.0").strip().lstrip("vV")
         srv_target = service_name or "DNA.MonitorServiceSVC"
         from remote_queue import trigger_canary_rollout_sharepoint
         res = trigger_canary_rollout_sharepoint(
@@ -183,3 +183,100 @@ def find_service_item_id(token: str, host: str, service_name: str) -> Optional[s
                f.get("Nome_Servico", "").strip().lower() == service_name.strip().lower():
                 return str(item.get("id", "")).split("_")[0]
     return None
+
+
+def get_fleet_update_evolution(target_version: str = "1.0.20.0") -> Dict[str, Any]:
+    """
+    Computa a esteira de evolução e adoção de atualizações de versão do agente DNA.MonitorServiceSVC
+    em tempo real a partir do cache da frota em memória (0ms, zero chamadas externas).
+    """
+    from datetime import datetime, timezone
+    from sharepoint_sync import get_cached_data
+
+    data = get_cached_data()
+    services = data.get("services", [])
+
+    # Filtra estritamente pelo serviço do agente de frota
+    agent_svcs = [s for s in services if s.get("nome_servico") == "DNA.MonitorServiceSVC"]
+    if not agent_svcs:
+        agent_svcs = [s for s in services if "monitorservice" in str(s.get("nome_servico", "")).lower()]
+
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    total_hosts = len(agent_svcs)
+
+    versions_breakdown = {}
+    pending_online_hosts = []
+    hosts_detail = []
+
+    updated_count = 0
+    online_count = 0
+    pending_online_count = 0
+    offline_count = 0
+
+    for s in agent_svcs:
+        hostname = s.get("hostname", "N/A")
+        praca = s.get("praca", "N/A")
+        cs = s.get("cs", 1)
+        v_inst = s.get("versao_instalada", "Desconhecido")
+        v_des = s.get("versao_desejada", "N/A")
+        st_svc = s.get("status_servico", "Desconhecido")
+        st_at = s.get("status_atualizacao", "Desconhecido")
+        act = s.get("acao_solicitada", "Nenhuma")
+        ts = str(s.get("ultima_atualizacao") or "")
+
+        is_today = (today_str in ts) if ts else False
+        if is_today:
+            online_count += 1
+
+        versions_breakdown[v_inst] = versions_breakdown.get(v_inst, 0) + 1
+
+        is_updated = (v_inst == target_version)
+        if is_updated:
+            category = "updated"
+            updated_count += 1
+        elif is_today:
+            category = "pending_online"
+            pending_online_count += 1
+            if hostname not in ("COMPUTER-01PR70", "N/A"):
+                pending_online_hosts.append(hostname)
+        else:
+            category = "offline"
+            offline_count += 1
+
+        hosts_detail.append({
+            "hostname": hostname,
+            "praca": praca,
+            "cs": cs,
+            "versao_instalada": v_inst,
+            "versao_desejada": v_des,
+            "status_servico": st_svc,
+            "status_atualizacao": st_at,
+            "acao_solicitada": act,
+            "ultima_atualizacao": ts,
+            "is_online_today": is_today,
+            "category": category
+        })
+
+    pending_online_hosts = sorted(list(set(pending_online_hosts)))
+    cat_order = {"pending_online": 0, "offline": 1, "updated": 2}
+    hosts_detail.sort(key=lambda h: (cat_order.get(h["category"], 9), h["praca"], h["hostname"]))
+
+    updated_pct = round((updated_count / total_hosts * 100), 1) if total_hosts > 0 else 0.0
+    active_adoption_pct = round((updated_count / online_count * 100), 1) if online_count > 0 else 0.0
+
+    return {
+        "target_version": target_version,
+        "total_hosts": total_hosts,
+        "updated_count": updated_count,
+        "updated_pct": updated_pct,
+        "online_count": online_count,
+        "active_adoption_pct": active_adoption_pct,
+        "pending_online_count": pending_online_count,
+        "offline_count": offline_count,
+        "versions_breakdown": dict(sorted(versions_breakdown.items(), key=lambda x: -x[1])),
+        "pending_online_hosts": pending_online_hosts,
+        "pending_online_csv": ", ".join(pending_online_hosts),
+        "hosts_detail": hosts_detail,
+        "last_sync": data.get("last_sync", datetime.now(timezone.utc).isoformat())
+    }
+

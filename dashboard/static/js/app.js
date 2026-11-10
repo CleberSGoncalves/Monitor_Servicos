@@ -443,6 +443,7 @@ function setupTabNavigation() {
             } else if (tabName === "fleet") {
 
                 if (typeof loadServicesTable === "function") loadServicesTable();
+                if (typeof loadFleetUpdateEvolution === "function") loadFleetUpdateEvolution();
 
             } else if (tabName === "logs") {
 

@@ -10610,7 +10610,154 @@
 
 
 
-        <section class="content-section" id="tab-fleet">
+                <section class="content-section" id="tab-fleet">
+
+      <!-- PAINEL PRINCIPAL: EVOLUÇÃO DE ATUALIZAÇÕES DA FROTA (DNA.MonitorServiceSVC) -->
+      <div class="panel-card" style="margin-bottom: 20px; border: 1px solid rgba(16, 185, 129, 0.35); background: linear-gradient(180deg, rgba(15, 23, 42, 0.85) 0%, rgba(15, 23, 42, 0.95) 100%);">
+        <div class="panel-header" style="border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 12px; margin-bottom: 16px;">
+          <div>
+            <div class="panel-title" style="display: flex; align-items: center; gap: 10px; font-size: 17px; font-weight: 700; color: #f8fafc;">
+              <span>🚀</span>
+              <span>Evolução de Atualizações da Frota — DNA.MonitorServiceSVC</span>
+              <span id="badgeTargetVersion" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); font-size: 11px; padding: 3px 10px; border-radius: 20px; font-family: monospace; font-weight: 700;">v1.0.20.0</span>
+            </div>
+            <div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">
+              Acompanhamento ao vivo da migração silenciosa e esteira de rollout para todos os 241 Capture Sites
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span id="fleetUpdateLastSync" style="font-size: 11px; color: #64748b; font-family: monospace;"></span>
+            <button class="btn-secondary" onclick="loadFleetUpdateEvolution(true)" style="padding: 6px 14px; font-size: 12px; display: flex; align-items: center; gap: 6px;">
+              <i class="fas fa-sync-alt" id="iconReloadFleetEvolution"></i>
+              <span>Atualizar Agora</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- BARRA VISUAL DE PROGRESSO DE ADOÇÃO (SLA PROGRESS BAR) -->
+        <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 12px; padding: 16px 20px; margin-bottom: 18px;">
+          <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
+            <div>
+              <div style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">Progresso Global de Adoção da Versão Homologada</div>
+              <div style="display: flex; align-items: baseline; gap: 8px; margin-top: 2px;">
+                <span id="fleetUpdatePctBig" style="font-size: 28px; font-weight: 900; color: #10b981; letter-spacing: -0.5px;">--%</span>
+                <span id="fleetUpdateCountBig" style="font-size: 14px; color: #94a3b8; font-weight: 600;">(-- / -- hosts)</span>
+                <span id="fleetActiveAdoptionBadge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 700;">--% na frota online ativa</span>
+              </div>
+            </div>
+            <div id="fleetUpdateMetaSummary" style="font-size: 11px; color: #cbd5e1; text-align: right;"></div>
+          </div>
+
+          <!-- Barra Multi-Segmento -->
+          <div style="height: 20px; border-radius: 10px; background: rgba(30, 41, 59, 0.8); overflow: hidden; display: flex; border: 1px solid rgba(148, 163, 184, 0.25); box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);">
+            <div id="barUpdated" style="width: 0%; background: linear-gradient(90deg, #059669, #10b981); transition: width 0.6s ease; position: relative;" title="Atualizados v1.0.20.0"></div>
+            <div id="barPendingOnline" style="width: 0%; background: linear-gradient(90deg, #d97706, #f59e0b); transition: width 0.6s ease; position: relative;" title="Online Pendentes"></div>
+            <div id="barOffline" style="width: 0%; background: #475569; transition: width 0.6s ease; position: relative;" title="Offline / Sem Telemetria"></div>
+          </div>
+
+          <!-- Legendas da Barra com Ação de Filtro Rápido -->
+          <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: 10px; font-size: 11px;">
+            <div style="display: flex; align-items: center; gap: 6px; cursor: pointer;" onclick="filterFleetEvolutionTable('updated')">
+              <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #10b981;"></span>
+              <span style="color: #cbd5e1;">Atualizados (v1.0.20.0):</span>
+              <strong id="legendUpdatedCount" style="color: #34d399;">--</strong>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px; cursor: pointer;" onclick="filterFleetEvolutionTable('pending_online')">
+              <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #f59e0b;"></span>
+              <span style="color: #cbd5e1;">Online Pendentes (1.0.18/19):</span>
+              <strong id="legendPendingOnlineCount" style="color: #fbbf24;">--</strong>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px; cursor: pointer;" onclick="filterFleetEvolutionTable('offline')">
+              <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #94a3b8;"></span>
+              <span style="color: #cbd5e1;">Offline / Sem Heartbeat:</span>
+              <strong id="legendOfflineCount" style="color: #94a3b8;">--</strong>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4 CARDS KPIS COM FILTROS CLICÁVEIS -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-bottom: 18px;">
+          <div class="kpi-card" style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 10px; padding: 14px; cursor: pointer;" onclick="filterFleetEvolutionTable('updated')">
+            <div style="font-size: 11px; color: #34d399; font-weight: 700; text-transform: uppercase;">🟢 Na Versão Homologada</div>
+            <div id="cardUpdatedCount" style="font-size: 26px; font-weight: 900; color: #10b981; margin: 4px 0;">--</div>
+            <div style="font-size: 11px; color: #6ee7b7;">DNA.MonitorServiceSVC v1.0.20.0</div>
+          </div>
+
+          <div class="kpi-card" style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 10px; padding: 14px; cursor: pointer;" onclick="filterFleetEvolutionTable('pending_online')">
+            <div style="font-size: 11px; color: #fbbf24; font-weight: 700; text-transform: uppercase;">🟡 Online Pendentes</div>
+            <div id="cardPendingOnlineCount" style="font-size: 26px; font-weight: 900; color: #f59e0b; margin: 4px 0;">--</div>
+            <div style="font-size: 11px; color: #fcd34d;">Prontos para Atualização</div>
+          </div>
+
+          <div class="kpi-card" style="background: rgba(148, 163, 184, 0.08); border: 1px solid rgba(148, 163, 184, 0.25); border-radius: 10px; padding: 14px; cursor: pointer;" onclick="filterFleetEvolutionTable('offline')">
+            <div style="font-size: 11px; color: #94a3b8; font-weight: 700; text-transform: uppercase;">⚪ Offline / Desligados</div>
+            <div id="cardOfflineCount" style="font-size: 26px; font-weight: 900; color: #e2e8f0; margin: 4px 0;">--</div>
+            <div style="font-size: 11px; color: #64748b;">Sem heartbeat recente hoje</div>
+          </div>
+
+          <div class="kpi-card" style="background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.35); border-radius: 10px; padding: 14px;">
+            <div style="font-size: 11px; color: #60a5fa; font-weight: 700; text-transform: uppercase;">🛡️ Governança SharePoint</div>
+            <div id="cardGovAlignedCount" style="font-size: 26px; font-weight: 900; color: #3b82f6; margin: 4px 0;">--</div>
+            <div style="font-size: 11px; color: #93c5fd;">Versao_Desejada alinhada</div>
+          </div>
+        </div>
+
+        <!-- BOX DE AÇÕES RÁPIDAS PARA CONCLUIR PENDENTES NO GV -->
+        <div style="background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 10px; padding: 14px 18px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+          <div>
+            <div style="font-size: 13px; font-weight: 700; color: #38bdf8; display: flex; align-items: center; gap: 6px;">
+              <span>⚡</span> Ação Rápida: Disparo nos Hosts Restantes via GV / Tanium
+            </div>
+            <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">
+              Copie a lista exata dos hosts pendentes para colar no filtro do GV ou copie o comando PowerShell pronto.
+            </div>
+          </div>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button class="btn-primary" onclick="copyPendingHostsToClipboard()" style="padding: 7px 14px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px;">
+              <span>📋</span> Copiar Hosts Pendentes para o GV (<span id="btnCopyCount">0</span>)
+            </button>
+            <button class="btn-secondary" onclick="copyGvCommandToClipboard()" style="padding: 7px 14px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px;">
+              <span>💻</span> Copiar Comando GV
+            </button>
+          </div>
+        </div>
+
+        <!-- TABELA DETALHADA DE HOSTS COM BUSCA E FILTROS -->
+        <div style="background: rgba(15, 23, 42, 0.5); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 10px; padding: 14px 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;">
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <span style="font-size: 12px; font-weight: 700; color: #cbd5e1; text-transform: uppercase;">Filtrar Lista:</span>
+              <button class="btn-secondary active" id="btnFilterAll" onclick="filterFleetEvolutionTable('all')" style="padding: 4px 10px; font-size: 11px;">Todos (<span id="filterCountAll">0</span>)</button>
+              <button class="btn-secondary" id="btnFilterUpdated" onclick="filterFleetEvolutionTable('updated')" style="padding: 4px 10px; font-size: 11px; color: #34d399;">🟢 v1.0.20.0 (<span id="filterCountUpdated">0</span>)</button>
+              <button class="btn-secondary" id="btnFilterPending" onclick="filterFleetEvolutionTable('pending_online')" style="padding: 4px 10px; font-size: 11px; color: #fbbf24;">🟡 Pendentes Online (<span id="filterCountPending">0</span>)</button>
+              <button class="btn-secondary" id="btnFilterOffline" onclick="filterFleetEvolutionTable('offline')" style="padding: 4px 10px; font-size: 11px; color: #94a3b8;">⚪ Offline (<span id="filterCountOffline">0</span>)</button>
+            </div>
+            <div style="min-width: 220px;">
+              <input type="text" id="inputSearchFleetEvolution" placeholder="🔍 Buscar praça ou host..." oninput="handleFleetEvolutionSearch(this.value)" style="width: 100%; padding: 6px 12px; font-size: 12px; background: rgba(30, 41, 59, 0.8); border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 6px; color: #f8fafc;">
+            </div>
+          </div>
+
+          <!-- Tabela com Rolagem Suave -->
+          <div style="max-height: 420px; overflow-y: auto; border: 1px solid rgba(148, 163, 184, 0.15); border-radius: 8px;">
+            <table class="data-table" style="width: 100%; font-size: 12px; border-collapse: collapse;">
+              <thead>
+                <tr style="position: sticky; top: 0; background: #0f172a; z-index: 2;">
+                  <th style="padding: 8px 12px; text-align: left;">Praça / CS</th>
+                  <th style="padding: 8px 12px; text-align: left;">Hostname</th>
+                  <th style="padding: 8px 12px; text-align: center;">Versão Instalada</th>
+                  <th style="padding: 8px 12px; text-align: center;">Versão Desejada</th>
+                  <th style="padding: 8px 12px; text-align: center;">Status Serviço</th>
+                  <th style="padding: 8px 12px; text-align: center;">Última Telemetria</th>
+                  <th style="padding: 8px 12px; text-align: center;">Governança</th>
+                </tr>
+              </thead>
+              <tbody id="fleetEvolutionTableBody">
+                <tr><td colspan="7" style="text-align: center; padding: 24px; color: #94a3b8;"><i class="fas fa-spinner fa-spin"></i> Carregando evolução dos updates da frota...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
 
       <div class="panel-card">
 
@@ -10800,7 +10947,7 @@
 
             <label style="font-size: 13px; font-weight: 600;">Versão Alvo do Agente C#:</label>
 
-            <input type="text" id="canaryTargetVersion" value="1.0.19.0" onchange="loadCanaryPipelineStatus()" style="padding: 8px 14px; background: rgba(0,0,0,0.4); border: 1px solid var(--border-color); color: #34d399; font-weight: 700; border-radius: var(--radius-sm); font-family: monospace; width: 130px;">
+            <input type="text" id="canaryTargetVersion" value="1.0.20.0" onchange="loadCanaryPipelineStatus()" style="padding: 8px 14px; background: rgba(0,0,0,0.4); border: 1px solid var(--border-color); color: #34d399; font-weight: 700; border-radius: var(--radius-sm); font-family: monospace; width: 130px;">
 
 
 

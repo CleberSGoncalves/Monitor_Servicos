@@ -7,7 +7,7 @@ function getFleetAuthToken() {
 
 async function loadCanaryPipelineStatus() {
     const targetInput = document.getElementById("canaryTargetVersion");
-    const targetVer = (targetInput && targetInput.value ? targetInput.value : "1.0.19.0").trim();
+    const targetVer = (targetInput && targetInput.value ? targetInput.value : "1.0.20.0").trim();
     const statusGrid = document.getElementById("canaryStatusSummaryGrid");
     const pilotsListEl = document.getElementById("canaryPilotsList");
     const logBox = document.getElementById("canaryLogOutput");
@@ -80,7 +80,7 @@ async function loadCanaryPipelineStatus() {
 }
 
 async function triggerCanaryFromDashboard() {
-    const targetVer = (document.getElementById("canaryTargetVersion")?.value || "1.0.19.0").trim();
+    const targetVer = (document.getElementById("canaryTargetVersion")?.value || "1.0.20.0").trim();
 
     const logBox = document.getElementById("canaryLogOutput");
     if (logBox) {
@@ -122,7 +122,7 @@ async function triggerCanaryFromDashboard() {
 }
 
 async function triggerPromoteFleetFromDashboard() {
-    const targetVer = (document.getElementById("canaryTargetVersion")?.value || "1.0.19.0").trim();
+    const targetVer = (document.getElementById("canaryTargetVersion")?.value || "1.0.20.0").trim();
 
     const logBox = document.getElementById("canaryLogOutput");
     if (logBox) {
@@ -343,3 +343,306 @@ document.addEventListener("DOMContentLoaded", () => {
         loadFleetAutoHealingStatus();
     }, 1200);
 });
+
+
+
+// ==============================================================================
+// PAINEL DE EVOLUÇÃO DE ATUALIZAÇÕES DA FROTA (DNA.MonitorServiceSVC v1.0.20.0)
+// ==============================================================================
+
+let cachedFleetEvolutionData = null;
+let currentFleetEvolutionFilter = "all";
+let searchFleetEvolutionQuery = "";
+
+async function loadFleetUpdateEvolution(forceRefresh = false) {
+    const iconReload = document.getElementById("iconReloadFleetEvolution");
+    if (iconReload) iconReload.classList.add("fa-spin");
+
+    try {
+        const targetVerInput = document.getElementById("canaryTargetVersion");
+        const targetVer = (targetVerInput && targetVerInput.value ? targetVerInput.value : "1.0.20.0").trim();
+        const resp = await fetch(`/api/fleet/update-evolution?target_version=${encodeURIComponent(targetVer)}&_t=${Date.now()}`, {
+            headers: { "Authorization": `Bearer ${getFleetAuthToken()}` }
+        });
+        if (!resp.ok) return;
+
+        const data = await resp.json();
+        cachedFleetEvolutionData = data;
+
+        // 1. Atualizar Cabeçalho e Métricas Big
+        const badgeVer = document.getElementById("badgeTargetVersion");
+        if (badgeVer) badgeVer.innerText = `v${data.target_version}`;
+
+        const pctBig = document.getElementById("fleetUpdatePctBig");
+        if (pctBig) pctBig.innerText = `${data.updated_pct}%`;
+
+        const countBig = document.getElementById("fleetUpdateCountBig");
+        if (countBig) countBig.innerText = `(${data.updated_count} / ${data.total_hosts} hosts)`;
+
+        const badgeActive = document.getElementById("fleetActiveAdoptionBadge");
+        if (badgeActive) {
+            badgeActive.innerText = `${data.active_adoption_pct}% na frota online ativa (${data.updated_count}/${data.online_count})`;
+        }
+
+        const lastSyncEl = document.getElementById("fleetUpdateLastSync");
+        if (lastSyncEl && data.last_sync) {
+            const timeStr = new Date(data.last_sync).toLocaleTimeString();
+            lastSyncEl.innerText = `Atualizado às ${timeStr}`;
+        }
+
+        // 2. Atualizar Barra de Progresso Multi-Segmento
+        const barUp = document.getElementById("barUpdated");
+        const barPend = document.getElementById("barPendingOnline");
+        const barOff = document.getElementById("barOffline");
+
+        const pctUp = data.updated_pct;
+        const pctPend = data.total_hosts > 0 ? ((data.pending_online_count / data.total_hosts) * 100).toFixed(1) : 0;
+        const pctOff = data.total_hosts > 0 ? ((data.offline_count / data.total_hosts) * 100).toFixed(1) : 0;
+
+        if (barUp) barUp.style.width = `${pctUp}%`;
+        if (barPend) barPend.style.width = `${pctPend}%`;
+        if (barOff) barOff.style.width = `${pctOff}%`;
+
+        // 3. Atualizar Legendas
+        const legUp = document.getElementById("legendUpdatedCount");
+        if (legUp) legUp.innerText = `${data.updated_count} (${pctUp}%)`;
+
+        const legPend = document.getElementById("legendPendingOnlineCount");
+        if (legPend) legPend.innerText = `${data.pending_online_count} (${pctPend}%)`;
+
+        const legOff = document.getElementById("legendOfflineCount");
+        if (legOff) legOff.innerText = `${data.offline_count} (${pctOff}%)`;
+
+        // 4. Atualizar 4 Cards KPIs
+        const cardUp = document.getElementById("cardUpdatedCount");
+        if (cardUp) cardUp.innerText = data.updated_count;
+
+        const cardPend = document.getElementById("cardPendingOnlineCount");
+        if (cardPend) cardPend.innerText = data.pending_online_count;
+
+        const cardOff = document.getElementById("cardOfflineCount");
+        if (cardOff) cardOff.innerText = data.offline_count;
+
+        const cardGov = document.getElementById("cardGovAlignedCount");
+        if (cardGov) {
+            const alignedCount = (data.hosts_detail || []).filter(h => h.versao_desejada === data.target_version).length;
+            cardGov.innerText = `${alignedCount} / ${data.total_hosts}`;
+        }
+
+        // 5. Atualizar Contadores de Filtro e Botão de Cópia
+        const btnCopyCount = document.getElementById("btnCopyCount");
+        if (btnCopyCount) btnCopyCount.innerText = data.pending_online_hosts ? data.pending_online_hosts.length : 0;
+
+        const fAll = document.getElementById("filterCountAll");
+        if (fAll) fAll.innerText = data.total_hosts;
+
+        const fUp = document.getElementById("filterCountUpdated");
+        if (fUp) fUp.innerText = data.updated_count;
+
+        const fPend = document.getElementById("filterCountPending");
+        if (fPend) fPend.innerText = data.pending_online_count;
+
+        const fOff = document.getElementById("filterCountOffline");
+        if (fOff) fOff.innerText = data.offline_count;
+
+        // 6. Renderizar a Tabela
+        renderFleetEvolutionTable();
+
+        if (forceRefresh && typeof showToast === "function") {
+            showToast("Telemetria de evolução da frota sincronizada com sucesso!", "success");
+        }
+
+    } catch (e) {
+        console.error("Erro ao carregar evolucao de updates:", e);
+    } finally {
+        if (iconReload) iconReload.classList.remove("fa-spin");
+    }
+}
+
+function filterFleetEvolutionTable(category) {
+    currentFleetEvolutionFilter = category;
+
+    // Atualiza estado visual dos botões de filtro
+    const btnMap = {
+        "all": "btnFilterAll",
+        "updated": "btnFilterUpdated",
+        "pending_online": "btnFilterPending",
+        "offline": "btnFilterOffline"
+    };
+
+    Object.values(btnMap).forEach(id => {
+        const b = document.getElementById(id);
+        if (b) b.classList.remove("active");
+    });
+
+    const activeBtn = document.getElementById(btnMap[category] || "btnFilterAll");
+    if (activeBtn) activeBtn.classList.add("active");
+
+    renderFleetEvolutionTable();
+}
+
+function handleFleetEvolutionSearch(query) {
+    searchFleetEvolutionQuery = (query || "").toLowerCase().trim();
+    renderFleetEvolutionTable();
+}
+
+function renderFleetEvolutionTable() {
+    const tbody = document.getElementById("fleetEvolutionTableBody");
+    if (!tbody || !cachedFleetEvolutionData) return;
+
+    const hosts = cachedFleetEvolutionData.hosts_detail || [];
+    const targetVer = cachedFleetEvolutionData.target_version || "1.0.20.0";
+
+    let filtered = hosts;
+
+    // Filtro por categoria
+    if (currentFleetEvolutionFilter !== "all") {
+        filtered = filtered.filter(h => h.category === currentFleetEvolutionFilter);
+    }
+
+    // Filtro por texto de busca
+    if (searchFleetEvolutionQuery) {
+        filtered = filtered.filter(h => 
+            (h.hostname || "").toLowerCase().includes(searchFleetEvolutionQuery) ||
+            (h.praca || "").toLowerCase().includes(searchFleetEvolutionQuery) ||
+            (h.versao_instalada || "").toLowerCase().includes(searchFleetEvolutionQuery)
+        );
+    }
+
+    if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 20px; color: #94a3b8;">Nenhum host encontrado para os filtros selecionados.</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = filtered.map(h => {
+        const isUp = h.category === "updated";
+        const isPend = h.category === "pending_online";
+        const isOff = h.category === "offline";
+
+        // Badge de Versão Instalada
+        let verBadge = `<span style="background: rgba(16,185,129,0.18); color: #34d399; border: 1px solid rgba(16,185,129,0.4); padding: 2px 8px; border-radius: 12px; font-weight: 700; font-family: monospace;">🟢 ${h.versao_instalada}</span>`;
+        if (isPend) {
+            verBadge = `<span style="background: rgba(245,158,11,0.18); color: #fbbf24; border: 1px solid rgba(245,158,11,0.4); padding: 2px 8px; border-radius: 12px; font-weight: 700; font-family: monospace;">🟡 ${h.versao_instalada}</span>`;
+        } else if (isOff) {
+            verBadge = `<span style="background: rgba(148,163,184,0.14); color: #94a3b8; border: 1px solid rgba(148,163,184,0.3); padding: 2px 8px; border-radius: 12px; font-weight: 600; font-family: monospace;">⚪ ${h.versao_instalada}</span>`;
+        }
+
+        // Status do Serviço
+        const isSvcRunning = (h.status_servico || "").toLowerCase().includes("execu");
+        const svcBadge = isSvcRunning 
+            ? `<span style="color: #34d399; font-weight: 600;"><i class="fas fa-check-circle"></i> Em Execução</span>`
+            : `<span style="color: #f87171; font-weight: 600;"><i class="fas fa-exclamation-triangle"></i> ${h.status_servico || "Parado"}</span>`;
+
+        // Telemetria Formatada
+        let timeFormatted = '<span style="color: #64748b;">Sem data</span>';
+        if (h.ultima_atualizacao) {
+            try {
+                const dt = new Date(h.ultima_atualizacao);
+                const isToday = h.is_online_today;
+                const hhmm = dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                if (isToday) {
+                    timeFormatted = `<span style="color: #38bdf8; font-weight: 600;">Hoje às ${hhmm}</span>`;
+                } else {
+                    const ddmm = dt.toLocaleDateString([], { day: '2-digit', month: '2-digit' });
+                    timeFormatted = `<span style="color: #94a3b8;">${ddmm} ${hhmm}</span>`;
+                }
+            } catch (err) {
+                timeFormatted = `<span style="color: #64748b;">${h.ultima_atualizacao}</span>`;
+            }
+        }
+
+        // Governança / Ação Solicitada
+        let govBadge = `<span style="color: #10b981; font-weight: 600;">Atualizado</span>`;
+        if (h.acao_solicitada === "Atualizar") {
+            govBadge = `<span style="color: #f59e0b; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;"><i class="fas fa-arrow-alt-circle-up"></i> Atualizar</span>`;
+        } else if (h.status_atualizacao === "Desatualizado") {
+            govBadge = `<span style="color: #f87171; font-weight: 600;">Desatualizado</span>`;
+        }
+
+        return `
+            <tr style="border-bottom: 1px solid rgba(148,163,184,0.1); transition: background 0.15s ease;" onmouseover="this.style.background='rgba(51,65,85,0.3)'" onmouseout="this.style.background='transparent'">
+                <td style="padding: 8px 12px; font-weight: 600; color: #f8fafc;">
+                    ${h.praca} <span style="font-size: 10px; color: #64748b; font-weight: normal; margin-left: 4px;">CS ${h.cs || 1}</span>
+                </td>
+                <td style="padding: 8px 12px; font-family: monospace; font-size: 11px; color: #cbd5e1;">
+                    ${h.hostname}
+                </td>
+                <td style="padding: 8px 12px; text-align: center;">
+                    ${verBadge}
+                </td>
+                <td style="padding: 8px 12px; text-align: center; font-family: monospace; font-size: 11px; color: #94a3b8;">
+                    ${h.versao_desejada || targetVer}
+                </td>
+                <td style="padding: 8px 12px; text-align: center; font-size: 11px;">
+                    ${svcBadge}
+                </td>
+                <td style="padding: 8px 12px; text-align: center; font-size: 11px;">
+                    ${timeFormatted}
+                </td>
+                <td style="padding: 8px 12px; text-align: center; font-size: 11px;">
+                    ${govBadge}
+                </td>
+            </tr>
+        `;
+    }).join("");
+}
+
+function copyPendingHostsToClipboard() {
+    if (!cachedFleetEvolutionData || !cachedFleetEvolutionData.pending_online_csv) {
+        if (typeof showToast === "function") showToast("Nenhum host pendente no momento!", "info");
+        return;
+    }
+
+    const textToCopy = cachedFleetEvolutionData.pending_online_csv;
+    navigator.clipboard.writeText(textToCopy).then(() => {
+        const count = cachedFleetEvolutionData.pending_online_hosts ? cachedFleetEvolutionData.pending_online_hosts.length : 0;
+        if (typeof showToast === "function") {
+            showToast(`Lista de ${count} hosts pendentes copiada para a área de transferência!`, "success");
+        }
+    }).catch(err => {
+        // Fallback para textarea invisível
+        const ta = document.createElement("textarea");
+        ta.value = textToCopy;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        if (typeof showToast === "function") {
+            showToast("Lista de hosts copiada para o clipboard!", "success");
+        }
+    });
+}
+
+function copyGvCommandToClipboard() {
+    const cmd = `powershell.exe -ExecutionPolicy Bypass -NoProfile -Command "$d = if (Test-Path 'D:\MediaDNA_V2\Applications\MonitorServiceSVC') { 'D:\MediaDNA_V2\Applications\MonitorServiceSVC' } elseif (Test-Path 'C:\MediaDNA_V2\Applications\MonitorServiceSVC') { 'C:\MediaDNA_V2\Applications\MonitorServiceSVC' } else { $null }; if ($d) { $b = Join-Path $d 'bootstrap_update.ps1'; if (Test-Path $b) { Start-Process powershell.exe -ArgumentList '-ExecutionPolicy', 'Bypass', '-NoProfile', '-WindowStyle', 'Hidden', '-Command', ('Start-Sleep -Seconds 10; & \"' + $b + '\" -Force') -WindowStyle Hidden; Write-Host '[OK] Disparado'; exit 0 } }"`;
+    
+    navigator.clipboard.writeText(cmd).then(() => {
+        if (typeof showToast === "function") {
+            showToast("Comando PowerShell do GV copiado com sucesso!", "success");
+        }
+    }).catch(err => {
+        const ta = document.createElement("textarea");
+        ta.value = cmd;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        if (typeof showToast === "function") {
+            showToast("Comando PowerShell do GV copiado com sucesso!", "success");
+        }
+    });
+}
+
+window.loadFleetUpdateEvolution = loadFleetUpdateEvolution;
+window.filterFleetEvolutionTable = filterFleetEvolutionTable;
+window.handleFleetEvolutionSearch = handleFleetEvolutionSearch;
+window.copyPendingHostsToClipboard = copyPendingHostsToClipboard;
+window.copyGvCommandToClipboard = copyGvCommandToClipboard;
+
+// Auto-refresh da evolução ao vivo enquanto o usuário estiver na aba Frota
+setInterval(() => {
+    const activeTab = document.querySelector(".nav-btn.active")?.dataset?.tab;
+    if (activeTab === "fleet") {
+        loadFleetUpdateEvolution(false);
+    }
+}, 30000);
