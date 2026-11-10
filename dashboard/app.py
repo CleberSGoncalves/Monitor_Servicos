@@ -1600,31 +1600,58 @@ async def get_channel_jpeg(canal: str, praca: Optional[str] = None, mode: Option
         buf.seek(0)
         return Response(content=buf.getvalue(), media_type="image/jpeg", headers=response_headers)
 
-    # 2. CANAIS DE TV: PROCURA JPEGS REAIS EM DISCO OU GERA QUADRO COM TARJA EXATA DA PRAÇA
+    # 2. CANAIS DE TV: FRAME REAL FRESCO (MTIME <= 900S) OU SLATE TÉCNICO OFICIAL DE TELEMETRIA DO VEÍCULO
     # =========================================================================
+    import os
     p_norm = (praca or "").lower().strip()
-    
-    # Mapeamento Oficial de Siglas e Tarjas MediaDNA Atria por Praça
-    PRACA_TARJA_MAP = {
-        "florianópolis": {"prefix": "SC1", "code": "FLN", "uf": "SC", "cs": 1},
-        "florianopolis": {"prefix": "SC1", "code": "FLN", "uf": "SC", "cs": 1},
-        "pelotas": {"prefix": "RS1", "code": "PLT", "uf": "RS", "cs": 1},
-        "caxias do sul": {"prefix": "RS2", "code": "CSL", "uf": "RS", "cs": 2},
-        "porto alegre": {"prefix": "RS1", "code": "POA", "uf": "RS", "cs": 1},
-        "campinas": {"prefix": "SP2", "code": "CMP", "uf": "SP", "cs": 2},
-        "são paulo": {"prefix": "SP1", "code": "SPO", "uf": "SP", "cs": 1},
-        "sao paulo": {"prefix": "SP1", "code": "SPO", "uf": "SP", "cs": 1},
-        "rio de janeiro": {"prefix": "RJ1", "code": "RIO", "uf": "RJ", "cs": 1},
-        "juiz de fora": {"prefix": "MG1", "code": "JFA", "uf": "MG", "cs": 1},
-        "brasília": {"prefix": "DF1", "code": "BSB", "uf": "DF", "cs": 1},
-        "brasilia": {"prefix": "DF1", "code": "BSB", "uf": "DF", "cs": 1},
-        "salvador": {"prefix": "BA1", "code": "SSA", "uf": "BA", "cs": 1},
-        "recife": {"prefix": "PE1", "code": "REC", "uf": "PE", "cs": 1},
-        "fortaleza": {"prefix": "CE1", "code": "FOR", "uf": "CE", "cs": 1},
-        "curitiba": {"prefix": "PR1", "code": "CTB", "uf": "PR", "cs": 1},
-        "belo horizonte": {"prefix": "MG1", "code": "BHO", "uf": "MG", "cs": 1},
-    }
-    tarja_info = PRACA_TARJA_MAP.get(p_norm, {"prefix": "CS1", "code": "PRC", "uf": "BR", "cs": 1})
+    c_target = c_lower.strip()
+
+    # Busca telemetria real do canal no cache do SharePoint/MediaDNA
+    cached_chans = get_cached_data().get("channels", [])
+    matched_chan = None
+
+    if p_norm:
+        for c in cached_chans:
+            cn = (c.get("canal") or "").lower().strip()
+            cp = (c.get("cidade") or c.get("praca") or "").lower().strip()
+            if cn == c_target and (p_norm in cp or cp in p_norm):
+                matched_chan = c
+                break
+
+    if not matched_chan and p_norm:
+        for c in cached_chans:
+            cn = (c.get("canal") or "").lower().strip()
+            cp = (c.get("cidade") or c.get("praca") or "").lower().strip()
+            if (c_target in cn or cn in c_target) and (p_norm in cp or cp in p_norm):
+                matched_chan = c
+                break
+
+    if not matched_chan:
+        for c in cached_chans:
+            cn = (c.get("canal") or "").lower().strip()
+            if c_target == cn or c_target in cn:
+                matched_chan = c
+                break
+
+    # Extração dos dados de telemetria reais do veículo
+    host_name = (matched_chan.get("host") if matched_chan else None) or ""
+    try:
+        qualidade = int(float(matched_chan.get("qualidade_sinal") or matched_chan.get("qualidade") or 0)) if matched_chan else 0
+    except Exception:
+        qualidade = 0
+    try:
+        forca = int(float(matched_chan.get("forca_sinal") or matched_chan.get("forca") or 0)) if matched_chan else 0
+    except Exception:
+        forca = 0
+
+    status_tuner = (matched_chan.get("status_tuner") if matched_chan else None) or "Lock"
+    video_congelado = (matched_chan.get("video_congelado") if matched_chan else None) or "Não"
+    audio_mudo = (matched_chan.get("audio_mudo") if matched_chan else None) or "Não"
+    has_outage = bool(matched_chan.get("has_outage", False)) if matched_chan else False
+    try:
+        id_cs = int(float(matched_chan.get("id_cs") or 1)) if matched_chan else 1
+    except Exception:
+        id_cs = 1
 
     # Abreviação oficial do veículo para a tarja
     v_code = "TV"
@@ -1643,7 +1670,49 @@ async def get_channel_jpeg(canal: str, praca: Optional[str] = None, mode: Option
     elif "brasil" in c_lower:
         v_code = "TVBR"
 
-    # 1. Busca ativa de JPEGs reais gravados em disco nas pastas oficiais do MediaDNA
+    # Mapeamento Oficial de Siglas e Tarjas MediaDNA Atria por Praça / Host
+    tarja_prefix = f"CS{id_cs}"
+    tarja_code = "PRC"
+    if host_name and host_name.startswith("BR"):
+        parts = host_name.replace("--", "-").split("-")
+        uf = parts[0][2:4].upper() if len(parts[0]) >= 4 else "BR"
+        code = parts[1].upper() if len(parts) > 1 else "CS"
+        cs_num = str(id_cs)
+        if len(parts) > 2:
+            m = re.search(r'\d+', parts[-1])
+            if m:
+                cs_num = str(int(m.group(0)))
+        tarja_prefix = f"{uf}{cs_num}"
+        tarja_code = code
+    else:
+        PRACA_TARJA_MAP = {
+            "florianópolis": {"prefix": "SC1", "code": "FLN", "uf": "SC", "cs": 1},
+            "florianopolis": {"prefix": "SC1", "code": "FLN", "uf": "SC", "cs": 1},
+            "pelotas": {"prefix": "RS1", "code": "PLT", "uf": "RS", "cs": 1},
+            "caxias do sul": {"prefix": "RS2", "code": "CSL", "uf": "RS", "cs": 2},
+            "porto alegre": {"prefix": "RS1", "code": "POA", "uf": "RS", "cs": 1},
+            "campinas": {"prefix": "SP2", "code": "CMP", "uf": "SP", "cs": 2},
+            "são paulo": {"prefix": "SP1", "code": "SPO", "uf": "SP", "cs": 1},
+            "sao paulo": {"prefix": "SP1", "code": "SPO", "uf": "SP", "cs": 1},
+            "rio de janeiro": {"prefix": "RJ1", "code": "RIO", "uf": "RJ", "cs": 1},
+            "juiz de fora": {"prefix": "MG1", "code": "JFA", "uf": "MG", "cs": 1},
+            "brasília": {"prefix": "DF1", "code": "BSB", "uf": "DF", "cs": 1},
+            "brasilia": {"prefix": "DF1", "code": "BSB", "uf": "DF", "cs": 1},
+            "salvador": {"prefix": "BA1", "code": "SSA", "uf": "BA", "cs": 1},
+            "recife": {"prefix": "PE1", "code": "REC", "uf": "PE", "cs": 1},
+            "fortaleza": {"prefix": "CE1", "code": "FOR", "uf": "CE", "cs": 1},
+            "curitiba": {"prefix": "PR1", "code": "CTB", "uf": "PR", "cs": 1},
+            "belo horizonte": {"prefix": "MG1", "code": "BHO", "uf": "MG", "cs": 1},
+        }
+        if p_norm in PRACA_TARJA_MAP:
+            t_info = PRACA_TARJA_MAP[p_norm]
+            tarja_prefix = t_info["prefix"]
+            tarja_code = t_info["code"]
+        elif praca:
+            tarja_code = praca[:3].upper()
+
+    # Busca estrita de JPEGs reais gravados em disco nas pastas do MediaDNA
+    # REGRA ANTI-ALUCINAÇÃO: Somente arquivos genuínos com mtime <= 900 segundos (15 min) são aceitos.
     real_disk_file = None
     search_dirs = [
         Path(r"D:\MediaDNA_V2\data\jpeg\control"),
@@ -1653,107 +1722,126 @@ async def get_channel_jpeg(canal: str, praca: Optional[str] = None, mode: Option
         Path(r"D:\MediaDNA_V2\data\video\registered"),
         Path(r"E:\MediaDNA_V2\Data\Video\Registered")
     ]
-
+    now_ts = time.time()
     for d in search_dirs:
         if d.exists() and d.is_dir():
-            patterns = [f"*{v_code}*.jpg", f"*{tarja_info['code']}*.jpg", "*.jpg"]
+            patterns = [f"*{v_code}*.jpg", f"*{tarja_code}*.jpg"]
             for pat in patterns:
                 found = list(d.glob(pat))
-                if found:
-                    real_disk_file = sorted(found)[-1]
+                for candidate in sorted(found, reverse=True):
+                    try:
+                        mtime = os.path.getmtime(candidate)
+                        if (now_ts - mtime) <= 900:  # estritamente até 15 minutos
+                            real_disk_file = candidate
+                            break
+                    except Exception:
+                        continue
+                if real_disk_file:
                     break
-            if real_disk_file:
-                break
+        if real_disk_file:
+            break
 
-    # 2. Localiza frames de vídeo do canal
-    brand_key = None
-    if "globo" in c_lower or "rbs" in c_lower: brand_key = "globo"
-    elif "sbt" in c_lower or "jangadeiro" in c_lower: brand_key = "sbt"
-    elif "record" in c_lower or "rec" in c_lower: brand_key = "record"
-    elif "band" in c_lower: brand_key = "band"
-    elif "redetv" in c_lower: brand_key = "redetv"
-    elif "brasil" in c_lower: brand_key = "tvbrasil"
-    elif "cultura" in c_lower: brand_key = "cultura"
-    elif "diario" in c_lower: brand_key = "diario"
-    elif "uniao" in c_lower: brand_key = "uniao"
-
-    matched_file = real_disk_file
-    if not matched_file and brand_key:
-        frames_dir = Path(__file__).resolve().parent / "static" / "thumbnails" / "channel_frames" / brand_key
-        if frames_dir.exists():
-            all_frames = sorted(list(frames_dir.glob("*.jpg")))
-            if all_frames:
-                city_offset = sum(ord(ch) for ch in (praca or "cs"))
-                if seq is not None:
-                    idx = (int(seq) + city_offset) % len(all_frames)
-                else:
-                    time_step = int(time.time() // 5)
-                    idx = (time_step + city_offset) % len(all_frames)
-                matched_file = all_frames[idx]
-
+    # NOTA: NUNCA MAIS RECORRER A 'channel_frames' OU FOTOS FALSAS/ALEATÓRIAS.
+    # Se não houver arquivo real recente no disco, renderiza o Slate Técnico Oficial com a telemetria do veículo.
     w, h = 320, 240
-    if matched_file and matched_file.exists():
-        try:
-            img = Image.open(matched_file).convert("RGB").resize((w, h))
-        except Exception:
-            img = Image.new("RGB", (w, h), color=(15, 23, 42))
-    else:
-        img = Image.new("RGB", (w, h), color=(15, 23, 42))
-        draw_slate = ImageDraw.Draw(img)
-        bar_colors = [(192, 192, 192), (192, 192, 0), (0, 192, 192), (0, 192, 0), (192, 0, 192), (192, 0, 0), (0, 0, 192)]
-        bw = w // len(bar_colors)
-        for bi, col in enumerate(bar_colors):
-            draw_slate.rectangle([bi * bw, 0, (bi + 1) * bw, 60], fill=col)
-        draw_slate.rectangle([12, 70, w - 12, h - 30], fill=(11, 19, 43), outline=(56, 189, 248))
-        draw_slate.text((22, 80), canal.upper()[:24], fill=(255, 255, 255))
-        draw_slate.text((22, 100), f"{praca or 'Capture Site'} • SINAL DTV ISDB-Tb", fill=(56, 189, 248))
-        draw_slate.text((22, 120), "AGUARDANDO SINCRONISMO DE VÍDEO DO CS", fill=(250, 204, 21))
-
-    draw = ImageDraw.Draw(img)
     now_dt = datetime.now()
     now_str = now_dt.strftime("%d/%m/%Y %H:%M:%S")
     now_hms = now_dt.strftime("%H:%M:%S")
+    tarja_texto = f"{tarja_prefix} - {v_code}(DT) - {now_str} - {tarja_code}"
 
-    # =========================================================================
-    # LEI DA TARJA EXATA DA PRAÇA (SUBSTITUIÇÃO DA TARJA FOR/CE1 INDEVIDA)
-    # =========================================================================
-    draw.rectangle([0, 0, w, 22], fill=(0, 0, 0))
-    tarja_texto = f"{tarja_info['prefix']} - {v_code}(DT) - {now_str} - {tarja_info['code']}"
-    draw.text((6, 4), tarja_texto, fill=(255, 255, 255))
+    is_frozen = (video_congelado and video_congelado != "Não" and video_congelado != "Nao")
+    is_fault = (mode == "fault") or has_outage or is_frozen or any(kw in canal.lower() for kw in ["falha", "queda", "travad", "glitch"])
 
-    is_fault = (mode == "fault") or any(kw in canal.lower() for kw in ["falha", "queda", "travad", "glitch"])
-    is_pelotas_gop = (praca and "pelotas" in praca.lower() and "globo" in c_lower)
+    if real_disk_file and real_disk_file.exists():
+        try:
+            img = Image.open(real_disk_file).convert("RGB").resize((w, h))
+        except Exception:
+            img = None
+    else:
+        img = None
 
-    if is_fault or is_pelotas_gop or mode == "fault":
-        overlay = Image.new("RGBA", (w, h), (15, 23, 42, 140))
-        img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
+    if img is not None:
         draw = ImageDraw.Draw(img)
-
+        # Tarja OSD Superior MediaDNA
         draw.rectangle([0, 0, w, 22], fill=(0, 0, 0))
         draw.text((6, 4), tarja_texto, fill=(255, 255, 255))
 
-        for bx in range(20, w - 20, 36):
-            if bx % 2 == 0:
-                draw.rectangle([bx, 28, bx + 32, 54], fill=(24, 48, 54), outline=(16, 185, 129))
-            else:
-                draw.rectangle([bx, 28, bx + 32, 54], fill=(45, 20, 38), outline=(239, 68, 68))
-
-        draw.rectangle([8, 8, w - 8, h - 8], outline=(239, 68, 68), width=3)
-        draw.rectangle([16, 75, w - 16, 145], fill=(15, 23, 42), outline=(239, 68, 68), width=2)
-        draw.rectangle([20, 79, w - 20, 100], fill=(220, 38, 38))
-        draw.text((28, 83), "FALHA DE TRANSMISSAO DETECTADA (ATRIA)", fill=(255, 255, 255))
-        draw.text((28, 106), "TIPO: CONGELAMENTO DE QUADRO (GOP STALL)", fill=(248, 113, 113))
-        draw.text((28, 124), "DELTA: 0.00% | KEYFRAME AUSENTE > 4.2s", fill=(254, 202, 202))
-
-        draw.rectangle([0, h - 44, w, h - 20], fill=(15, 23, 42), outline=(239, 68, 68))
-        draw.text((12, h - 38), f"FALHA: {canal[:20]} ({praca or 'CS'})", fill=(248, 113, 113))
-
-        draw.rectangle([0, h - 20, w, h], fill=(8, 12, 22))
-        draw.text((10, h - 16), "STATUS: BUFFER H.264 TRAVADO • HANG DETECTADO", fill=(239, 68, 68))
+        if is_fault:
+            overlay = Image.new("RGBA", (w, h), (15, 23, 42, 160))
+            img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
+            draw = ImageDraw.Draw(img)
+            draw.rectangle([0, 0, w, 22], fill=(0, 0, 0))
+            draw.text((6, 4), tarja_texto, fill=(255, 255, 255))
+            draw.rectangle([8, 8, w - 8, h - 8], outline=(239, 68, 68), width=3)
+            draw.rectangle([16, 75, w - 16, 145], fill=(15, 23, 42), outline=(239, 68, 68), width=2)
+            draw.rectangle([20, 79, w - 20, 100], fill=(220, 38, 38))
+            draw.text((28, 83), "FALHA DE TRANSMISSAO DETECTADA (ATRIA)", fill=(255, 255, 255))
+            fault_desc = "QUEDA DE PORTADORA RF" if (has_outage or qualidade == 0) else "CONGELAMENTO DE QUADRO (GOP STALL)"
+            draw.text((28, 106), f"TIPO: {fault_desc}", fill=(248, 113, 113))
+            draw.text((28, 124), f"RF: {qualidade}% | STATUS TUNER: {status_tuner[:20]}", fill=(254, 202, 202))
+            draw.rectangle([0, h - 22, w, h], fill=(8, 12, 22))
+            draw.text((10, h - 16), "STATUS: ALERTA OPERACIONAL ATIVO", fill=(239, 68, 68))
+        else:
+            draw.rectangle([0, h - 22, w, h], fill=(0, 0, 0))
+            draw.text((8, h - 16), f"{now_hms} • 320x240 DTV", fill=(220, 220, 220))
+            draw.text((w - 40, h - 16), "LIVE", fill=(52, 211, 153))
     else:
-        draw.rectangle([0, h - 22, w, h], fill=(0, 0, 0))
-        draw.text((8, h - 16), f"{now_hms} • 320x240", fill=(220, 220, 220))
-        draw.text((w - 30, h - 16), "TV", fill=(148, 163, 184))
+        # =========================================================================
+        # STANDBY SLATE TÉCNICO OFICIAL DE BROADCAST MEDIADNA (TELEMETRIA REAL DO VEÍCULO)
+        # =========================================================================
+        img = Image.new("RGB", (w, h), color=(10, 15, 28))
+        draw = ImageDraw.Draw(img)
+
+        # 1. Tarja OSD Oficial MediaDNA no Topo
+        draw.rectangle([0, 0, w, 22], fill=(0, 0, 0))
+        draw.text((6, 4), tarja_texto, fill=(255, 255, 255))
+
+        # 2. SMPTE Broadcast Color Bars
+        bar_colors = [
+            (192, 192, 192), (192, 192, 0), (0, 192, 192),
+            (0, 192, 0), (192, 0, 192), (192, 0, 0), (0, 0, 192)
+        ]
+        bw = w // len(bar_colors)
+        for bi, col in enumerate(bar_colors):
+            draw.rectangle([bi * bw, 22, (bi + 1) * bw, 46], fill=col)
+
+        # 3. Painel Central de Telemetria do Veículo
+        draw.rectangle([8, 52, w - 8, 214], fill=(13, 20, 36), outline=(30, 41, 59))
+
+        title = f"{canal.upper()} • {(praca or 'CS').upper()} (CS {id_cs})"
+        draw.text((14, 58), title[:36], fill=(255, 255, 255))
+        host_disp = host_name or "CS REMOTO"
+        draw.text((14, 76), f"HOST: {host_disp} • ISDB-Tb DTV"[:36], fill=(56, 189, 248))
+
+        # Caixa de Métricas de RF & Áudio
+        draw.rectangle([14, 96, w - 14, 142], fill=(18, 27, 49), outline=(51, 65, 85))
+        if qualidade > 0 and not has_outage:
+            draw.text((20, 102), f"RF SINAL: Qualidade {qualidade}% | Forca {forca}%", fill=(52, 211, 153))
+        else:
+            draw.text((20, 102), "RF SINAL: SEM PORTADORA (0%) • QUEDA DETECTADA", fill=(239, 68, 68))
+
+        tuner_txt = "Lock (OK)" if ("working" in status_tuner.lower() or "lock" in status_tuner.lower()) else "No Lock"
+        audio_txt = "MUDO" if (audio_mudo == "Sim" or audio_mudo == True) else "-14 dB OK"
+        draw.text((20, 120), f"TUNER: {tuner_txt} | AUDIO: {audio_txt}", fill=(226, 232, 240))
+
+        # Faixa de Status da Transmissão em Tempo Real
+        if has_outage or qualidade == 0:
+            draw.rectangle([14, 150, w - 14, 204], fill=(45, 20, 20), outline=(239, 68, 68))
+            draw.text((20, 158), "[ALERTA CRITICO: QUEDA DE PORTADORA RF]", fill=(239, 68, 68))
+            draw.text((20, 178), "Sem sinal detectado no demodulador remoto", fill=(248, 113, 113))
+        elif is_frozen or mode == "fault":
+            draw.rectangle([14, 150, w - 14, 204], fill=(45, 30, 15), outline=(245, 158, 11))
+            draw.text((20, 158), "[FALHA: CONGELAMENTO DE QUADRO DETECTADO]", fill=(245, 158, 11))
+            draw.text((20, 178), "DirectShow Graph travado ou PTS estatico", fill=(253, 186, 116))
+        else:
+            draw.rectangle([14, 150, w - 14, 204], fill=(15, 30, 45), outline=(16, 185, 129))
+            draw.text((20, 158), "SINAL DTV NOMINAL NO AR (TRANSMITINDO)", fill=(52, 211, 153))
+            draw.text((20, 178), "Aguardando sincronismo de video do CS remoto", fill=(148, 163, 184))
+
+        # 4. OSD Rodapé
+        draw.rectangle([0, 218, w, 240], fill=(0, 0, 0))
+        draw.text((8, 222), f"{now_hms} • 320x240 DTV", fill=(200, 200, 200))
+        draw.text((w - 120, 222), "TELEMETRIA CS ATIVA", fill=(56, 189, 248))
 
     buf = BytesIO()
     img.save(buf, format="JPEG", quality=90)
