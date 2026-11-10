@@ -74,3 +74,12 @@ def test_via_cmd_process_start(test_dirs):
     res = subprocess.run(full_cmd, shell=True, capture_output=True, text=True)
     assert res.returncode == 0
     assert "[OK] Ja atualizado na versao 1.0.20.0" in res.stdout
+
+def test_async_background_jitter_command(test_dirs):
+    target_dir = test_dirs["dir_v19"]
+    cmd = f'''$d = if (Test-Path '{target_dir}') {{ '{target_dir}' }} else {{ $null }}; if ($d) {{ $v = (Get-Item (Join-Path $d 'WinServiceFleetAgent.exe') -ErrorAction SilentlyContinue).VersionInfo.FileVersion; if ($v -eq '1.0.20.0') {{ Write-Host '[OK] Ja atualizado na versao 1.0.20.0'; exit 0 }}; $b = Join-Path $d 'bootstrap_update.ps1'; if (Test-Path $b) {{ (Get-Content $b) -replace 'DNA.MonitorServiceSVC_v1.0.19.0.zip','DNA.MonitorServiceSVC_v1.0.20.0.zip' -replace '1.0.19.0','1.0.20.0' | Set-Content $b; $delay = Get-Random -Minimum 10 -Maximum 900; Start-Process powershell.exe -ArgumentList "-ExecutionPolicy Bypass -NoProfile -Command Write-Host MockUpdate" -WindowStyle Hidden; Write-Host "[OK] Atualizacao v1.0.20.0 agendada em background (delay=${{delay}}s)"; exit 0 }} }}'''
+
+    res = subprocess.run(["powershell", "-ExecutionPolicy", "Bypass", "-NoProfile", "-Command", cmd], capture_output=True, text=True)
+    assert res.returncode == 0
+    assert "[OK] Atualizacao v1.0.20.0 agendada em background" in res.stdout
+
