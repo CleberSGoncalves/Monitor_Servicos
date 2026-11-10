@@ -12186,18 +12186,19 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
         }
 
         // PRECEDÊNCIA UNIVERSAL DE TELEMETRIA:
-        // Se o agente está sem comunicar há mais de 20 minutos (diff_hours > 0.33) ou se DNA.MonitorServiceSVC não está ativo,
-        // o host é considerado OFFLINE / COMUNICAÇÃO PERDIDA. Métricas de hardware locais não refletem o tempo real.
-        h.is_offline = h.diff_hours > 0.33 || !h.agent_running;
+        // 1. Frescor de Telemetria de Hardware em Tempo Real:
+        // Se a telemetria do agente tem mais de 20 minutos (diff_hours > 0.33) ou o agente não está rodando,
+        // métricas de CPU/RAM/Disco locais não refletem o tempo real e não devem poluir a barra de hardware crítico.
+        h.is_hw_stale = h.diff_hours > 0.33 || !h.agent_running;
 
+        // 2. Classificação Real de Conectividade do Host:
+        // Um host SÓ é considerado Offline (>24h sem comunicação).
+        // Intervalos de sincronismo normais ou atrasos transitórios WAN (< 24h) NÃO são considerados Host Desconectado!
+        h.is_offline = h.diff_hours >= 24.0;
 
-
-        if (h.is_offline) {
-
+        if (h.is_hw_stale) {
             h.has_critical_hw = false;
-
-            return; // Host offline não polui a barra de gargalos de hardware em tempo real!
-
+            return; // Telemetria antiga não polui a barra de gargalos de hardware em tempo real!
         }
 
 
@@ -13444,47 +13445,31 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
 
         const pKey = `${pracaClean}_1`;
 
+        // Um site de detecção SÓ é considerado incidente de host desconectado se o backend
+        // declarou COMM_LOST, ou se a comunicação está ausente há mais de 24 horas.
+        // Sites NOMINAIS ou em atraso transitório WAN (< 24h) NUNCA geram alarme falso de host desconectado!
         const isOffline = hStatus === "COMM_LOST" || engTier === "COMM_LOST" || 
-
-                          site.agent_comm?.is_stale || 
-
                           site.agent_comm?.status === "OFFLINE_CRITICAL" || 
-
-                          site.agent_comm?.status === "OFFLINE_RECENT" || 
-
-                          site.agent_comm?.status === "DELAY" || 
-
                           site.agent_comm_status === "OFFLINE_CRITICAL" || 
-
-                          site.agent_comm_status === "OFFLINE_RECENT" || 
-
-                          site.agent_comm_status === "DELAY" || 
-
                           offlineHostsSet.has(hKey) ||
-
                           offlinePracasMap.has(pKey) ||
-
-                          site.pipeline_services?.fast_matching?.is_stale ||
-
-                          (site.agent_comm?.hours_since_last_seen > 0.33);
-
-
+                          (site.agent_comm?.hours_since_last_seen >= 24.0);
 
         if (isOffline) {
+            // Se o agente comunicou recentemente (< 2h) e hStatus não é COMM_LOST, é um host online!
+            const hoursAgo = site.agent_comm?.hours_since_last_seen || 0;
+            if (hoursAgo < 2.0 && hStatus !== "COMM_LOST") {
+                return; // Host online, não gera falso incidente de conectividade
+            }
 
             sev = "P1";
-
             sevLabel = "ALERTA (P1)";
-
             catLabel = "Host Desconectado";
-
             catIcon = "fa-network-wired";
-
-            title = `Host Desconectado (Telemetria Ausente)`;
-
-            telText = `Telemetria suspensa há ${site.agent_comm?.label || 'desconhecido'} | Processos locais indeterminados | Verifique DNA.MonitorServiceSVC`;
-
-            summaryText = `Host CS01 sem envio de telemetria há ${site.agent_comm?.label || 'tempo prolongado'}. Os serviços no servidor físico podem estar operando normalmente (ex: FastMatching em execução), porém os dados centrais estão suspensos.`;
+            title = `Host Desconectado (Telemetria Ausente > 24h)`;
+            const commAgo = site.agent_comm?.label || `${Math.round(hoursAgo)}h atrás`;
+            telText = `Telemetria suspensa (${commAgo}) | Processos locais indeterminados | Verifique DNA.MonitorServiceSVC`;
+            summaryText = `Host CS01 sem envio de telemetria (${commAgo}). Os serviços no servidor físico podem estar operando normalmente (ex: FastMatching em execução), porém os dados centrais estão suspensos.`;
 
         } else if (hStatus === "CRITICAL" || engTier === "NONE") {
 
