@@ -124,3 +124,77 @@ def test_ai_diagnostic_on_offline_host_avoids_false_positive():
         action_names = [a["action"] for a in diagnosis["recommended_actions"]]
         assert "restart_agent_service" in action_names
         assert "start_fastmatching" not in action_names
+
+
+def test_castanhal_cross_service_timestamp_contamination_prevention():
+    """
+    CENÁRIO EXATO DE CASTANHAL (BRPA-CAH-DT01):
+    - DNA.MonitorServiceSVC atualizou há 5 horas (10:33Z)
+    - FastMatchingSvc está com status 'Parado' de 2.5 horas atrás (12:34Z)
+    - DNA.MediaConverterSVC atualizou há 54 minutos (0.9h atrás, 14:40Z)
+    
+    A Lei de Precedência de Telemetria proíbe que o timestamp do MediaConverter contamine
+    o host para considerá-lo 'Conectado' e soar falso P0 de 'FastMatching Parado'.
+    O monitor DEVE classificar como COMM_LOST / Telemetria Suspensa e JAMAIS como CRITICAL (P0).
+    """
+    now = datetime.now(timezone.utc)
+    agent_date = (now - timedelta(hours=5)).isoformat()
+    fm_date = (now - timedelta(hours=2.5)).isoformat()
+    media_date = (now - timedelta(minutes=54)).isoformat()
+
+    mock_services = [
+        _build_mock_service("DNA.ConfigMonitorSVC", "Em Execução", update_time=agent_date),
+        _build_mock_service("FastMatchingSvc", "Parado", update_time=fm_date),
+        _build_mock_service("DNA.DetectionSVC", "Inexistente", update_time=agent_date),
+        _build_mock_service("DNA.MonitorServiceSVC", "Em Execução", update_time=agent_date),
+        _build_mock_service("DNA.MediaConverterSVC", "Em Execução", update_time=media_date),
+    ]
+
+    with patch("tracking_detection_monitor.get_fleet_services", return_value=mock_services):
+        snapshot = build_detection_fleet_snapshot()
+        sites = snapshot.get("sites", [])
+        assert len(sites) == 1
+        site = sites[0]
+
+        # Garantir que NÃO é P0
+        assert site["health_status"] == "COMM_LOST", (
+            f"Esperado COMM_LOST devido à telemetria defasada do agente, recebido: {site['health_status']}"
+        )
+        assert "Host Desconectado" in site["severity_label"]
+        assert site["pipeline_bottleneck"] == "TELEMETRY_OFFLINE"
+        assert snapshot["summary"]["critical"] == 0
+        assert snapshot["summary"]["inoperant_p0"] == 0
+
+
+def test_catalao_delayed_telemetry_prevents_false_p0():
+    """
+    CENÁRIO EXATO DE CATALÃO (BRGO-CTL-DT01):
+    - Telemetria de todos os serviços recebida há 48 minutos (0.8h atrás)
+    - FastMatchingSvc está com status 'Parado'
+    
+    Como 48 minutos é > 20 minutos (limiar estrito de telemetria fresca para P0),
+    o estado do processo é INDETERMINADO. NÃO pode soar alarme P0 de Sem Motor de Matching.
+    """
+    now = datetime.now(timezone.utc)
+    delayed_date = (now - timedelta(minutes=48)).isoformat()
+
+    mock_services = [
+        _build_mock_service("DNA.ConfigMonitorSVC", "Em Execução", update_time=delayed_date),
+        _build_mock_service("FastMatchingSvc", "Parado", update_time=delayed_date),
+        _build_mock_service("DNA.DetectionSVC", "Inexistente", update_time=delayed_date),
+        _build_mock_service("DNA.MonitorServiceSVC", "Em Execução", update_time=delayed_date),
+    ]
+
+    with patch("tracking_detection_monitor.get_fleet_services", return_value=mock_services):
+        snapshot = build_detection_fleet_snapshot()
+        sites = snapshot.get("sites", [])
+        assert len(sites) == 1
+        site = sites[0]
+
+        # Garantir que NÃO é P0
+        assert site["health_status"] == "COMM_LOST", (
+            f"Esperado COMM_LOST devido à telemetria com > 20 min, recebido: {site['health_status']}"
+        )
+        assert "Host Desconectado" in site["severity_label"]
+        assert snapshot["summary"]["critical"] == 0
+        assert snapshot["summary"]["inoperant_p0"] == 0

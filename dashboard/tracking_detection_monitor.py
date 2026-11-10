@@ -591,44 +591,23 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
 
 
         new_up = s.get("ultima_atualizacao") or ""
+        svc_name = str(s.get("nome_servico") or "").strip()
+
+        # LEI DA VALIDADE DE TELEMETRIA: Mapeia explicitamente o timestamp do agente de monitoramento da frota
+        if "monitorservice" in svc_name.lower():
+            cs01_hosts_map[hostname]["agent_ultima_atualizacao"] = new_up
+
         curr_up = cs01_hosts_map[hostname].get("ultima_atualizacao") or ""
         if new_up and (not curr_up or new_up > curr_up):
             cs01_hosts_map[hostname]["ultima_atualizacao"] = new_up
 
-
-
-
-
-
-
-        svc_name = str(s.get("nome_servico") or "").strip()
-
-
-
         cs01_hosts_map[hostname]["services"][svc_name] = {
-
-
-
             "status": s.get("status_servico", "Desconhecido"),
-
-
-
             "versao": s.get("versao_instalada", "N/A"),
-
-
-
             "log_erro": s.get("log_erro", ""),
-
-
-
             "acao_solicitada": s.get("acao_solicitada", "Nenhuma"),
-
-
-
-            "cs": s.get("cs", 1)
-
-
-
+            "cs": s.get("cs", 1),
+            "ultima_atualizacao": new_up
         }
 
 
@@ -910,7 +889,14 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
 
 
         # Avaliação da Comunicação do Agente (DNA.MonitorServiceSVC)
-        last_up_str = host_info.get("ultima_atualizacao", "")
+        # LEI DA VALIDADE DE TELEMETRIA:
+        # A comunicação do host DEVE ser aferida pelo próprio agente de telemetria (DNA.MonitorServiceSVC).
+        # Não pode ser mascarada por timestamps de serviços desacoplados (ex: MediaConverter ou Zabbix).
+        last_up_str = host_info.get("agent_ultima_atualizacao", "")
+        if not last_up_str and agent_svc:
+            last_up_str = agent_svc.get("ultima_atualizacao", "")
+        if not last_up_str:
+            last_up_str = host_info.get("ultima_atualizacao", "")
 
         agent_comm_hours = 9999.0
         agent_comm_status = "UNKNOWN"
@@ -949,9 +935,31 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
                 agent_comm_label = "Horário Indeterminado"
 
         # LEI DA VALIDADE DE TELEMETRIA:
-        # Se o host esta sem comunicacao recente, o estado dos processos locais e INDETERMINADO.
-        # Nao pode gerar falso P0 de Sem Motor, Conflito ou Fila Travada.
+        # is_agent_stale indica desconexão prolongada do host (> 2h ou agente parado)
         is_agent_stale = agent_comm_status in ("OFFLINE_RECENT", "OFFLINE_CRITICAL", "UNKNOWN") or agent_comm_hours > 2.0 or not agent_running
+
+        # Auditoria de frescura estrita para validação de falha operacional P0 (Sem Motor de Matching):
+        # Para declarar P0 de serviço parado, a telemetria do agente e do motor primário DEVE ter <= 20 min (0.33h).
+        # Se tiver > 20 min, o status local é INDETERMINADO e não pode soar alarme crítico falso!
+        fm_up_str = fm_svc.get("ultima_atualizacao", "") if fm_svc else ""
+        fm_is_stale = False
+        if fm_up_str:
+            try:
+                fm_dt_str = str(fm_up_str).strip().replace("Z", "+00:00")
+                if "/" in fm_dt_str:
+                    fm_dt = datetime.strptime(fm_dt_str[:19], "%d/%m/%Y %H:%M:%S").replace(tzinfo=timezone.utc)
+                else:
+                    fm_dt = datetime.fromisoformat(fm_dt_str)
+                    if fm_dt.tzinfo is None:
+                        fm_dt = fm_dt.replace(tzinfo=timezone.utc)
+                fm_age_h = (datetime.now(timezone.utc) - fm_dt).total_seconds() / 3600.0
+                if fm_age_h > 0.33:
+                    fm_is_stale = True
+            except Exception:
+                fm_is_stale = True
+
+        # Precedência: Se a telemetria do agente OU do FastMatching tem > 20 min, a evidência é insuficiente para P0
+        is_telemetry_fresh_for_p0 = (agent_comm_hours <= 0.33) and not fm_is_stale and agent_running
 
         if fm_running and det_running:
             active_engine = "CONFLITO"
@@ -974,7 +982,7 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
         else:
             active_engine = "NENHUM"
             engine_tier = "NONE"
-            if not is_agent_stale:
+            if is_telemetry_fresh_for_p0 and not is_agent_stale:
                 inoperant_p0 += 1
                 active_engine_label = "Inoperante (Ambos Parados / Inexistentes)"
             else:
@@ -1002,16 +1010,14 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
 
         # Diagnostico da Esteira de Deteccao
         # LEI DA VALIDADE DE TELEMETRIA:
-        # Se o host esta sem comunicacao recente, o estado dos processos locais e INDETERMINADO.
-        # Nao pode gerar falso P0 de Sem Motor, Conflito ou Fila Travada.
         if engine_tier == "NONE":
-            if is_agent_stale:
+            if not is_telemetry_fresh_for_p0 or is_agent_stale:
                 health_status = "COMM_LOST"
-                severity_label = f"Alerta - Host Desconectado ({agent_comm_label})"
+                severity_label = f"Alerta (P1) - Host Desconectado / Telemetria Suspensa ({agent_comm_label})"
                 incident_description = (
                     f"Host CS01 inalcançável há {agent_comm_label}. Telemetria suspensa. "
                     f"O estado real dos processos locais (FastMatching, ConfigMonitor, etc.) e da esteira de detecção "
-                    f"não pode ser aferido em tempo real até o restabelecimento da telemetria."
+                    f"não pode ser aferido em tempo real até o restabelecimento do agente local."
                 )
                 pipeline_bottleneck = "TELEMETRY_OFFLINE"
             else:
@@ -1416,18 +1422,11 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
 
 
                 "fast_matching": {
-
-
-
                     "name": "FastMatchingSvc",
-
-
-
                     "status": fm_status,
-
-
-
                     "running": fm_running,
+                    "is_stale": fm_is_stale,
+                    "last_update": fm_up_str,
 
 
 
