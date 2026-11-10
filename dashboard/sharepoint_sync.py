@@ -279,7 +279,7 @@ def fetch_all_items(token: str, list_id: str) -> list:
             print(f"[SharePointSync Warning] Falha ao paginar lista {list_id}. Retornando {len(items)} itens obtidos.", flush=True)
             break
         if url:
-            time.sleep(0.5)  # Espaçamento suave para prevenir 429 burst rate da Microsoft
+            time.sleep(1.2)  # Espaçamento de 1.2s para prevenir 429 burst rate da Microsoft Graph em listas gigantes
         
     return items
 
@@ -744,25 +744,41 @@ def sync_fleet_data():
         with _cache_lock:
             _cached_data["last_sync"] = datetime.now().isoformat()
             
-            # 1. MERGE CUMULATIVO DE SERVIÇOS: Atualiza serviços recebidos e preserva os anteriores
+            # 1. MERGE CUMULATIVO DE SERVIÇOS RESILIENTE A REVERSÃO TEMPORAL:
+            # Nunca permite que um registro antigo ou parcial sobrescreva telemetria mais recente
             existing_servs = {
                 (str(s.get("hostname", "")).strip().lower(), str(s.get("nome_servico", "")).strip().lower()): s
                 for s in _cached_data.get("services", [])
             }
             for s in services_list:
                 k = (str(s.get("hostname", "")).strip().lower(), str(s.get("nome_servico", "")).strip().lower())
-                existing_servs[k] = s
+                cur = existing_servs.get(k)
+                if not cur:
+                    existing_servs[k] = s
+                else:
+                    cur_ts = str(cur.get("ultima_atualizacao") or "")
+                    new_ts = str(s.get("ultima_atualizacao") or "")
+                    # Monotonicidade Temporal: apenas atualiza se o novo registro for mais recente ou igual
+                    if not cur_ts or (new_ts and new_ts >= cur_ts):
+                        existing_servs[k] = s
             _cached_data["services"] = list(existing_servs.values())
             _cached_data["stats"] = stats
 
-            # 2. MERGE CUMULATIVO DE CANAIS (Anti-Perda de Veículos): Atualiza canais e JAMAIS descarta os existentes
+            # 2. MERGE CUMULATIVO DE CANAIS RESILIENTE A REVERSÃO TEMPORAL:
             existing_chans = {
                 (str(c.get("cidade", "")).strip().lower(), str(c.get("canal", "")).strip().lower(), int(float(c.get("id_cs") or c.get("cs") or 1))): c
                 for c in _cached_data.get("channels", [])
             }
             for c in channels_list:
                 k = (str(c.get("cidade", "")).strip().lower(), str(c.get("canal", "")).strip().lower(), int(float(c.get("id_cs") or c.get("cs") or 1)))
-                existing_chans[k] = c
+                cur_c = existing_chans.get(k)
+                if not cur_c:
+                    existing_chans[k] = c
+                else:
+                    cur_ts = str(cur_c.get("atualizacao") or cur_c.get("ultima_atualizacao") or "")
+                    new_ts = str(c.get("atualizacao") or c.get("ultima_atualizacao") or "")
+                    if not cur_ts or (new_ts and new_ts >= cur_ts):
+                        existing_chans[k] = c
             
             _cached_data["channels"] = list(existing_chans.values())
             _cached_data["recent_outages"] = [c for c in _cached_data["channels"] if c.get("has_outage")]
