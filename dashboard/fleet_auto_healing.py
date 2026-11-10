@@ -102,9 +102,10 @@ def audit_and_diagnose_fleet() -> Dict[str, Any]:
                     diff_h = (now_utc - dt).total_seconds() / 3600.0
                     hosts_map[h]["hours_offline"] = round(diff_h, 1)
 
-                    if diff_h <= 2.0:
+                    # Precedência Estrita de Telemetria: <= 20 minutos (0.33h) é ONLINE
+                    if diff_h <= 0.33:
                         hosts_map[h]["comm_state"] = "ONLINE"
-                    elif diff_h <= 6.0:
+                    elif diff_h <= 2.0:
                         hosts_map[h]["comm_state"] = "DELAY"
                     elif diff_h <= 24.0:
                         hosts_map[h]["comm_state"] = "OFFLINE_RECENT"
@@ -127,7 +128,7 @@ def audit_and_diagnose_fleet() -> Dict[str, Any]:
 
         if ver == TARGET_AGENT_VERSION:
             up_to_date_count += 1
-        elif ver != "N/A":
+        elif ver != "N/A" and data["comm_state"] in ("ONLINE", "DELAY"):
             data["eligible_auto_update"] = True
             eligible_update_count += 1
 
@@ -137,14 +138,16 @@ def audit_and_diagnose_fleet() -> Dict[str, Any]:
             offline_count += 1
 
         # Verifica serviços críticos parados
-        for s_name, s_info in data["services"].items():
-            s_low = s_name.lower().replace(" ", "").replace(".", "")
-            if any(k in s_low for k in critical_svc_keywords):
-                st_low = s_info["status"].lower()
-                if "parado" in st_low or "stopped" in st_low:
-                    data["stopped_critical_services"].append(s_name)
-                    data["eligible_service_restart"] = True
-                    stopped_services_count += 1
+        # Precedência Universal de Telemetria: Só considera serviço parado se o host estiver estritamente ONLINE (diff_h <= 0.33 / <= 20 min)
+        if data["comm_state"] == "ONLINE" and data["hours_offline"] <= 0.33:
+            for s_name, s_info in data["services"].items():
+                s_low = s_name.lower().replace(" ", "").replace(".", "")
+                if any(k in s_low for k in critical_svc_keywords):
+                    st_low = s_info["status"].lower()
+                    if "parado" in st_low or "stopped" in st_low:
+                        data["stopped_critical_services"].append(s_name)
+                        data["eligible_service_restart"] = True
+                        stopped_services_count += 1
 
     return {
         "timestamp": now_utc.isoformat(),

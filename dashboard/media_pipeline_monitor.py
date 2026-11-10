@@ -167,6 +167,7 @@ def get_fleet_pipeline_incidents(services: list = None, channels: list = None, t
     # LEI DA VALIDADE DE TELEMETRIA:
     # Hosts desconectados / sem telemetria recente nao podem gerar incidentes locais de pipeline.
     host_max_ts = {}
+    host_agent_ts = {}
     host_services = {}
 
     for s in services:
@@ -178,19 +179,24 @@ def get_fleet_pipeline_incidents(services: list = None, channels: list = None, t
         host_services[h].append(s)
 
         up_str = s.get("ultima_atualizacao") or ""
+        svc_n = str(s.get("nome_servico", "")).lower()
         if up_str:
             try:
                 dt = datetime.fromisoformat(up_str.replace("Z", "+00:00"))
                 ts = dt.timestamp()
+                if "monitorservice" in svc_n:
+                    host_agent_ts[h] = ts
                 if h not in host_max_ts or ts > host_max_ts[h]:
                     host_max_ts[h] = ts
             except Exception:
                 pass
 
     for h_name, s_list in host_services.items():
-        # Checa se o host esta online (comunicou ha menos de 2 horas)
-        max_ts = host_max_ts.get(h_name, 0)
-        if (now - max_ts) > 7200:  # > 2 horas = OFFLINE
+        # LEI DA VALIDADE DE TELEMETRIA:
+        # Checa se o host esta online com telemetria recente do agente (<= 20 min / 1200s).
+        # Se estiver > 20 min sem reporte, o estado dos processos locais é INDETERMINADO.
+        agent_ts = host_agent_ts.get(h_name, host_max_ts.get(h_name, 0))
+        if (now - agent_ts) > 1200:  # > 20 minutos = TELEMETRIA SUSPENSA / OFFLINE
             continue
 
         # Checa se o agente DNA.MonitorServiceSVC esta ativo
