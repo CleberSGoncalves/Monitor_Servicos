@@ -806,6 +806,49 @@ function doLogout() {
 
 
 
+function updateNavDropdownStates() {
+    document.querySelectorAll(".nav-dropdown").forEach(dd => {
+        const trigger = dd.querySelector(".nav-dropdown-trigger");
+        const pill = dd.querySelector(".nav-active-pill");
+        const activeChild = dd.querySelector(".nav-btn.active");
+        if (activeChild) {
+            dd.classList.add("has-active");
+            if (trigger) trigger.classList.add("active");
+            if (pill) {
+                const title = activeChild.querySelector(".nav-item-title")?.innerText || activeChild.innerText.trim();
+                pill.innerText = title;
+                pill.style.display = "inline-block";
+            }
+        } else {
+            dd.classList.remove("has-active");
+            if (trigger) trigger.classList.remove("active");
+            if (pill) pill.style.display = "none";
+        }
+        dd.classList.remove("open");
+    });
+}
+window.updateNavDropdownStates = updateNavDropdownStates;
+
+window.toggleNavDropdown = function(groupId) {
+    const target = document.getElementById(groupId);
+    document.querySelectorAll(".nav-dropdown").forEach(dd => {
+        if (dd !== target) dd.classList.remove("open");
+    });
+    if (target) target.classList.toggle("open");
+};
+
+document.addEventListener("click", (e) => {
+    if (!e.target.closest(".nav-dropdown")) {
+        document.querySelectorAll(".nav-dropdown.open").forEach(dd => dd.classList.remove("open"));
+    }
+});
+
+document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+        document.querySelectorAll(".nav-dropdown.open").forEach(dd => dd.classList.remove("open"));
+    }
+});
+
 function setupTabNavigation() {
 
 
@@ -836,7 +879,7 @@ function setupTabNavigation() {
 
             btn.classList.add("active");
 
-
+            if (typeof updateNavDropdownStates === "function") updateNavDropdownStates();
 
             try { btn.scrollIntoView({ behavior: "smooth", inline: "nearest", block: "nearest" }); } catch(_) {}
 

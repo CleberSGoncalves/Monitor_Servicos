@@ -46,7 +46,7 @@
 
 
 
-    <link rel="stylesheet" href="/static/css/style.css?v=3.9.72">
+    <link rel="stylesheet" href="/static/css/style.css?v=3.9.73">
 
 
 
@@ -2607,55 +2607,157 @@
 
 
     <div class="nav-tabs-wrapper">
-
-      <button type="button" class="nav-scroll-btn nav-scroll-left" id="btnNavScrollLeft" onclick="scrollNavTabs(-220)" title="Rolar abas para a esquerda">
-
-        <i class="fas fa-chevron-left"></i>
-
-      </button>
-
       <nav class="nav-tabs" id="mainNavTabs">
+        <!-- 1. Direto NOC Core -->
+        <button class="nav-btn active" data-tab="overview" title="Cockpit Unificado de Incidentes N1 em Tempo Real">
+          <span>🚨</span> Incidentes N1
+        </button>
 
-        <button class="nav-btn active" data-tab="overview"><span>🚨</span> Incidentes N1</button>
+        <!-- 2. Categoria Broadcast & RF -->
+        <div class="nav-dropdown" id="navGroupBroadcast">
+          <button type="button" class="nav-dropdown-trigger" onclick="toggleNavDropdown('navGroupBroadcast')">
+            <span>📡</span> Broadcast &amp; RF <i class="fas fa-chevron-down nav-dropdown-arrow"></i>
+            <span class="nav-active-pill" id="pillActiveBroadcast" style="display:none;"></span>
+          </button>
+          <div class="nav-dropdown-menu">
+            <button class="nav-btn nav-dropdown-item" data-tab="channels" title="Status de portadora UHF, áudio e níveis RF">
+              <span class="nav-item-icon">📡</span>
+              <div class="nav-item-content">
+                <div class="nav-item-title">Canais &amp; RF</div>
+                <div class="nav-item-desc">Status de portadora, níveis e áudio</div>
+              </div>
+            </button>
+            <button class="nav-btn nav-dropdown-item" data-tab="signals" title="Degradação de sinal, Fresnel e oscilações RF">
+              <span class="nav-item-icon">📈</span>
+              <div class="nav-item-content">
+                <div class="nav-item-title">Análise RF</div>
+                <div class="nav-item-desc">Histórico de qualidade e Fresnel</div>
+              </div>
+            </button>
+            <button class="nav-btn nav-dropdown-item" data-tab="mosaic" title="Visualização ao vivo das emissoras em HLS">
+              <span class="nav-item-icon">🖼️</span>
+              <div class="nav-item-content">
+                <div class="nav-item-title">Mosaico Live</div>
+                <div class="nav-item-desc">Streams ao vivo e mosaicos HLS</div>
+              </div>
+            </button>
+            <button class="nav-btn nav-dropdown-item" data-tab="map" title="Mapa geográfico da rede de captação">
+              <span class="nav-item-icon">🗺️</span>
+              <div class="nav-item-content">
+                <div class="nav-item-title">Topologia RF</div>
+                <div class="nav-item-desc">Mapa geográfico das praças</div>
+              </div>
+            </button>
+            <button class="nav-btn nav-dropdown-item" data-tab="audiosync" title="Sincronismo de matérias e redundância CS01/CS02">
+              <span class="nav-item-icon">🎚️</span>
+              <div class="nav-item-content">
+                <div class="nav-item-title">Comparação CS</div>
+                <div class="nav-item-desc">Sincronismo CS01 vs CS02</div>
+              </div>
+            </button>
+          </div>
+        </div>
 
-        <button class="nav-btn" data-tab="channels"><span>📡</span> Canais &amp; RF</button>
+        <!-- 3. Categoria Detecção & IA -->
+        <div class="nav-dropdown" id="navGroupDeteccao">
+          <button type="button" class="nav-dropdown-trigger" onclick="toggleNavDropdown('navGroupDeteccao')">
+            <span>🎯</span> Detecção &amp; IA <i class="fas fa-chevron-down nav-dropdown-arrow"></i>
+            <span class="nav-active-pill" id="pillActiveDeteccao" style="display:none;"></span>
+          </button>
+          <div class="nav-dropdown-menu">
+            <button class="nav-btn nav-dropdown-item" data-tab="deteccao" title="Pipeline de Detecção Automática de Comerciais (Exclusivo CS01)">
+              <span class="nav-item-icon">🎯</span>
+              <div class="nav-item-content">
+                <div class="nav-item-title">Detecção Comercial</div>
+                <div class="nav-item-desc">Esteira FastMatching / Detection CS01</div>
+              </div>
+            </button>
+            <button class="nav-btn nav-dropdown-item" data-tab="ai" title="Diagnóstico de falhas e correlação preditiva Gemini">
+              <span class="nav-item-icon">🧠</span>
+              <div class="nav-item-content">
+                <div class="nav-item-title">IA Insights</div>
+                <div class="nav-item-desc">Diagnóstico preditivo Gemini 2.0</div>
+              </div>
+            </button>
+          </div>
+        </div>
 
-        <button class="nav-btn" data-tab="signals"><span>📈</span> Análise RF</button>
+        <!-- 4. Categoria Operação & Auditoria -->
+        <div class="nav-dropdown" id="navGroupOperacao">
+          <button type="button" class="nav-dropdown-trigger" onclick="toggleNavDropdown('navGroupOperacao')">
+            <span>📋</span> Operação <i class="fas fa-chevron-down nav-dropdown-arrow"></i>
+            <span class="nav-active-pill" id="pillActiveOperacao" style="display:none;"></span>
+          </button>
+          <div class="nav-dropdown-menu">
+            <button class="nav-btn nav-dropdown-item" data-tab="incidents" title="Histórico de tratativas e ocorrências registradas">
+              <span class="nav-item-icon">📋</span>
+              <div class="nav-item-content">
+                <div class="nav-item-title">Worklog N1</div>
+                <div class="nav-item-desc">Histórico e ações operacionais</div>
+              </div>
+            </button>
+            <button class="nav-btn nav-dropdown-item" data-tab="classificador" title="Classificador de Falhas &amp; Base de Conhecimento Broadcast">
+              <span class="nav-item-icon">🏷️</span>
+              <div class="nav-item-content">
+                <div class="nav-item-title">Classificador</div>
+                <div class="nav-item-desc">Base de conhecimento e falhas</div>
+              </div>
+            </button>
+            <button class="nav-btn nav-dropdown-item" data-tab="fiscalizacao" title="Auditoria e conformidade de exibição">
+              <span class="nav-item-icon">⚖️</span>
+              <div class="nav-item-content">
+                <div class="nav-item-title">Fiscalização</div>
+                <div class="nav-item-desc">Auditoria e conformidade legal</div>
+              </div>
+            </button>
+          </div>
+        </div>
 
-        <button class="nav-btn" data-tab="mosaic"><span>🖼️</span> Mosaico Live</button>
-
-        <button class="nav-btn" data-tab="map"><span>🗺️</span> Topologia RF</button>
-
-        <button class="nav-btn" data-tab="audiosync" title="Comparação de Matérias &amp; Sincronismo CS01/CS02"><span>🎚️</span> Comparação CS</button>
-
-        <button class="nav-btn" data-tab="classificador" title="Classificador de Falhas &amp; Base de Conhecimento Broadcast"><span>🏷️</span> Classificador</button>
-
-        <button class="nav-btn" data-tab="deteccao" title="Pipeline de Detecção Automática de Comerciais (Exclusivo CS01)"><span>🎯</span> Detecção Automática</button>
-
-        <button class="nav-btn" data-tab="fiscalizacao"><span>⚖️</span> Fiscalização</button>
-
-        <button class="nav-btn" data-tab="incidents"><span>📋</span> Worklog</button>
-
-        <button class="nav-btn" data-tab="network"><span>🌐</span> Link WAN</button>
-
-        <button class="nav-btn" data-tab="ai"><span>🧠</span> IA Insights</button>
-
-        <button class="nav-btn" data-tab="fleet"><span>💻</span> Frota</button>
-
-        <button class="nav-btn" data-tab="logs"><span>📜</span> Logs</button>
-
-        <button class="nav-btn" data-tab="remote-commands"><span>⚡</span> Comandos</button>
-
-        <button class="nav-btn" data-tab="configs"><span>⚙️</span> Config</button>
-
+        <!-- 5. Categoria Infra & Frota -->
+        <div class="nav-dropdown" id="navGroupInfra">
+          <button type="button" class="nav-dropdown-trigger" onclick="toggleNavDropdown('navGroupInfra')">
+            <span>💻</span> Infra &amp; Frota <i class="fas fa-chevron-down nav-dropdown-arrow"></i>
+            <span class="nav-active-pill" id="pillActiveInfra" style="display:none;"></span>
+          </button>
+          <div class="nav-dropdown-menu">
+            <button class="nav-btn nav-dropdown-item" data-tab="fleet" title="Inventário de servidores e atualização de agentes">
+              <span class="nav-item-icon">💻</span>
+              <div class="nav-item-content">
+                <div class="nav-item-title">Frota &amp; Auto-Healing</div>
+                <div class="nav-item-desc">Inventário e update de agentes</div>
+              </div>
+            </button>
+            <button class="nav-btn nav-dropdown-item" data-tab="network" title="Métricas de latência e link dos capture sites">
+              <span class="nav-item-icon">🌐</span>
+              <div class="nav-item-content">
+                <div class="nav-item-title">Link WAN</div>
+                <div class="nav-item-desc">Latência e conectividade da rede</div>
+              </div>
+            </button>
+            <button class="nav-btn nav-dropdown-item" data-tab="remote-commands" title="Execução remota PowerShell e controle de serviços">
+              <span class="nav-item-icon">⚡</span>
+              <div class="nav-item-content">
+                <div class="nav-item-title">Comandos Remotos</div>
+                <div class="nav-item-desc">Terminal remoto e reinício de serviços</div>
+              </div>
+            </button>
+            <button class="nav-btn nav-dropdown-item" data-tab="logs" title="Central de auditoria e logs de eventos">
+              <span class="nav-item-icon">📜</span>
+              <div class="nav-item-content">
+                <div class="nav-item-title">Logs Centrais</div>
+                <div class="nav-item-desc">Auditoria de sistema e eventos</div>
+              </div>
+            </button>
+            <button class="nav-btn nav-dropdown-item" data-tab="configs" title="Limiares de alarme, parâmetros e credenciais">
+              <span class="nav-item-icon">⚙️</span>
+              <div class="nav-item-content">
+                <div class="nav-item-title">Configurações</div>
+                <div class="nav-item-desc">Limiares, alertas e credenciais</div>
+              </div>
+            </button>
+          </div>
+        </div>
       </nav>
-
-      <button type="button" class="nav-scroll-btn nav-scroll-right" id="btnNavScrollRight" onclick="scrollNavTabs(220)" title="Rolar abas para a direita">
-
-        <i class="fas fa-chevron-right"></i>
-
-      </button>
-
     </div>
 
 
@@ -16947,27 +17049,27 @@
 
 
 
-  <script src="/static/js/app.js?v=3.9.72"></script>
+  <script src="/static/js/app.js?v=3.9.73"></script>
 
-  <script src="/static/js/ai_insights.js?v=3.9.72"></script>
+  <script src="/static/js/ai_insights.js?v=3.9.73"></script>
 
-  <script src="/static/js/fleet_ops.js?v=3.9.72"></script>
+  <script src="/static/js/fleet_ops.js?v=3.9.73"></script>
 
-  <script src="/static/js/remote_commands.js?v=3.9.72"></script>
+  <script src="/static/js/remote_commands.js?v=3.9.73"></script>
 
-  <script src="/static/js/signals_analysis.js?v=3.9.72"></script>
+  <script src="/static/js/signals_analysis.js?v=3.9.73"></script>
 
-  <script src="/static/js/mosaic_wall.js?v=3.9.72"></script>
+  <script src="/static/js/mosaic_wall.js?v=3.9.73"></script>
 
-  <script src="/static/js/topology_map.js?v=3.9.72"></script>
+  <script src="/static/js/topology_map.js?v=3.9.73"></script>
 
-  <script src="/static/js/network_link.js?v=3.9.72"></script>
+  <script src="/static/js/network_link.js?v=3.9.73"></script>
 
-  <script src="/static/js/fiscalizacao.js?v=3.9.72"></script>
+  <script src="/static/js/fiscalizacao.js?v=3.9.73"></script>
 
-  <script src="/static/js/classificador_falhas.js?v=3.9.72"></script>
+  <script src="/static/js/classificador_falhas.js?v=3.9.73"></script>
 
-  <script src="/static/js/audio_sync.js?v=3.9.72"></script>
+  <script src="/static/js/audio_sync.js?v=3.9.73"></script>
 
 
 
