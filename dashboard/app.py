@@ -1811,32 +1811,72 @@ async def get_channel_jpeg(canal: str, praca: Optional[str] = None, mode: Option
         title = f"{canal.upper()} • {(praca or 'CS').upper()} (CS {id_cs})"
         draw.text((14, 58), title[:36], fill=(255, 255, 255))
         host_disp = host_name or "CS REMOTO"
-        draw.text((14, 76), f"HOST: {host_disp} • ISDB-Tb DTV"[:36], fill=(56, 189, 248))
 
-        # Caixa de Métricas de RF & Áudio
-        draw.rectangle([14, 96, w - 14, 142], fill=(18, 27, 49), outline=(51, 65, 85))
-        if qualidade > 0 and not has_outage:
-            draw.text((20, 102), f"RF SINAL: Qualidade {qualidade}% | Forca {forca}%", fill=(52, 211, 153))
+        # Detecção de Meio: TV a Cabo / PayTV / Analógico / Streaming IP vs ISDB-Tb Digital Terrestre
+        is_cabo_or_pay = (id_cs == 3) or (praca and "nacional" in praca.lower()) or \
+                         (matched_chan and any(k in str(matched_chan.get("meio", "")).lower() for k in ["analógico", "analogico", "cabo", "streaming", "ip", "rtsp"])) or \
+                         any(k in c_lower for k in ["combate", "universal", "nick", "telecine", "hbo", "espn", "sportv", "warner", "paramount", "discovery", "axn", "tnt", "cartoon", "cabo", "paytv"])
+
+        if is_cabo_or_pay:
+            draw.text((14, 76), f"HOST: {host_disp} • CABO / PAYTV"[:36], fill=(56, 189, 248))
         else:
-            draw.text((20, 102), "RF SINAL: SEM PORTADORA (0%) • QUEDA DETECTADA", fill=(239, 68, 68))
+            draw.text((14, 76), f"HOST: {host_disp} • ISDB-Tb DTV"[:36], fill=(56, 189, 248))
 
-        tuner_txt = "Lock (OK)" if ("working" in status_tuner.lower() or "lock" in status_tuner.lower()) else "No Lock"
+        # Caixa de Métricas de Sinal & Áudio
+        draw.rectangle([14, 96, w - 14, 142], fill=(18, 27, 49), outline=(51, 65, 85))
+
+        tuner_l = status_tuner.lower()
+        tuner_is_working = ("working" in tuner_l or "ready" in tuner_l or "connected" in tuner_l)
+        tuner_is_disconn = ("disconnected" in tuner_l or "parado" in tuner_l or "desconectado" in tuner_l)
         audio_txt = "MUDO" if (audio_mudo == "Sim" or audio_mudo == True) else "-14 dB OK"
-        draw.text((20, 120), f"TUNER: {tuner_txt} | AUDIO: {audio_txt}", fill=(226, 232, 240))
+
+        if is_cabo_or_pay:
+            # Em TV a Cabo / PayTV, não há portadora RF de antena UHF/VHF.
+            if tuner_is_disconn:
+                draw.text((20, 102), "ENTRADA: STB / PLACA DESCONECTADA", fill=(245, 158, 11))
+                draw.text((20, 120), f"TUNER: Disconnected | AUDIO: {audio_txt}", fill=(226, 232, 240))
+            else:
+                draw.text((20, 102), "ENTRADA: CABO / HDMI NOMINAL (SINAL OK)", fill=(52, 211, 153))
+                draw.text((20, 120), f"TUNER: Conectado (WORKING) | AUDIO: {audio_txt}", fill=(226, 232, 240))
+        else:
+            if qualidade > 0 and not has_outage:
+                draw.text((20, 102), f"RF SINAL: Qualidade {qualidade}% | Forca {forca}%", fill=(52, 211, 153))
+            else:
+                draw.text((20, 102), "RF SINAL: SEM PORTADORA (0%) • QUEDA DETECTADA", fill=(239, 68, 68))
+            tuner_txt = "Lock (OK)" if tuner_is_working else "No Lock"
+            draw.text((20, 120), f"TUNER: {tuner_txt} | AUDIO: {audio_txt}", fill=(226, 232, 240))
 
         # Faixa de Status da Transmissão em Tempo Real
-        if has_outage or qualidade == 0:
-            draw.rectangle([14, 150, w - 14, 204], fill=(45, 20, 20), outline=(239, 68, 68))
-            draw.text((20, 158), "[ALERTA CRITICO: QUEDA DE PORTADORA RF]", fill=(239, 68, 68))
-            draw.text((20, 178), "Sem sinal detectado no demodulador remoto", fill=(248, 113, 113))
-        elif is_frozen or mode == "fault":
-            draw.rectangle([14, 150, w - 14, 204], fill=(45, 30, 15), outline=(245, 158, 11))
-            draw.text((20, 158), "[FALHA: CONGELAMENTO DE QUADRO DETECTADO]", fill=(245, 158, 11))
-            draw.text((20, 178), "DirectShow Graph travado ou PTS estatico", fill=(253, 186, 116))
+        if is_cabo_or_pay:
+            if has_outage:
+                draw.rectangle([14, 150, w - 14, 204], fill=(45, 20, 20), outline=(239, 68, 68))
+                draw.text((20, 158), "[ALERTA CRITICO: FALHA NA ENTRADA DE CABO]", fill=(239, 68, 68))
+                draw.text((20, 178), "Sem sinal de vídeo detectado no encoder CS3", fill=(248, 113, 113))
+            elif tuner_is_disconn:
+                draw.rectangle([14, 150, w - 14, 204], fill=(45, 30, 15), outline=(245, 158, 11))
+                draw.text((20, 158), "[AVISO: ATRIA CAPTURE PARADO OU STB OFF]", fill=(245, 158, 11))
+                draw.text((20, 178), "Módulo de captura do host CS3 sem sinal ativo", fill=(253, 186, 116))
+            elif is_frozen or mode == "fault":
+                draw.rectangle([14, 150, w - 14, 204], fill=(45, 30, 15), outline=(245, 158, 11))
+                draw.text((20, 158), "[FALHA: CONGELAMENTO DE QUADRO DETECTADO]", fill=(245, 158, 11))
+                draw.text((20, 178), "DirectShow Graph travado ou PTS estatico", fill=(253, 186, 116))
+            else:
+                draw.rectangle([14, 150, w - 14, 204], fill=(15, 30, 45), outline=(16, 185, 129))
+                draw.text((20, 158), "SINAL DE CABO NOMINAL NO CS (TRANSMITINDO)", fill=(52, 211, 153))
+                draw.text((20, 178), "Aguardando sincronismo de video do CS remoto", fill=(148, 163, 184))
         else:
-            draw.rectangle([14, 150, w - 14, 204], fill=(15, 30, 45), outline=(16, 185, 129))
-            draw.text((20, 158), "SINAL DTV NOMINAL NO AR (TRANSMITINDO)", fill=(52, 211, 153))
-            draw.text((20, 178), "Aguardando sincronismo de video do CS remoto", fill=(148, 163, 184))
+            if has_outage or qualidade == 0:
+                draw.rectangle([14, 150, w - 14, 204], fill=(45, 20, 20), outline=(239, 68, 68))
+                draw.text((20, 158), "[ALERTA CRITICO: QUEDA DE PORTADORA RF]", fill=(239, 68, 68))
+                draw.text((20, 178), "Sem sinal detectado no demodulador remoto", fill=(248, 113, 113))
+            elif is_frozen or mode == "fault":
+                draw.rectangle([14, 150, w - 14, 204], fill=(45, 30, 15), outline=(245, 158, 11))
+                draw.text((20, 158), "[FALHA: CONGELAMENTO DE QUADRO DETECTADO]", fill=(245, 158, 11))
+                draw.text((20, 178), "DirectShow Graph travado ou PTS estatico", fill=(253, 186, 116))
+            else:
+                draw.rectangle([14, 150, w - 14, 204], fill=(15, 30, 45), outline=(16, 185, 129))
+                draw.text((20, 158), "SINAL DTV NOMINAL NO AR (TRANSMITINDO)", fill=(52, 211, 153))
+                draw.text((20, 178), "Aguardando sincronismo de video do CS remoto", fill=(148, 163, 184))
 
         # 4. OSD Rodapé
         draw.rectangle([0, 218, w, 240], fill=(0, 0, 0))

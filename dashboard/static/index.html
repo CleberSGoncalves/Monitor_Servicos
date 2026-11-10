@@ -4502,22 +4502,31 @@
 
 
 
-        <!-- Chave Seletora de Modo de Visualização do Mosaico (Imagem Real vs Diagnóstico) -->
+        <!-- Chave Seletora Rápida: TV vs Rádio vs Todos & Modo de Visualização -->
+        <div style="margin-left: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <!-- Chave Seletora Rápida: TV vs Rádio vs Todos -->
+          <div style="display: flex; align-items: center; gap: 3px; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 3px;">
+            <span style="font-size: 10px; font-weight: 800; color: #94a3b8; text-transform: uppercase; padding: 0 6px;">Meio:</span>
+            <button type="button" class="btn-sm active-media-btn" id="btnMosaicMediaAll" onclick="setMosaicMediaFilter('all')" style="font-size: 11px; padding: 4px 10px; border-radius: 6px; border: none; font-weight: 700; background: #2563eb; color: #fff; cursor: pointer; transition: all 0.2s;" title="Exibir todos os veículos (TVs e Rádios)">
+              <i class="fas fa-layer-group"></i> Todos
+            </button>
+            <button type="button" class="btn-sm" id="btnMosaicMediaTV" onclick="setMosaicMediaFilter('TV')" style="font-size: 11px; padding: 4px 10px; border-radius: 6px; border: none; font-weight: 700; background: transparent; color: var(--text-muted); cursor: pointer; transition: all 0.2s;" title="Exibir apenas canais de Televisão">
+              <i class="fas fa-tv"></i> 📺 Apenas TV
+            </button>
+            <button type="button" class="btn-sm" id="btnMosaicMediaRadio" onclick="setMosaicMediaFilter('Rádio')" style="font-size: 11px; padding: 4px 10px; border-radius: 6px; border: none; font-weight: 700; background: transparent; color: var(--text-muted); cursor: pointer; transition: all 0.2s;" title="Exibir apenas emissoras de Rádio com Console VU Meter">
+              <i class="fas fa-radio"></i> 📻 Apenas Rádio
+            </button>
+          </div>
 
-        <div style="margin-left: auto; display: flex; align-items: center; gap: 4px; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 3px;">
-
-          <button type="button" class="btn-sm" id="btn-mosaic-view-real" onclick="setMosaicViewMode('real')" style="font-size: 11px; padding: 4px 12px; border-radius: 6px; border: none; font-weight: 700; background: #2563eb; color: #fff; cursor: pointer;" title="Exibir a imagem/foto JPEG em tempo real capturada do canal">
-
-            <i class="fas fa-camera"></i> 📷 Imagem Real (JPEG)
-
-          </button>
-
-          <button type="button" class="btn-sm" id="btn-mosaic-view-diag" onclick="setMosaicViewMode('diag')" style="font-size: 11px; padding: 4px 12px; border-radius: 6px; border: none; font-weight: 700; background: transparent; color: var(--text-muted); cursor: pointer;" title="Exibir painel de telemetria técnica, parâmetros de engenharia e áudio VU">
-
-            <i class="fas fa-chart-line"></i> 📊 Diagnóstico & Telemetria
-
-          </button>
-
+          <!-- Chave Seletora Imagem Real vs Diagnóstico -->
+          <div style="display: flex; align-items: center; gap: 4px; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 3px;">
+            <button type="button" class="btn-sm" id="btn-mosaic-view-real" onclick="setMosaicViewMode('real')" style="font-size: 11px; padding: 4px 12px; border-radius: 6px; border: none; font-weight: 700; background: #2563eb; color: #fff; cursor: pointer;" title="Exibir a imagem/foto JPEG em tempo real capturada do canal">
+              <i class="fas fa-camera"></i> 📷 Imagem Real (JPEG)
+            </button>
+            <button type="button" class="btn-sm" id="btn-mosaic-view-diag" onclick="setMosaicViewMode('diag')" style="font-size: 11px; padding: 4px 12px; border-radius: 6px; border: none; font-weight: 700; background: transparent; color: var(--text-muted); cursor: pointer;" title="Exibir painel de telemetria técnica, parâmetros de engenharia e áudio VU">
+              <i class="fas fa-chart-line"></i> 📊 Diagnóstico & Telemetria
+            </button>
+          </div>
         </div>
 
       </div>
@@ -4628,7 +4637,7 @@
 
 
 
-              <select id="mosaicFilterMeio" class="form-input" style="width: 100%;" onchange="applyMosaicFilters()">
+              <select id="mosaicFilterMeio" class="form-input" style="width: 100%;" onchange="setMosaicMediaFilter(this.value)">
 
 
 

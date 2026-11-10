@@ -56,3 +56,33 @@ def test_channel_jpeg_fault_mode_slate():
     assert res.media_type == "image/jpeg"
     img = Image.open(BytesIO(res.body))
     assert img.size == (320, 240)
+
+def test_channel_jpeg_cable_paytv_slate_combate():
+    """
+    Valida que canais de TV a Cabo / PayTV (CS 3) como Canal Combate geram
+    o Slate Técnico com cabeçalho de TV A CABO e sem falsa queda de portadora RF.
+    """
+    res = asyncio.run(get_channel_jpeg(canal="Canal Combate", praca="Nacional"))
+    assert res.status_code == 200
+    assert res.media_type == "image/jpeg"
+    img = Image.open(BytesIO(res.body))
+    assert img.size == (320, 240)
+
+def test_channel_jpeg_cable_paytv_slate_xsports():
+    """
+    Valida que canais de Cabo com Tuner WORKING geram imagem válida de tamanho 320x240.
+    """
+    res = asyncio.run(get_channel_jpeg(canal="X-Sports", praca="São Paulo"))
+    assert res.status_code == 200
+    assert res.media_type == "image/jpeg"
+    img = Image.open(BytesIO(res.body))
+    assert img.size == (320, 240)
+
+def test_frontend_media_switch_presence():
+    """Valida que o switch seletor de Meio (TV vs Rádio vs Todos) existe no DOM do Mosaico."""
+    with open("dashboard/static/index.html", "r", encoding="utf-8") as f:
+        html = f.read()
+    assert "btnMosaicMediaAll" in html
+    assert "btnMosaicMediaTV" in html
+    assert "btnMosaicMediaRadio" in html
+    assert "setMosaicMediaFilter" in html

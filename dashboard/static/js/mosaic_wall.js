@@ -201,6 +201,41 @@ async function loadMosaicData(isManualRefresh = false) {
 }
 window.loadMosaicData = loadMosaicData;
 
+function setMosaicMediaFilter(meioVal) {
+    const sel = document.getElementById("mosaicFilterMeio");
+    if (sel) {
+        sel.value = meioVal;
+    }
+    updateMosaicMediaButtons(meioVal);
+    applyMosaicFilters();
+}
+window.setMosaicMediaFilter = setMosaicMediaFilter;
+
+function updateMosaicMediaButtons(meioVal) {
+    const btnAll = document.getElementById("btnMosaicMediaAll");
+    const btnTV = document.getElementById("btnMosaicMediaTV");
+    const btnRadio = document.getElementById("btnMosaicMediaRadio");
+
+    const activeStyle = { background: "#2563eb", color: "#ffffff", boxShadow: "0 0 10px rgba(37,99,235,0.5)" };
+    const inactiveStyle = { background: "transparent", color: "var(--text-muted)", boxShadow: "none" };
+
+    [
+        { btn: btnAll, val: "all" },
+        { btn: btnTV, val: "TV" },
+        { btn: btnRadio, val: "Rádio" }
+    ].forEach(({ btn, val }) => {
+        if (!btn) return;
+        if (val === meioVal) {
+            Object.assign(btn.style, activeStyle);
+            btn.classList.add("active-media-btn");
+        } else {
+            Object.assign(btn.style, inactiveStyle);
+            btn.classList.remove("active-media-btn");
+        }
+    });
+}
+window.updateMosaicMediaButtons = updateMosaicMediaButtons;
+
 function applyMosaicFilters() {
     if (mosaicQuickOnlyFailures) {
         // Modo Rápido de Severidade: exibe imediatamente todos os canais com anomalia/degradação
@@ -215,6 +250,7 @@ function applyMosaicFilters() {
     const country = document.getElementById("mosaicFilterCountry") ? document.getElementById("mosaicFilterCountry").value : "all";
     const region = document.getElementById("mosaicFilterRegion") ? document.getElementById("mosaicFilterRegion").value : "all";
     const meio = document.getElementById("mosaicFilterMeio") ? document.getElementById("mosaicFilterMeio").value : "all";
+    updateMosaicMediaButtons(meio);
     const signalType = document.getElementById("mosaicFilterSignalType") ? document.getElementById("mosaicFilterSignalType").value : "all";
     const cs = document.getElementById("mosaicFilterCS") ? document.getElementById("mosaicFilterCS").value : "all";
     const status = document.getElementById("mosaicFilterStatus") ? document.getElementById("mosaicFilterStatus").value : "all";
@@ -315,12 +351,55 @@ function renderMosaicCardHtml(s) {
     const bgBadge = s.status_color ? `${s.status_color}25` : "rgba(16, 185, 129, 0.2)";
     const hasIncident = s.tipo_falha && s.tipo_falha !== "none" && s.tipo_falha !== "paused";
 
-    let signalBars = `
-        <div style="display: flex; align-items: center; gap: 8px; font-size: 11px;">
-            <span>Q: <strong>${s.qualidade}%</strong></span>
-            <span>F: <strong>${s.forca}%</strong></span>
-        </div>
-    `;
+    // Detecção defensiva de TV a Cabo / PayTV / Analógico / Streaming vs ISDB-Tb Digital Terrestre
+    const isCaboOrIP = (s.tipo_sinal === "Analógico / Cabo") || 
+                       (s.tipo_sinal === "Streaming IP (RTSP/HLS)") || 
+                       (s.tipo_sinal === "Satélite (DVB-S2)") ||
+                       (s.meio && (s.meio.toLowerCase().includes("cabo") || s.meio.toLowerCase().includes("analóg") || s.meio.toLowerCase().includes("analog"))) || 
+                       (String(s.cs) === "3") ||
+                       (s.praca && s.praca.toLowerCase().includes("nacional"));
+
+    let signalBars = '';
+    if (isCaboOrIP) {
+        const tunerText = (s.status_tuner || "").toLowerCase();
+        const isConnected = tunerText.includes("working") || tunerText.includes("ready") || tunerText.includes("connected");
+        const isDisconn = tunerText.includes("disconnected") || tunerText.includes("parado") || tunerText.includes("desconectado");
+
+        if (isDisconn) {
+            signalBars = `
+                <div style="display: flex; align-items: center; gap: 6px; font-size: 11px;">
+                    <span class="badge" style="background: rgba(245, 158, 11, 0.18); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); font-weight: 700; padding: 2px 7px; border-radius: 4px;" title="${escapeHtml(s.status_tuner || 'STB / Placa Desconectada')}">
+                        <i class="fas fa-exclamation-triangle"></i> STB DESCONECTADO
+                    </span>
+                </div>
+            `;
+        } else if (isConnected) {
+            signalBars = `
+                <div style="display: flex; align-items: center; gap: 6px; font-size: 11px;">
+                    <span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); font-weight: 700; padding: 2px 7px; border-radius: 4px;" title="Entrada HDMI/SDI ativa e sintonizada">
+                        <i class="fas fa-plug"></i> CABO: SINAL OK
+                    </span>
+                </div>
+            `;
+        } else {
+            signalBars = `
+                <div style="display: flex; align-items: center; gap: 6px; font-size: 11px;">
+                    <span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); font-weight: 700; padding: 2px 7px; border-radius: 4px;">
+                        <i class="fas fa-ethernet"></i> CABO / IP ATIVO
+                    </span>
+                </div>
+            `;
+        }
+    } else {
+        const qVal = parseInt(s.qualidade, 10) || 0;
+        const qColor = qVal >= 50 ? "#34d399" : (qVal > 0 ? "#fbbf24" : "#f87171");
+        signalBars = `
+            <div style="display: flex; align-items: center; gap: 8px; font-size: 11px;">
+                <span>Q: <strong style="color: ${qColor};">${s.qualidade}%</strong></span>
+                <span>F: <strong>${s.forca}%</strong></span>
+            </div>
+        `;
+    }
 
         const isRadio = (s.meio || "").toLowerCase().includes("rádio") || (s.meio || "").toLowerCase().includes("radio") || Boolean(s.is_radio);
 
