@@ -192,14 +192,14 @@ async function loadFleetAutoHealingStatus() {
                     <div style="font-size: 10px; color: #fcd34d; margin-top: 2px;">Online na v1.0.10 - v1.0.15</div>
                 </div>
                 <div style="background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 8px; padding: 12px; cursor: pointer;" onclick="filterAutoHealingList('delay')" title="Clique para filtrar">
-                    <div style="font-size: 10px; color: #38bdf8; text-transform: uppercase; font-weight: 700;">🟡 Em Delay (2h a 6h)</div>
+                    <div style="font-size: 10px; color: #38bdf8; text-transform: uppercase; font-weight: 700;">🟡 Em Delay (20m a 2h)</div>
                     <div style="font-size: 22px; font-weight: 800; color: #38bdf8; margin-top: 4px;">${summary.in_delay || 0} <span style="font-size: 11px; font-weight: 500; color: #94a3b8;">hosts</span></div>
                     <div style="font-size: 10px; color: #bae6fd; margin-top: 2px;">Oscilação WAN / Intervalo</div>
                 </div>
                 <div style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 8px; padding: 12px; cursor: pointer;" onclick="filterAutoHealingList('offline')" title="Clique para filtrar">
                     <div style="font-size: 10px; color: #f87171; text-transform: uppercase; font-weight: 700;">🔴 Offline Crítico (>24h)</div>
-                    <div style="font-size: 22px; font-weight: 800; color: #ef4444; margin-top: 4px;">${summary.offline || 0} <span style="font-size: 11px; font-weight: 500; color: #94a3b8;">hosts</span></div>
-                    <div style="font-size: 10px; color: #fca5a5; margin-top: 2px;">Sem comunicação recente</div>
+                    <div style="font-size: 22px; font-weight: 800; color: #ef4444; margin-top: 4px;">${summary.offline_critical || 0} <span style="font-size: 11px; font-weight: 500; color: #94a3b8;">hosts</span></div>
+                    <div style="font-size: 10px; color: #fca5a5; margin-top: 2px;">Sem comunicação há > 1 dia (${summary.offline_recent || 0} em 2h-24h)</div>
                 </div>
                 <div style="background: rgba(168, 85, 247, 0.12); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 8px; padding: 12px; cursor: pointer;" onclick="filterAutoHealingList('stopped_services')" title="Clique para filtrar">
                     <div style="font-size: 10px; color: #c084fc; text-transform: uppercase; font-weight: 700;">⚠️ Serviços Parados</div>
@@ -237,8 +237,10 @@ function renderAutoHealingHostsList() {
         filtered = hosts.filter(h => h.eligible_auto_update);
     } else if (currentAutoHealingFilter === "delay") {
         filtered = hosts.filter(h => h.comm_state === "DELAY");
+    } else if (currentAutoHealingFilter === "offline_recent") {
+        filtered = hosts.filter(h => h.comm_state === "OFFLINE_RECENT");
     } else if (currentAutoHealingFilter === "offline") {
-        filtered = hosts.filter(h => h.comm_state === "OFFLINE_CRITICAL" || h.comm_state === "OFFLINE_RECENT");
+        filtered = hosts.filter(h => h.comm_state === "OFFLINE_CRITICAL" || h.comm_state === "OFFLINE");
     } else if (currentAutoHealingFilter === "stopped_services") {
         filtered = hosts.filter(h => h.eligible_service_restart);
     }
@@ -265,7 +267,11 @@ function renderAutoHealingHostsList() {
             badgeColor = "#38bdf8";
             badgeBg = "rgba(56,189,248,0.15)";
             icon = "🟡";
-        } else if (h.comm_state.startsWith("OFFLINE")) {
+        } else if (h.comm_state === "OFFLINE_RECENT") {
+            badgeColor = "#fb923c";
+            badgeBg = "rgba(251,146,60,0.15)";
+            icon = "🟠";
+        } else if (h.comm_state === "OFFLINE_CRITICAL" || h.comm_state === "OFFLINE") {
             badgeColor = "#ef4444";
             badgeBg = "rgba(239,68,68,0.15)";
             icon = "🔴";

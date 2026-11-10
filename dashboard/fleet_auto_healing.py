@@ -118,6 +118,8 @@ def audit_and_diagnose_fleet() -> Dict[str, Any]:
     up_to_date_count = 0
     eligible_update_count = 0
     delay_count = 0
+    offline_recent_count = 0
+    offline_critical_count = 0
     offline_count = 0
     stopped_services_count = 0
 
@@ -134,7 +136,11 @@ def audit_and_diagnose_fleet() -> Dict[str, Any]:
 
         if data["comm_state"] == "DELAY":
             delay_count += 1
-        elif data["comm_state"] in ("OFFLINE_RECENT", "OFFLINE_CRITICAL", "OFFLINE"):
+        elif data["comm_state"] == "OFFLINE_RECENT":
+            offline_recent_count += 1
+            offline_count += 1
+        elif data["comm_state"] in ("OFFLINE_CRITICAL", "OFFLINE"):
+            offline_critical_count += 1
             offline_count += 1
 
         # Verifica serviços críticos parados
@@ -158,6 +164,8 @@ def audit_and_diagnose_fleet() -> Dict[str, Any]:
             "up_to_date": up_to_date_count,
             "eligible_for_update": eligible_update_count,
             "in_delay": delay_count,
+            "offline_recent": offline_recent_count,
+            "offline_critical": offline_critical_count,
             "offline": offline_count,
             "stopped_services": stopped_services_count
         },
