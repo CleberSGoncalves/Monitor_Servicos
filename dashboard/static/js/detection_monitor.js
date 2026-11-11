@@ -231,7 +231,17 @@ function renderDetectionTable() {
         }
 
         // Helper para renderizar pill de serviço individual
-        const renderSvcPill = (name, running, statusText) => {
+        const renderSvcPill = (name, running, statusText, isUninstalled) => {
+            const stLow = String(statusText || "").toLowerCase();
+            const isUninst = isUninstalled || ["desinstalado", "não encontrado", "nao encontrado", "inexistente", "não instalado", "nao instalado"].includes(stLow);
+            if (isUninst) {
+                return `
+                    <span title="${name}: Desinstalado / Não Instalado" style="display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 4px; background: rgba(100, 116, 139, 0.12); border: 1px solid rgba(148, 163, 184, 0.25); color: #94a3b8; font-size: 10px; font-weight: 500;">
+                        <span style="width: 5px; height: 5px; border-radius: 50%; background: #64748b;"></span>
+                        ${name.replace(".exe", "").replace("DNA.", "")} <span style="font-size: 9px; opacity: 0.8;">(Desinstalado)</span>
+                    </span>
+                `;
+            }
             const isRun = !!running;
             const bg = isRun ? "rgba(34, 197, 94, 0.12)" : "rgba(239, 68, 68, 0.15)";
             const border = isRun ? "rgba(34, 197, 94, 0.3)" : "rgba(239, 68, 68, 0.35)";
@@ -316,10 +326,10 @@ function renderDetectionTable() {
                 <!-- 3. Pipeline de Serviços (4 Serviços-Chave) -->
                 <td style="padding: 12px 14px;">
                     <div style="display: flex; flex-wrap: wrap; gap: 4px; max-width: 260px;">
-                        ${renderSvcPill("FastMatching", fm.running, fm.status)}
-                        ${renderSvcPill("DetectionSVC", det.running, det.status)}
-                        ${renderSvcPill("ConfigMonitor", cfg.running, cfg.status)}
-                        ${renderSvcPill("TrackingSVC", trk.running, trk.status)}
+                        ${renderSvcPill("FastMatching", fm.running, fm.status, fm.is_uninstalled)}
+                        ${renderSvcPill("DetectionSVC", det.running, det.status, det.is_uninstalled)}
+                        ${renderSvcPill("ConfigMonitor", cfg.running, cfg.status, cfg.is_uninstalled)}
+                        ${renderSvcPill("TrackingSVC", trk.running, trk.status, trk.is_uninstalled)}
                     </div>
                 </td>
 

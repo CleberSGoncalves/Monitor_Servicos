@@ -764,35 +764,13 @@ def get_site_troubleshooting_playbook(site: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def is_service_running(status: Optional[str]) -> bool:
-
-
-
     """Verifica se o status indica serviço em execução normal."""
-
-
-
     if not status:
-
-
-
         return False
-
-
-
     st = str(status).strip().lower()
-
-
-
+    if any(w in st for w in ["desinstalado", "inexistente", "não encontrado", "nao encontrado", "não instalado", "nao instalado", "parado", "stopped"]):
+        return False
     return any(w in st for w in ["execu", "running", "online", "ativo"])
-
-
-
-
-
-
-
-
-
 
 
 def format_noc_time_label(hours: float, status_prefix: str = "") -> str:
@@ -834,71 +812,18 @@ def format_noc_time_label(hours: float, status_prefix: str = "") -> str:
 
 
 def get_service_status_normalized(status: Optional[str]) -> str:
-
-
-
     """Normaliza o status do serviço para exibição padronizada."""
-
-
-
     if not status:
-
-
-
-        return "Não Instalado"
-
-
-
+        return "Desinstalado"
     st = str(status).strip()
-
-
-
     st_low = st.lower()
-
-
-
     if any(w in st_low for w in ["execu", "running"]):
-
-
-
         return "Em Execução"
-
-
-
     if any(w in st_low for w in ["parado", "stopped"]):
-
-
-
         return "Parado"
-
-
-
-    if "inexistente" in st_low:
-
-
-
-        return "Inexistente"
-
-
-
-    if "não encontrado" in st_low or "nao encontrado" in st_low:
-
-
-
-        return "Não Encontrado"
-
-
-
+    if any(w in st_low for w in ["inexistente", "não encontrado", "nao encontrado", "não instalado", "nao instalado", "desinstalado"]):
+        return "Desinstalado"
     return st
-
-
-
-
-
-
-
-
-
 
 
 def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRESHOLD_MINUTES) -> Dict[str, Any]:
@@ -1490,21 +1415,34 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
         # Precedência: Se a telemetria do agente OU do FastMatching tem > 20 min, a evidência é insuficiente para P0
         is_telemetry_fresh_for_p0 = (agent_comm_hours <= 0.33) and not fm_is_stale and agent_running
 
-        if fm_running and det_running:
+        # REGRA BLINDADA ANTI-FALSO CONFLITO:
+        # Serviços desinstalados ou inexistentes nunca podem ser considerados em execução
+        fm_is_uninstalled = fm_status in ("Desinstalado", "Não Encontrado", "Inexistente", "Não Instalado")
+        det_is_uninstalled = det_status in ("Desinstalado", "Não Encontrado", "Inexistente", "Não Instalado")
+        cfg_is_uninstalled = cfg_status in ("Desinstalado", "Não Encontrado", "Inexistente", "Não Instalado")
+        trk_is_uninstalled = trk_status in ("Desinstalado", "Não Encontrado", "Inexistente", "Não Instalado")
+
+        if fm_is_uninstalled:
+            fm_running = False
+        if det_is_uninstalled:
+            det_running = False
+
+        # Conflito Real: só ocorre se AMBOS estiverem instalados, rodando e ativos
+        if fm_running and det_running and not fm_is_uninstalled and not det_is_uninstalled:
             active_engine = "CONFLITO"
             active_engine_label = "Conflito Concorrente (Ambos Ativos: FastMatching + DetectionSVC)"
             engine_tier = "CONFLICT"
             if not is_agent_stale:
                 concurrent_conflict_count += 1
-        elif fm_running:
+        elif fm_running and not fm_is_uninstalled:
             active_engine = "FastMatchingSvc"
             active_engine_label = f"FastMatching (Ativo - Motor Moderno){cluster_motor_note}"
             engine_tier = "PRIMARY"
             if not is_agent_stale:
                 nominal_fastmatching += 1
-        elif det_running:
+        elif det_running and not det_is_uninstalled:
             active_engine = "DNA.DetectionSVC"
-            active_engine_label = f"DetectionSVC (Ativo - Motor Legado){cluster_motor_note}"
+            active_engine_label = f"DetectionSVC (Ativo - Motor Fallback/Legado){cluster_motor_note}"
             engine_tier = "FALLBACK"
             if not is_agent_stale:
                 fallback_detection_svc += 1
@@ -1968,7 +1906,9 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
 
 
 
-                    "role": "Estágio 1 — Motor Primário (C++) ➔ Grava em data\\detection"
+                    "role": "Estágio 1 — Motor Primário (C++) ➔ Grava em data\\detection",
+                    "is_uninstalled": fm_is_uninstalled,
+                    "is_uninstalled": fm_is_uninstalled
 
 
 
@@ -1992,7 +1932,9 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
 
 
 
-                    "role": "Estágio 1 — Motor Fallback (.NET) ➔ Grava em data\\detection"
+                    "role": "Estágio 1 — Motor Fallback (.NET) ➔ Grava em data\\detection",
+                    "is_uninstalled": det_is_uninstalled,
+                    "is_uninstalled": det_is_uninstalled
 
 
 
@@ -2016,7 +1958,9 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
 
 
 
-                    "role": "Estágio 2 — Análise de Qualidade (Lê data\\detection ➔ Grava em data\\tracking)"
+                    "role": "Estágio 2 — Análise de Qualidade (Lê data\\detection ➔ Grava em data\\tracking)",
+                    "is_uninstalled": trk_is_uninstalled,
+                    "is_uninstalled": trk_is_uninstalled
 
 
 
@@ -2040,7 +1984,9 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
 
 
 
-                    "role": "Estágio 3 — Despacho Central WCF (Lê data\\tracking ➔ Envia ao Datacenter)"
+                    "role": "Estágio 3 — Despacho Central WCF (Lê data\\tracking ➔ Envia ao Datacenter)",
+                    "is_uninstalled": cfg_is_uninstalled,
+                    "is_uninstalled": cfg_is_uninstalled
 
 
 
@@ -2076,7 +2022,7 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
 
 
 
-            "fastmatching_telemetry": get_fastmatching_node_telemetry(hostname, praca) if (fm_running or engine_tier in ("PRIMARY", "CONFLICT")) else None,
+            "fastmatching_telemetry": get_fastmatching_node_telemetry(hostname, praca) if (fm_running and engine_tier in ("PRIMARY", "CONFLICT")) else None,
             "playbook_solution": None,  # populado a seguir
             "sgg_vs_tracking_audit": sgg_vs_tracking_audit,
 
