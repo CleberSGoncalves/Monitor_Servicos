@@ -730,6 +730,56 @@ async def list_incident_worklogs(
         return [dict(r) for r in c.fetchall()]
 
 
+# ==============================================================================
+# ALOCAÇÃO DE INCIDENTES & ATENDIMENTO ANTI-COLISÃO (EM ANÁLISE / RESPONSÁVEL)
+# ==============================================================================
+@app.get("/api/incidents/assignments")
+async def list_incident_assignments(user: dict = Depends(get_current_user)):
+    """Retorna o mapa de todos os incidentes assumidos por operadores."""
+    try:
+        from incident_manager import get_incident_assignments
+        return get_incident_assignments()
+    except Exception as e:
+        logger.error(f"Erro ao listar alocações de incidentes: {e}")
+        return {}
+
+
+@app.post("/api/incidents/assignments")
+async def handle_incident_assignment(payload: dict, user: dict = Depends(get_current_user)):
+    """Aloca ou libera um incidente para o operador logado."""
+    try:
+        from incident_manager import assign_incident, unassign_incident
+        incident_key = payload.get("incident_key")
+        if not incident_key:
+            raise HTTPException(status_code=400, detail="incident_key é obrigatório")
+
+        action = payload.get("action", "assign")
+        username = user.get("username", "operador")
+        full_name = user.get("full_name", username)
+
+        if action == "unassign":
+            unassign_incident(incident_key=incident_key, operator_username=username)
+            return {"success": True, "action": "unassign", "incident_key": incident_key}
+        else:
+            praca = payload.get("praca", "")
+            hostname = payload.get("hostname", "")
+            status = payload.get("status", "em_analise")
+            res = assign_incident(
+                incident_key=incident_key,
+                praca=praca,
+                hostname=hostname,
+                operator_username=username,
+                operator_name=full_name,
+                status=status
+            )
+            return {"success": True, "action": "assign", "data": res}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erro ao processar alocação de incidente: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 
 # ==============================================================================
 # AUDITORIA DE LIMIARES X INCIDENTES (IA) & ANÁLISE AMOSTRAL DE CLUSTERS

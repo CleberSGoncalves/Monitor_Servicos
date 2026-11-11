@@ -27,6 +27,20 @@ def init_incidents_db():
             )
         """)
         
+        # Cria tabela de alocação de incidentes a operadores (Em Análise / Anti-Colisão)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS incident_assignments (
+                incident_key TEXT PRIMARY KEY,
+                praca TEXT,
+                hostname TEXT,
+                assigned_to TEXT NOT NULL,
+                assigned_name TEXT,
+                status TEXT DEFAULT 'em_analise',
+                assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         # Cria tabela de registro de incidentes globais
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS incident_events (
@@ -1116,3 +1130,90 @@ def get_channel_anomaly_history_summary(channel_key: str, period: str = "24h") -
         "total_downtime_minutes": round(total_downtime_sec / 60.0, 1),
         "events": events
     }
+
+
+def get_incident_assignments() -> Dict[str, Dict[str, Any]]:
+    """Retorna o mapa de todas as alocações de incidentes em andamento."""
+    with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS incident_assignments (
+                incident_key TEXT PRIMARY KEY,
+                praca TEXT,
+                hostname TEXT,
+                assigned_to TEXT NOT NULL,
+                assigned_name TEXT,
+                status TEXT DEFAULT 'em_analise',
+                assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("SELECT incident_key, praca, hostname, assigned_to, assigned_name, status, assigned_at, updated_at FROM incident_assignments")
+        rows = cursor.fetchall()
+        return {r["incident_key"]: dict(r) for r in rows}
+
+
+def assign_incident(incident_key: str, praca: str, hostname: str, operator_username: str, operator_name: str, status: str = "em_analise") -> Dict[str, Any]:
+    """Aloca um incidente para um operador e registra no worklog para evitar duplicidade de atendimento."""
+    now_iso = datetime.now(timezone.utc).isoformat()
+    with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS incident_assignments (
+                incident_key TEXT PRIMARY KEY,
+                praca TEXT,
+                hostname TEXT,
+                assigned_to TEXT NOT NULL,
+                assigned_name TEXT,
+                status TEXT DEFAULT 'em_analise',
+                assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("""
+            INSERT INTO incident_assignments (incident_key, praca, hostname, assigned_to, assigned_name, status, assigned_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(incident_key) DO UPDATE SET
+                assigned_to = excluded.assigned_to,
+                assigned_name = excluded.assigned_name,
+                status = excluded.status,
+                updated_at = excluded.updated_at
+        """, (incident_key, praca, hostname, operator_username, operator_name or operator_username, status, now_iso, now_iso))
+        
+        # Registra no worklog histórico
+        cursor.execute("""
+            INSERT INTO incident_worklog (incident_key, host, target_name, incident_type, operator_username, operator_name, action_taken, resolution_status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (incident_key, hostname or praca, praca, "incident_assignment", operator_username, operator_name or operator_username, f"Incidente assumido para tratamento pelo operador {operator_username}", status, now_iso))
+        conn.commit()
+        
+    return {
+        "incident_key": incident_key,
+        "praca": praca,
+        "hostname": hostname,
+        "assigned_to": operator_username,
+        "assigned_name": operator_name or operator_username,
+        "status": status,
+        "assigned_at": now_iso
+    }
+
+
+def unassign_incident(incident_key: str, operator_username: str) -> bool:
+    """Libera a alocação de um incidente para a fila geral de operadores."""
+    now_iso = datetime.now(timezone.utc).isoformat()
+    with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT praca, hostname, assigned_to FROM incident_assignments WHERE incident_key = ?", (incident_key,))
+        row = cursor.fetchone()
+        praca = row[0] if row else ""
+        hostname = row[1] if row else ""
+        
+        cursor.execute("DELETE FROM incident_assignments WHERE incident_key = ?", (incident_key,))
+        
+        cursor.execute("""
+            INSERT INTO incident_worklog (incident_key, host, target_name, incident_type, operator_username, operator_name, action_taken, resolution_status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (incident_key, hostname or praca, praca, "incident_unassignment", operator_username, operator_username, f"Atendimento liberado pelo operador {operator_username}", "pendente", now_iso))
+        conn.commit()
+    return True

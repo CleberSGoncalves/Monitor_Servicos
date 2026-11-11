@@ -12046,6 +12046,112 @@ function parseRamMetric(val) {
 
 
 
+
+// ==============================================================================
+// GESTÃO DE OPERADOR RESPONSÁVEL & ALOCAÇÃO ANTI-COLISÃO DE INCIDENTES (NOC N1)
+// ==============================================================================
+let nocIncidentAssignments = {};
+
+function formatNocHumanTime(hours) {
+    if (hours === undefined || hours === null || isNaN(hours) || hours < 0) return "agora mesmo";
+    if (hours < 1 / 60) return "agora mesmo";
+    if (hours < 1.0) {
+        const mins = Math.max(1, Math.round(hours * 60));
+        return `${mins} min atrás`;
+    }
+    if (hours < 24.0) {
+        const totalMins = Math.round(hours * 60);
+        const h = Math.floor(totalMins / 60);
+        const m = totalMins % 60;
+        return m === 0 ? `${h}h atrás` : `${h}h ${m}m atrás`;
+    }
+    const totalHours = Math.round(hours);
+    const days = Math.floor(totalHours / 24);
+    const remH = totalHours % 24;
+    if (remH === 0) {
+        return days === 1 ? `1 dia atrás` : `${days} dias atrás`;
+    }
+    return `${days}d ${remH}h atrás`;
+}
+window.formatNocHumanTime = formatNocHumanTime;
+
+async function loadNocIncidentAssignments() {
+    try {
+        const token = (typeof getAuthToken === 'function' && getAuthToken()) ? { "Authorization": `Bearer ${getAuthToken()}` } : {};
+        const resp = await fetch(`/api/incidents/assignments?_t=${Date.now()}`, { headers: token });
+        if (resp.ok) {
+            nocIncidentAssignments = await resp.json();
+        }
+    } catch (e) {
+        console.warn("Falha ao carregar alocações de incidentes:", e);
+    }
+}
+window.loadNocIncidentAssignments = loadNocIncidentAssignments;
+
+async function assignIncidentToMe(incidentKey, praca, hostname, evt) {
+    if (evt) evt.stopPropagation();
+    const myUsername = currentUser?.username || "suportesmmc";
+    const myName = currentUser?.full_name || myUsername;
+
+    // Atualização otimista imediata na UI
+    nocIncidentAssignments[incidentKey] = {
+        incident_key: incidentKey,
+        praca: praca,
+        hostname: hostname,
+        assigned_to: myUsername,
+        assigned_name: myName,
+        status: "em_analise",
+        assigned_at: new Date().toISOString()
+    };
+    renderNocUnifiedQueue();
+
+    try {
+        const token = (typeof getAuthToken === 'function' && getAuthToken()) ? { "Authorization": `Bearer ${getAuthToken()}` } : {};
+        const resp = await fetch("/api/incidents/assignments", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...token },
+            body: JSON.stringify({
+                action: "assign",
+                incident_key: incidentKey,
+                praca: praca,
+                hostname: hostname,
+                status: "em_analise"
+            })
+        });
+        if (resp.ok) {
+            if (typeof showToast === 'function') showToast(`Incidente assumido por você (${myUsername})`, "success");
+        }
+    } catch (err) {
+        console.error("Erro ao assumir incidente:", err);
+    }
+}
+window.assignIncidentToMe = assignIncidentToMe;
+
+async function unassignIncidentAction(incidentKey, evt) {
+    if (evt) evt.stopPropagation();
+    delete nocIncidentAssignments[incidentKey];
+    renderNocUnifiedQueue();
+
+    try {
+        const token = (typeof getAuthToken === 'function' && getAuthToken()) ? { "Authorization": `Bearer ${getAuthToken()}` } : {};
+        const resp = await fetch("/api/incidents/assignments", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...token },
+            body: JSON.stringify({
+                action: "unassign",
+                incident_key: incidentKey
+            })
+        });
+        if (resp.ok) {
+            if (typeof showToast === 'function') showToast("Atendimento liberado para outros operadores", "info");
+        }
+    } catch (err) {
+        console.error("Erro ao liberar incidente:", err);
+    }
+}
+window.unassignIncidentAction = unassignIncidentAction;
+
+
 function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pipelineIncidents, thresholdBreaches, detectionSites = [], detectionSummary = {}) {
 
 
@@ -13496,8 +13602,8 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
 
         if (isOffline) {
             const hoursAgo = site.agent_comm?.hours_since_last_seen || 0;
-            // Host que comunicou dentro da janela nominal de 2h está online: não gera alarme falso de host desconectado
-            if (hoursAgo < 2.0) {
+            // Host com atraso de telemetria transitório (< 24h) pertence ao painel de delay da frota, NÃO a incidente de host morto
+            if (hoursAgo < 24.0) {
                 return;
             }
 
@@ -13505,10 +13611,10 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
             sevLabel = "ALERTA (P1)";
             catLabel = "Host Desconectado";
             catIcon = "fa-network-wired";
-            title = hoursAgo >= 24.0 ? `Host Desconectado (Telemetria Ausente > 24h)` : `Host Desconectado (Telemetria Ausente há ${Math.round(hoursAgo)}h)`;
-            const commAgo = site.agent_comm?.label || `${Math.round(hoursAgo)}h atrás`;
-            telText = `Telemetria suspensa (${commAgo}) | Processos locais indeterminados | Verifique DNA.MonitorServiceSVC`;
-            summaryText = `Host CS01 sem envio de telemetria (${commAgo}). Os serviços no servidor físico podem estar operando normalmente (ex: FastMatching em execução), porém os dados centrais estão suspensos.`;
+            title = `Host Desconectado (Telemetria Ausente > 24h)`;
+            const commAgo = formatNocHumanTime(hoursAgo);
+            telText = `Telemetria suspensa há ${commAgo} | Processos locais indeterminados | Verifique DNA.MonitorServiceSVC`;
+            summaryText = `Host CS01 sem envio de telemetria há ${commAgo}. Os serviços no servidor físico podem estar operando normalmente (ex: FastMatching em execução), porém os dados centrais estão suspensos.`;
 
         } else if (hStatus === "CRITICAL") {
 
@@ -13704,7 +13810,7 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
 
         const days = (h.diff_hours / 24.0).toFixed(1);
 
-        const timeAgoStr = h.diff_hours >= 24 ? `Desconectado (${days}d atrás)` : `Offline (${Math.round(h.diff_hours)}h atrás)`;
+        const timeAgoStr = `Desconectado (${formatNocHumanTime(h.diff_hours)})`;
 
 
 
@@ -15001,8 +15107,36 @@ function renderNocUnifiedQueue() {
                     <span class="summary-title">${escapeHtml(mainItem.title)}</span>
                     <span class="summary-detail">${escapeHtml(mainItem.summary || group.telemetry || '')}</span>
                 </td>
-                <td style="width: 85px;">
+                <td style="width: 95px;">
                     <span style="color: var(--text-muted); font-size: 11px; font-family: monospace;">${escapeHtml(group.time_ago)}</span>
+                </td>
+                <td style="width: 175px;">
+                    ${(() => {
+                        const assignment = nocIncidentAssignments[mainItem.key];
+                        const myUsername = (currentUser?.username || "suportesmmc").toLowerCase();
+                        if (assignment) {
+                            const isMe = (assignment.assigned_to || "").toLowerCase() === myUsername;
+                            if (isMe) {
+                                return `
+                                <div class="noc-assigned-pill assigned-me" title="Você assumiu este incidente">
+                                    <i class="fas fa-user-check"></i>
+                                    <span><strong>Você</strong> (Em Análise)</span>
+                                    <button type="button" class="btn-noc-unassign" onclick="unassignIncidentAction('${escapeHtml(mainItem.key)}', event)" title="Liberar atendimento"><i class="fas fa-times"></i></button>
+                                </div>`;
+                            } else {
+                                return `
+                                <div class="noc-assigned-pill assigned-other" title="Incidente alocado para ${escapeHtml(assignment.assigned_name || assignment.assigned_to)}">
+                                    <i class="fas fa-lock"></i>
+                                    <span><strong>${escapeHtml(assignment.assigned_name || assignment.assigned_to)}</strong> (Em Análise)</span>
+                                </div>`;
+                            }
+                        } else {
+                            return `
+                            <button type="button" class="btn-noc-assign" onclick="assignIncidentToMe('${escapeHtml(mainItem.key)}', '${escapeHtml(group.praca)}', '${escapeHtml(group.hostname)}', event)" title="Assumir este incidente para análise e tratamento">
+                                <i class="fas fa-hand-paper"></i> Assumir
+                            </button>`;
+                        }
+                    })()}
                 </td>
                 <td style="width: 200px; text-align: right;">
                     <div style="display: inline-flex; gap: 4px;">
@@ -15038,7 +15172,8 @@ function renderNocUnifiedQueue() {
                         <th style="width: 130px;">Host</th>
                         <th style="width: 120px;">Gatilho</th>
                         <th>Problema / Diagnóstico & Telemetria</th>
-                        <th style="width: 85px;">Tempo</th>
+                        <th style="width: 95px;">Tempo</th>
+                        <th style="width: 175px;">Responsável / Status</th>
                         <th style="width: 200px; text-align: right;">Ações Rápidas</th>
                     </tr>
                 </thead>
@@ -15498,14 +15633,36 @@ function renderNocUnifiedQueue() {
 
 
                     <button class="btn-secondary" style="font-size: 11px; padding: 5px 12px; display: flex; align-items: center; gap: 5px;" onclick="openIncidentActionModal('${mainItem.key}', '${group.praca} (CS ${group.cs})', '${mainItem.target}', '${mainItem.category}')">
-
-
-
                         <i class="fas fa-tools"></i> 🛠️ Tratar Incidente
-
-
-
                     </button>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    ${(() => {
+                        const assignment = nocIncidentAssignments[mainItem.key];
+                        const myUsername = (currentUser?.username || "suportesmmc").toLowerCase();
+                        if (assignment) {
+                            const isMe = (assignment.assigned_to || "").toLowerCase() === myUsername;
+                            if (isMe) {
+                                return `
+                                <div class="noc-assigned-pill assigned-me" title="Você assumiu este incidente">
+                                    <i class="fas fa-user-check"></i>
+                                    <span><strong>Você</strong> (Em Análise)</span>
+                                    <button type="button" class="btn-noc-unassign" onclick="unassignIncidentAction('${escapeHtml(mainItem.key)}', event)" title="Liberar atendimento"><i class="fas fa-times"></i></button>
+                                </div>`;
+                            } else {
+                                return `
+                                <div class="noc-assigned-pill assigned-other" title="Incidente alocado para ${escapeHtml(assignment.assigned_name || assignment.assigned_to)}">
+                                    <i class="fas fa-lock"></i>
+                                    <span><strong>${escapeHtml(assignment.assigned_name || assignment.assigned_to)}</strong> (Em Análise)</span>
+                                </div>`;
+                            }
+                        } else {
+                            return `
+                            <button type="button" class="btn-noc-assign" onclick="assignIncidentToMe('${escapeHtml(mainItem.key)}', '${escapeHtml(group.praca)}', '${escapeHtml(group.hostname)}', event)" title="Assumir este incidente">
+                                <i class="fas fa-hand-paper"></i> Assumir
+                            </button>`;
+                        }
+                    })()}
 
 
 
@@ -15671,6 +15828,7 @@ async function loadNocUnifiedCockpit(optSummary = null, optServices = null, optC
 
 
         promises.push(needFetchDetection ? fetch(`/api/fleet/detection/summary?_t=${now}`, { headers: token }) : Promise.resolve(null));
+        promises.push(fetch(`/api/incidents/assignments?_t=${now}`, { headers: token }));
 
 
 
@@ -15678,7 +15836,12 @@ async function loadNocUnifiedCockpit(optSummary = null, optServices = null, optC
 
 
 
-        const [sumRes, sRes, cRes, pRes, bRes, detRes, detSumRes] = await Promise.all(promises);
+        const [sumRes, sRes, cRes, pRes, bRes, detRes, detSumRes, assignRes] = await Promise.all(promises);
+        if (assignRes && assignRes.ok) {
+            try {
+                nocIncidentAssignments = await assignRes.json();
+            } catch(e) {}
+        }
 
 
 

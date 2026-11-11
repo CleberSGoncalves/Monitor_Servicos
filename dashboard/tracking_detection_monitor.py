@@ -270,6 +270,44 @@ def is_service_running(status: Optional[str]) -> bool:
 
 
 
+def format_noc_time_label(hours: float, status_prefix: str = "") -> str:
+    """
+    Formata o atraso de tempo de forma humana e profissional para NOC (sem decimais artificiais como 0.6h ou 8.0d).
+    Exemplos:
+      - hours < 1.0 (ex: 0.6h = 36 min): 'Conectado (36 min atrás)'
+      - 1.0 <= hours < 24.0 (ex: 2.1h = 2h 6m): 'Atraso Telemetria (2h 6m atrás)'
+      - hours >= 24.0 (ex: 8.0d = 8 dias): 'Desconectado (8 dias atrás)' ou 'Desconectado (12d 22h atrás)'
+    """
+    if hours < 0:
+        hours = 0.0
+
+    if hours < 1.0 / 60.0:
+        time_part = "agora mesmo"
+    elif hours < 1.0:
+        mins = max(1, int(round(hours * 60.0)))
+        time_part = f"{mins} min atrás"
+    elif hours < 24.0:
+        total_mins = int(round(hours * 60.0))
+        h = total_mins // 60
+        m = total_mins % 60
+        if m == 0:
+            time_part = f"{h}h atrás"
+        else:
+            time_part = f"{h}h {m}m atrás"
+    else:
+        total_hours = int(round(hours))
+        days = total_hours // 24
+        rem_h = total_hours % 24
+        if rem_h == 0:
+            time_part = f"{days} dias atrás" if days > 1 else "1 dia atrás"
+        else:
+            time_part = f"{days}d {rem_h}h atrás"
+
+    if status_prefix:
+        return f"{status_prefix} ({time_part})"
+    return time_part
+
+
 def get_service_status_normalized(status: Optional[str]) -> str:
 
 
@@ -520,88 +558,52 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
 
         h_upper = hostname.upper()
 
-
-
         is_dt02_or_cs2 = any(tag in h_upper for tag in ["DT02", "DT-02", "DT2", "-02", "CS02", "CS2", "DT03", "DT-03", "DT3", "-03", "CS03", "CS3"])
 
+        # Se for fisicamente nó secundário DT02/DT03/CS2/CS3, descarta sumariamente do pipeline de detecção CS01
+        if is_dt02_or_cs2:
+            continue
 
+        # Normalização canônica de hostname e consolidação de nós irmãos da CS01 (ex: Campinas)
+        canonical_host = hostname
+        if "CAS-ATRIA" in h_upper:
+            canonical_host = "BRSP-CAS-ATRIA--DT01"
+            praca = "Campinas"
+        elif h_upper.endswith("-") and not h_upper.endswith("--DT01"):
+            canonical_host = f"{hostname}-DT01" if not hostname.endswith("--") else f"{hostname}DT01"
 
-        if cs_int in (2, 3) or is_dt02_or_cs2:
+        # Se o host físico é CS01, mas algum serviço específico no SharePoint veio com CS: 2.0 por engano administrativo:
+        # Apenas descarta se NÃO for serviço crítico da esteira de detecção e telemetria CS01
+        svc_name_raw = str(s.get("nome_servico") or "").strip().lower()
+        is_pipeline_svc = any(k in svc_name_raw for k in ["fastmatching", "detectionsvc", "configmonitor", "tracking", "monitorservice"])
+        if cs_int in (2, 3) and not is_pipeline_svc:
+            continue
 
-
-
-            continue  # Descarta sumariamente CS02/CS03 do pipeline de detecção automática
-
-
-
-
-
-
-
-        if hostname not in cs01_hosts_map:
-
-
-
-            cs01_hosts_map[hostname] = {
-
-
-
-                "hostname": hostname,
-
-
-
+        if canonical_host not in cs01_hosts_map:
+            cs01_hosts_map[canonical_host] = {
+                "hostname": canonical_host,
                 "praca": praca,
-
-
-
                 "cs": 1,
-
-
-
                 "cpu_uso": s.get("cpu_uso", "N/A"),
-
-
-
                 "ram_uso": s.get("ram_uso", "N/A"),
-
-
-
                 "disco_d_livre": s.get("disco_d_livre", "N/A"),
-
-
-
                 "uptime": s.get("uptime", "N/A"),
-
-
-
                 "ultima_atualizacao": s.get("ultima_atualizacao", ""),
-
-
-
                 "services": {}
-
-
-
             }
-
-
-
-
-
-
 
         new_up = s.get("ultima_atualizacao") or ""
         svc_name = str(s.get("nome_servico") or "").strip()
 
         # LEI DA VALIDADE DE TELEMETRIA: Mapeia explicitamente o timestamp do agente de monitoramento da frota
         if "monitorservice" in svc_name.lower():
-            cs01_hosts_map[hostname]["agent_ultima_atualizacao"] = new_up
+            cs01_hosts_map[canonical_host]["agent_ultima_atualizacao"] = new_up
 
-        curr_up = cs01_hosts_map[hostname].get("ultima_atualizacao") or ""
+        curr_up = cs01_hosts_map[canonical_host].get("ultima_atualizacao") or ""
         if new_up and (not curr_up or new_up > curr_up):
-            cs01_hosts_map[hostname]["ultima_atualizacao"] = new_up
+            cs01_hosts_map[canonical_host]["ultima_atualizacao"] = new_up
 
-        cs01_hosts_map[hostname]["services"][svc_name] = {
+        cs01_hosts_map[canonical_host]["services"][svc_name] = {
             "status": s.get("status_servico", "Desconhecido"),
             "versao": s.get("versao_instalada", "N/A"),
             "log_erro": s.get("log_erro", ""),
@@ -609,12 +611,6 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
             "cs": s.get("cs", 1),
             "ultima_atualizacao": new_up
         }
-
-
-
-
-
-
 
     sites: List[Dict[str, Any]] = []
 
@@ -916,20 +912,19 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
 
                 if agent_comm_hours <= 0.5:
                     agent_comm_status = "ONLINE"
-                    agent_comm_label = f"Conectado ({int(agent_comm_hours * 60)} min atrás)"
+                    agent_comm_label = format_noc_time_label(agent_comm_hours, "Conectado")
                 elif agent_comm_hours <= 2.0:
                     agent_comm_status = "ONLINE"
-                    agent_comm_label = f"Conectado ({agent_comm_hours:.1f}h atrás)"
+                    agent_comm_label = format_noc_time_label(agent_comm_hours, "Conectado")
                 elif agent_comm_hours <= 6.0:
                     agent_comm_status = "DELAY"
-                    agent_comm_label = f"Atraso Telemetria ({agent_comm_hours:.1f}h atrás)"
+                    agent_comm_label = format_noc_time_label(agent_comm_hours, "Atraso Telemetria")
                 elif agent_comm_hours <= 24.0:
                     agent_comm_status = "OFFLINE_RECENT"
-                    agent_comm_label = f"Desconectado ({agent_comm_hours:.1f}h atrás)"
+                    agent_comm_label = format_noc_time_label(agent_comm_hours, "Desconectado")
                 else:
-                    days = round(agent_comm_hours / 24.0, 1)
                     agent_comm_status = "OFFLINE_CRITICAL"
-                    agent_comm_label = f"Desconectado ({days}d atrás)"
+                    agent_comm_label = format_noc_time_label(agent_comm_hours, "Desconectado")
             except Exception:
                 agent_comm_status = "UNKNOWN"
                 agent_comm_label = "Horário Indeterminado"
@@ -1036,10 +1031,16 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
             incident_description = "FastMatchingSvc e DNA.DetectionSVC ativos simultaneamente disputando blocos .EMU."
             pipeline_bottleneck = "DETECTION"
         elif not cfg_running:
-            health_status = "STALLED"
-            severity_label = "Critico (P1) - Despacho WCF Travado (ConfigMonitor Parado)"
-            incident_description = f"DNA.ConfigMonitorSVC inoperante! XMLs acumulando em D:\\mediadna_V2\\data\\tracking sem envio WCF para a central ha {tracking_age_minutes} min."
-            pipeline_bottleneck = "CONFIGMONITOR_WCF"
+            if is_agent_stale or tracking_age_minutes <= 0:
+                health_status = "COMM_LOST" if is_agent_stale else "NOMINAL"
+                severity_label = f"Alerta - Host Desconectado ({agent_comm_label})" if is_agent_stale else "Nominal"
+                incident_description = f"Host CS01 inalcançável há {agent_comm_label}. Telemetria suspensa." if is_agent_stale else "Pipeline nominal."
+                pipeline_bottleneck = "TELEMETRY_OFFLINE" if is_agent_stale else "NONE"
+            else:
+                health_status = "STALLED"
+                severity_label = "Critico (P1) - Despacho WCF Travado (ConfigMonitor Parado)"
+                incident_description = f"DNA.ConfigMonitorSVC inoperante! XMLs acumulando em D:\\mediadna_V2\\data\\tracking sem envio WCF para a central ha {tracking_age_minutes} min."
+                pipeline_bottleneck = "CONFIGMONITOR_WCF" 
         elif is_stalled and not trk_running and engine_tier == "FALLBACK":
             health_status = "STALLED"
             severity_label = f"Critico (P1) - Analise de Qualidade Travada (TrackingSVC Parado)"
