@@ -105,6 +105,9 @@ function getMosaicAuthToken() {
 // 1. INICIALIZAÇÃO DA ABA DEDICADA DE IMAGENS
 // =========================================================================
 function initMosaicTab() {
+    const kpi = document.querySelector('.kpi-grid');
+    if (kpi) { kpi.classList.add('mosaic-view-collapsed'); kpi.style.display = 'none'; }
+    updateMosaicFilterBadge();
     console.log("[MosaicWall] Inicializando aba dedicada Monitoração das Imagens...");
     loadMosaicData();
     loadMosaicAnalyticalProblems();
@@ -1134,3 +1137,109 @@ function escapeHtml(text) {
     if (!text) return "";
     return text.toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
+
+
+// =========================================================================
+// OTIMIZAÇÃO DE ESPAÇO: SUBMENU FLUTUANTE DE FILTROS & VÍDEO WALL
+// =========================================================================
+
+function toggleMosaicFiltersDrawer() {
+    const drawer = document.getElementById("mosaicFiltersDrawer");
+    const chevron = document.getElementById("mosaicFiltersChevron");
+    if (!drawer) return;
+    const isClosed = drawer.style.display === "none" || !drawer.style.display;
+    if (isClosed) {
+        drawer.style.display = "block";
+        if (chevron) chevron.className = "fas fa-chevron-up";
+    } else {
+        drawer.style.display = "none";
+        if (chevron) chevron.className = "fas fa-chevron-down";
+    }
+}
+window.toggleMosaicFiltersDrawer = toggleMosaicFiltersDrawer;
+
+function closeMosaicFiltersDrawer() {
+    const drawer = document.getElementById("mosaicFiltersDrawer");
+    const chevron = document.getElementById("mosaicFiltersChevron");
+    if (drawer) drawer.style.display = "none";
+    if (chevron) chevron.className = "fas fa-chevron-down";
+}
+window.closeMosaicFiltersDrawer = closeMosaicFiltersDrawer;
+
+function updateMosaicFilterBadge() {
+    const badge = document.getElementById("mosaicFiltersBadge");
+    if (!badge) return;
+    const region = document.getElementById("mosaicFilterRegion") ? document.getElementById("mosaicFilterRegion").value : "all";
+    const meio = document.getElementById("mosaicFilterMeio") ? document.getElementById("mosaicFilterMeio").value : "all";
+    const cs = document.getElementById("mosaicFilterCS") ? document.getElementById("mosaicFilterCS").value : "all";
+    const status = document.getElementById("mosaicFilterStatus") ? document.getElementById("mosaicFilterStatus").value : "all";
+
+    const parts = [];
+    if (region !== "all") parts.push(region);
+    if (meio !== "all") parts.push(meio);
+    if (cs !== "all") parts.push(`CS ${cs}`);
+    if (status === "only_failures") parts.push("Falhas");
+    else if (status === "only_ok") parts.push("Online");
+
+    let label = "Todas as Regiões";
+    if (parts.length > 0) {
+        label = parts.join(" • ");
+        badge.style.background = "#2563eb";
+    } else {
+        badge.style.background = "#0284c7";
+    }
+    badge.innerText = label;
+}
+window.updateMosaicFilterBadge = updateMosaicFilterBadge;
+
+function resetMosaicFilters() {
+    const ids = ["mosaicFilterCountry", "mosaicFilterRegion", "mosaicFilterMeio", "mosaicFilterSignalType", "mosaicFilterCS", "mosaicFilterStatus"];
+    ids.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = "all";
+    });
+    setMosaicMediaFilter("all");
+    updateMosaicFilterBadge();
+    applyMosaicFilters();
+    closeMosaicFiltersDrawer();
+}
+window.resetMosaicFilters = resetMosaicFilters;
+
+function toggleMosaicKpiSummary() {
+    const kpiGrid = document.querySelector(".kpi-grid");
+    const btnText = document.getElementById("mosaicKpiToggleText");
+    if (!kpiGrid) return;
+    const isHidden = kpiGrid.classList.contains("mosaic-view-collapsed") || kpiGrid.style.display === "none";
+    if (isHidden) {
+        kpiGrid.classList.remove("mosaic-view-collapsed");
+        kpiGrid.style.display = "grid";
+        if (btnText) btnText.innerText = "Ocultar Resumo";
+    } else {
+        kpiGrid.classList.add("mosaic-view-collapsed");
+        kpiGrid.style.display = "none";
+        if (btnText) btnText.innerText = "Resumo Frota";
+    }
+}
+window.toggleMosaicKpiSummary = toggleMosaicKpiSummary;
+
+function toggleMosaicVideoWallMode() {
+    const body = document.body;
+    const btnText = document.getElementById("mosaicVideoWallText");
+    const btnIcon = document.getElementById("mosaicVideoWallIcon");
+    const isWall = body.classList.toggle("mosaic-videowall-active");
+    if (isWall) {
+        if (btnText) btnText.innerText = "Sair Vídeo Wall";
+        if (btnIcon) btnIcon.className = "fas fa-compress";
+        closeMosaicFiltersDrawer();
+    } else {
+        if (btnText) btnText.innerText = "Maximizar";
+        if (btnIcon) btnIcon.className = "fas fa-expand";
+    }
+}
+window.toggleMosaicVideoWallMode = toggleMosaicVideoWallMode;
+
+document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && document.body.classList.contains("mosaic-videowall-active")) {
+        toggleMosaicVideoWallMode();
+    }
+});

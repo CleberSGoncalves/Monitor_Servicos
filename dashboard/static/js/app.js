@@ -865,27 +865,24 @@ function setupTabNavigation() {
 
 
 
+            const tabName = btn.getAttribute("data-tab");
             document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
-
-
-
             document.querySelectorAll(".content-section").forEach(s => s.classList.remove("active"));
 
-
-
-
-
-
+            const kpi = document.querySelector(".kpi-grid");
+            if (kpi) {
+                if (tabName === "mosaic") {
+                    kpi.classList.add("mosaic-view-collapsed");
+                    kpi.style.display = "none";
+                } else {
+                    kpi.classList.remove("mosaic-view-collapsed");
+                    kpi.style.display = "grid";
+                }
+            }
 
             btn.classList.add("active");
-
             if (typeof updateNavDropdownStates === "function") updateNavDropdownStates();
-
             try { btn.scrollIntoView({ behavior: "smooth", inline: "nearest", block: "nearest" }); } catch(_) {}
-
-
-
-            const tabName = btn.getAttribute("data-tab");
 
 
 
@@ -952,6 +949,8 @@ function setupTabNavigation() {
 
 
             } else if (tabName === "mosaic") {
+                const kpi = document.querySelector(".kpi-grid");
+                if (kpi) { kpi.classList.add("mosaic-view-collapsed"); kpi.style.display = "none"; }
 
 
 
