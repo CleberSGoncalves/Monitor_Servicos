@@ -7826,6 +7826,123 @@
 
       <!-- SUB-ABA 2: FASTMATCHING C++ DEDICADO (EXCLUSIVO fma.log & AUDITORIA DE SPOTS) -->
       <div id="subtab-detection-fastmatching" style="display: none;">
+
+        <!-- BLOCO 0: MATRIZ DE COMPARAÇÃO DA FROTA FASTMATHING (MÉTRICAS DO fma.log) -->
+        <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 12px; padding: 18px 22px; margin-bottom: 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.35);">
+          <!-- Cabeçalho do Bloco Comparativo -->
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;">
+            <div>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 22px;">⚡</span>
+                <h3 style="font-size: 16px; font-weight: 800; color: #f8fafc; margin: 0;">Monitoramento Ativo da Frota FastMatching (Métricas Oficiais do fma.log)</h3>
+                <span style="background: #0284c7; color: #fff; font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 800;" id="badgeFmFleetTotalCount">38 Nós</span>
+              </div>
+              <div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">
+                Visão comparativa da frota baseada nas métricas do <strong>fma.log</strong>: Tempo por Spot (ProcTimeMs), Candidatos Atrasados no Buffer .EMU, Memória C++, Varredura e Auditoria SGG.
+              </div>
+            </div>
+
+            <!-- Botão Atualizar Tabela -->
+            <button onclick="refreshFastMatchingFleetData()" class="btn-sm" style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); color: #38bdf8; font-weight: 700; padding: 6px 12px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+              <span>🔄</span> Atualizar Frota FastMatching
+            </button>
+          </div>
+
+          <!-- Cards de Resumo da Frota (Boas vs Alertas vs Ruins) -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 18px;">
+            <!-- Card Boas -->
+            <div style="background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 8px; padding: 12px 14px; position: relative;">
+              <div style="position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: #22c55e; border-top-left-radius: 8px; border-bottom-left-radius: 8px;"></div>
+              <div style="font-size: 11px; font-weight: 700; color: #86efac; text-transform: uppercase;">Praças Boas (Nominais)</div>
+              <div style="font-size: 24px; font-weight: 800; color: #f8fafc; margin-top: 2px;" id="countFmGood">--</div>
+              <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">ProcTime &lt; 1500ms • 0 Atrasos</div>
+            </div>
+
+            <!-- Card Alerta -->
+            <div style="background: rgba(234, 179, 8, 0.1); border: 1px solid rgba(234, 179, 8, 0.3); border-radius: 8px; padding: 12px 14px; position: relative;">
+              <div style="position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: #eab308; border-top-left-radius: 8px; border-bottom-left-radius: 8px;"></div>
+              <div style="font-size: 11px; font-weight: 700; color: #fde047; text-transform: uppercase;">Praças em Alerta</div>
+              <div style="font-size: 24px; font-weight: 800; color: #f8fafc; margin-top: 2px;" id="countFmWarning">--</div>
+              <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">1500-3000ms ou Divergência SGG</div>
+            </div>
+
+            <!-- Card Ruim / Crítico -->
+            <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 8px; padding: 12px 14px; position: relative;">
+              <div style="position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: #ef4444; border-top-left-radius: 8px; border-bottom-left-radius: 8px;"></div>
+              <div style="font-size: 11px; font-weight: 700; color: #fca5a5; text-transform: uppercase;">Praças Ruins (Críticas)</div>
+              <div style="font-size: 24px; font-weight: 800; color: #f8fafc; margin-top: 2px;" id="countFmCritical">--</div>
+              <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">ProcTime &gt; 3000ms ou Buffer Represado</div>
+            </div>
+
+            <!-- Card Total Auditado -->
+            <div style="background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 8px; padding: 12px 14px; position: relative;">
+              <div style="position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: #38bdf8; border-top-left-radius: 8px; border-bottom-left-radius: 8px;"></div>
+              <div style="font-size: 11px; font-weight: 700; color: #7dd3fc; text-transform: uppercase;">Conformidade FastMatching</div>
+              <div style="font-size: 24px; font-weight: 800; color: #f8fafc; margin-top: 2px;" id="pctFmHealth">--%</div>
+              <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">Praças em operação saudável</div>
+            </div>
+          </div>
+
+          <!-- Barra de Filtros e Busca Rápida -->
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; background: rgba(0,0,0,0.25); padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.08);">
+            <!-- Pills Rápidas -->
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <button type="button" id="btnFmPillAll" onclick="filterFastMatchingFleetTable('all')" class="btn-sm active-media-btn" style="padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: 700; background: #2563eb; color: #fff; border: none; cursor: pointer;">
+                🌐 Todas (<span id="pillCountFmAll">38</span>)
+              </button>
+              <button type="button" id="btnFmPillGood" onclick="filterFastMatchingFleetTable('good')" class="btn-sm" style="padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: 700; background: transparent; color: #86efac; border: 1px solid rgba(34, 197, 94, 0.3); cursor: pointer;">
+                🟢 Boas (<span id="pillCountFmGood">0</span>)
+              </button>
+              <button type="button" id="btnFmPillWarning" onclick="filterFastMatchingFleetTable('warning')" class="btn-sm" style="padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: 700; background: transparent; color: #fde047; border: 1px solid rgba(234, 179, 8, 0.3); cursor: pointer;">
+                🟡 Alertas (<span id="pillCountFmWarning">0</span>)
+              </button>
+              <button type="button" id="btnFmPillCritical" onclick="filterFastMatchingFleetTable('critical')" class="btn-sm" style="padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: 700; background: transparent; color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.3); cursor: pointer;">
+                🔴 Ruins (<span id="pillCountFmCritical">0</span>)
+              </button>
+            </div>
+
+            <!-- Busca Rápida -->
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <input type="text" id="fmFleetSearchInput" oninput="onFmFleetSearchInput(this.value)" placeholder="Buscar Praça ou Hostname..." class="form-input" style="padding: 6px 12px; font-size: 11px; width: 220px; background: #0f172a; border: 1px solid rgba(255,255,255,0.15); color: #fff; border-radius: 6px;">
+            </div>
+          </div>
+
+          <!-- Tabela Comparativa de Todas as Praças FastMatching -->
+          <div style="overflow-x: auto; max-height: 440px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;">
+            <table class="data-table" id="fastMatchingFleetTable" style="width: 100%; border-collapse: collapse; font-size: 11px;">
+              <thead style="position: sticky; top: 0; background: #0f172a; z-index: 5;">
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.12); text-align: left; color: #94a3b8; font-weight: 700;">
+                  <th style="padding: 10px 12px;">PRAÇA &amp; HOSTNAME CS01</th>
+                  <th style="padding: 10px 12px;">STATUS fma.log</th>
+                  <th style="padding: 10px 12px;">PROCTIME (VELOCIDADE)</th>
+                  <th style="padding: 10px 12px;">CANDIDATOS ATRASADOS</th>
+                  <th style="padding: 10px 12px;">MEMÓRIA C++ (RAM)</th>
+                  <th style="padding: 10px 12px;">SPOTS (MENOR x MAIOR)</th>
+                  <th style="padding: 10px 12px;">VARREDURA (SEARCHSTATS)</th>
+                  <th style="padding: 10px 12px;">DIAGNÓSTICO SLA &amp; IMPACTO</th>
+                  <th style="padding: 10px 12px; text-align: center;">AÇÕES</th>
+                </tr>
+              </thead>
+              <tbody id="fastMatchingFleetTableBody">
+                <tr>
+                  <td colspan="9" style="text-align: center; padding: 24px; color: #94a3b8;">
+                    Carregando matriz de telemetria da frota FastMatching...
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- DIVISOR E ÂNCORA PARA INSPEÇÃO CIRÚRGICA DA PRAÇA SELECIONADA -->
+        <div id="anchorFmInspection" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 18px;">🎯</span>
+            <h3 style="font-size: 15px; font-weight: 800; color: #f8fafc; margin: 0;">Inspeção Forense &amp; Playbook da Praça Selecionada</h3>
+          </div>
+          <span style="font-size: 11px; color: #94a3b8;">Selecione qualquer praça na tabela acima para auditar os spots e roteiro how-to</span>
+        </div>
+
         <!-- BARRA SUPERIOR DE CONTROLE E SELEÇÃO DE PRAÇA -->
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px; background: rgba(30, 41, 59, 0.6); padding: 14px 18px; border-radius: 10px; border: 1px solid rgba(56, 189, 248, 0.25); margin-bottom: 20px;">
           <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">

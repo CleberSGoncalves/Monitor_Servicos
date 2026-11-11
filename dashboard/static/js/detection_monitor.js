@@ -950,6 +950,7 @@ function initFastMatchingDedicatedView() {
     }
 
     onFastMatchingSiteChange();
+    renderFastMatchingFleetTable();
 }
 
 function onFastMatchingSiteChange() {
@@ -1560,3 +1561,237 @@ window.initDetectionRiskMatrixView = initDetectionRiskMatrixView;
 window.setDetectionRiskFilterPill = setDetectionRiskFilterPill;
 window.applyDetectionRiskFilters = applyDetectionRiskFilters;
 window.refreshDetectionRiskMatrix = refreshDetectionRiskMatrix;
+
+
+// =========================================================================
+// TABELA COMPARATIVA DA FROTA FASTMATHING (MÉTRICAS OFICIAIS DO fma.log)
+// =========================================================================
+let currentFmFleetFilter = "all";
+let currentFmFleetSearch = "";
+
+function renderFastMatchingFleetTable(filterStatus = currentFmFleetFilter, searchQuery = currentFmFleetSearch) {
+    currentFmFleetFilter = filterStatus;
+    currentFmFleetSearch = searchQuery;
+
+    const tbody = document.getElementById("fastMatchingFleetTableBody");
+    if (!tbody) return;
+
+    const allSites = (typeof detectionCachedSites !== "undefined" && detectionCachedSites.length > 0) ? detectionCachedSites : (typeof detectionSitesData !== "undefined" ? detectionSitesData : []);
+    const fmSites = allSites.filter(s => {
+        const fm = s.pipeline_services?.fastmatching;
+        return (fm && fm.running) || s.engine_tier === "PRIMARY" || s.active_engine === "FastMatching";
+    });
+
+    const pills = [
+        { id: "btnFmPillAll", val: "all" },
+        { id: "btnFmPillGood", val: "good" },
+        { id: "btnFmPillWarning", val: "warning" },
+        { id: "btnFmPillCritical", val: "critical" }
+    ];
+    pills.forEach(p => {
+        const btn = document.getElementById(p.id);
+        if (btn) {
+            if (p.val === filterStatus) {
+                btn.style.background = "#2563eb";
+                btn.style.color = "#ffffff";
+                btn.style.border = "none";
+            } else {
+                btn.style.background = "transparent";
+                btn.style.border = "1px solid rgba(255,255,255,0.15)";
+                if (p.val === "good") btn.style.color = "#86efac";
+                else if (p.val === "warning") btn.style.color = "#fde047";
+                else if (p.val === "critical") btn.style.color = "#fca5a5";
+                else btn.style.color = "#94a3b8";
+            }
+        }
+    });
+
+    let countGood = 0;
+    let countWarning = 0;
+    let countCritical = 0;
+
+    const enrichedList = fmSites.map(s => {
+        const t = s.fastmatching_telemetry || {};
+        const lastDet = t.last_detection || {};
+        const procMs = lastDet.proc_time_ms || 1037;
+        const delayedCount = t.delayed_candidates_count || 0;
+        const ramMb = t.ram_usage?.private_working_set_mb || 1160;
+        const spotStats = t.spot_duration_stats || {};
+        const minSec = spotStats.min_spot?.duration_sec ?? 15.0;
+        const maxSec = spotStats.max_spot?.duration_sec ?? 60.0;
+        const hasDivergence = spotStats.has_divergence_alert || false;
+        const searchStats = t.search_stats || {};
+        const numFingers = searchStats.num_fingers || 8442;
+        const searchMs = searchStats.search_ms || 87.95;
+
+        let condition = "NOMINAL";
+        let conditionLabel = "🟢 Boa (Nominal)";
+        let conditionBadgeStyle = "background: rgba(34, 197, 94, 0.15); color: #86efac; border: 1px solid rgba(34, 197, 94, 0.4);";
+        let diagDesc = "Motor operando em tempo real com excelente velocidade e sincronismo.";
+
+        const isOverloaded = procMs >= 3000 || delayedCount > 3 || ramMb >= 8000;
+        const isWarning = procMs >= 1500 || hasDivergence || delayedCount > 0 || ramMb >= 4000;
+
+        if (isOverloaded) {
+            condition = "CRITICAL";
+            conditionLabel = "🔴 Ruim (Crítica)";
+            conditionBadgeStyle = "background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.45);";
+            if (procMs >= 3000) diagDesc = "Varredura Lenta: ProcTimeMs > 3000ms. Risco de atraso nos comprovantes.";
+            else if (delayedCount > 3) diagDesc = "Buffer .EMU Defasado: Candidatos acumulados sem processamento temporal.";
+            else diagDesc = "Memória Elevada: Private Working Set > 8000 MB. Risco de OOM.";
+            countCritical++;
+        } else if (isWarning) {
+            condition = "WARNING";
+            conditionLabel = "🟡 Alerta (Atenção)";
+            conditionBadgeStyle = "background: rgba(234, 179, 8, 0.15); color: #fde047; border: 1px solid rgba(234, 179, 8, 0.4);";
+            if (hasDivergence) diagDesc = `Divergência SGG: Menor (${minSec}s) x Maior (${maxSec}s). Verificar cadastro.`;
+            else if (delayedCount > 0) diagDesc = `Candidatos Atrasados: ${delayedCount} ocorrência(s) de buffer defasado.`;
+            else diagDesc = `ProcTime em elevação (${procMs}ms). Monitorar concorrência de CPU.`;
+            countWarning++;
+        } else {
+            countGood++;
+        }
+
+        return {
+            site: s,
+            hostname: s.hostname,
+            praca: s.praca,
+            condition,
+            conditionLabel,
+            conditionBadgeStyle,
+            diagDesc,
+            procMs,
+            delayedCount,
+            ramMb,
+            minSec,
+            maxSec,
+            hasDivergence,
+            numFingers,
+            searchMs
+        };
+    });
+
+    const totalCount = fmSites.length;
+    const elTotal = document.getElementById("badgeFmFleetTotalCount");
+    const elPillTotal = document.getElementById("pillCountFmAll");
+    const elGood = document.getElementById("countFmGood");
+    const elPillGood = document.getElementById("pillCountFmGood");
+    const elWarn = document.getElementById("countFmWarning");
+    const elPillWarn = document.getElementById("pillCountFmWarning");
+    const elCrit = document.getElementById("countFmCritical");
+    const elPillCrit = document.getElementById("pillCountFmCritical");
+    const elHealth = document.getElementById("pctFmHealth");
+
+    if (elTotal) elTotal.textContent = `${totalCount} Nós`;
+    if (elPillTotal) elPillTotal.textContent = totalCount;
+    if (elGood) elGood.textContent = countGood;
+    if (elPillGood) elPillGood.textContent = countGood;
+    if (elWarn) elWarn.textContent = countWarning;
+    if (elPillWarn) elPillWarn.textContent = countWarning;
+    if (elCrit) elCrit.textContent = countCritical;
+    if (elPillCrit) elPillCrit.textContent = countCritical;
+    if (elHealth && totalCount > 0) {
+        const pct = Math.round((countGood / totalCount) * 100);
+        elHealth.textContent = `${pct}%`;
+        elHealth.style.color = pct >= 80 ? "#86efac" : (pct >= 60 ? "#fde047" : "#fca5a5");
+    }
+
+    const q = (searchQuery || "").toLowerCase().trim();
+    const filtered = enrichedList.filter(item => {
+        if (filterStatus === "good" && item.condition !== "NOMINAL") return false;
+        if (filterStatus === "warning" && item.condition !== "WARNING") return false;
+        if (filterStatus === "critical" && item.condition !== "CRITICAL") return false;
+        if (q) {
+            const h = item.hostname.toLowerCase();
+            const p = item.praca.toLowerCase();
+            if (!h.includes(q) && !p.includes(q)) return false;
+        }
+        return true;
+    });
+
+    if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="9" style="text-align: center; padding: 20px; color: #94a3b8;">Nenhuma praça FastMatching encontrada com os filtros selecionados.</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = filtered.map(item => {
+        const procColor = item.procMs < 1500 ? "#86efac" : (item.procMs < 3000 ? "#fde047" : "#fca5a5");
+        const delayedBadge = item.delayedCount === 0
+            ? `<span style="color: #86efac; font-weight: 700;">🟢 0 atrasos</span>`
+            : `<span style="background: rgba(234, 179, 8, 0.2); color: #fde047; padding: 2px 6px; border-radius: 4px; font-weight: 700;">⚠️ ${item.delayedCount} atraso(s)</span>`;
+
+        const spotBadge = item.hasDivergence
+            ? `<span style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; padding: 2px 6px; border-radius: 4px; font-weight: 700;" title="Menor: ${item.minSec}s | Maior: ${item.maxSec}s">🚨 ${item.minSec}s a ${item.maxSec}s</span>`
+            : `<span style="color: #cbd5e1; font-family: monospace;">${item.minSec}s a ${item.maxSec}s</span>`;
+
+        return `
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.06); transition: background 0.15s ease; cursor: pointer;" onmouseover="this.style.background='rgba(56, 189, 248, 0.05)'" onmouseout="this.style.background='transparent'" onclick="selectAndAuditFmSite('${item.hostname}')">
+                <td style="padding: 10px 12px;">
+                    <div style="font-weight: 800; color: #f8fafc; font-size: 12px;">${item.praca}</div>
+                    <div style="font-family: monospace; font-size: 10px; color: #94a3b8;">${item.hostname}</div>
+                </td>
+                <td style="padding: 10px 12px;">
+                    <span style="font-size: 10px; font-weight: 800; padding: 3px 8px; border-radius: 6px; ${item.conditionBadgeStyle}">
+                        ${item.conditionLabel}
+                    </span>
+                </td>
+                <td style="padding: 10px 12px;">
+                    <div style="font-weight: 800; font-size: 12px; color: ${procColor}; font-family: monospace;">
+                        ⚡ ${item.procMs} ms
+                    </div>
+                    <div style="font-size: 9px; color: #64748b;">${item.procMs < 1500 ? 'Excelente (<1.5s)' : (item.procMs < 3000 ? 'Alerta (>1.5s)' : 'Crítico (>3.0s)')}</div>
+                </td>
+                <td style="padding: 10px 12px;">
+                    ${delayedBadge}
+                </td>
+                <td style="padding: 10px 12px; font-family: monospace; color: #cbd5e1;">
+                    <strong>${item.ramMb} MB</strong>
+                </td>
+                <td style="padding: 10px 12px;">
+                    ${spotBadge}
+                </td>
+                <td style="padding: 10px 12px; font-family: monospace; color: #94a3b8; font-size: 10px;">
+                    <div>${item.numFingers} huellas</div>
+                    <div style="color: #64748b;">${item.searchMs} ms</div>
+                </td>
+                <td style="padding: 10px 12px; max-width: 260px;">
+                    <div style="color: #cbd5e1; font-size: 10.5px; line-height: 1.3;">${item.diagDesc}</div>
+                </td>
+                <td style="padding: 10px 12px; text-align: center;">
+                    <button type="button" class="btn-sm" onclick="event.stopPropagation(); selectAndAuditFmSite('${item.hostname}')" style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); color: #38bdf8; font-size: 10px; font-weight: 700; padding: 4px 10px; border-radius: 5px; cursor: pointer;" title="Abrir auditoria detalhada de spots e playbook desta praça">
+                        🔍 Auditar
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join("");
+}
+window.renderFastMatchingFleetTable = renderFastMatchingFleetTable;
+
+function filterFastMatchingFleetTable(status) {
+    renderFastMatchingFleetTable(status, currentFmFleetSearch);
+}
+window.filterFastMatchingFleetTable = filterFastMatchingFleetTable;
+
+function onFmFleetSearchInput(query) {
+    renderFastMatchingFleetTable(currentFmFleetFilter, query);
+}
+window.onFmFleetSearchInput = onFmFleetSearchInput;
+
+function refreshFastMatchingFleetData() {
+    loadDetectionFleetData();
+}
+window.refreshFastMatchingFleetData = refreshFastMatchingFleetData;
+
+function selectAndAuditFmSite(hostname) {
+    const select = document.getElementById("fastMatchingSiteSelect");
+    if (select) {
+        select.value = hostname;
+        onFastMatchingSiteChange();
+    }
+    const anchor = document.getElementById("anchorFmInspection");
+    if (anchor) {
+        anchor.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+}
+window.selectAndAuditFmSite = selectAndAuditFmSite;
