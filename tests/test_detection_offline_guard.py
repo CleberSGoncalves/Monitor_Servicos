@@ -13,15 +13,15 @@ from tracking_detection_monitor import (
 )
 
 
-def _build_mock_service(name, status, version="1.0.20.0", update_time=None):
+def _build_mock_service(name, status, version="1.0.20.0", update_time=None, hostname="BRPA-CAH-DT01", praca="Castanhal", cs=1, svc_id=None):
     if not update_time:
         update_time = datetime.now(timezone.utc).isoformat()
     return {
-        "id": f"svc_{name}",
+        "id": svc_id or f"svc_{name}_{hostname}",
         "title": "Brasil",
-        "hostname": "BRPA-CAH-DT01",
-        "praca": "Castanhal",
-        "cs": 1,
+        "hostname": hostname,
+        "praca": praca,
+        "cs": cs,
         "nome_servico": name,
         "versao_instalada": version,
         "versao_desejada": "1.0.20.0",
@@ -198,3 +198,74 @@ def test_catalao_delayed_telemetry_prevents_false_p0():
         assert "Host Desconectado" in site["severity_label"]
         assert snapshot["summary"]["critical"] == 0
         assert snapshot["summary"]["inoperant_p0"] == 0
+
+
+def test_catalao_cs01_uninstalled_agent_never_generates_p0():
+    """
+    CENÁRIO CRÍTICO DE CATALÃO REPORTADO PELO USUÁRIO:
+    O DT01 físico de Catalão roda DNA.DetectionSVC perfeitamente, mas não possui DNA.MonitorServiceSVC instalado.
+    Nenhum serviço de DT01 está presente ou os motores constam como 'Inexistente' / ausentes.
+    GARANTIA DE BLINDAGEM:
+    1. Nunca soar P0 'Sem Motor de Matching' quando ambos constam como Inexistente/Não instalado.
+    2. Serviços sintéticos com sufixo '_cs1' são estritamente ignorados.
+    """
+    now = datetime.now(timezone.utc)
+    fresh_date = (now - timedelta(minutes=5)).isoformat()
+
+    mock_services = [
+        # Serviços legítimos do DT02 (gravação)
+        _build_mock_service("DNA.MonitorServiceSVC", "Em Execução", update_time=fresh_date, hostname="BRGO-CTL-DT02", praca="Catalão", cs=2),
+        _build_mock_service("DNA.FileTransferSVC", "Em Execução", update_time=fresh_date, hostname="BRGO-CTL-DT02", praca="Catalão", cs=2),
+        # Clones sintéticos com _cs1 gerados erroneamente no passado
+        {
+            "id": "101_cs1", "hostname": "BRGO-CTL-DT01", "praca": "Catalão", "cs": 1,
+            "nome_servico": "FastMatchingSvc", "status_servico": "Não Encontrado", "status_atualizacao": "Atualizado",
+            "acao_solicitada": "Nenhuma", "ultima_atualizacao": fresh_date, "versao_instalada": "1.0.20.0",
+            "versao_desejada": "1.0.20.0", "cpu_uso": "<1%", "ram_uso": "45 MB", "disco_d_livre": "80 GB",
+            "uptime": "5 dias", "status_wcf": "Conectado", "log_erro": ""
+        },
+        {
+            "id": "102_cs1", "hostname": "BRGO-CTL-DT01", "praca": "Catalão", "cs": 1,
+            "nome_servico": "DNA.DetectionSVC", "status_servico": "Inexistente", "status_atualizacao": "Atualizado",
+            "acao_solicitada": "Nenhuma", "ultima_atualizacao": fresh_date, "versao_instalada": "1.0.20.0",
+            "versao_desejada": "1.0.20.0", "cpu_uso": "<1%", "ram_uso": "45 MB", "disco_d_livre": "80 GB",
+            "uptime": "5 dias", "status_wcf": "Conectado", "log_erro": ""
+        }
+    ]
+
+    with patch("tracking_detection_monitor.get_fleet_services", return_value=mock_services):
+        snapshot = build_detection_fleet_snapshot()
+        sites = snapshot.get("sites", [])
+        
+        # O site sintético _cs1 DEVE ser filtrado ou classificado sem P0
+        p0_sites = [s for s in sites if s.get("health_status") == "CRITICAL"]
+        assert len(p0_sites) == 0, f"Nenhum site pode receber P0 com dados clonados ou inexistentes! Encontrados: {p0_sites}"
+        assert snapshot["summary"]["critical"] == 0
+        assert snapshot["summary"]["inoperant_p0"] == 0
+
+
+def test_rio_verde_real_services_keeps_nominal():
+    """
+    CENÁRIO DE RIO VERDE:
+    Host físico real BRGO-RVD-ATRIA- possui FastMatchingSvc Em Execução.
+    Garante que permaneça NOMINAL e nunca dispare falso P0.
+    """
+    now = datetime.now(timezone.utc)
+    fresh_date = (now - timedelta(minutes=3)).isoformat()
+
+    mock_services = [
+        _build_mock_service("FastMatchingSvc", "Em Execução", update_time=fresh_date, hostname="BRGO-RVD-ATRIA-", praca="Rio Verde", cs=1),
+        _build_mock_service("DNA.ConfigMonitorSVC", "Em Execução", update_time=fresh_date, hostname="BRGO-RVD-ATRIA-", praca="Rio Verde", cs=1),
+        _build_mock_service("DNA.MonitorServiceSVC", "Em Execução", update_time=fresh_date, hostname="BRGO-RVD-ATRIA-", praca="Rio Verde", cs=1),
+        _build_mock_service("DNA.DetectionSVC", "Inexistente", update_time=fresh_date, hostname="BRGO-RVD-ATRIA-", praca="Rio Verde", cs=1),
+    ]
+
+    with patch("tracking_detection_monitor.get_fleet_services", return_value=mock_services):
+        snapshot = build_detection_fleet_snapshot()
+        sites = snapshot.get("sites", [])
+        assert len(sites) == 1
+        site = sites[0]
+
+        assert site["health_status"] == "NOMINAL", f"Esperado NOMINAL para FastMatching Em Execução, recebido: {site['health_status']}"
+        assert site["engine_tier"] == "PRIMARY"
+        assert snapshot["summary"]["critical"] == 0

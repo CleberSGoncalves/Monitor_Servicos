@@ -556,6 +556,11 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
 
 
 
+        # PROTEÇÃO CONTRA SERVIÇOS SINTÉTICOS / CLONADOS:
+        s_id = str(s.get("id", ""))
+        if "_cs1" in s_id or "_synthetic" in s_id or s.get("is_synthetic"):
+            continue
+
         h_upper = hostname.upper()
 
         is_dt02_or_cs2 = any(tag in h_upper for tag in ["DT02", "DT-02", "DT2", "-02", "CS02", "CS2", "DT03", "DT-03", "DT3", "-03", "CS03", "CS3"])
@@ -1006,13 +1011,19 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
         # Diagnostico da Esteira de Deteccao
         # LEI DA VALIDADE DE TELEMETRIA:
         if engine_tier == "NONE":
-            if not is_telemetry_fresh_for_p0 or is_agent_stale:
+            fm_st_raw = str(fm_svc.get("status") or "").lower() if fm_svc else ""
+            det_st_raw = str(det_svc.get("status") or "").lower() if det_svc else ""
+            both_non_existent = (fm_st_raw in ("inexistente", "não instalado", "nao instalado", "não encontrado", "nao encontrado", "")) and                                 (det_st_raw in ("inexistente", "não instalado", "nao instalado", "não encontrado", "nao encontrado", ""))
+
+            # Se a telemetria não for fresca, ou agente estiver stale, ou ambos os motores constarem como inexistentes/não cadastrados:
+            # Trata-se de telemetria pendente / incompleta, e NUNCA de falha operacional mecânica P0!
+            if not is_telemetry_fresh_for_p0 or is_agent_stale or both_non_existent:
                 health_status = "COMM_LOST"
                 severity_label = f"Alerta (P1) - Host Desconectado / Telemetria Suspensa ({agent_comm_label})"
                 incident_description = (
-                    f"Host CS01 inalcançável há {agent_comm_label}. Telemetria suspensa. "
-                    f"O estado real dos processos locais (FastMatching, ConfigMonitor, etc.) e da esteira de detecção "
-                    f"não pode ser aferido em tempo real até o restabelecimento do agente local."
+                    f"Host CS01 sem telemetria conclusiva de motores de matching ({agent_comm_label}). Telemetria suspensa. "
+                    f"O estado real dos processos locais (FastMatching, DetectionSVC, ConfigMonitor) "
+                    f"não pode ser aferido em tempo real até o reporte ativo do agente CS01."
                 )
                 pipeline_bottleneck = "TELEMETRY_OFFLINE"
             else:
