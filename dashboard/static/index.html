@@ -7862,14 +7862,18 @@
 
       </div>
 
-      <!-- SUB-NAVEGAÇÃO: FROTA GERAL CS01 vs FASTMATCHING C++ DEDICADO -->
-      <div style="display: flex; gap: 10px; margin-bottom: 22px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); padding-bottom: 12px;">
+      <!-- SUB-NAVEGAÇÃO: FROTA GERAL CS01 vs FASTMATCHING C++ vs MATRIZ DE RISCO & PRAÇAS CRÍTICAS -->
+      <div style="display: flex; gap: 10px; margin-bottom: 22px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); padding-bottom: 12px; flex-wrap: wrap;">
         <button id="btnSubTabDetectionFleet" onclick="switchDetectionSubTab('fleet')" style="background: rgba(59, 130, 246, 0.2); color: #93c5fd; border: 1px solid #3b82f6; padding: 9px 18px; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.2s ease;">
           <span>🖥️</span> Visão Geral da Frota (CS01 - 120 Praças)
         </button>
         <button id="btnSubTabDetectionFastMatching" onclick="switchDetectionSubTab('fastmatching')" style="background: rgba(30, 41, 59, 0.6); color: #94a3b8; border: 1px solid rgba(255, 255, 255, 0.12); padding: 9px 18px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.2s ease;">
           <span>🎯</span> FastMatching C++ (Exclusivo: Auditoria fma.log &amp; Análise de Spots)
-          <span style="background: #0284c7; color: #fff; font-size: 10px; padding: 2px 7px; border-radius: 10px; font-weight: 700;" id="badgeFastMatchingCount">39 Nós Ativos</span>
+          <span style="background: #0284c7; color: #fff; font-size: 10px; padding: 2px 7px; border-radius: 10px; font-weight: 700;" id="badgeFastMatchingCount">38 Nós Ativos</span>
+        </button>
+        <button id="btnSubTabDetectionRiskMatrix" onclick="switchDetectionSubTab('riskmatrix')" style="background: rgba(30, 41, 59, 0.6); color: #94a3b8; border: 1px solid rgba(255, 255, 255, 0.12); padding: 9px 18px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.2s ease;">
+          <span>⚠️</span> Matriz de Risco &amp; Praças Críticas (Diagnóstico SLA)
+          <span style="background: rgba(239, 68, 68, 0.25); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.4); font-size: 10px; padding: 2px 7px; border-radius: 10px; font-weight: 700;" id="badgeRiskCriticalCount">0 Críticas</span>
         </button>
       </div>
 
@@ -8288,6 +8292,109 @@
           </div>
         </div>
       </div><!-- FIM subtab-detection-fastmatching -->
+
+      <!-- SUB-ABA 3: MATRIZ DE RISCO & PRAÇAS CRÍTICAS (ESTILO LINK WAN) -->
+      <div id="subtab-detection-riskmatrix" style="display: none;">
+        
+        <!-- BARRA SUPERIOR DE PILLS DE FILTRO RÁPIDO (PADRÃO LINK WAN) -->
+        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 18px; padding: 12px 16px; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 10px;">
+          <button id="btnRiskPillAll" onclick="setDetectionRiskFilterPill('all')" style="padding: 6px 14px; font-size: 11px; border-radius: 6px; font-weight: 700; color: #38bdf8; background: rgba(56, 189, 248, 0.15); border: 1px solid #38bdf8; cursor: pointer; transition: all 0.2s;">
+            🌐 Todas da Frota (<span id="riskPillCountAll">118</span>)
+          </button>
+          <button id="btnRiskPillCrit" onclick="setDetectionRiskFilterPill('critico')" style="padding: 6px 14px; font-size: 11px; border-radius: 6px; font-weight: 600; color: #f87171; background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); cursor: pointer; transition: all 0.2s;">
+            🔴 Críticas P0 (<span id="riskPillCountCrit">0</span>)
+          </button>
+          <button id="btnRiskPillP1" onclick="setDetectionRiskFilterPill('alerta')" style="padding: 6px 14px; font-size: 11px; border-radius: 6px; font-weight: 600; color: #fb923c; background: rgba(249, 115, 22, 0.12); border: 1px solid rgba(249, 115, 22, 0.35); cursor: pointer; transition: all 0.2s;">
+            🟠 Alertas P1 (<span id="riskPillCountP1">0</span>)
+          </button>
+          <button id="btnRiskPillP2" onclick="setDetectionRiskFilterPill('fallback')" style="padding: 6px 14px; font-size: 11px; border-radius: 6px; font-weight: 600; color: #facc15; background: rgba(234, 179, 8, 0.12); border: 1px solid rgba(234, 179, 8, 0.35); cursor: pointer; transition: all 0.2s;">
+            🟡 Contingência P2 (<span id="riskPillCountP2">7</span>)
+          </button>
+          <button id="btnRiskPillOffline" onclick="setDetectionRiskFilterPill('offline')" style="padding: 6px 14px; font-size: 11px; border-radius: 6px; font-weight: 600; color: #cbd5e1; background: rgba(100, 116, 139, 0.15); border: 1px solid rgba(148, 163, 184, 0.3); cursor: pointer; transition: all 0.2s;">
+            ⚪ Telemetria Offline (<span id="riskPillCountOffline">0</span>)
+          </button>
+          <button id="btnRiskPillNominal" onclick="setDetectionRiskFilterPill('nominal')" style="padding: 6px 14px; font-size: 11px; border-radius: 6px; font-weight: 600; color: #4ade80; background: rgba(34, 197, 94, 0.12); border: 1px solid rgba(34, 197, 94, 0.35); cursor: pointer; transition: all 0.2s;">
+            🟢 Nominais (<span id="riskPillCountNominal">111</span>)
+          </button>
+        </div>
+
+        <!-- FILTROS SECUNDÁRIOS: BUSCA, REGIÃO E GARGALO -->
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; padding: 14px 16px; background: rgba(15, 23, 42, 0.5); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 8px;">
+          <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+            <div>
+              <span style="font-size: 10.5px; text-transform: uppercase; color: #94a3b8; font-weight: 700; display: block; margin-bottom: 4px;">Buscar Praça / Host / Sintoma:</span>
+              <input type="text" id="riskFilterSearch" placeholder="🔍 Ex: Montes Claros, WCF, EMU..." style="min-width: 230px; font-size: 11.5px; padding: 6px 10px; background: #0f172a; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 6px; color: #fff;" oninput="applyDetectionRiskFilters()">
+            </div>
+            <div>
+              <span style="font-size: 10.5px; text-transform: uppercase; color: #94a3b8; font-weight: 700; display: block; margin-bottom: 4px;">Região Geográfica:</span>
+              <select id="riskFilterRegion" style="min-width: 170px; font-size: 11.5px; padding: 6px 10px; background: #0f172a; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 6px; color: #fff;" onchange="applyDetectionRiskFilters()">
+                <option value="all">Todas as Regiões</option>
+                <option value="Sudeste">Sudeste (SP, RJ, MG, ES)</option>
+                <option value="Sul">Sul (RS, PR, SC)</option>
+                <option value="Nordeste">Nordeste (BA, PE, CE, RN...)</option>
+                <option value="Centro-Oeste">Centro-Oeste (DF, GO, MT, MS)</option>
+                <option value="Norte">Norte (AM, PA, RO...)</option>
+              </select>
+            </div>
+            <div>
+              <span style="font-size: 10.5px; text-transform: uppercase; color: #94a3b8; font-weight: 700; display: block; margin-bottom: 4px;">Classificação de Gargalo SLA:</span>
+              <select id="riskFilterBottleneck" style="min-width: 200px; font-size: 11.5px; padding: 6px 10px; background: #0f172a; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 6px; color: #fff;" onchange="applyDetectionRiskFilters()">
+                <option value="all">Todos os Gargalos</option>
+                <option value="DETECTION">🔴 Sem Motor de Matching (P0)</option>
+                <option value="CONFIGMONITOR_WCF">🟠 Fila data\tracking Estagnada (WCF)</option>
+                <option value="CONFLICT">🟠 Concorrência de Motores</option>
+                <option value="FALLBACK">🟡 Contingência DetectionSVC (.NET)</option>
+                <option value="TELEMETRY_OFFLINE">⚪ Telemetria Offline / Desconectada</option>
+              </select>
+            </div>
+          </div>
+          <button onclick="refreshDetectionRiskMatrix()" style="padding: 7px 16px; font-size: 11.5px; background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 6px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+            <span>🔄</span> Atualizar Matriz de Risco
+          </button>
+        </div>
+
+        <!-- PAINEL DA MATRIZ ANALÍTICA DE RISCO (ESTILO LINK WAN) -->
+        <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
+          <div style="padding: 14px 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div>
+              <div style="font-size: 14px; font-weight: 800; color: #f8fafc; display: flex; align-items: center; gap: 8px;">
+                <span>🌐</span> Matriz Forense de Risco &amp; Saúde da Esteira de Detecção Comercial (CS01)
+              </div>
+              <div id="riskViewSummaryLabel" style="font-size: 11.5px; color: #38bdf8; font-weight: 600; margin-top: 4px;">
+                Exibindo diagnóstico analítico priorizado por gravidade de SLA
+              </div>
+            </div>
+            <span style="font-size: 11px; color: #64748b;">Métrica: Correlação entre Ingestão SGG, Motor Primário C++, Fila de Tracking e Despacho Central WCF</span>
+          </div>
+
+          <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; text-align: left;">
+              <thead>
+                <tr style="background: rgba(15, 23, 42, 0.95); border-bottom: 1px solid rgba(255, 255, 255, 0.1); font-size: 11px; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.5px;">
+                  <th style="padding: 12px 16px;">Praça &amp; Hostname CS01</th>
+                  <th style="padding: 12px 14px;">Condição de Risco SLA</th>
+                  <th style="padding: 12px 14px;">Motor Ativo</th>
+                  <th style="padding: 12px 14px;">Fila data\tracking</th>
+                  <th style="padding: 12px 14px;">Gargalo Primário &amp; Causa Raiz</th>
+                  <th style="padding: 12px 14px;">Ação Recomendada SLA</th>
+                  <th style="padding: 12px 16px; text-align: right;">Ações Imediatas</th>
+                </tr>
+              </thead>
+              <tbody id="detectionRiskMatrixTableBody">
+                <tr>
+                  <td colspan="7" style="text-align: center; padding: 40px; color: #64748b;">
+                    <div style="display: inline-flex; align-items: center; gap: 8px;">
+                      <span>🔄</span> Carregando Matriz de Risco da Frota CS01...
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div><!-- FIM subtab-detection-riskmatrix -->
+
 
 
 

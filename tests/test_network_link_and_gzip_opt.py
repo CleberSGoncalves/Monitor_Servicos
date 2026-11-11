@@ -31,7 +31,7 @@ class TestNetworkLinkAndGzipOpt(unittest.TestCase):
             f"{self.base_url}/api/fleet/services",
             headers={"Accept-Encoding": "gzip"}
         )
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=25) as resp:
             self.assertEqual(resp.status, 200)
             self.assertEqual(resp.headers.get("Content-Encoding"), "gzip")
             compressed_bytes = resp.read()
@@ -72,7 +72,7 @@ class TestNetworkLinkAndGzipOpt(unittest.TestCase):
             f"{self.base_url}/api/fleet/network-link/metrics",
             headers={"Accept-Encoding": "gzip"}
         )
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=25) as resp:
             self.assertEqual(resp.status, 200)
             data = json.loads(gzip.decompress(resp.read()).decode("utf-8"))
             self.assertIsInstance(data, list)

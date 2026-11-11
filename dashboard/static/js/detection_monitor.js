@@ -51,8 +51,13 @@ async function loadDetectionFleetData() {
             ).length;
             badgeCount.textContent = `${count} Nós Ativos`;
         }
+        if (typeof updateDetectionRiskPillsCount === "function") {
+            updateDetectionRiskPillsCount();
+        }
         if (typeof currentDetectionSubTab !== "undefined" && currentDetectionSubTab === "fastmatching") {
             initFastMatchingDedicatedView();
+        } else if (typeof currentDetectionSubTab !== "undefined" && currentDetectionSubTab === "riskmatrix") {
+            initDetectionRiskMatrixView();
         }
     } catch (err) {
         console.error("[DetectionMonitor] Erro:", err);
@@ -860,19 +865,28 @@ function switchDetectionSubTab(subTabName) {
     currentDetectionSubTab = subTabName;
     const fleetBtn = document.getElementById("btnSubTabDetectionFleet");
     const fmBtn = document.getElementById("btnSubTabDetectionFastMatching");
+    const riskBtn = document.getElementById("btnSubTabDetectionRiskMatrix");
+
     const fleetSection = document.getElementById("subtab-detection-fleet");
     const fmSection = document.getElementById("subtab-detection-fastmatching");
+    const riskSection = document.getElementById("subtab-detection-riskmatrix");
+
+    // Reset styles
+    [fleetBtn, fmBtn, riskBtn].forEach(btn => {
+        if (btn) {
+            btn.style.background = "rgba(30, 41, 59, 0.6)";
+            btn.style.color = "#94a3b8";
+            btn.style.borderColor = "rgba(255, 255, 255, 0.12)";
+            btn.style.fontWeight = "600";
+        }
+    });
+
+    if (fleetSection) fleetSection.style.display = "none";
+    if (fmSection) fmSection.style.display = "none";
+    if (riskSection) riskSection.style.display = "none";
 
     if (subTabName === "fastmatching") {
-        if (fleetSection) fleetSection.style.display = "none";
         if (fmSection) fmSection.style.display = "block";
-
-        if (fleetBtn) {
-            fleetBtn.style.background = "rgba(30, 41, 59, 0.6)";
-            fleetBtn.style.color = "#94a3b8";
-            fleetBtn.style.borderColor = "rgba(255, 255, 255, 0.12)";
-            fleetBtn.style.fontWeight = "600";
-        }
         if (fmBtn) {
             fmBtn.style.background = "rgba(14, 165, 233, 0.22)";
             fmBtn.style.color = "#38bdf8";
@@ -880,21 +894,22 @@ function switchDetectionSubTab(subTabName) {
             fmBtn.style.fontWeight = "700";
         }
         initFastMatchingDedicatedView();
+    } else if (subTabName === "riskmatrix") {
+        if (riskSection) riskSection.style.display = "block";
+        if (riskBtn) {
+            riskBtn.style.background = "rgba(239, 68, 68, 0.2)";
+            riskBtn.style.color = "#fca5a5";
+            riskBtn.style.borderColor = "#ef4444";
+            riskBtn.style.fontWeight = "700";
+        }
+        initDetectionRiskMatrixView();
     } else {
         if (fleetSection) fleetSection.style.display = "block";
-        if (fmSection) fmSection.style.display = "none";
-
         if (fleetBtn) {
             fleetBtn.style.background = "rgba(59, 130, 246, 0.2)";
             fleetBtn.style.color = "#93c5fd";
             fleetBtn.style.borderColor = "#3b82f6";
             fleetBtn.style.fontWeight = "700";
-        }
-        if (fmBtn) {
-            fmBtn.style.background = "rgba(30, 41, 59, 0.6)";
-            fmBtn.style.color = "#94a3b8";
-            fmBtn.style.borderColor = "rgba(255, 255, 255, 0.12)";
-            fmBtn.style.fontWeight = "600";
         }
     }
 }
@@ -1268,3 +1283,280 @@ window.switchDetectionSubTab = switchDetectionSubTab;
 window.initFastMatchingDedicatedView = initFastMatchingDedicatedView;
 window.onFastMatchingSiteChange = onFastMatchingSiteChange;
 window.refreshFastMatchingDedicatedView = refreshFastMatchingDedicatedView;
+
+
+
+// ==============================================================================
+// SUB-ABA 3: MATRIZ DE RISCO & PRAÇAS CRÍTICAS DA ESTEIRA DE DETECÇÃO (PADRÃO LINK WAN)
+// ==============================================================================
+let currentRiskPillFilter = "all";
+
+function initDetectionRiskMatrixView() {
+    updateDetectionRiskPillsCount();
+    applyDetectionRiskFilters();
+}
+
+function updateDetectionRiskPillsCount() {
+    const sites = detectionCachedSites || [];
+    const countAll = sites.length;
+    let countCrit = 0;
+    let countP1 = 0;
+    let countP2 = 0;
+    let countOffline = 0;
+    let countNominal = 0;
+
+    sites.forEach(s => {
+        const h = s.health_status;
+        const e = s.engine_tier;
+        const comm = s.agent_comm || {};
+
+        if (h === "CRITICAL" || e === "NONE") countCrit++;
+        else if (h === "STALLED" || e === "CONFLICT") countP1++;
+        else if (h === "WARNING" || e === "FALLBACK") countP2++;
+        else if (h === "COMM_LOST" || comm.is_stale) countOffline++;
+        else countNominal++;
+    });
+
+    const elAll = document.getElementById("riskPillCountAll");
+    const elCrit = document.getElementById("riskPillCountCrit");
+    const elP1 = document.getElementById("riskPillCountP1");
+    const elP2 = document.getElementById("riskPillCountP2");
+    const elOffline = document.getElementById("riskPillCountOffline");
+    const elNominal = document.getElementById("riskPillCountNominal");
+    const badgeCritTop = document.getElementById("badgeRiskCriticalCount");
+
+    if (elAll) elAll.textContent = countAll;
+    if (elCrit) elCrit.textContent = countCrit;
+    if (elP1) elP1.textContent = countP1;
+    if (elP2) elP2.textContent = countP2;
+    if (elOffline) elOffline.textContent = countOffline;
+    if (elNominal) elNominal.textContent = countNominal;
+    if (badgeCritTop) {
+        badgeCritTop.textContent = countCrit > 0 ? `${countCrit} Críticas` : "Frota Saudável";
+        badgeCritTop.style.background = countCrit > 0 ? "rgba(239, 68, 68, 0.25)" : "rgba(34, 197, 94, 0.2)";
+        badgeCritTop.style.color = countCrit > 0 ? "#fca5a5" : "#86efac";
+        badgeCritTop.style.borderColor = countCrit > 0 ? "#ef4444" : "#22c55e";
+    }
+}
+
+function setDetectionRiskFilterPill(pillName) {
+    currentRiskPillFilter = pillName;
+    const pillBtns = [
+        { id: "btnRiskPillAll", name: "all", col: "#38bdf8", bg: "rgba(56, 189, 248, 0.15)" },
+        { id: "btnRiskPillCrit", name: "critico", col: "#f87171", bg: "rgba(239, 68, 68, 0.15)" },
+        { id: "btnRiskPillP1", name: "alerta", col: "#fb923c", bg: "rgba(249, 115, 22, 0.15)" },
+        { id: "btnRiskPillP2", name: "fallback", col: "#facc15", bg: "rgba(234, 179, 8, 0.15)" },
+        { id: "btnRiskPillOffline", name: "offline", col: "#cbd5e1", bg: "rgba(100, 116, 139, 0.2)" },
+        { id: "btnRiskPillNominal", name: "nominal", col: "#4ade80", bg: "rgba(34, 197, 94, 0.15)" }
+    ];
+
+    pillBtns.forEach(p => {
+        const el = document.getElementById(p.id);
+        if (el) {
+            if (p.name === pillName) {
+                el.style.background = p.bg;
+                el.style.borderColor = p.col;
+                el.style.color = p.col;
+                el.style.fontWeight = "700";
+            } else {
+                el.style.background = "rgba(15, 23, 42, 0.4)";
+                el.style.borderColor = "rgba(255, 255, 255, 0.1)";
+                el.style.color = "#94a3b8";
+                el.style.fontWeight = "600";
+            }
+        }
+    });
+
+    applyDetectionRiskFilters();
+}
+
+function applyDetectionRiskFilters() {
+    const searchVal = (document.getElementById("riskFilterSearch")?.value || "").toLowerCase().trim();
+    const regionVal = document.getElementById("riskFilterRegion")?.value || "all";
+    const bneckVal = document.getElementById("riskFilterBottleneck")?.value || "all";
+
+    const allSites = detectionCachedSites || [];
+    let filtered = allSites.filter(site => {
+        const h = site.health_status;
+        const e = site.engine_tier;
+        const comm = site.agent_comm || {};
+        const bneck = site.pipeline_bottleneck || "NONE";
+        const praca = (site.praca || "").toLowerCase();
+        const host = (site.hostname || "").toLowerCase();
+
+        // 1. Filtro por Pill de Severidade
+        if (currentRiskPillFilter === "critico" && (h !== "CRITICAL" && e !== "NONE")) return false;
+        if (currentRiskPillFilter === "alerta" && (h !== "STALLED" && e !== "CONFLICT")) return false;
+        if (currentRiskPillFilter === "fallback" && (h !== "WARNING" && e !== "FALLBACK")) return false;
+        if (currentRiskPillFilter === "offline" && (h !== "COMM_LOST" && !comm.is_stale)) return false;
+        if (currentRiskPillFilter === "nominal" && (h !== "NOMINAL")) return false;
+
+        // 2. Filtro de Busca Texto
+        if (searchVal) {
+            const matchText = praca.includes(searchVal) || host.includes(searchVal) || (site.incident_description || "").toLowerCase().includes(searchVal);
+            if (!matchText) return false;
+        }
+
+        // 3. Filtro de Região Geográfica
+        if (regionVal !== "all") {
+            const hU = host.toUpperCase();
+            if (regionVal === "Sudeste" && !hU.includes("BRSP") && !hU.includes("BRRJ") && !hU.includes("BRMG") && !hU.includes("BRES")) return false;
+            if (regionVal === "Sul" && !hU.includes("BRRS") && !hU.includes("BRPR") && !hU.includes("BRSC")) return false;
+            if (regionVal === "Nordeste" && !hU.includes("BRBA") && !hU.includes("BRPE") && !hU.includes("BRCE") && !hU.includes("BRRN") && !hU.includes("BRAL") && !hU.includes("BRSE") && !hU.includes("BRMA") && !hU.includes("BRPI") && !hU.includes("BRPB")) return false;
+            if (regionVal === "Centro-Oeste" && !hU.includes("BRDF") && !hU.includes("BRGO") && !hU.includes("BRMT") && !hU.includes("BRMS")) return false;
+            if (regionVal === "Norte" && !hU.includes("BRAM") && !hU.includes("BRPA") && !hU.includes("BRRO") && !hU.includes("BRAC") && !hU.includes("BRAP") && !hU.includes("BRTO") && !hU.includes("BRRR")) return false;
+        }
+
+        // 4. Filtro por Tipo de Gargalo
+        if (bneckVal !== "all") {
+            if (bneckVal === "DETECTION" && (e !== "NONE" && h !== "CRITICAL")) return false;
+            if (bneckVal === "CONFIGMONITOR_WCF" && bneck !== "CONFIGMONITOR_WCF") return false;
+            if (bneckVal === "CONFLICT" && e !== "CONFLICT") return false;
+            if (bneckVal === "FALLBACK" && e !== "FALLBACK") return false;
+            if (bneckVal === "TELEMETRY_OFFLINE" && (h !== "COMM_LOST" && !comm.is_stale)) return false;
+        }
+
+        return true;
+    });
+
+    // Ordenar: Críticos primeiro, depois Alertas, depois Fallback, depois Offline, depois Nominal
+    filtered.sort((a, b) => {
+        const order = { "CRITICAL": 0, "CONFLICT": 1, "STALLED": 2, "WARNING": 3, "COMM_LOST": 4, "NOMINAL": 5 };
+        const scoreA = order[a.health_status] ?? 3;
+        const scoreB = order[b.health_status] ?? 3;
+        return scoreA - scoreB;
+    });
+
+    const summaryLabel = document.getElementById("riskViewSummaryLabel");
+    if (summaryLabel) {
+        summaryLabel.textContent = `Exibindo ${filtered.length} de ${allSites.length} Praças CS01 prioritárias`;
+    }
+
+    renderDetectionRiskMatrixTable(filtered);
+}
+
+function renderDetectionRiskMatrixTable(sites) {
+    const tbody = document.getElementById("detectionRiskMatrixTableBody");
+    if (!tbody) return;
+
+    if (!sites || sites.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" style="text-align: center; padding: 40px; color: #94a3b8;">
+                    <div style="font-size: 14px; font-weight: 600; color: #4ade80; margin-bottom: 4px;">✅ Nenhuma praça na condição de risco selecionada.</div>
+                    <div style="font-size: 11px; color: #64748b;">Todas as praças deste filtro estão operando dentro do SLA esperado.</div>
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    tbody.innerHTML = sites.map(site => {
+        const h = site.health_status;
+        const e = site.engine_tier;
+        const comm = site.agent_comm || {};
+        const p = site.pipeline_services || {};
+        const fm = p.fast_matching || {};
+        const det = p.detection_svc || {};
+        const pb = site.playbook_solution || {};
+
+        // 1. Badge de Risco SLA
+        let riskBadgeHtml = "";
+        let rowBorder = "transparent";
+        if (h === "CRITICAL" || e === "NONE") {
+            rowBorder = "#ef4444";
+            riskBadgeHtml = `<span style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.45); padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; gap: 4px;"><span style="width: 6px; height: 6px; border-radius: 50%; background: #ef4444; box-shadow: 0 0 6px #ef4444;"></span> P0 - Apagão Matching</span>`;
+        } else if (h === "STALLED") {
+            rowBorder = "#f97316";
+            riskBadgeHtml = `<span style="background: rgba(249, 115, 22, 0.2); color: #fdba74; border: 1px solid rgba(249, 115, 22, 0.45); padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; gap: 4px;"><span style="width: 6px; height: 6px; border-radius: 50%; background: #f97316;"></span> P1 - Fila WCF Travada</span>`;
+        } else if (e === "CONFLICT") {
+            rowBorder = "#f97316";
+            riskBadgeHtml = `<span style="background: rgba(249, 115, 22, 0.2); color: #fdba74; border: 1px solid rgba(249, 115, 22, 0.45); padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; gap: 4px;"><span style="width: 6px; height: 6px; border-radius: 50%; background: #f97316;"></span> P1 - Concorrência</span>`;
+        } else if (h === "WARNING" || e === "FALLBACK") {
+            riskBadgeHtml = `<span style="background: rgba(234, 179, 8, 0.15); color: #fde047; border: 1px solid rgba(234, 179, 8, 0.35); padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;"><span style="width: 6px; height: 6px; border-radius: 50%; background: #eab308;"></span> P2 - Fallback Legado</span>`;
+        } else if (h === "COMM_LOST" || comm.is_stale) {
+            riskBadgeHtml = `<span style="background: rgba(100, 116, 139, 0.2); color: #cbd5e1; border: 1px solid rgba(148, 163, 184, 0.35); padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;"><span style="width: 6px; height: 6px; border-radius: 50%; background: #94a3b8;"></span> Telemetria Ausente</span>`;
+        } else {
+            riskBadgeHtml = `<span style="background: rgba(34, 197, 94, 0.15); color: #86efac; border: 1px solid rgba(34, 197, 94, 0.3); padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;"><span style="width: 6px; height: 6px; border-radius: 50%; background: #22c55e;"></span> Nominal</span>`;
+        }
+
+        // 2. Motor Ativo
+        let motorHtml = "";
+        if (e === "PRIMARY") {
+            motorHtml = `<span style="color: #4ade80; font-weight: 700; font-size: 11.5px;">FastMatching C++</span>`;
+        } else if (e === "FALLBACK") {
+            motorHtml = `<span style="color: #facc15; font-weight: 700; font-size: 11.5px;">DetectionSVC (.NET)</span>`;
+        } else if (e === "CONFLICT") {
+            motorHtml = `<span style="color: #fb923c; font-weight: 700; font-size: 11.5px;">Ambos Concorrentes</span>`;
+        } else {
+            motorHtml = `<span style="color: #f87171; font-weight: 700; font-size: 11.5px;">Inoperante</span>`;
+        }
+
+        // 3. Fila de Tracking
+        const ageMin = site.tracking_age_minutes || 0;
+        let ageCol = "#22c55e";
+        if (ageMin > 45) ageCol = "#ef4444";
+        else if (ageMin > 20) ageCol = "#f59e0b";
+
+        // 4. Gargalo e Causa Raiz
+        const causeRoot = pb.root_cause || site.incident_description || "Operação dentro dos padrões SLA da Kantar IBOPE.";
+        const impactTxt = pb.impact || "";
+
+        // 5. Ação Recomendada
+        const firstStep = (pb.steps && pb.steps.length > 0) ? pb.steps[0] : "Nenhuma intervenção necessária.";
+
+        return `
+            <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.05); transition: background 0.15s ease;">
+                <td style="padding: 12px 16px;">
+                    <div style="font-weight: 700; font-size: 13px; color: #f8fafc;">${site.praca}</div>
+                    <div style="font-family: monospace; font-size: 11px; color: #94a3b8; margin-top: 2px;">
+                        <span>${site.hostname}</span>
+                        <span style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; padding: 1px 4px; border-radius: 3px; font-size: 9px; font-weight: 700; margin-left: 4px;">CS01</span>
+                    </div>
+                </td>
+                <td style="padding: 12px 14px;">
+                    ${riskBadgeHtml}
+                </td>
+                <td style="padding: 12px 14px;">
+                    ${motorHtml}
+                    <div style="font-size: 10px; color: #64748b; margin-top: 2px;">CPU: ${site.cpu_uso} | RAM: ${site.ram_uso}</div>
+                </td>
+                <td style="padding: 12px 14px;">
+                    <div style="font-size: 11px; font-weight: 700; color: ${ageCol};">
+                        ${ageMin > 0 ? `Há ${ageMin} min` : 'Em dia (&lt;5m)'}
+                    </div>
+                    <div style="font-size: 10px; color: #64748b; margin-top: 2px;">${site.throughput_xml_hour} XML/h</div>
+                </td>
+                <td style="padding: 12px 14px; max-width: 320px;">
+                    <div style="font-size: 11.5px; color: #cbd5e1; line-height: 1.35;">${causeRoot}</div>
+                    ${impactTxt ? `<div style="font-size: 10.5px; color: #fca5a5; margin-top: 3px;"><strong>Impacto:</strong> ${impactTxt}</div>` : ""}
+                </td>
+                <td style="padding: 12px 14px; max-width: 260px;">
+                    <div style="font-size: 11px; color: #38bdf8; background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.2); padding: 6px 8px; border-radius: 6px; line-height: 1.3;">
+                        ${firstStep}
+                    </div>
+                </td>
+                <td style="padding: 12px 16px; text-align: right;">
+                    <div style="display: inline-flex; gap: 6px;">
+                        <button onclick="openDetectionAIDiagnosticModal('${site.hostname}')" style="background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff; border: none; padding: 5px 8px; border-radius: 6px; font-size: 10.5px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                            <span>🧠</span> Laudo IA
+                        </button>
+                        <button onclick="openDetectionQuickActionsModal('${site.hostname}', '${site.active_engine}', '${site.engine_tier}')" style="background: rgba(255, 255, 255, 0.08); color: #f1f5f9; border: 1px solid rgba(255, 255, 255, 0.2); padding: 5px 8px; border-radius: 6px; font-size: 10.5px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                            <span>⚡</span> Ações
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join("");
+}
+
+function refreshDetectionRiskMatrix() {
+    loadDetectionFleetData();
+    initDetectionRiskMatrixView();
+}
+
+window.initDetectionRiskMatrixView = initDetectionRiskMatrixView;
+window.setDetectionRiskFilterPill = setDetectionRiskFilterPill;
+window.applyDetectionRiskFilters = applyDetectionRiskFilters;
+window.refreshDetectionRiskMatrix = refreshDetectionRiskMatrix;
