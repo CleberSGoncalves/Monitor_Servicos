@@ -2971,7 +2971,11 @@ function filterServicesTable() {
 
 
 
-        if (resourceFilter === "stopped" && s.status_servico === "Em Execução") return false;
+        if (resourceFilter === "stopped") {
+            const hTelem = (allNocHostsTelemetryCache || []).find(h => (h.hostname || '').toLowerCase().trim() === (s.hostname || '').toLowerCase().trim());
+            const isHostStale = hTelem ? (hTelem.diff_hours > 0.33 || !hTelem.agent_running) : false;
+            if (isHostStale || s.status_servico === "Em Execução") return false;
+        }
 
 
 
@@ -3095,6 +3099,8 @@ function filterServicesTable() {
 
 
 
+        const hTelem = (allNocHostsTelemetryCache || []).find(h => (h.hostname || '').toLowerCase().trim() === (s.hostname || '').toLowerCase().trim());
+        const isHostStale = hTelem ? (hTelem.diff_hours > 0.33 || !hTelem.agent_running) : false;
         const isRunning = s.status_servico === "Em Execução";
 
 
@@ -3107,7 +3113,7 @@ function filterServicesTable() {
 
 
 
-                            (isRunning ? `<span class="badge badge-green">🟢 Executando</span>` : `<span class="badge badge-red">🔴 ${s.status_servico}</span>`);
+                            isHostStale ? `<span class="badge" style="background: rgba(148, 163, 184, 0.15); border: 1px solid rgba(148, 163, 184, 0.4); color: #94a3b8; font-weight: 600;" title="Agente DNA.MonitorServiceSVC inativo ou sem reporte há mais de 20 min">⚪ Indeterminado</span>` : (isRunning ? `<span class="badge badge-green">🟢 Executando</span>` : `<span class="badge badge-red">🔴 ${s.status_servico}</span>`);
 
 
 
@@ -12406,7 +12412,18 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
 
 
 
-    allNocHostsTelemetryCache = Object.values(hostsMap);
+    
+    // PRÉ-REQUISITO UNIVERSAL OBRIGATÓRIO DE TELEMETRIA:
+    // Se o agente tem mais de 20 min sem reporte (diff_hours > 0.33) OU o agente não está rodando,
+    // o host NÃO possui comunicação ativa em tempo real.
+    // Todos os processos locais são INDETERMINADOS e é PROIBIDO emitir incidentes operacionais de canal, RF, hardware ou pipeline!
+    const staleCommHostsSet = new Set(
+        Object.values(hostsMap).filter(h => h.diff_hours > 0.33 || !h.agent_running).map(h => (h.hostname || '').toLowerCase().trim())
+    );
+    const staleCommPracasMap = new Set(
+        Object.values(hostsMap).filter(h => h.diff_hours > 0.33 || !h.agent_running).map(h => `${(h.praca || '').toLowerCase().trim()}_${h.cs}`)
+    );
+allNocHostsTelemetryCache = Object.values(hostsMap);
 
 
 
@@ -12460,10 +12477,8 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
 
         // Se o host físico do canal estiver offline, a telemetria é inválida/estagnada (suprime falso alarme de queda)
 
-        if (offlineHostsSet.has(chHost) || offlinePracasMap.has(chPracaCs)) {
-
+        if (staleCommHostsSet.has(chHost) || staleCommPracasMap.has(chPracaCs) || offlineHostsSet.has(chHost) || offlinePracasMap.has(chPracaCs)) {
             return false;
-
         }
 
 
@@ -13144,7 +13159,7 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
 
         const chPracaCs = `${(c.cidade || "").trim().toLowerCase()}_${c.cs || c.id_cs || 1}`;
 
-        if (offlineHostsSet.has(chHost) || offlinePracasMap.has(chPracaCs)) return false;
+        if (staleCommHostsSet.has(chHost) || staleCommPracasMap.has(chPracaCs) || offlineHostsSet.has(chHost) || offlinePracasMap.has(chPracaCs)) return false;
 
 
 
@@ -13286,7 +13301,7 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
 
         const pHost = (inc.hostname || inc.host || "").toLowerCase().trim();
 
-        if (offlineHostsSet.has(pHost)) return false;
+        if (staleCommHostsSet.has(pHost) || offlineHostsSet.has(pHost)) return false;
 
         return true;
 
@@ -13412,7 +13427,7 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
 
         const bHost = (b.hostname || b.host || "").toLowerCase().trim();
 
-        if (offlineHostsSet.has(bHost)) return false;
+        if (staleCommHostsSet.has(bHost) || offlineHostsSet.has(bHost)) return false;
 
         return true;
 

@@ -754,6 +754,27 @@ def sync_fleet_data():
 
         active_recordings_by_praca = {}
 
+        # PRÉ-REQUISITO UNIVERSAL: Mapeia hosts com agente DNA.MonitorServiceSVC ativo e comunicando (<= 20 min)
+        active_agents_by_host = set()
+        active_agents_by_praca_cs = set()
+        for s in services_list:
+            if "monitorservice" in str(s.get("nome_servico", "")).lower():
+                s_stat = str(s.get("status_servico", "")).lower()
+                if any(w in s_stat for w in ["execu", "running"]):
+                    up_s = s.get("ultima_atualizacao", "")
+                    if up_s:
+                        try:
+                            s_dt = datetime.fromisoformat(up_s.replace("Z", "+00:00"))
+                            if (now_utc - s_dt).total_seconds() <= 20 * 60:
+                                h_clean = str(s.get("hostname", "")).strip().lower()
+                                p_clean = str(s.get("praca", "")).strip().lower()
+                                cs_clean = int(float(s.get("cs", 1) or 1))
+                                if h_clean:
+                                    active_agents_by_host.add(h_clean)
+                                if p_clean:
+                                    active_agents_by_praca_cs.add(f"{p_clean}_{cs_clean}")
+                        except Exception:
+                            pass
         for it in valid_raw_channels:
 
             f_temp = it.get("fields", {})
@@ -843,6 +864,21 @@ def sync_fleet_data():
                 except Exception:
 
                     pass
+                    is_stale = True
+            else:
+                is_stale = True
+
+            # Cruzamento com agente DNA.MonitorServiceSVC do host:
+            ch_host_str = str(f.get("IDHost", "") or "").strip().lower()
+            try:
+                ch_cs_val = int(float(f.get("IDCS", 1) or 1))
+            except Exception:
+                ch_cs_val = 1
+            ch_praca_cs_str = f"{p_lower}_{ch_cs_val}"
+            if active_agents_by_host or active_agents_by_praca_cs:
+                host_has_active_agent = (ch_host_str in active_agents_by_host) or (ch_praca_cs_str in active_agents_by_praca_cs)
+                if not host_has_active_agent:
+                    is_stale = True
 
             is_frozen = "sim" in str(f.get("VideoCongelado", "")).lower()
 

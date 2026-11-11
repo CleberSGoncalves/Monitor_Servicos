@@ -936,7 +936,11 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
 
         # LEI DA VALIDADE DE TELEMETRIA:
         # is_agent_stale indica desconexão prolongada do host (> 2h ou agente parado)
-        is_agent_stale = agent_comm_status in ("OFFLINE_RECENT", "OFFLINE_CRITICAL", "UNKNOWN") or agent_comm_hours > 2.0 or not agent_running
+        is_agent_communicating = (agent_comm_hours <= 0.33) and agent_running and (agent_svc is not None)
+        is_agent_stale = not is_agent_communicating
+
+        if agent_comm_hours >= 24.0 or agent_comm_status == "OFFLINE_CRITICAL":
+            agent_comm_offline_count += 1
 
         # Auditoria de frescura estrita para validação de falha operacional P0 (Sem Motor de Matching):
         # Para declarar P0 de serviço parado, a telemetria do agente e do motor primário DEVE ter <= 20 min (0.33h).
@@ -989,7 +993,7 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
                 active_engine_label = f"Telemetria Ausente ({agent_comm_label})"
 
         # Idade de Tracking e Fila
-        if is_agent_stale:
+        if is_agent_stale or not is_telemetry_fresh_for_p0:
             tracking_age_minutes = 0
             is_stalled = False
         elif not cfg_running:
@@ -1435,7 +1439,7 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
 
                 "fast_matching": {
                     "name": "FastMatchingSvc",
-                    "status": fm_status,
+                    "status": "Indeterminado" if (health_status == "COMM_LOST" and not fm_running) else fm_status,
                     "running": fm_running,
                     "is_stale": fm_is_stale,
                     "last_update": fm_up_str,
@@ -1458,7 +1462,7 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
 
 
 
-                    "status": det_status,
+                    "status": "Indeterminado" if (health_status == "COMM_LOST" and not det_running) else det_status,
 
 
 
@@ -1482,7 +1486,7 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
 
 
 
-                    "status": trk_status,
+                    "status": "Indeterminado" if (health_status == "COMM_LOST" and not trk_running) else trk_status,
 
 
 
@@ -1506,7 +1510,7 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
 
 
 
-                    "status": cfg_status,
+                    "status": "Indeterminado" if (health_status == "COMM_LOST" and not cfg_running) else cfg_status,
 
 
 

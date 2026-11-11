@@ -192,17 +192,21 @@ def get_fleet_pipeline_incidents(services: list = None, channels: list = None, t
                 pass
 
     for h_name, s_list in host_services.items():
-        # LEI DA VALIDADE DE TELEMETRIA:
-        # Checa se o host esta online com telemetria recente do agente (<= 20 min / 1200s).
-        # Se estiver > 20 min sem reporte, o estado dos processos locais é INDETERMINADO.
-        agent_ts = host_agent_ts.get(h_name, host_max_ts.get(h_name, 0))
-        if (now - agent_ts) > 1200:  # > 20 minutos = TELEMETRIA SUSPENSA / OFFLINE
-            continue
-
-        # Checa se o agente DNA.MonitorServiceSVC esta ativo
+        # LEI DA VALIDADE DE TELEMETRIA (PRÉ-REQUISITO UNIVERSAL OBRIGATÓRIO):
+        # 1. O agente DNA.MonitorServiceSVC DEVE estar presente no host.
         agent_s = next((s for s in s_list if "monitorservice" in str(s.get("nome_servico", "")).lower()), None)
-        if agent_s and not any(w in str(agent_s.get("status_servico", "")).lower() for w in ["execu", "running"]):
-            continue  # Agente parado -> telemetria suspensa
+        if not agent_s:
+            continue  # Sem agente de telemetria = processos locais INDETERMINADOS
+
+        # 2. O agente DEVE estar em execução.
+        agent_st = str(agent_s.get("status_servico") or agent_s.get("status", "")).lower()
+        if not any(w in agent_st for w in ["execu", "running"]):
+            continue  # Agente inativo = telemetria suspensa / processos locais INDETERMINADOS
+
+        # 3. O agente DEVE ter enviado batimento recente nos últimos 20 minutos (<= 1200s).
+        agent_ts = host_agent_ts.get(h_name, 0)
+        if not agent_ts or (now - agent_ts) > 1200:
+            continue  # Sem reporte recente do agente (<= 20 min) = telemetria suspensa
 
         for s_info in s_list:
             praca = s_info.get("praca", "Praca")

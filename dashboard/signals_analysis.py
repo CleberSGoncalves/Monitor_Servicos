@@ -586,6 +586,95 @@ def diagnose_channel_with_ai(praca: str, canal: str, period: str = "24h", cs: Op
     target_h = host or ("BRRS-PLT-DT01" if "pelotas" in praca.lower() and (cs == 1 or not cs) else ("BRRS-PLT-DT02" if "pelotas" in praca.lower() else "CS-FLEET"))
     hw = get_host_hardware_telemetry(target_h, praca)
 
+    # PRÉ-REQUISITO UNIVERSAL OBRIGATÓRIO DE TELEMETRIA:
+    # A conectividade do host e batimento recente (<= 20 min) do DNA.MonitorServiceSVC
+    # são pré-requisitos mandatórios antes de emitir qualquer diagnóstico operacional.
+    is_telemetry_valid = True
+    stale_reason = ""
+    try:
+        from sharepoint_sync import get_cached_data
+        fleet_data = get_cached_data()
+        cached_services = fleet_data.get("services", [])
+        
+        matching_agent = None
+        for s in cached_services:
+            h_match = str(s.get("hostname", "")).strip().lower()
+            p_match = str(s.get("praca", "")).strip().lower()
+            cs_match = int(float(s.get("cs", 1) or 1))
+            svc_name = str(s.get("nome_servico", "")).lower()
+            
+            if "monitorservice" in svc_name:
+                if (target_h and h_match == target_h.lower().strip()) or (p_match == p_lower and cs_match == (cs or 1)):
+                    matching_agent = s
+                    break
+        
+        if matching_agent:
+            agent_status = str(matching_agent.get("status_servico") or matching_agent.get("status", "")).lower()
+            if not any(w in agent_status for w in ["execu", "running"]):
+                is_telemetry_valid = False
+                stale_reason = "Agente DNA.MonitorServiceSVC parado ou inativo no host"
+            else:
+                up_str = matching_agent.get("ultima_atualizacao", "")
+                if up_str:
+                    try:
+                        from datetime import datetime, timezone
+                        dt = datetime.fromisoformat(up_str.replace("Z", "+00:00"))
+                        if dt.tzinfo is None:
+                            dt = dt.replace(tzinfo=timezone.utc)
+                        diff_sec = (datetime.now(timezone.utc) - dt).total_seconds()
+                        if diff_sec > 1200:  # > 20 min
+                            is_telemetry_valid = False
+                            stale_reason = f"Telemetria do agente estagnada há {round(diff_sec/60)} min (> 20 min)"
+                    except Exception:
+                        is_telemetry_valid = False
+                        stale_reason = "Data de atualização da telemetria inválida"
+                else:
+                    is_telemetry_valid = False
+                    stale_reason = "Agente sem registro de última atualização"
+    except Exception:
+        pass
+
+    if not is_telemetry_valid:
+        return {
+            "praca": praca,
+            "canal": canal,
+            "cs": cs or 1,
+            "host": target_h,
+            "hardware_telemetry": hw,
+            "origin_type": prof.get("origin_type", "digital_tbs"),
+            "periodo_analisado": period,
+            "status": "indeterminado",
+            "status_diagnostico": "INDETERMINADO",
+            "health_score": 50,
+            "stability_pct": 0.0,
+            "avg_qualidade": 0.0,
+            "avg_forca": 0.0,
+            "frequencia_uhf": prof.get("frequencia_display", "N/A"),
+            "meio": prof.get("meio", "Digital Terrestre"),
+            "tuner_modelo": prof.get("tuner_modelo", "N/A"),
+            "snr_mer_estimado": "N/A (Telemetria Suspensa)",
+            "taxa_ber_estimada": "N/A (Telemetria Suspensa)",
+            "diagnostico_tecnico": (
+                f"Telemetria Suspensa no Host {target_h} ({praca}): {stale_reason}. "
+                f"O estado físico dos sintonizadores, fluxo de vídeo e demodulação "
+                f"não pode ser aferido até que a comunicação do DNA.MonitorServiceSVC seja restabelecida."
+            ),
+            "causa_raiz": f"Telemetria Suspensa: {stale_reason}.",
+            "solucao_estipulada": (
+                "1. Restabelecer a conectividade do agente DNA.MonitorServiceSVC no host.\n"
+                "2. Validar resolução DNS e acesso HTTPS ao SharePoint Online.\n"
+                "3. Aguardar novo ciclo de reporte de telemetria antes de intervir no hardware de RF."
+            ),
+            "acoes_recomendadas": [
+                "Verificar serviço DNA.MonitorServiceSVC no host",
+                "Checar conectividade WAN / M365",
+                "Aguardar restabelecimento de telemetria"
+            ],
+            "script_auto_healing": "Restart-Service -Name 'DNA.MonitorServiceSVC' -Force -ErrorAction SilentlyContinue",
+            "is_chronic": False,
+            "is_stale": True
+        }
+
     # Enriquecimento contextual com Google Gemini Pro
     gemini_insight = None
     try:

@@ -976,6 +976,17 @@ def track_channel_anomalies_cycle(channels_list: List[Dict[str, Any]]) -> None:
             # Chave normalizada para o canal
             norm_key = re.sub(r"[^a-z0-9]", "_", f"{praca.lower()}_{ch_low}_{cs}").strip("_")
 
+            # PRÉ-REQUISITO UNIVERSAL DE TELEMETRIA:
+            # Se o canal está com telemetria estagnada/atrasada (is_degraded) ou has_outage é falso,
+            # o status operacional é INDETERMINADO e nenhuma anomalia física pode ser registrada como ativa.
+            is_stale_telemetry = ch.get("is_degraded") or not ch.get("has_outage") or "telemetria atrasada" in str(ch.get("motivo", "")).lower()
+
+            if is_stale_telemetry:
+                is_frozen = False
+                is_mute = False
+                is_storage_fault = False
+                is_rf_outage = False
+
             anomaly_types = []
             if is_frozen:
                 anomaly_types.append("video_congelado")
