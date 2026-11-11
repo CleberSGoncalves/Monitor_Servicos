@@ -740,6 +740,43 @@ async function refreshFastMatchingModalData() {
                 </div>
             </div>
 
+            
+            <!-- GUIA DE SOLUÇÃO / PLAYBOOK OPERACIONAL (HOW-TO PARA O TÉCNICO) -->
+            ${(() => {
+                const pb = t.playbook;
+                if (!pb) return "";
+                const isCrit = pb.severity === "CRITICAL";
+                const isWarn = pb.severity === "WARNING";
+                const bCol = isCrit ? "#ef4444" : (isWarn ? "#f59e0b" : "#38bdf8");
+                const bBg = isCrit ? "rgba(239, 68, 68, 0.12)" : (isWarn ? "rgba(245, 158, 11, 0.12)" : "rgba(56, 189, 248, 0.12)");
+                const bBorder = isCrit ? "rgba(239, 68, 68, 0.35)" : (isWarn ? "rgba(245, 158, 11, 0.35)" : "rgba(56, 189, 248, 0.35)");
+                return `
+                    <div style="margin-bottom: 16px; padding: 14px; background: ${bBg}; border: 1px solid ${bBorder}; border-radius: 8px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 16px;">🛠️</span>
+                                <span style="font-weight: 700; font-size: 13px; color: ${bCol};">${pb.problem_title || 'Playbook de Resolução'}</span>
+                            </div>
+                            <span style="font-size: 10px; background: rgba(0,0,0,0.3); color: #cbd5e1; padding: 2px 8px; border-radius: 4px; font-weight: 600;">Playbook Técnico NOC</span>
+                        </div>
+                        <div style="font-size: 11px; color: #94a3b8; margin-bottom: 10px; line-height: 1.5;">
+                            <strong>Causa Raiz & Impacto:</strong> ${pb.root_cause || ''} ${pb.impact || ''}
+                        </div>
+                        <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 10px 12px;">
+                            <div style="font-size: 11px; font-weight: 700; color: #e2e8f0; margin-bottom: 6px;">📋 Roteiro de Resolução Passo a Passo (How-To):</div>
+                            <div style="display: flex; flex-direction: column; gap: 5px; font-size: 11px; color: #cbd5e1;">
+                                ${(pb.steps || []).map(st => `
+                                    <div style="display: flex; align-items: flex-start; gap: 6px;">
+                                        <span style="color: ${bCol}; font-weight: 700;">▶</span>
+                                        <span>${st}</span>
+                                    </div>
+                                `).join("")}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            })()}
+    
             <!-- Catálogo ConfigXml.xml -->
             <div style="margin-bottom: 16px; padding: 12px 14px; background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
                 <div style="display: flex; align-items: center; gap: 8px;">

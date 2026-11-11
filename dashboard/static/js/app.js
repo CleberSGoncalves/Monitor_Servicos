@@ -3914,6 +3914,25 @@ function openIncidentActionModal(key, host, target, type) {
 
 
     document.getElementById("worklogNotes").value = "";
+    
+    // Preenche o roteiro How-To no modal de tratamento
+    const howToContainer = document.getElementById("worklogHowToSolveContainer");
+    const howToList = document.getElementById("worklogHowToSolveList");
+    if (howToContainer && howToList) {
+        const foundInc = allNocIncidentsCache.find(i => i.key === key);
+        const steps = foundInc?.how_to_steps || foundInc?.detection_data?.playbook_solution?.steps || [];
+        if (steps && steps.length > 0) {
+            howToList.innerHTML = steps.map(st => `
+                <div style="margin-bottom: 4px; display: flex; align-items: flex-start; gap: 6px;">
+                    <span style="color: #4ade80; font-weight: 700;">▶</span>
+                    <span>${escapeHtml(st)}</span>
+                </div>
+            `).join("");
+            howToContainer.style.display = "block";
+        } else {
+            howToContainer.style.display = "none";
+        }
+    }
 
 
 
@@ -13492,10 +13511,12 @@ allNocHostsTelemetryCache = Object.values(hostsMap);
 
 
             hostname: b.hostname,
-
-
-
             target: b.target,
+            how_to_steps: [
+                "1. [Uso de Disco] Acessar o disco D: e verificar espaço livre em D:\\MediaDNA_V2\\Data.",
+                "2. [Limpeza de Logs] Efetuar a limpeza de logs antigos em D:\\MediaDNA_V2\\Data\\logs e arquivos temporários.",
+                "3. [Uso de CPU] Abrir o Gerenciador de Tarefas e verificar se processos de antivírus estão sobrecarregando a CPU."
+            ],
 
 
 
@@ -13800,7 +13821,11 @@ allNocHostsTelemetryCache = Object.values(hostsMap);
             time_ago: site.agent_comm?.label || "Em tempo real",
 
             is_detection: !isOffline,
-
+            how_to_steps: site.playbook_solution?.steps || [
+                "1. Verificar conectividade do host CS01 e status dos processos de detecção.",
+                "2. Reciclar serviços ou acionar fallback conforme o laudo.",
+                "3. Acompanhar a retomada do fluxo em D:\\MediaDNA_V2\\Data\\tracking."
+            ],
             detection_data: site
 
         });
@@ -15611,6 +15636,31 @@ function renderNocUnifiedQueue() {
 
 
 
+            
+            <!-- ROTEIRO / HOW-TO DE SOLUÇÃO DO INCIDENTE PARA O TÉCNICO -->
+            ${(() => {
+                const steps = mainItem.how_to_steps || (mainItem.detection_data?.playbook_solution?.steps) || [];
+                if (!steps || steps.length === 0) return "";
+                return `
+                    <div style="background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(56, 189, 248, 0.28); border-radius: 6px; padding: 10px 14px; margin-top: 8px; margin-bottom: 12px;">
+                        <div style="font-size: 11px; font-weight: 700; color: #38bdf8; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between;">
+                            <span style="display: flex; align-items: center; gap: 6px;">
+                                <i class="fas fa-tools"></i> 🛠️ Como Resolver (Passo a Passo Técnico):
+                            </span>
+                            <span style="font-size: 10px; color: #94a3b8; font-family: monospace;">Playbook Técnico NOC</span>
+                        </div>
+                        <div style="font-size: 11px; color: #cbd5e1; line-height: 1.6;">
+                            ${steps.map(st => `
+                                <div style="margin-bottom: 4px; display: flex; align-items: flex-start; gap: 6px;">
+                                    <span style="color: #4ade80; font-weight: 700;">▶</span>
+                                    <span>${escapeHtml(st)}</span>
+                                </div>
+                            `).join("")}
+                        </div>
+                    </div>
+                `;
+            })()}
+    
             <!-- Botões de Ação Operacional (Cockpit N1) -->
 
 

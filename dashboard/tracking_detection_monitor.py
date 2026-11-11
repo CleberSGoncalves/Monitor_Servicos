@@ -360,6 +360,7 @@ def parse_fma_log_content(lines: List[str]) -> Dict[str, Any]:
                 "summary": f"Catálogo ConfigXml.xml recarregado: {len(res['catalog_reload'].get('loaded_spots', []))} spots carregados"
             })
 
+    res["playbook"] = generate_fastmatching_playbook(res)
     return res
 
 
@@ -382,6 +383,7 @@ def get_fastmatching_node_telemetry(hostname: str = "", praca: str = "") -> Dict
                 parsed = parse_fma_log_content(lines)
                 parsed["source"] = str(p)
                 parsed["is_live"] = True
+                parsed["playbook"] = generate_fastmatching_playbook(parsed, hostname)
                 return parsed
             except Exception as e:
                 logger.warning(f"Erro ao ler fma.log em {p}: {e}")
@@ -423,6 +425,7 @@ def get_fastmatching_node_telemetry(hostname: str = "", praca: str = "") -> Dict
             "private_mb": 9534,
             "working_set_mb": 1161
         },
+        "playbook": generate_fastmatching_playbook({"has_detections": True, "last_detection": {"proc_time_ms": 1037}, "has_delayed_warning": False, "ram_usage": {"private_mb": 9534}}, hostname),
         "events": [
             {
                 "type": "DETECTION",
@@ -439,6 +442,194 @@ def get_fastmatching_node_telemetry(hostname: str = "", praca: str = "") -> Dict
                 "summary": "Catálogo ConfigXml.xml recarregado com 2 spots"
             }
         ]
+    }
+
+
+
+def generate_fastmatching_playbook(parsed: Dict[str, Any], hostname: str = "", engine_tier: str = "PRIMARY") -> Dict[str, Any]:
+    """
+    Gera Playbook operacional estruturado (How-To passo a passo) para guiar o técnico de campo / NOC
+    na resolução de qualquer problema detectado no fma.log e na esteira do FastMatching.
+    """
+    if engine_tier == "CONFLICT":
+        return {
+            "problem_title": "Conflito Concorrente Ativo (FastMatching + DetectionSVC)",
+            "severity": "CRITICAL",
+            "impact": "Disputa destrutiva de I/O em disco, concorrência de CPU e duplicação de XMLs de comprovação.",
+            "root_cause": "Ambos os motores estão em execução simultânea lendo os blocos .EMU em D:\\MediaDNA_V2\\Data\\emu.",
+            "steps": [
+                "1. Parar o serviço DNA.DetectionSVC imediatamente via CMD: 'net stop DNA.DetectionSVC'.",
+                "2. Alterar o tipo de inicialização do DNA.DetectionSVC para 'Manual' no services.msc para evitar reinicialização concorrente.",
+                "3. Inspecionar o fma.log para confirmar que o FastMachingSvc segue operando com exclusividade e ProcTimeMs nominal (< 1500ms).",
+                "4. Validar que a pasta 'D:\\MediaDNA_V2\\Data\\tracking' continua recebendo os XMLs do FastMatching normalmente."
+            ],
+            "quick_action": "stop_detection_svc"
+        }
+
+    if parsed.get("has_delayed_warning"):
+        delayed_count = parsed.get("delayed_candidates_count", 1)
+        return {
+            "problem_title": f"Descompasso de Buffer Circular / Candidatos Atrasados ({delayed_count} avisos no fma.log)",
+            "severity": "WARNING",
+            "impact": "Risco de descarte de comerciais por expiração da janela de correlação de áudio/vídeo.",
+            "root_cause": "O buffer de blocos .EMU ou o relógio do host está defasado em relação ao carimbo de tempo do comercial.",
+            "steps": [
+                "1. [Sincronismo de Relógio] Executar no host 'w32tm /query /status' e confirmar que o serviço DNA.TimeSyncSVC está rodando (tolerância < 1s).",
+                "2. [Auditoria da Pasta EMU] Inspecionar 'D:\\MediaDNA_V2\\Data\\emu'. Se houver mais de 5 a 10 arquivos acumulados, há gargalo de leitura/disco.",
+                "3. [Reset de Buffers] Reiniciar o serviço FastMachingSvc pelo painel ou via 'net stop FastMachingSvc && net start FastMachingSvc' para redefinir a memória circular.",
+                "4. [Fluxo de Captura] Verificar no Atria Capture / DigitalTVCapture se há perda de pacotes TS, frozen screen ou falhas de sintonia."
+            ],
+            "quick_action": "restart_fastmatching"
+        }
+
+    last_det = parsed.get("last_detection") or {}
+    proc_time = last_det.get("proc_time_ms", 0)
+    if proc_time > 3000:
+        return {
+            "problem_title": f"Sobrecarga de CPU / Varredura Lenta do FastMatching (ProcTimeMs: {proc_time}ms)",
+            "severity": "WARNING",
+            "impact": "Atraso progressivo na análise de matching em tempo real, podendo gerar fila de comerciais.",
+            "root_cause": "Processos concorrentes competindo por CPU/disco ou paginação excessiva de memória.",
+            "steps": [
+                "1. [Checar Concorrência] Confirmar se o DNA.DetectionSVC está parado (não deve rodar com FastMatching).",
+                "2. [Uso Global de CPU] Abrir o Gerenciador de Tarefas do CS01. Se antivírus (Defender/Tanium) estiver consumindo CPU em 'D:\\MediaDNA_V2', adicionar exclusão de pasta.",
+                "3. [Reciclagem do Motor] Reiniciar o serviço FastMachingSvc para limpar a memória e otimizar o índice de busca de fingerprints.",
+                "4. [Validação] Acompanhar no fma.log se os próximos spots registram ProcTimeMs inferior a 1500ms."
+            ],
+            "quick_action": "restart_fastmatching"
+        }
+
+    ram = parsed.get("ram_usage") or {}
+    priv_mb = ram.get("private_mb", 0)
+    if priv_mb > 10000:
+        return {
+            "problem_title": f"Consumo Crítico de Memória RAM no FastMachingSvc ({priv_mb} MB)",
+            "severity": "CRITICAL",
+            "impact": "Risco iminente de crash por Out of Memory (OOM) no Windows e interrupção do matching.",
+            "root_cause": "Retenção contínua de memória e fragmentação de buffers de fingerprints na biblioteca C++.",
+            "steps": [
+                "1. [Reciclagem Imediata] Reiniciar o serviço FastMachingSvc pelo painel ou via 'net stop FastMachingSvc && net start FastMachingSvc'.",
+                "2. [Checagem de Memória] Verificar se a memória Private Working Set retorna ao patamar nominal (< 2000 MB).",
+                "3. [Limpeza de Arquivos Temporários] Verificar espaço livre na unidade D: e conferir se não há dumps na pasta de logs."
+            ],
+            "quick_action": "restart_fastmatching"
+        }
+
+    return {
+        "problem_title": "Motor FastMatching C++ Operando Nominalmente",
+        "severity": "NOMINAL",
+        "impact": "Detecção em tempo real e geração de XMLs funcionando dentro dos parâmetros SLA.",
+        "root_cause": "Nenhuma anomalia de buffer, concorrência ou atraso de processamento identificada no fma.log.",
+        "steps": [
+            "1. Monitorar a periodicidade de geração de XMLs em 'D:\\MediaDNA_V2\\Data\\tracking' (média de 38 XML/hora).",
+            "2. Confirmar que o serviço DNA.ConfigMonitorSVC permanece em execução para despacho contínuo via WCF.",
+            "3. Nenhuma intervenção técnica necessária no momento."
+        ],
+        "quick_action": "none"
+    }
+
+
+def get_site_troubleshooting_playbook(site: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Gera Playbook operacional completo (How-To passo a passo) para qualquer Capture Site CS01 da frota,
+    cobrindo todas as causas de falha: Conflito, Parada, Estagnação WCF, Fallback e Conectividade.
+    """
+    p = site.get("pipeline_services", {})
+    fm = p.get("fast_matching", {})
+    det = p.get("detection_svc", {})
+    cfg = p.get("config_monitor", {})
+    trk = p.get("tracking_svc", {})
+    comm = site.get("agent_comm", {})
+    engine_tier = site.get("engine_tier", "NONE")
+    health = site.get("health_status", "NOMINAL")
+    age = site.get("tracking_age_minutes", 0)
+    praca = site.get("praca", "Praça")
+    hostname = site.get("hostname", "CS01")
+
+    if comm.get("is_stale") or health == "COMM_LOST":
+        return {
+            "problem_title": f"Telemetria Suspensa / Host Inalcançável ({comm.get('label', 'Offline')})",
+            "severity": "P1",
+            "impact": "Impossibilidade de auditar o estado real dos processos locais da praça pelo monitor central.",
+            "root_cause": f"O agente DNA.MonitorServiceSVC não envia dados ao SharePoint há {comm.get('hours_since_last_seen', 'várias')} horas.",
+            "steps": [
+                f"1. [Teste de Conexão] Verificar se o host {hostname} ({praca}) responde a ping ou conexão remota (RDP / Tanium / TeamViewer).",
+                "2. [Reiniciar Agente] Reiniciar o serviço DNA.MonitorServiceSVC (WinServiceFleetAgent.exe) no services.msc.",
+                "3. [Conectividade M365] Testar no host a saída HTTPS para 'login.microsoftonline.com' e 'graph.microsoft.com' na porta 443.",
+                "4. [Preservação de Processos] OBS: Não reiniciar processos de captura/detecção às cegas antes de verificar via RDP se eles já estão rodando normalmente."
+            ],
+            "quick_action": "restart_agent"
+        }
+
+    if engine_tier == "CONFLICT":
+        return {
+            "problem_title": "Conflito Concorrente Ativo (FastMatching + DetectionSVC)",
+            "severity": "P1",
+            "impact": "Sobrecarga de CPU, concorrência de I/O em data\\emu e risco de duplicação de comprovações.",
+            "root_cause": "FastMatchingSvc e DNA.DetectionSVC estão ambos ativos concorrentemente na mesma máquina.",
+            "steps": [
+                "1. [Parar Motor Legado] Parar o serviço DNA.DetectionSVC imediatamente via painel ou 'net stop DNA.DetectionSVC'.",
+                "2. [Fixar Inicialização Manual] Abrir services.msc no host e alterar o tipo de inicialização do DNA.DetectionSVC para 'Manual'.",
+                "3. [Auditar fma.log] Inspecionar 'fma.log' para confirmar que o FastMatching C++ está operando como motor exclusivo.",
+                "4. [Checagem de XMLs] Confirmar que novos XMLs continuam sendo entregues em 'D:\\MediaDNA_V2\\Data\\tracking'."
+            ],
+            "quick_action": "stop_detection_svc"
+        }
+
+    if health == "CRITICAL" or engine_tier == "NONE":
+        return {
+            "problem_title": "Apagão de Detecção Comercial / Motores Inoperantes (P0)",
+            "severity": "P0",
+            "impact": "Nenhum matching comercial sendo realizado na praça. Perda total de comprovação publicitária.",
+            "root_cause": "Estágio 1 inoperante: FastMatchingSvc e DNA.DetectionSVC estão ambos parados.",
+            "steps": [
+                "1. [Iniciar Motor Primário] Iniciar imediatamente o serviço FastMachingSvc ('net start FastMachingSvc').",
+                "2. [Checagem de Inicialização] Aguardar 30s e abrir 'D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMachingSvc\\fma.log' para verificar se há logs de busca.",
+                "3. [Acionar Contingência] Se o FastMatching falhar ao iniciar por erro de DLL ou crash, iniciar imediatamente o DNA.DetectionSVC como fallback .NET.",
+                "4. [Validar Ingestão] Confirmar se a pasta 'D:\\MediaDNA_V2\\Data\\emu' está recebendo blocos de 1 min do software de captura."
+            ],
+            "quick_action": "start_fastmatching"
+        }
+
+    if site.get("is_stalled") or site.get("pipeline_bottleneck") == "CONFIGMONITOR_WCF" or not cfg.get("running"):
+        return {
+            "problem_title": f"Fila de Tracking Represada / Gargalo WCF ({age} min sem envio)",
+            "severity": "P1",
+            "impact": "Comprovações comerciais acumuladas localmente sem envio para o datacenter.",
+            "root_cause": "DNA.ConfigMonitorSVC inoperante ou thread WCF congelada sem consumir 'D:\\MediaDNA_V2\\Data\\tracking'.",
+            "steps": [
+                "1. [Destravar Fila] Clicar no botão 'Destravar Fila de Tracking' no painel ou reiniciar DNA.TrackingSVC e DNA.ConfigMonitorSVC.",
+                "2. [Auditar Exceções] Abrir a pasta 'D:\\MediaDNA_V2\\exception' e checar o último log de erro (verificar EndpointNotFoundException ou TimeoutException).",
+                "3. [Isolar Arquivos Corrompidos] Verificar na pasta 'D:\\MediaDNA_V2\\Data\\tracking' se há arquivos '.err' ou com 0 bytes travando a esteira. Se houver, mover para pasta 'quarentena'.",
+                "4. [Conectividade WCF] Testar no host a comunicação com o endpoint central de recebimento via porta TCP configurada em ConfigMonitorSVC.exe.config."
+            ],
+            "quick_action": "recycle_tracking"
+        }
+
+    if engine_tier == "FALLBACK":
+        return {
+            "problem_title": "Operação em Modo Fallback Legado (DNA.DetectionSVC .NET)",
+            "severity": "P2",
+            "impact": "Consumo de recursos mais alto e dependência do DNA.TrackingSVC para geração final de XML.",
+            "root_cause": "FastMatching C++ inativo na praça; esteira operando através do motor clássico .NET/OpenCV.",
+            "steps": [
+                "1. [Verificar Pré-requisitos] Conferir se o pacote FastMachingSvc está instalado em 'D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMachingSvc'.",
+                "2. [Tentar Migração] Iniciar o serviço FastMachingSvc e validar se ele assume a detecção nominalmente.",
+                "3. [Se Mantido Fallback] Garantir que DNA.TrackingSVC e DNA.ConfigMonitorSVC permaneçam ambos em execução contínua."
+            ],
+            "quick_action": "start_fastmatching"
+        }
+
+    return {
+        "problem_title": "Pipeline de Detecção e Matching Nominal (FastMatching C++)",
+        "severity": "NOMINAL",
+        "impact": "Esteira operando com máxima performance e envio WCF contínuo.",
+        "root_cause": "Motor primário, buffers e despacho em conformidade.",
+        "steps": [
+            "1. Monitorar a estabilidade da taxa de XMLs despachados por hora.",
+            "2. Nenhuma intervenção técnica necessária."
+        ],
+        "quick_action": "none"
     }
 
 
@@ -1526,10 +1717,7 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
 
 
 
-        sites.append({
-
-
-
+        site_item = {
             "hostname": hostname,
 
 
@@ -1759,6 +1947,7 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
 
 
             "fastmatching_telemetry": get_fastmatching_node_telemetry(hostname, praca) if (fm_running or engine_tier in ("PRIMARY", "CONFLICT")) else None,
+            "playbook_solution": None,  # populado a seguir
             "sgg_vs_tracking_audit": sgg_vs_tracking_audit,
 
 
@@ -1768,10 +1957,9 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
 
 
             "forensics": forensics
-
-
-
-        })
+        }
+        site_item["playbook_solution"] = get_site_troubleshooting_playbook(site_item)
+        sites.append(site_item)
 
 
 

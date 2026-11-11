@@ -160,7 +160,13 @@ def get_fleet_pipeline_incidents(services: list = None, channels: list = None, t
             "threshold_minutes": threshold_delay_min,
             "motivo": f"Arquivo {media_desc} ({f['size_mb']} MB) gerado há {delay_min_rounded} min sem marcação .SENT.",
             "description": f"Arquivo de gravação de 30 minutos gerado com {f['size_mb']} MB há {delay_min_rounded} min ainda não foi marcado como .SENT pelo FileTransferSVC.",
-            "recommended_action": "Verificar serviço DNA.MediaConverter / FileTransferSVC e rota de upload."
+            "recommended_action": "Verificar serviço DNA.MediaConverter / FileTransferSVC e rota de upload.",
+            "how_to_steps": [
+                "1. [Auditoria de Pastas] Inspecionar 'D:\\MediaDNA_V2\\Data\\video' e 'audio' no host e conferir o arquivo pendente.",
+                "2. [Serviço de Conversão] Confirmar se DNA.MediaConverterSVC está ativo processando os blocos de mídia.",
+                "3. [Despacho WAN] Verificar se DNA.FileTransferSVC está em execução e conectado à rota de upload.",
+                "4. [Link de Internet] Testar a estabilidade e taxa de upload da conexão WAN do parceiro local no CS."
+            ]
         })
 
         # 2. Avalia a frota remota baseada na telemetria dos servicos de transferencia e gravacao
@@ -244,7 +250,12 @@ def get_fleet_pipeline_incidents(services: list = None, channels: list = None, t
                     "elapsed_minutes": 20.0,
                     "threshold_minutes": threshold_delay_min,
                     "description": f"O servico DNA.FiletransferSVC esta PARADO no host {h_name}. Nenhum arquivo de MP4, MP3 ou JPEG esta sendo enviado.",
-                    "recommended_action": f"Disparar reinicio do servico DNA.FiletransferSVC em {h_name}."
+                    "recommended_action": f"Disparar reinicio do servico DNA.FiletransferSVC em {h_name}.",
+                    "how_to_steps": [
+                        f"1. [Reiniciar Serviço] Disparar reinício do DNA.FiletransferSVC no host {h_name} ('net start DNA.FileTransferSVC').",
+                        "2. [Auditar Exceções] Verificar a pasta 'D:\\MediaDNA_V2\\exception' em busca de erros de conexão ou rota WCF/FTP.",
+                        "3. [Desobstrução] Confirmar se os arquivos marcados com .SENT voltam a fluir normalmente."
+                    ]
                 })
 
             if "mediarecorder" in svc_name and any(w in svc_status for w in ["parado", "stopped", "erro"]) and int(float(cs_id or 1)) != 2:
