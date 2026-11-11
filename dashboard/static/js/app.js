@@ -14997,9 +14997,9 @@ function renderNocUnifiedQueue() {
                     </span>
                     ${streamCount > 1 ? `<span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #fde047; font-size: 9px; margin-left: 2px;">+${streamCount} canais</span>` : ''}
                 </td>
-                <td class="cell-summary" title="${escapeHtml(mainItem.title)} - ${escapeHtml(mainItem.summary || group.telemetry || '')}">
-                    <strong style="color: #e2e8f0;">${escapeHtml(mainItem.title)}</strong>
-                    <span style="color: #94a3b8; font-size: 11px; margin-left: 4px;">• ${escapeHtml(mainItem.summary || group.telemetry || '')}</span>
+                <td class="cell-summary" title="${escapeHtml(mainItem.title)} — ${escapeHtml(mainItem.summary || group.telemetry || '')}">
+                    <span class="summary-title">${escapeHtml(mainItem.title)}</span>
+                    <span class="summary-detail">${escapeHtml(mainItem.summary || group.telemetry || '')}</span>
                 </td>
                 <td style="width: 85px;">
                     <span style="color: var(--text-muted); font-size: 11px; font-family: monospace;">${escapeHtml(group.time_ago)}</span>

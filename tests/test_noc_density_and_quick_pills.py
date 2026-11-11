@@ -41,7 +41,9 @@ def test_noc_css_styles_present():
     assert ".noc-quick-pill.pill-p1.active" in css
     assert ".noc-compact-table-container" in css, "Deve conter container da tabela compacta"
     assert ".noc-compact-table" in css, "Deve conter classe da tabela compacta"
-    assert "tr.noc-compact-row" in css, "Deve conter linhas da tabela compacta com altura de 38px"
+    assert "tr.noc-compact-row" in css, "Deve conter linhas da tabela compacta"
+    assert ".summary-title" in css, "Deve conter título do problema em linha dedicada"
+    assert ".summary-detail" in css, "Deve conter detalhe do problema legível sem cortes"
     assert ".btn-compact-action" in css, "Deve conter botões de ação compacta"
 
 
@@ -58,6 +60,8 @@ def test_app_js_density_and_quick_filter_logic():
     assert 'nocDensityMode === "compact"' in js
     assert 'noc-compact-table' in js
     assert 'noc-compact-row' in js
+    assert 'summary-title' in js
+    assert 'summary-detail' in js
     assert 'pillCntAll' in js
     assert 'pillCntP0' in js
     assert 'pillCntP1' in js
