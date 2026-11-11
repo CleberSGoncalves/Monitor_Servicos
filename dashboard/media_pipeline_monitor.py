@@ -110,7 +110,7 @@ def scan_local_pipeline_media(threshold_sent_delay_min: float = 10.0) -> List[Di
     return results
 
 
-def get_fleet_pipeline_incidents(services: list = None, channels: list = None, threshold_delay_min: float = 10.0) -> List[Dict[str, Any]]:
+def get_fleet_pipeline_incidents(services: list = None, channels: list = None, threshold_delay_min: float = 10.0, force_refresh: bool = False) -> List[Dict[str, Any]]:
     """
     Avalia a saúde da transmissão de arquivos de toda a frota de Capture Sites (LATAM/Brasil):
     1. Atraso de recebimento (.SENT pendente além do limiar).
@@ -121,7 +121,7 @@ def get_fleet_pipeline_incidents(services: list = None, channels: list = None, t
     global _PIPELINE_CACHE
     now = time.time()
 
-    if (now - _PIPELINE_CACHE["last_scan"]) < CACHE_TTL_SECONDS and _PIPELINE_CACHE["fleet_incidents"]:
+    if not force_refresh and services is None and (now - _PIPELINE_CACHE["last_scan"]) < CACHE_TTL_SECONDS and _PIPELINE_CACHE["fleet_incidents"]:
         return _PIPELINE_CACHE["fleet_incidents"]
 
     if not services:
@@ -208,6 +208,18 @@ def get_fleet_pipeline_incidents(services: list = None, channels: list = None, t
         if not agent_ts or (now - agent_ts) > 1200:
             continue  # Sem reporte recente do agente (<= 20 min) = telemetria suspensa
 
+        # REGRA DE ARQUITETURA MUTUAMENTE EXCLUSIVA (ATRIA CAPTURE vs DNA.MEDIARECORDER):
+        # O software Atria Capture (DigitalTVReceiver) e o serviço DNA.MediaRecorderSVC
+        # desempenham exatamente a mesma função de gravação física de áudio/vídeo (MP3/MP4).
+        # São plataformas alternativas e mutuamente exclusivas (análogo a FastMatching vs DetectionSVC):
+        # Se o Atria Capture estiver ativo e gravando, o DNA.MediaRecorderSVC DEVE permanecer PARADO.
+        # Não emitir falso alarme de "Gravação Interrompida" ou "MediaRecorder Parado"!
+        is_atria_running = any(
+            "atria" in str(s.get("nome_servico", "")).lower() and
+            any(w in str(s.get("status_servico") or s.get("status", "")).lower() for w in ["execu", "running"])
+            for s in s_list
+        )
+
         for s_info in s_list:
             praca = s_info.get("praca", "Praca")
             cs_id = s_info.get("cs", 1)
@@ -236,23 +248,26 @@ def get_fleet_pipeline_incidents(services: list = None, channels: list = None, t
                 })
 
             if "mediarecorder" in svc_name and any(w in svc_status for w in ["parado", "stopped", "erro"]) and int(float(cs_id or 1)) != 2:
+                # Se o Atria Capture estiver ativo e gravando, MediaRecorder parado é o comportamento nominal esperado!
+                if is_atria_running:
+                    continue
                 incidents.append({
                     "id": f"svc_mr_{h_name}_{cs_id}",
                     "type": "ausencia_geracao_30min",
                     "category": "pipeline_midia",
                     "severity": "critico",
                     "badge_label": "GRAVACAO INTERROMPIDA",
-                    "title": f"Ausencia de Geracao: MediaRecorder Parado",
+                    "title": f"Ausencia de Geracao: Motores de Gravacao Parados",
                     "praca": praca,
                     "hostname": h_name,
                     "cs": cs_id,
-                    "target": f"MediaRecorderSVC ({praca} CS {cs_id})",
+                    "target": f"Gravacao ({praca} CS {cs_id})",
                     "filename": "Sem arquivos nos ultimos 30min",
                     "size_mb": 0.0,
                     "elapsed_minutes": 32.0,
                     "threshold_minutes": 30.0,
-                    "description": f"O servico DNA.MediaRecorderSVC esta PARADO. Quebra total na gravacao dos blocos de 30 minutos.",
-                    "recommended_action": f"Reiniciar o servico DNA.MediaRecorderSVC e verificar espaco no Disco D:\\."
+                    "description": f"Nenhum motor de gravacao ativo no host {h_name}: DNA.MediaRecorderSVC e Atria Capture parados.",
+                    "recommended_action": f"Iniciar o Atria Capture ou DNA.MediaRecorderSVC e verificar espaco no Disco D:\\."
                 })
 
     for inc in incidents:
