@@ -3838,59 +3838,70 @@
 
         <div>
 
-          <!-- Barra de Ações em Lote e Ordenação -->
-
-          <div class="panel-card" style="margin-bottom: 14px; padding: 10px 16px; background: rgba(15, 23, 42, 0.7); border: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-
-            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-
-              <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; color: #cbd5e1; user-select: none;">
-
-                <input type="checkbox" id="nocSelectAllIncidents" onchange="toggleSelectAllNocIncidents(this.checked)">
-
-                <span>Selecionar Todos</span>
-
-              </label>
-
-              <button type="button" class="btn-secondary" style="font-size: 11px; padding: 4px 10px;" onclick="batchMuteIncidents(15)">
-
-                <i class="fas fa-bell-slash"></i> Silenciar (15m)
-
-              </button>
-
-              <button type="button" class="btn-secondary" style="font-size: 11px; padding: 4px 10px;" onclick="batchAcknowledgeIncidents()">
-
-                <i class="fas fa-check-double"></i> Reconhecer
-
-              </button>
-
-              <span class="badge badge-purple" id="badgeNocTotalIncidents" style="font-size: 11px;">0 Ocorrências</span>
-
-            </div>
-
-
-
-            <div style="display: flex; align-items: center; gap: 8px;">
-
-              <span style="font-size: 11px; color: var(--text-muted); font-weight: 700;">ORDENAR:</span>
-
-              <select id="nocSortSelect" class="form-input" style="padding: 4px 8px; font-size: 11px; width: 140px;" onchange="renderNocUnifiedQueue()">
-
-                <option value="crit">Mais Crítico (P0 ➔ P2)</option>
-
-                <option value="recent">Mais Recente</option>
-
-                <option value="praca">Praça (A-Z)</option>
-
-                <option value="streams">Mais Streams Impactados</option>
-
-              </select>
-
-            </div>
-
+          <!-- BARRA DE FILTROS RÁPIDOS EM PILLS (1 CLIQUE) -->
+          <div id="nocQuickFilterPills" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px;">
+            <button type="button" class="noc-quick-pill active" id="nocPillAll" data-filter="all" onclick="setNocQuickFilter('all')">
+              <i class="fas fa-layer-group"></i> Todos <span class="pill-cnt" id="pillCntAll">0</span>
+            </button>
+            <button type="button" class="noc-quick-pill pill-p0" id="nocPillP0" data-filter="p0" onclick="setNocQuickFilter('p0')">
+              <i class="fas fa-fire"></i> P0 Crítico <span class="pill-cnt" id="pillCntP0">0</span>
+            </button>
+            <button type="button" class="noc-quick-pill pill-p1" id="nocPillP1" data-filter="p1" onclick="setNocQuickFilter('p1')">
+              <i class="fas fa-exclamation-triangle"></i> P1 Alertas <span class="pill-cnt" id="pillCntP1">0</span>
+            </button>
+            <button type="button" class="noc-quick-pill pill-detection" id="nocPillDetection" data-filter="detection" onclick="setNocQuickFilter('detection')">
+              <i class="fas fa-bullseye"></i> Detecção CS01 <span class="pill-cnt" id="pillCntDet">0</span>
+            </button>
+            <button type="button" class="noc-quick-pill pill-rf" id="nocPillRf" data-filter="rf" onclick="setNocQuickFilter('rf')">
+              <i class="fas fa-broadcast-tower"></i> RF / Sinal <span class="pill-cnt" id="pillCntRf">0</span>
+            </button>
+            <button type="button" class="noc-quick-pill pill-offline" id="nocPillOffline" data-filter="offline" onclick="setNocQuickFilter('offline')">
+              <i class="fas fa-network-wired"></i> Hosts Offline <span class="pill-cnt" id="pillCntOffline">0</span>
+            </button>
+            <button type="button" class="noc-quick-pill pill-hardware" id="nocPillHardware" data-filter="hardware" onclick="setNocQuickFilter('hardware')">
+              <i class="fas fa-microchip"></i> Hardware <span class="pill-cnt" id="pillCntHw">0</span>
+            </button>
           </div>
 
+          <!-- Barra de Ações em Lote, Ordenação e Seletor de Densidade -->
+          <div class="panel-card" style="margin-bottom: 14px; padding: 10px 16px; background: rgba(15, 23, 42, 0.7); border: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+              <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; color: #cbd5e1; user-select: none;">
+                <input type="checkbox" id="nocSelectAllIncidents" onchange="toggleSelectAllNocIncidents(this.checked)">
+                <span>Selecionar Todos</span>
+              </label>
+              <button type="button" class="btn-secondary" style="font-size: 11px; padding: 4px 10px;" onclick="batchMuteIncidents(15)">
+                <i class="fas fa-bell-slash"></i> Silenciar (15m)
+              </button>
+              <button type="button" class="btn-secondary" style="font-size: 11px; padding: 4px 10px;" onclick="batchAcknowledgeIncidents()">
+                <i class="fas fa-check-double"></i> Reconhecer
+              </button>
+              <span class="badge badge-purple" id="badgeNocTotalIncidents" style="font-size: 11px;">0 Ocorrências</span>
+            </div>
 
+            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+              <!-- Seletor de Densidade (Tabela Compacta vs Cards Detalhados) -->
+              <div style="display: inline-flex; align-items: center; background: rgba(15, 23, 42, 0.9); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 6px; padding: 2px; gap: 2px;">
+                <button type="button" id="btnNocDensityCompact" class="btn-sm active" onclick="setNocDensity('compact')" style="font-size: 11px; padding: 4px 10px; border-radius: 4px; border: none; font-weight: 700; background: var(--accent-blue); color: #fff; cursor: pointer; transition: all 0.2s;" title="Modo Tabela Compacta (NOC Alta Densidade - 38px por linha)">
+                  <i class="fas fa-list"></i> Tabela Compacta
+                </button>
+                <button type="button" id="btnNocDensityCards" class="btn-sm" onclick="setNocDensity('cards')" style="font-size: 11px; padding: 4px 10px; border-radius: 4px; border: none; font-weight: 700; background: transparent; color: var(--text-muted); cursor: pointer; transition: all 0.2s;" title="Modo Cards Expandidos Detalhados">
+                  <i class="fas fa-th-large"></i> Cards Detalhados
+                </button>
+              </div>
+
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 11px; color: var(--text-muted); font-weight: 700;">ORDENAR:</span>
+                <select id="nocSortSelect" class="form-input" style="padding: 4px 8px; font-size: 11px; width: 140px;" onchange="renderNocUnifiedQueue()">
+                  <option value="crit">Mais Crítico (P0 ➔ P2)</option>
+                  <option value="recent">Mais Recente</option>
+                  <option value="praca">Praça (A-Z)</option>
+                  <option value="streams">Mais Streams Impactados</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          
 
           <!-- Container da Fila Central Unificada -->
 

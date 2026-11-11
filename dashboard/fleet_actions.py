@@ -209,6 +209,7 @@ def get_fleet_update_evolution(target_version: str = "1.0.20.0") -> Dict[str, An
     hosts_detail = []
 
     updated_count = 0
+    updated_online_count = 0
     online_count = 0
     pending_online_count = 0
     offline_count = 0
@@ -234,6 +235,8 @@ def get_fleet_update_evolution(target_version: str = "1.0.20.0") -> Dict[str, An
         if is_updated:
             category = "updated"
             updated_count += 1
+            if is_today:
+                updated_online_count += 1
         elif is_today:
             category = "pending_online"
             pending_online_count += 1
@@ -262,7 +265,7 @@ def get_fleet_update_evolution(target_version: str = "1.0.20.0") -> Dict[str, An
     hosts_detail.sort(key=lambda h: (cat_order.get(h["category"], 9), h["praca"], h["hostname"]))
 
     updated_pct = round((updated_count / total_hosts * 100), 1) if total_hosts > 0 else 0.0
-    active_adoption_pct = round((updated_count / online_count * 100), 1) if online_count > 0 else 0.0
+    active_adoption_pct = min(100.0, round((updated_online_count / online_count * 100), 1)) if online_count > 0 else 0.0
 
     return {
         "target_version": target_version,

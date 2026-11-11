@@ -11909,6 +11909,45 @@ let allNocIncidentsCache = [];
 
 let allNocHostsTelemetryCache = [];
 
+let nocDensityMode = localStorage.getItem("noc_density_mode") || "compact";
+let nocActiveQuickFilter = "all";
+
+function setNocDensity(mode) {
+    nocDensityMode = mode;
+    try { localStorage.setItem("noc_density_mode", mode); } catch(e) {}
+    const btnCompact = document.getElementById("btnNocDensityCompact");
+    const btnCards = document.getElementById("btnNocDensityCards");
+    if (btnCompact && btnCards) {
+        if (mode === "compact") {
+            btnCompact.style.background = "var(--accent-blue)";
+            btnCompact.style.color = "#fff";
+            btnCards.style.background = "transparent";
+            btnCards.style.color = "var(--text-muted)";
+        } else {
+            btnCards.style.background = "var(--accent-blue)";
+            btnCards.style.color = "#fff";
+            btnCompact.style.background = "transparent";
+            btnCompact.style.color = "var(--text-muted)";
+        }
+    }
+    renderNocUnifiedQueue();
+}
+window.setNocDensity = setNocDensity;
+
+function setNocQuickFilter(filterKey) {
+    nocActiveQuickFilter = filterKey;
+    document.querySelectorAll(".noc-quick-pill").forEach(pill => {
+        if (pill.getAttribute("data-filter") === filterKey) {
+            pill.classList.add("active");
+        } else {
+            pill.classList.remove("active");
+        }
+    });
+    renderNocUnifiedQueue();
+}
+window.setNocQuickFilter = setNocQuickFilter;
+
+
 
 
 
@@ -13456,22 +13495,22 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
                           (site.agent_comm?.hours_since_last_seen >= 24.0);
 
         if (isOffline) {
-            // Se o agente comunicou recentemente (< 2h) e hStatus não é COMM_LOST, é um host online!
             const hoursAgo = site.agent_comm?.hours_since_last_seen || 0;
-            if (hoursAgo < 2.0 && hStatus !== "COMM_LOST") {
-                return; // Host online, não gera falso incidente de conectividade
+            // Host que comunicou dentro da janela nominal de 2h está online: não gera alarme falso de host desconectado
+            if (hoursAgo < 2.0) {
+                return;
             }
 
             sev = "P1";
             sevLabel = "ALERTA (P1)";
             catLabel = "Host Desconectado";
             catIcon = "fa-network-wired";
-            title = `Host Desconectado (Telemetria Ausente > 24h)`;
+            title = hoursAgo >= 24.0 ? `Host Desconectado (Telemetria Ausente > 24h)` : `Host Desconectado (Telemetria Ausente há ${Math.round(hoursAgo)}h)`;
             const commAgo = site.agent_comm?.label || `${Math.round(hoursAgo)}h atrás`;
             telText = `Telemetria suspensa (${commAgo}) | Processos locais indeterminados | Verifique DNA.MonitorServiceSVC`;
             summaryText = `Host CS01 sem envio de telemetria (${commAgo}). Os serviços no servidor físico podem estar operando normalmente (ex: FastMatching em execução), porém os dados centrais estão suspensos.`;
 
-        } else if (hStatus === "CRITICAL" || engTier === "NONE") {
+        } else if (hStatus === "CRITICAL") {
 
 
 
@@ -14297,6 +14336,15 @@ function updateNocFacetCounts() {
 
     if (elRf) elRf.textContent = rf;
 
+    // Atualiza contadores em tempo real das Pills de Filtro Rápido no topo da fila
+    const pillAll = document.getElementById("pillCntAll"); if (pillAll) pillAll.textContent = allNocIncidentsCache.length;
+    const pillP0 = document.getElementById("pillCntP0"); if (pillP0) pillP0.textContent = p0;
+    const pillP1 = document.getElementById("pillCntP1"); if (pillP1) pillP1.textContent = p1;
+    const pillDet = document.getElementById("pillCntDet"); if (pillDet) pillDet.textContent = det;
+    const pillRf = document.getElementById("pillCntRf"); if (pillRf) pillRf.textContent = (rf + rtsp);
+    const pillOffline = document.getElementById("pillCntOffline"); if (pillOffline) pillOffline.textContent = allNocIncidentsCache.filter(i => i.trigger_type === "host_offline" || (i.category_label && i.category_label.includes("Desconectado"))).length;
+    const pillHw = document.getElementById("pillCntHw"); if (pillHw) pillHw.textContent = cpu;
+
 
 
     if (elRtsp) elRtsp.textContent = rtsp;
@@ -14655,6 +14703,26 @@ function renderNocUnifiedQueue() {
 
 
 
+        
+        // Filtro rápido via Pills no topo da fila (1 clique)
+        if (nocActiveQuickFilter === "p0") {
+            if (inc.severity !== "P0") return false;
+        } else if (nocActiveQuickFilter === "p1") {
+            if (inc.severity !== "P1") return false;
+        } else if (nocActiveQuickFilter === "detection") {
+            const isDet = inc.trigger_type === "deteccao" || (inc.category_label && (inc.category_label.includes("Detecção") || inc.category_label.includes("Matching")));
+            if (!isDet) return false;
+        } else if (nocActiveQuickFilter === "rf") {
+            const isRf = inc.trigger_type === "rf_level" || inc.trigger_type === "rtsp_udp";
+            if (!isRf) return false;
+        } else if (nocActiveQuickFilter === "offline") {
+            const isOff = inc.trigger_type === "host_offline" || (inc.category_label && inc.category_label.includes("Desconectado"));
+            if (!isOff) return false;
+        } else if (nocActiveQuickFilter === "hardware") {
+            const isHw = inc.trigger_type === "cpu_disk" || inc.trigger_type === "cpu_disk_buffer" || (inc.category_label && (inc.category_label.includes("Hardware") || inc.category_label.includes("CPU")));
+            if (!isHw) return false;
+        }
+
         return true;
 
 
@@ -14859,7 +14927,129 @@ function renderNocUnifiedQueue() {
 
 
 
-    container.innerHTML = groupedCards.map(group => {
+        // Sincroniza estilo visual dos botões de densidade no toolbar
+    const btnCompact = document.getElementById("btnNocDensityCompact");
+    const btnCards = document.getElementById("btnNocDensityCards");
+    if (btnCompact && btnCards) {
+        if (nocDensityMode === "compact") {
+            btnCompact.style.background = "var(--accent-blue)";
+            btnCompact.style.color = "#fff";
+            btnCards.style.background = "transparent";
+            btnCards.style.color = "var(--text-muted)";
+        } else {
+            btnCards.style.background = "var(--accent-blue)";
+            btnCards.style.color = "#fff";
+            btnCompact.style.background = "transparent";
+            btnCompact.style.color = "var(--text-muted)";
+        }
+    }
+
+    if (nocDensityMode === "compact") {
+        // MODO TABELA COMPACTA DE ALTA DENSIDADE (NOC N1 - 38px por linha)
+        const rowsHtml = groupedCards.map(group => {
+            const isP0 = group.severity === "P0";
+            const isP1 = group.severity === "P1";
+            const rowClass = isP0 ? "row-p0" : (isP1 ? "row-p1" : "row-p2");
+            const sevColor = isP0 ? "#ef4444" : (isP1 ? "#f59e0b" : "#38bdf8");
+            const sevBg = isP0 ? "rgba(239, 68, 68, 0.15)" : (isP1 ? "rgba(245, 158, 11, 0.15)" : "rgba(56, 189, 248, 0.15)");
+            const sevBorder = isP0 ? "rgba(239, 68, 68, 0.4)" : (isP1 ? "rgba(245, 158, 11, 0.4)" : "rgba(56, 189, 248, 0.4)");
+            const sevIcon = isP0 ? "🔴" : (isP1 ? "🟡" : "🔵");
+
+            const uniqueSubItems = (() => {
+                const seen = new Set();
+                return group.items.filter(sub => {
+                    const k = (sub.target || sub.canal || "").toLowerCase().trim();
+                    if (seen.has(k)) return false;
+                    seen.add(k);
+                    return true;
+                });
+            })();
+            const mainItem = uniqueSubItems[0] || group.items[0];
+            const streamCount = uniqueSubItems.length;
+
+            const triggerTag = group.trigger_type === "rtsp_udp" ? "#RTSP" :
+                               (group.trigger_type === "rf_level" ? "#RF" :
+                               (group.trigger_type === "pipeline" ? "#Pipeline" :
+                               (group.trigger_type === "deteccao" ? "#Detecção" : "#Infra")));
+
+            const isChecked = nocSelectedIncidentKeys.has(mainItem.key);
+
+            return `
+            <tr class="noc-compact-row ${rowClass}">
+                <td style="text-align: center; width: 32px;">
+                    <input type="checkbox" ${isChecked ? "checked" : ""} onchange="toggleSingleNocIncidentSelect('${mainItem.key}', this.checked)" style="cursor: pointer;">
+                </td>
+                <td style="width: 80px;">
+                    <span class="badge" style="background: ${sevBg}; color: ${sevColor}; font-weight: 800; font-size: 10px; border: 1px solid ${sevBorder}; display: inline-flex; align-items: center; gap: 4px;">
+                        ${sevIcon} ${escapeHtml(group.severity)}
+                    </span>
+                </td>
+                <td style="width: 140px;">
+                    <strong style="color: #f8fafc; font-size: 12px;">${escapeHtml(group.praca)}</strong>
+                    <span class="badge" style="background: rgba(59, 130, 246, 0.15); color: #60a5fa; font-size: 9px; padding: 1px 4px; margin-left: 3px;">CS${group.cs}</span>
+                </td>
+                <td style="width: 130px;">
+                    <code style="font-size: 11px; color: #94a3b8; font-family: monospace;">${escapeHtml(group.hostname)}</code>
+                </td>
+                <td style="width: 120px;">
+                    <span class="badge" style="background: rgba(148, 163, 184, 0.15); color: #cbd5e1; font-size: 10px;">
+                        ${escapeHtml(triggerTag)}
+                    </span>
+                    ${streamCount > 1 ? `<span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #fde047; font-size: 9px; margin-left: 2px;">+${streamCount} canais</span>` : ''}
+                </td>
+                <td class="cell-summary" title="${escapeHtml(mainItem.title)} - ${escapeHtml(mainItem.summary || group.telemetry || '')}">
+                    <strong style="color: #e2e8f0;">${escapeHtml(mainItem.title)}</strong>
+                    <span style="color: #94a3b8; font-size: 11px; margin-left: 4px;">• ${escapeHtml(mainItem.summary || group.telemetry || '')}</span>
+                </td>
+                <td style="width: 85px;">
+                    <span style="color: var(--text-muted); font-size: 11px; font-family: monospace;">${escapeHtml(group.time_ago)}</span>
+                </td>
+                <td style="width: 200px; text-align: right;">
+                    <div style="display: inline-flex; gap: 4px;">
+                        <button type="button" class="btn-compact-action" onclick="openIncidentAiModal('${mainItem.key}')" title="Diagnóstico IA">
+                            <i class="fas fa-brain"></i> IA
+                        </button>
+                        <button type="button" class="btn-compact-action" onclick="openRemoteCommandForIncident('${group.hostname}', '${mainItem.target}', 'diagnose')" title="Comando Remoto">
+                            <i class="fas fa-bolt"></i> Remoto
+                        </button>
+                        <button type="button" class="btn-compact-action" onclick="openIncidentActionModal('${mainItem.key}', '${group.praca} (CS ${group.cs})', '${mainItem.target}', '${mainItem.category}')" title="Tratar Incidente">
+                            <i class="fas fa-tools"></i> Tratar
+                        </button>
+                    </div>
+                </td>
+            </tr>`;
+        }).join("");
+
+        const isAllSelected = groupedCards.length > 0 && groupedCards.every(g => {
+            const main = g.items ? g.items[0] : g;
+            return nocSelectedIncidentKeys.has(main.key);
+        });
+
+        container.innerHTML = `
+        <div class="noc-compact-table-container">
+            <table class="noc-compact-table">
+                <thead>
+                    <tr>
+                        <th style="width: 32px; text-align: center;">
+                            <input type="checkbox" ${isAllSelected ? "checked" : ""} onchange="toggleSelectAllNocIncidents(this.checked)" style="cursor: pointer;">
+                        </th>
+                        <th style="width: 80px;">Severidade</th>
+                        <th style="width: 140px;">Praça & CS</th>
+                        <th style="width: 130px;">Host</th>
+                        <th style="width: 120px;">Gatilho</th>
+                        <th>Problema / Diagnóstico & Telemetria</th>
+                        <th style="width: 85px;">Tempo</th>
+                        <th style="width: 200px; text-align: right;">Ações Rápidas</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${rowsHtml}
+                </tbody>
+            </table>
+        </div>`;
+    } else {
+        // MODO CARDS EXPANDIDOS DETALHADOS
+        container.innerHTML = groupedCards.map(group => {
 
 
 
@@ -15336,6 +15526,7 @@ function renderNocUnifiedQueue() {
 
 
     }).join("");
+    }
 
 
 
