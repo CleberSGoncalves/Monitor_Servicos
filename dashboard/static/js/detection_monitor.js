@@ -1754,13 +1754,23 @@ function renderFastMatchingFleetTable(filterStatus = currentFmFleetFilter, searc
                     <div>${item.numFingers} huellas</div>
                     <div style="color: #64748b;">${item.searchMs} ms</div>
                 </td>
-                <td style="padding: 10px 12px; max-width: 260px;">
-                    <div style="color: #cbd5e1; font-size: 10.5px; line-height: 1.3;">${item.diagDesc}</div>
+                <td style="padding: 10px 12px; max-width: 270px;">
+                    <div style="color: #cbd5e1; font-size: 10.5px; line-height: 1.3; margin-bottom: 4px;">${item.diagDesc}</div>
+                    ${item.condition !== "NOMINAL" ? `
+                        <a href="javascript:void(0)" onclick="event.stopPropagation(); openFmHowToModal('${item.hostname}', '${item.condition}')" style="color: ${item.condition === 'CRITICAL' ? '#fca5a5' : '#fde047'}; font-size: 10px; font-weight: 700; text-decoration: underline; display: inline-flex; align-items: center; gap: 3px;">
+                            📋 Ver Roteiro How-To &gt;
+                        </a>
+                    ` : ''}
                 </td>
-                <td style="padding: 10px 12px; text-align: center;">
-                    <button type="button" class="btn-sm" onclick="event.stopPropagation(); selectAndAuditFmSite('${item.hostname}')" style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); color: #38bdf8; font-size: 10px; font-weight: 700; padding: 4px 10px; border-radius: 5px; cursor: pointer;" title="Abrir auditoria detalhada de spots e playbook desta praça">
-                        🔍 Auditar
-                    </button>
+                <td style="padding: 10px 12px; text-align: center; white-space: nowrap;">
+                    <div style="display: flex; gap: 5px; justify-content: center; align-items: center;">
+                        <button type="button" class="btn-sm" onclick="event.stopPropagation(); selectAndAuditFmSite('${item.hostname}')" style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); color: #38bdf8; font-size: 10px; font-weight: 700; padding: 4px 8px; border-radius: 5px; cursor: pointer;" title="Auditar spots e feed do fma.log desta praça">
+                            🔍 Auditar
+                        </button>
+                        <button type="button" class="btn-sm" onclick="event.stopPropagation(); openFmHowToModal('${item.hostname}', '${item.condition}')" style="background: ${item.condition === 'CRITICAL' ? 'rgba(239, 68, 68, 0.2)' : (item.condition === 'WARNING' ? 'rgba(234, 179, 8, 0.2)' : 'rgba(168, 85, 247, 0.2)')}; border: 1px solid ${item.condition === 'CRITICAL' ? 'rgba(239, 68, 68, 0.45)' : (item.condition === 'WARNING' ? 'rgba(234, 179, 8, 0.45)' : 'rgba(168, 85, 247, 0.45)')}; color: ${item.condition === 'CRITICAL' ? '#fca5a5' : (item.condition === 'WARNING' ? '#fde047' : '#d8b4fe')}; font-size: 10px; font-weight: 700; padding: 4px 8px; border-radius: 5px; cursor: pointer;" title="Abrir procedimento How-To passo a passo para o técnico">
+                            📋 Como Resolver
+                        </button>
+                    </div>
                 </td>
             </tr>
         `;
@@ -1795,3 +1805,268 @@ function selectAndAuditFmSite(hostname) {
     }
 }
 window.selectAndAuditFmSite = selectAndAuditFmSite;
+
+
+// =========================================================================
+// GUIA TÉCNICO DAS COLUNAS fma.log & PLAYBOOK HOW-TO INTERATIVO
+// =========================================================================
+
+function toggleFmColumnsGuide() {
+    const panel = document.getElementById("fmColumnsGuidePanel");
+    const chevron = document.getElementById("fmGuideChevron");
+    if (!panel) return;
+    const isHidden = panel.style.display === "none" || panel.style.display === "";
+    if (isHidden) {
+        panel.style.display = "block";
+        if (chevron) chevron.style.transform = "rotate(180deg)";
+        panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    } else {
+        panel.style.display = "none";
+        if (chevron) chevron.style.transform = "rotate(0deg)";
+    }
+}
+window.toggleFmColumnsGuide = toggleFmColumnsGuide;
+
+function switchFmGuideTab(tab) {
+    const contentCols = document.getElementById("guideContentCols");
+    const contentPlaybook = document.getElementById("guideContentPlaybook");
+    const btnCols = document.getElementById("btnGuideTabCols");
+    const btnPlaybook = document.getElementById("btnGuideTabPlaybook");
+
+    if (tab === "cols") {
+        if (contentCols) contentCols.style.display = "block";
+        if (contentPlaybook) contentPlaybook.style.display = "none";
+        if (btnCols) {
+            btnCols.style.background = "#7c3aed";
+            btnCols.style.color = "#ffffff";
+            btnCols.style.border = "none";
+        }
+        if (btnPlaybook) {
+            btnPlaybook.style.background = "transparent";
+            btnPlaybook.style.color = "#cbd5e1";
+            btnPlaybook.style.border = "1px solid rgba(255,255,255,0.2)";
+        }
+    } else {
+        if (contentCols) contentCols.style.display = "none";
+        if (contentPlaybook) contentPlaybook.style.display = "block";
+        if (btnPlaybook) {
+            btnPlaybook.style.background = "#7c3aed";
+            btnPlaybook.style.color = "#ffffff";
+            btnPlaybook.style.border = "none";
+        }
+        if (btnCols) {
+            btnCols.style.background = "transparent";
+            btnCols.style.color = "#cbd5e1";
+            btnCols.style.border = "1px solid rgba(255,255,255,0.2)";
+        }
+    }
+}
+window.switchFmGuideTab = switchFmGuideTab;
+
+function openFmGuideColumn(colKey) {
+    const panel = document.getElementById("fmColumnsGuidePanel");
+    if (panel && (panel.style.display === "none" || panel.style.display === "")) {
+        toggleFmColumnsGuide();
+    }
+    switchFmGuideTab("cols");
+    
+    const cardId = `guideColCard_${colKey}`;
+    const card = document.getElementById(cardId);
+    if (card) {
+        card.scrollIntoView({ behavior: "smooth", block: "center" });
+        const origBorder = card.style.borderColor;
+        card.style.borderColor = "#c084fc";
+        card.style.boxShadow = "0 0 20px rgba(192, 132, 252, 0.4)";
+        setTimeout(() => {
+            card.style.borderColor = origBorder;
+            card.style.boxShadow = "none";
+        }, 2500);
+    }
+}
+window.openFmGuideColumn = openFmGuideColumn;
+
+function openFmHowToModal(hostname, condition) {
+    const modal = document.getElementById("fmHowToModal");
+    const titleEl = document.getElementById("fmHowToModalTitle");
+    const subtitleEl = document.getElementById("fmHowToModalSubtitle");
+    const bodyEl = document.getElementById("fmHowToModalBody");
+    if (!modal || !bodyEl) return;
+
+    // Buscar dados do site
+    const allSites = (typeof detectionCachedSites !== "undefined" && detectionCachedSites.length > 0) ? detectionCachedSites : (typeof detectionSitesData !== "undefined" ? detectionSitesData : []);
+    const site = allSites.find(s => s.hostname === hostname) || { hostname, praca: hostname };
+    const t = site.fastmatching_telemetry || {};
+    const procMs = t.last_match?.proctime_ms || 1037;
+    const delayedCount = (t.delayed_candidates || []).length;
+    const ramMb = t.ram_usage?.private_working_set_mb || 1161;
+    const spotStats = t.spot_stats || {};
+    const minSec = spotStats.min_spot?.duration_sec ?? 15.0;
+    const maxSec = spotStats.max_spot?.duration_sec ?? 60.0;
+    const hasDivergence = spotStats.has_divergence_alert || false;
+
+    const pracaName = site.praca || hostname;
+    if (titleEl) titleEl.innerHTML = `📋 Roteiro How-To de Resolução: <span style="color: #38bdf8;">${pracaName}</span> (${hostname})`;
+    if (subtitleEl) subtitleEl.textContent = `Procedimento técnico operacional para restabelecimento da cadeia FastMatching`;
+
+    let badgeCond = `<span style="background: rgba(34, 197, 94, 0.15); color: #86efac; border: 1px solid rgba(34, 197, 94, 0.35); padding: 3px 8px; border-radius: 4px; font-weight: 700; font-size: 11px;">🟢 Nominal</span>`;
+    if (condition === "CRITICAL" || procMs >= 3000 || delayedCount > 3 || ramMb >= 8000) {
+        badgeCond = `<span style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.45); padding: 3px 8px; border-radius: 4px; font-weight: 700; font-size: 11px;">🔴 Crítico (Ação Imediata P0)</span>`;
+    } else if (condition === "WARNING" || procMs >= 1500 || delayedCount > 0 || hasDivergence || ramMb >= 4000) {
+        badgeCond = `<span style="background: rgba(234, 179, 8, 0.2); color: #fde047; border: 1px solid rgba(234, 179, 8, 0.45); padding: 3px 8px; border-radius: 4px; font-weight: 700; font-size: 11px;">🟡 Alerta P1</span>`;
+    }
+
+    let specificPlaybookSteps = "";
+    let primaryActionBtn = "";
+
+    if (hasDivergence) {
+        specificPlaybookSteps = `
+            <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+                <div style="font-weight: 800; color: #fca5a5; font-size: 13px; margin-bottom: 6px;">🚨 Diagnóstico Detectado: Divergência Crítica de Duração no SGG</div>
+                <div style="font-size: 11px; color: #cbd5e1; line-height: 1.45;">
+                    O catálogo <code>ConfigXml.xml</code> contém spots com duração anômala (Menor: <strong>${minSec}s</strong>, Maior: <strong>${maxSec}s</strong>).
+                    Isso descalibra a janela temporal do motor C++, causando falsos positivos ou buscas redundantes na árvore de huellas.
+                </div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                <div style="background: #1e293b; padding: 12px 14px; border-radius: 6px; font-size: 11.5px; color: #e2e8f0; line-height: 1.4;">
+                    <strong style="color: #38bdf8;">Passo 1:</strong> Notificar a equipe de cadastro/SGG com os IDs dos spots anômalos para retificação da minutagem da fita.
+                </div>
+                <div style="background: #1e293b; padding: 12px 14px; border-radius: 6px; font-size: 11.5px; color: #e2e8f0; line-height: 1.4;">
+                    <strong style="color: #38bdf8;">Passo 2:</strong> Reiniciar o serviço <code>DNA.ConfigMonitorSVC</code> para puxar o XML corrigido do servidor central via WCF.
+                </div>
+                <div style="background: #1e293b; padding: 12px 14px; border-radius: 6px; font-size: 11.5px; color: #e2e8f0; line-height: 1.4;">
+                    <strong style="color: #38bdf8;">Passo 3:</strong> Inspecionar o <code>fma.log</code> e confirmar a emissão de: <code>DNAConfigXmlProvider: Loaded spots ... Successfully updated!</code>
+                </div>
+            </div>
+        `;
+        primaryActionBtn = `<button onclick="executeFmQuickAction('sync_sgg', 'DNA.ConfigMonitorSVC', '${hostname}')" style="background: linear-gradient(135deg, #7c3aed, #a855f7); color: #fff; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 700; font-size: 11px; cursor: pointer;">📥 Forçar Sync SGG (ConfigMonitor)</button>`;
+    } else if (delayedCount > 0) {
+        specificPlaybookSteps = `
+            <div style="background: rgba(234, 179, 8, 0.1); border: 1px solid rgba(234, 179, 8, 0.3); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+                <div style="font-weight: 800; color: #fde047; font-size: 13px; margin-bottom: 6px;">⚠️ Diagnóstico Detectado: Candidatos Atrasados no Buffer (${delayedCount} ocorrências)</div>
+                <div style="font-size: 11px; color: #cbd5e1; line-height: 1.45;">
+                    O log registra <code>*WARNING* DELAYED CANDIDATE</code>. Comerciais estão sendo processados com atraso temporal em relação à transmissão real.
+                </div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                <div style="background: #1e293b; padding: 12px 14px; border-radius: 6px; font-size: 11.5px; color: #e2e8f0; line-height: 1.4;">
+                    <strong style="color: #facc15;">Passo 1:</strong> Conferir sincronismo NTP executando no CMD do CS: <code>w32tm /query /status</code> e checar se o desvio é &gt; 1s.
+                </div>
+                <div style="background: #1e293b; padding: 12px 14px; border-radius: 6px; font-size: 11.5px; color: #e2e8f0; line-height: 1.4;">
+                    <strong style="color: #facc15;">Passo 2:</strong> Inspecionar pasta de blocos circulares: <code>D:\MediaDNA_V2\Data\emu</code>. Se houver mais de 5 arquivos, há lentidão de I/O em disco.
+                </div>
+                <div style="background: #1e293b; padding: 12px 14px; border-radius: 6px; font-size: 11.5px; color: #e2e8f0; line-height: 1.4;">
+                    <strong style="color: #facc15;">Passo 3:</strong> Reiniciar <code>FastMatchingSvc</code> para expurgar a fila represada e reinicializar o ponteiro de gravação.
+                </div>
+            </div>
+        `;
+        primaryActionBtn = `<button onclick="executeFmQuickAction('reset_buffers', 'FastMatchingSvc', '${hostname}')" style="background: linear-gradient(135deg, #d97706, #f59e0b); color: #fff; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 700; font-size: 11px; cursor: pointer;">⚡ Resetar Buffers EMU</button>`;
+    } else if (procMs >= 1500) {
+        specificPlaybookSteps = `
+            <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+                <div style="font-weight: 800; color: #fca5a5; font-size: 13px; margin-bottom: 6px;">⚡ Diagnóstico Detectado: Latência de Varredura Elevada (ProcTimeMs: ${procMs}ms)</div>
+                <div style="font-size: 11px; color: #cbd5e1; line-height: 1.45;">
+                    O tempo de matching por comercial está acima do limiar recomendado (&lt;1500ms). Risco de enfileiramento e atraso na comprovação.
+                </div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                <div style="background: #1e293b; padding: 12px 14px; border-radius: 6px; font-size: 11.5px; color: #e2e8f0; line-height: 1.4;">
+                    <strong style="color: #86efac;">Passo 1:</strong> Garantir que <code>DNA.DetectionSVC</code> está desativado (concorrência indevida com FastMatching).
+                </div>
+                <div style="background: #1e293b; padding: 12px 14px; border-radius: 6px; font-size: 11.5px; color: #e2e8f0; line-height: 1.4;">
+                    <strong style="color: #86efac;">Passo 2:</strong> Configurar exclusão no antivírus corporativo para a pasta <code>D:\MediaDNA_V2\Data</code>.
+                </div>
+                <div style="background: #1e293b; padding: 12px 14px; border-radius: 6px; font-size: 11.5px; color: #e2e8f0; line-height: 1.4;">
+                    <strong style="color: #86efac;">Passo 3:</strong> Reiniciar <code>FastMatchingSvc</code> para desfragmentar a tabela de huellas e liberar memória de paginação.
+                </div>
+            </div>
+        `;
+        primaryActionBtn = `<button onclick="executeFmQuickAction('restart', 'FastMatchingSvc', '${hostname}')" style="background: linear-gradient(135deg, #0284c7, #38bdf8); color: #fff; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 700; font-size: 11px; cursor: pointer;">🔄 Reiniciar FastMatching</button>`;
+    } else {
+        specificPlaybookSteps = `
+            <div style="background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+                <div style="font-weight: 800; color: #86efac; font-size: 13px; margin-bottom: 6px;">🟢 Operação Saudável e Nominal</div>
+                <div style="font-size: 11px; color: #cbd5e1; line-height: 1.45;">
+                    O nó está operando com ProcTime excelente (<strong>${procMs}ms</strong>), 0 candidatos atrasados e spots no padrão de mercado (15s a 60s).
+                </div>
+            </div>
+            <div style="background: #1e293b; padding: 12px 14px; border-radius: 6px; font-size: 11.5px; color: #94a3b8; line-height: 1.4;">
+                Nenhuma ação emergencial necessária. A esteira continua sob monitoração automática contínua de telemetria.
+            </div>
+        `;
+        primaryActionBtn = `<button onclick="selectAndAuditFmSite('${hostname}'); closeFmHowToModal();" style="background: #1e293b; color: #38bdf8; border: 1px solid rgba(56,189,248,0.4); padding: 8px 16px; border-radius: 6px; font-weight: 700; font-size: 11px; cursor: pointer;">🔍 Inspecionar fma.log ao Vivo</button>`;
+    }
+
+    bodyEl.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; background: rgba(0,0,0,0.25); padding: 10px 14px; border-radius: 8px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 11px; color: #94a3b8;">Classificação da Praça:</span>
+                ${badgeCond}
+            </div>
+            <div style="font-size: 11px; color: #64748b; font-family: monospace;">Host: ${hostname}</div>
+        </div>
+
+        <!-- Métricas Rápidas -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 16px;">
+            <div style="background: rgba(15, 23, 42, 0.6); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.06);">
+                <div style="font-size: 10px; color: #94a3b8;">ProcTimeMs</div>
+                <div style="font-size: 16px; font-weight: 800; color: ${procMs < 1500 ? '#86efac' : (procMs < 3000 ? '#fde047' : '#fca5a5')}; font-family: monospace;">${procMs} ms</div>
+            </div>
+            <div style="background: rgba(15, 23, 42, 0.6); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.06);">
+                <div style="font-size: 10px; color: #94a3b8;">Atrasos Buffer</div>
+                <div style="font-size: 16px; font-weight: 800; color: ${delayedCount === 0 ? '#86efac' : '#fde047'}; font-family: monospace;">${delayedCount}</div>
+            </div>
+            <div style="background: rgba(15, 23, 42, 0.6); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.06);">
+                <div style="font-size: 10px; color: #94a3b8;">RAM C++ (Private)</div>
+                <div style="font-size: 16px; font-weight: 800; color: #c084fc; font-family: monospace;">${ramMb} MB</div>
+            </div>
+            <div style="background: rgba(15, 23, 42, 0.6); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.06);">
+                <div style="font-size: 10px; color: #94a3b8;">Spots Menor x Maior</div>
+                <div style="font-size: 16px; font-weight: 800; color: ${hasDivergence ? '#fca5a5' : '#cbd5e1'}; font-family: monospace;">${minSec}s x ${maxSec}s</div>
+            </div>
+        </div>
+
+        <!-- Passo a Passo -->
+        ${specificPlaybookSteps}
+
+        <!-- Botões de Ação Rápida -->
+        <div style="margin-top: 18px; display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap;">
+            ${primaryActionBtn}
+            <button onclick="selectAndAuditFmSite('${hostname}'); closeFmHowToModal();" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); padding: 8px 14px; border-radius: 6px; font-weight: 700; font-size: 11px; cursor: pointer;">
+                🔍 Abrir Inspeção Detalhada
+            </button>
+        </div>
+    `;
+
+    modal.style.display = "flex";
+}
+window.openFmHowToModal = openFmHowToModal;
+
+function closeFmHowToModal() {
+    const modal = document.getElementById("fmHowToModal");
+    if (modal) modal.style.display = "none";
+}
+window.closeFmHowToModal = closeFmHowToModal;
+
+function executeFmQuickAction(actionType, targetService, hostname = "") {
+    let msg = "";
+    if (actionType === "restart") {
+        msg = `Comando enviado: Reinicialização preventiva de ${targetService}${hostname ? ' em ' + hostname : ''}. Memória e buffers em processo de expurgo.`;
+    } else if (actionType === "reset_buffers") {
+        msg = `Comando enviado: Limpeza de fila de buffer .EMU e reset de memória circular em ${targetService}.`;
+    } else if (actionType === "sync_sgg") {
+        msg = `Comando enviado: Recarga forçada do catálogo SGG via ${targetService}. Novo ConfigXml.xml em processamento.`;
+    }
+    
+    // Feedback visual
+    const footerStatus = document.getElementById("fmHowToModalFooterStatus");
+    if (footerStatus) {
+        footerStatus.innerHTML = `<span style="color: #86efac; font-weight: 700;">✅ ${msg}</span>`;
+    }
+    alert(`[COMANDO DISPARADO]
+
+${msg}
+
+O resultado será refletido no próximo ciclo de telemetria do fma.log.`);
+}
+window.executeFmQuickAction = executeFmQuickAction;

@@ -7842,10 +7842,279 @@
               </div>
             </div>
 
-            <!-- Botão Atualizar Tabela -->
-            <button onclick="refreshFastMatchingFleetData()" class="btn-sm" style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); color: #38bdf8; font-weight: 700; padding: 6px 12px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 6px;">
-              <span>🔄</span> Atualizar Frota FastMatching
-            </button>
+            <!-- Botões de Ação do Cabeçalho -->
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+              <!-- Botão do Guia & Playbook How-To -->
+              <button type="button" id="btnToggleFmColumnsGuide" onclick="toggleFmColumnsGuide()" class="btn-sm" style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(168, 85, 247, 0.25)); border: 1px solid rgba(168, 85, 247, 0.5); color: #e9d5ff; font-weight: 800; padding: 7px 14px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.2s; box-shadow: 0 2px 8px rgba(168, 85, 247, 0.2);">
+                <span style="font-size: 14px;">📘</span>
+                <span>Guia Técnico das Colunas &amp; Playbook How-To</span>
+                <span id="fmGuideChevron" style="font-size: 11px; transition: transform 0.2s;">▼</span>
+              </button>
+
+              <!-- Botão Atualizar Tabela -->
+              <button onclick="refreshFastMatchingFleetData()" class="btn-sm" style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); color: #38bdf8; font-weight: 700; padding: 7px 13px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                <span>🔄</span> Atualizar Frota
+              </button>
+            </div>
+          </div>
+
+          <!-- PAINEL RETRÁTIL: GUIA TÉCNICO DAS COLUNAS & PLAYBOOK HOW-TO DE RESOLUÇÃO -->
+          <div id="fmColumnsGuidePanel" style="display: none; background: #0b1329; border: 1px solid rgba(168, 85, 247, 0.4); border-radius: 12px; padding: 20px; margin-bottom: 22px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+            <!-- Topo do Guia com Alternador de Abas -->
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 14px; margin-bottom: 16px;">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 24px;">📘</span>
+                <div>
+                  <h4 style="font-size: 15px; font-weight: 800; color: #f8fafc; margin: 0;">Guia de Engenharia FastMatching: Análise das Colunas &amp; Playbook How-To</h4>
+                  <div style="font-size: 11px; color: #a78bfa; margin-top: 2px;">
+                    Entenda o que cada métrica do <strong>fma.log</strong> indica, como é calculada e o procedimento cirúrgico para restabelecer a operação.
+                  </div>
+                </div>
+              </div>
+
+              <!-- Abas Internas do Guia -->
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <button type="button" id="btnGuideTabCols" onclick="switchFmGuideTab('cols')" style="padding: 6px 14px; font-size: 11px; font-weight: 700; border-radius: 6px; background: #7c3aed; color: #ffffff; border: none; cursor: pointer; transition: all 0.2s;">
+                  📖 O Que Cada Coluna Analisa
+                </button>
+                <button type="button" id="btnGuideTabPlaybook" onclick="switchFmGuideTab('playbook')" style="padding: 6px 14px; font-size: 11px; font-weight: 700; border-radius: 6px; background: transparent; color: #cbd5e1; border: 1px solid rgba(255,255,255,0.2); cursor: pointer; transition: all 0.2s;">
+                  🛠️ Playbook How-To Oficial (5 Pilares)
+                </button>
+                <button type="button" onclick="toggleFmColumnsGuide()" style="background: none; border: none; color: #94a3b8; font-size: 18px; cursor: pointer; padding: 2px 8px;" title="Fechar Guia">✕</button>
+              </div>
+            </div>
+
+            <!-- CONTEÚDO 1: O QUE CADA COLUNA ANALISA (DICIONÁRIO DAS 8 COLUNAS) -->
+            <div id="guideContentCols" style="display: block;">
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 14px;">
+                
+                <!-- Card 1: STATUS fma.log -->
+                <div id="guideColCard_status" style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 14px; transition: border-color 0.3s;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <span style="font-weight: 800; color: #38bdf8; font-size: 12px;">📊 1. STATUS fma.log</span>
+                    <span style="font-size: 10px; background: rgba(56,189,248,0.15); color: #38bdf8; padding: 2px 6px; border-radius: 4px; font-weight: 700;">Saúde Global</span>
+                  </div>
+                  <div style="font-size: 11px; color: #cbd5e1; line-height: 1.45;">
+                    <strong>O que analisa:</strong> A saúde ativa da esteira de matching e geração de detecções no nó.<br>
+                    <strong>Como é feita a análise:</strong> Verifica a recência de novas linhas no <code>fma.log</code> e se o pipeline está emitindo eventos de <code>NEW DETECTION</code> sem erros bloqueantes.<br>
+                    <strong>Limiares:</strong><br>
+                    • 🟢 <span style="color:#86efac; font-weight:700;">Boa (Nominal):</span> Matching em tempo real, sem atrasos.<br>
+                    • 🟡 <span style="color:#fde047; font-weight:700;">Alerta:</span> ProcTime elevado (1.5s-3s) ou buffer EMU defasado.<br>
+                    • 🔴 <span style="color:#fca5a5; font-weight:700;">Ruim (Crítica):</span> ProcTime &gt; 3s, represamento de buffer ou serviço congelado.
+                  </div>
+                </div>
+
+                <!-- Card 2: PROCTIME (VELOCIDADE) -->
+                <div id="guideColCard_proctime" style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(34, 197, 94, 0.25); border-radius: 8px; padding: 14px; transition: border-color 0.3s;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <span style="font-weight: 800; color: #86efac; font-size: 12px;">⚡ 2. PROCTIME (VELOCIDADE SPOT)</span>
+                    <span style="font-size: 10px; background: rgba(34,197,94,0.15); color: #86efac; padding: 2px 6px; border-radius: 4px; font-weight: 700;">Performance C++</span>
+                  </div>
+                  <div style="font-size: 11px; color: #cbd5e1; line-height: 1.45;">
+                    <strong>O que analisa:</strong> O tempo exato em milissegundos que o motor C++ leva para comparar o áudio de 1 comercial com o catálogo.<br>
+                    <strong>Como é feita a análise:</strong> Regex na linha <code>NEW DETECTION &lt;id&gt; ... ProcTimeMs &lt;ms&gt;</code>.<br>
+                    <strong>Limiares:</strong><br>
+                    • 🟢 <span style="color:#86efac; font-weight:700;">Excelente:</span> &lt; 1500 ms.<br>
+                    • 🟡 <span style="color:#fde047; font-weight:700;">Alerta:</span> 1500 ms a 3000 ms (atenção à CPU/disco).<br>
+                    • 🔴 <span style="color:#fca5a5; font-weight:700;">Crítico:</span> &gt; 3000 ms (risco iminente de perda de matching).<br>
+                    <strong>Causa-Raiz:</strong> Concorrência com <code>DNA.DetectionSVC</code> ativo, antivírus varrendo a pasta <code>Data</code> ou CPU saturada.
+                  </div>
+                </div>
+
+                <!-- Card 3: CANDIDATOS ATRASADOS -->
+                <div id="guideColCard_delayed" style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(234, 179, 8, 0.25); border-radius: 8px; padding: 14px; transition: border-color 0.3s;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <span style="font-weight: 800; color: #fde047; font-size: 12px;">⚠️ 3. CANDIDATOS ATRASADOS (BUFFER)</span>
+                    <span style="font-size: 10px; background: rgba(234,179,8,0.15); color: #fde047; padding: 2px 6px; border-radius: 4px; font-weight: 700;">Buffer .EMU &amp; NTP</span>
+                  </div>
+                  <div style="font-size: 11px; color: #cbd5e1; line-height: 1.45;">
+                    <strong>O que analisa:</strong> Comerciais transmitidos que estão sendo processados com atraso temporal em relação ao ar.<br>
+                    <strong>Como é feita a análise:</strong> Contagem de linhas <code>*WARNING* DELAYED NEW DETECTION CANDIDATE</code>.<br>
+                    <strong>Limiares:</strong><br>
+                    • 🟢 <span style="color:#86efac; font-weight:700;">0 atrasos:</span> Processamento 100% em tempo real.<br>
+                    • ⚠️ <span style="color:#fde047; font-weight:700;">&gt;= 1 atraso:</span> Alerta preditivo de descompasso de buffer circular.<br>
+                    <strong>Causa-Raiz:</strong> Desvio de relógio NTP (&gt; 1s) ou lentidão de I/O em disco com mais de 5 arquivos <code>.EMU</code> acumulados.
+                  </div>
+                </div>
+
+                <!-- Card 4: MEMÓRIA C++ (RAM) -->
+                <div id="guideColCard_ram" style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(192, 132, 252, 0.25); border-radius: 8px; padding: 14px; transition: border-color 0.3s;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <span style="font-weight: 800; color: #c084fc; font-size: 12px;">🧠 4. MEMÓRIA C++ (RAM PRIVADA)</span>
+                    <span style="font-size: 10px; background: rgba(192,132,252,0.15); color: #c084fc; padding: 2px 6px; border-radius: 4px; font-weight: 700;">Anti-OOM / Heap</span>
+                  </div>
+                  <div style="font-size: 11px; color: #cbd5e1; line-height: 1.45;">
+                    <strong>O que analisa:</strong> Consumo real de RAM privada do processo C++ <code>FastMatchingSvc.exe</code>.<br>
+                    <strong>Como é feita a análise:</strong> Parse de <code>RAM usage. Private Working Set: &lt;Mb&gt;</code>.<br>
+                    <strong>Limiares:</strong><br>
+                    • 🟢 <span style="color:#86efac; font-weight:700;">Nominal:</span> &lt; 4000 MB.<br>
+                    • 🟡 <span style="color:#fde047; font-weight:700;">Alerta:</span> 4000 a 8000 MB.<br>
+                    • 🔴 <span style="color:#fca5a5; font-weight:700;">Crítico:</span> &gt; 8000 MB a 10.000 MB (Risco iminente de crash por Out Of Memory).<br>
+                    <strong>Causa-Raiz:</strong> Retenção de memória e fragmentação de buffers ao longo de semanas sem reciclagem.
+                  </div>
+                </div>
+
+                <!-- Card 5: SPOTS (MENOR x MAIOR SPOT) -->
+                <div id="guideColCard_spots" style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(244, 63, 94, 0.25); border-radius: 8px; padding: 14px; transition: border-color 0.3s;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <span style="font-weight: 800; color: #fb7185; font-size: 12px;">🎯 5. SPOTS (MENOR x MAIOR &amp; SGG)</span>
+                    <span style="font-size: 10px; background: rgba(244,63,94,0.15); color: #fb7185; padding: 2px 6px; border-radius: 4px; font-weight: 700;">Auditoria SGG</span>
+                  </div>
+                  <div style="font-size: 11px; color: #cbd5e1; line-height: 1.45;">
+                    <strong>O que analisa:</strong> Menor e maior duração dos comerciais cadastrados no <code>ConfigXml.xml</code>.<br>
+                    <strong>Como é feita a análise:</strong> Varredura de <code>&lt;Spots&gt;</code> e cálculo da amplitude Max/Min.<br>
+                    <strong>Limiares:</strong><br>
+                    • 🟢 <span style="color:#86efac; font-weight:700;">Consistente:</span> 10s a 60s (Padrão comercial TV/Rádio).<br>
+                    • 🚨 <span style="color:#fca5a5; font-weight:700;">Divergência SGG:</span> Menor &lt; 5s (ex: 3.5s) ou Maior &gt; 180s (ex: 240s) com dispersão &gt; 10x.<br>
+                    <strong>Causa-Raiz:</strong> Erro humano de cadastro da minutagem de fitas no sistema SGG central.
+                  </div>
+                </div>
+
+                <!-- Card 6: VARREDURA (SEARCHSTATS) -->
+                <div id="guideColCard_search" style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(14, 165, 233, 0.25); border-radius: 8px; padding: 14px; transition: border-color 0.3s;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <span style="font-weight: 800; color: #38bdf8; font-size: 12px;">🔍 6. VARREDURA (SEARCHSTATS)</span>
+                    <span style="font-size: 10px; background: rgba(14,165,233,0.15); color: #38bdf8; padding: 2px 6px; border-radius: 4px; font-weight: 700;">Huellas &amp; Scan</span>
+                  </div>
+                  <div style="font-size: 11px; color: #cbd5e1; line-height: 1.45;">
+                    <strong>O que analisa:</strong> Quantidade de impressões digitais carregadas e velocidade de busca em 120s de áudio.<br>
+                    <strong>Como é feita a análise:</strong> Parse de <code>SearchStats V30: ... search_ms ... NumFingers</code>.<br>
+                    <strong>Limiares:</strong><br>
+                    • 🟢 <span style="color:#86efac; font-weight:700;">Nominal:</span> &lt; 50.000 fingers e search &lt; 200 ms.<br>
+                    • 🟡 <span style="color:#fde047; font-weight:700;">Alerta:</span> 50k a 80k fingers ou search 200-500 ms.<br>
+                    • 🔴 <span style="color:#fca5a5; font-weight:700;">Crítico:</span> &gt; 80k fingers (Catálogo sobrecarregado com comerciais vencidos).
+                  </div>
+                </div>
+
+                <!-- Card 7: DIAGNÓSTICO SLA & IMPACTO -->
+                <div id="guideColCard_sla" style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(249, 115, 22, 0.25); border-radius: 8px; padding: 14px; transition: border-color 0.3s;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <span style="font-weight: 800; color: #fb923c; font-size: 12px;">🛡️ 7. DIAGNÓSTICO SLA &amp; IMPACTO</span>
+                    <span style="font-size: 10px; background: rgba(249,115,22,0.15); color: #fb923c; padding: 2px 6px; border-radius: 4px; font-weight: 700;">Risco ao Negócio</span>
+                  </div>
+                  <div style="font-size: 11px; color: #cbd5e1; line-height: 1.45;">
+                    <strong>O que analisa:</strong> Cruzamento algorítmico de todas as colunas para determinar a causa-raiz principal.<br>
+                    <strong>Impacto no SLA:</strong> Avisa o operador se há risco de apagão de comprovação comercial para clientes anunciantes ou descarte de spots por expiração de janela temporal.
+                  </div>
+                </div>
+
+                <!-- Card 8: AÇÕES TÉCNICAS -->
+                <div id="guideColCard_actions" style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(168, 85, 247, 0.25); border-radius: 8px; padding: 14px; transition: border-color 0.3s;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <span style="font-weight: 800; color: #d8b4fe; font-size: 12px;">⚙️ 8. AÇÕES TÉCNICAS &amp; HOW-TO</span>
+                    <span style="font-size: 10px; background: rgba(168,85,247,0.15); color: #d8b4fe; padding: 2px 6px; border-radius: 4px; font-weight: 700;">Automação NOC</span>
+                  </div>
+                  <div style="font-size: 11px; color: #cbd5e1; line-height: 1.45;">
+                    <strong>O que permite:</strong><br>
+                    • <strong>🔍 Auditar:</strong> Seleciona a praça e rola suavemente até os detalhes de spots e feed do <code>fma.log</code>.<br>
+                    • <strong>📋 Como Resolver:</strong> Abre popup com o roteiro passo a passo contextualizado para o problema da praça e botões de comando remoto.
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            <!-- CONTEÚDO 2: PLAYBOOK OFICIAL HOW-TO (5 PILARES fma.log - PADRÃO DA IMAGEM) -->
+            <div id="guideContentPlaybook" style="display: none;">
+              <div style="display: flex; flex-direction: column; gap: 12px;">
+                
+                <!-- Pilar 1: Coincidências & ProcTime -->
+                <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 8px; padding: 14px; display: grid; grid-template-columns: 280px 1fr 180px; gap: 16px; align-items: center;">
+                  <div>
+                    <span style="background: rgba(34,197,94,0.15); color: #86efac; font-weight: 800; font-size: 10px; padding: 2px 6px; border-radius: 4px;">1. MATCHING ATIVO &amp; PROCTIME</span>
+                    <div style="font-family: monospace; font-size: 11px; color: #38bdf8; margin-top: 6px;">NEW DETECTION &lt;id&gt;... ProcTimeMs</div>
+                    <div style="font-size: 10px; color: #94a3b8; margin-top: 4px;"><strong>Causa:</strong> Sobrecarga de CPU ou antivírus inspecionando D:\MediaDNA_V2\Data.</div>
+                  </div>
+                  <div style="font-size: 11px; color: #cbd5e1; line-height: 1.4;">
+                    <strong>Roteiro How-To:</strong><br>
+                    1. Confirmar se <code>DNA.DetectionSVC</code> está desativado (não deve rodar com FastMatching).<br>
+                    2. Checar exclusão do Windows Defender / Tanium na pasta <code>D:\MediaDNA_V2\Data</code>.<br>
+                    3. Reiniciar <code>FastMatchingSvc</code> para liberar paginação e remontar o índice de busca.<br>
+                    4. Validar se os próximos spots registram <code>ProcTimeMs &lt; 1500ms</code>.
+                  </div>
+                  <div style="text-align: center;">
+                    <button type="button" onclick="executeFmQuickAction('restart', 'FastMatchingSvc')" style="background: rgba(56, 189, 248, 0.2); border: 1px solid rgba(56, 189, 248, 0.5); color: #38bdf8; padding: 8px 12px; border-radius: 6px; font-weight: 700; font-size: 11px; cursor: pointer; width: 100%;">🔄 Reiniciar FastMatching</button>
+                  </div>
+                </div>
+
+                <!-- Pilar 2: Candidatos Atrasados -->
+                <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(234, 179, 8, 0.3); border-radius: 8px; padding: 14px; display: grid; grid-template-columns: 280px 1fr 180px; gap: 16px; align-items: center;">
+                  <div>
+                    <span style="background: rgba(234,179,8,0.15); color: #fde047; font-weight: 800; font-size: 10px; padding: 2px 6px; border-radius: 4px;">2. CANDIDATOS COM ATRASO</span>
+                    <div style="font-family: monospace; font-size: 11px; color: #facc15; margin-top: 6px;">*WARNING* DELAYED CANDIDATE</div>
+                    <div style="font-size: 10px; color: #94a3b8; margin-top: 4px;"><strong>Causa:</strong> Descompasso de relógio NTP (&gt;1s) ou buffer .EMU represado em disco.</div>
+                  </div>
+                  <div style="font-size: 11px; color: #cbd5e1; line-height: 1.4;">
+                    <strong>Roteiro How-To:</strong><br>
+                    1. No CMD executar <code>w32tm /query /status</code> e confirmar se <code>DNA.TimeSyncSVC</code> está em execução.<br>
+                    2. Inspecionar pasta <code>D:\MediaDNA_V2\Data\emu</code> (se houver &gt; 5-10 arquivos, há lentidão de I/O em disco).<br>
+                    3. Reiniciar <code>FastMatchingSvc</code> pelo painel para resetar o buffer de memória circular.<br>
+                    4. Conferir no Atria Capture se o tuner não sofreu rajada de pacotes após queda.
+                  </div>
+                  <div style="text-align: center;">
+                    <button type="button" onclick="executeFmQuickAction('reset_buffers', 'FastMatchingSvc')" style="background: rgba(234, 179, 8, 0.2); border: 1px solid rgba(234, 179, 8, 0.5); color: #fde047; padding: 8px 12px; border-radius: 6px; font-weight: 700; font-size: 11px; cursor: pointer; width: 100%;">⚡ Resetar Buffers EMU</button>
+                  </div>
+                </div>
+
+                <!-- Pilar 3: Varredura SearchStats -->
+                <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(14, 165, 233, 0.3); border-radius: 8px; padding: 14px; display: grid; grid-template-columns: 280px 1fr 180px; gap: 16px; align-items: center;">
+                  <div>
+                    <span style="background: rgba(14,165,233,0.15); color: #7dd3fc; font-weight: 800; font-size: 10px; padding: 2px 6px; border-radius: 4px;">3. RENDIMENTO DO ESCANEO</span>
+                    <div style="font-family: monospace; font-size: 11px; color: #38bdf8; margin-top: 6px;">SearchStats V30: ... NumFingers</div>
+                    <div style="font-size: 10px; color: #94a3b8; margin-top: 4px;"><strong>Causa:</strong> Catálogo saturado com campanhas antigas ou CPU engargalada.</div>
+                  </div>
+                  <div style="font-size: 11px; color: #cbd5e1; line-height: 1.4;">
+                    <strong>Roteiro How-To:</strong><br>
+                    1. Confirmar se <code>DNA.DetectionSVC</code> está parado.<br>
+                    2. Se <code>NumFingers &gt; 50.000</code>, solicitar ao SGG purga de campanhas vencidas.<br>
+                    3. Reiniciar <code>FastMatchingSvc</code> para reconstruir o índice de busca em RAM.<br>
+                    4. Validar se <code>search_ms &lt; 200ms</code> após reinicialização.
+                  </div>
+                  <div style="text-align: center;">
+                    <button type="button" onclick="executeFmQuickAction('restart', 'FastMatchingSvc')" style="background: rgba(14, 165, 233, 0.2); border: 1px solid rgba(14, 165, 233, 0.5); color: #7dd3fc; padding: 8px 12px; border-radius: 6px; font-weight: 700; font-size: 11px; cursor: pointer; width: 100%;">🔧 Otimizar Índice / Reciclar</button>
+                  </div>
+                </div>
+
+                <!-- Pilar 4: Ciclo Catálogo & SGG -->
+                <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 8px; padding: 14px; display: grid; grid-template-columns: 280px 1fr 180px; gap: 16px; align-items: center;">
+                  <div>
+                    <span style="background: rgba(168,85,247,0.15); color: #d8b4fe; font-weight: 800; font-size: 10px; padding: 2px 6px; border-radius: 4px;">4. ATUALIZAÇÃO DO CATÁLOGO &amp; SGG</span>
+                    <div style="font-family: monospace; font-size: 11px; color: #c084fc; margin-top: 6px;">DNAConfigXmlProvider / ConfigXml.xml</div>
+                    <div style="font-size: 10px; color: #94a3b8; margin-top: 4px;"><strong>Causa:</strong> ConfigMonitor parado ou divergência no cadastro de comerciais.</div>
+                  </div>
+                  <div style="font-size: 11px; color: #cbd5e1; line-height: 1.4;">
+                    <strong>Roteiro How-To:</strong><br>
+                    1. Confirmar se <code>DNA.ConfigMonitorSVC</code> está em execução.<br>
+                    2. Checar data e tamanho de <code>D:\MediaDNA_V2\Data\Config\ConfigXml.xml</code>.<br>
+                    3. Reiniciar <code>DNA.ConfigMonitorSVC</code> para forçar download do catálogo atualizado via WCF.<br>
+                    4. Se houver divergência de spot (&lt;5s ou &gt;180s), notificar a equipe de cadastro do SGG.
+                  </div>
+                  <div style="text-align: center;">
+                    <button type="button" onclick="executeFmQuickAction('sync_sgg', 'DNA.ConfigMonitorSVC')" style="background: rgba(168, 85, 247, 0.2); border: 1px solid rgba(168, 85, 247, 0.5); color: #d8b4fe; padding: 8px 12px; border-radius: 6px; font-weight: 700; font-size: 11px; cursor: pointer; width: 100%;">📥 Forçar Sync SGG (Config)</button>
+                  </div>
+                </div>
+
+                <!-- Pilar 5: Memória Anti-OOM -->
+                <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 8px; padding: 14px; display: grid; grid-template-columns: 280px 1fr 180px; gap: 16px; align-items: center;">
+                  <div>
+                    <span style="background: rgba(239,68,68,0.15); color: #fca5a5; font-weight: 800; font-size: 10px; padding: 2px 6px; border-radius: 4px;">5. CONSUMO DE MEMÓRIA (ANTI-OOM)</span>
+                    <div style="font-family: monospace; font-size: 11px; color: #f87171; margin-top: 6px;">RAM usage. Private Working Set</div>
+                    <div style="font-size: 10px; color: #94a3b8; margin-top: 4px;"><strong>Causa:</strong> Retenção de memória e fragmentação de buffers na biblioteca C++.</div>
+                  </div>
+                  <div style="font-size: 11px; color: #cbd5e1; line-height: 1.4;">
+                    <strong>Roteiro How-To:</strong><br>
+                    1. Se Private Set &gt; 8.000 MB, executar reciclagem preventiva imediatamente.<br>
+                    2. No prompt executar: <code>net stop FastMatchingSvc &amp;&amp; net start FastMatchingSvc</code>.<br>
+                    3. Confirmar no <code>fma.log</code> se a memória retornou para &lt; 2.000 MB.<br>
+                    4. Limpar dumps e logs antigos em <code>D:\MediaDNA_V2\Data\logs</code>.
+                  </div>
+                  <div style="text-align: center;">
+                    <button type="button" onclick="executeFmQuickAction('restart', 'FastMatchingSvc')" style="background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.5); color: #fca5a5; padding: 8px 12px; border-radius: 6px; font-weight: 700; font-size: 11px; cursor: pointer; width: 100%;">🚨 Reciclar Anti-Crash (OOM)</button>
+                  </div>
+                </div>
+
+              </div>
+            </div>
           </div>
 
           <!-- Cards de Resumo da Frota (Boas vs Alertas vs Ruins) -->
@@ -7912,14 +8181,30 @@
             <table class="data-table" id="fastMatchingFleetTable" style="width: 100%; border-collapse: collapse; font-size: 11px;">
               <thead style="position: sticky; top: 0; background: #0f172a; z-index: 5;">
                 <tr style="border-bottom: 1px solid rgba(255,255,255,0.12); text-align: left; color: #94a3b8; font-weight: 700;">
-                  <th style="padding: 10px 12px;">PRAÇA &amp; HOSTNAME CS01</th>
-                  <th style="padding: 10px 12px;">STATUS fma.log</th>
-                  <th style="padding: 10px 12px;">PROCTIME (VELOCIDADE)</th>
-                  <th style="padding: 10px 12px;">CANDIDATOS ATRASADOS</th>
-                  <th style="padding: 10px 12px;">MEMÓRIA C++ (RAM)</th>
-                  <th style="padding: 10px 12px;">SPOTS (MENOR x MAIOR)</th>
-                  <th style="padding: 10px 12px;">VARREDURA (SEARCHSTATS)</th>
-                  <th style="padding: 10px 12px;">DIAGNÓSTICO SLA &amp; IMPACTO</th>
+                  <th style="padding: 10px 12px; cursor: pointer;" onclick="openFmGuideColumn('status')" title="Clique para ver o que esta coluna analisa">
+                    <span style="display: flex; align-items: center; gap: 4px;">PRAÇA &amp; HOSTNAME CS01 <span style="font-size: 10px; color: #38bdf8;">ℹ️</span></span>
+                  </th>
+                  <th style="padding: 10px 12px; cursor: pointer;" onclick="openFmGuideColumn('status')" title="Saúde geral da esteira de matching no fma.log">
+                    <span style="display: flex; align-items: center; gap: 4px;">STATUS fma.log <span style="font-size: 10px; color: #38bdf8;">ℹ️</span></span>
+                  </th>
+                  <th style="padding: 10px 12px; cursor: pointer;" onclick="openFmGuideColumn('proctime')" title="Tempo em ms para cruzar 1 spot. Verde: <1500ms, Amarelo: 1500-3000ms, Vermelho: >3000ms">
+                    <span style="display: flex; align-items: center; gap: 4px;">PROCTIME (VELOCIDADE) <span style="font-size: 10px; color: #86efac;">ℹ️</span></span>
+                  </th>
+                  <th style="padding: 10px 12px; cursor: pointer;" onclick="openFmGuideColumn('delayed')" title="Ocorrências de '*WARNING* DELAYED CANDIDATE'. 0 = Tempo real. >0 = atraso de buffer .EMU ou relógio NTP">
+                    <span style="display: flex; align-items: center; gap: 4px;">CANDIDATOS ATRASADOS <span style="font-size: 10px; color: #fde047;">ℹ️</span></span>
+                  </th>
+                  <th style="padding: 10px 12px; cursor: pointer;" onclick="openFmGuideColumn('ram')" title="RAM privada do processo C++. Verde: <4GB, Amarelo: 4-8GB, Vermelho: >8GB (risco OOM)">
+                    <span style="display: flex; align-items: center; gap: 4px;">MEMÓRIA C++ (RAM) <span style="font-size: 10px; color: #c084fc;">ℹ️</span></span>
+                  </th>
+                  <th style="padding: 10px 12px; cursor: pointer;" onclick="openFmGuideColumn('spots')" title="Menor e maior spot cadastrado no ConfigXml. Padrão: 10s a 60s. Alerta: <5s ou >180s (Divergência SGG)">
+                    <span style="display: flex; align-items: center; gap: 4px;">SPOTS (MENOR x MAIOR) <span style="font-size: 10px; color: #fb7185;">ℹ️</span></span>
+                  </th>
+                  <th style="padding: 10px 12px; cursor: pointer;" onclick="openFmGuideColumn('search')" title="NumFingers carregadas e tempo de busca de 120s de áudio">
+                    <span style="display: flex; align-items: center; gap: 4px;">VARREDURA (SEARCHSTATS) <span style="font-size: 10px; color: #38bdf8;">ℹ️</span></span>
+                  </th>
+                  <th style="padding: 10px 12px; cursor: pointer;" onclick="openFmGuideColumn('sla')" title="Diagnóstico consolidado de causa-raiz e risco no SLA">
+                    <span style="display: flex; align-items: center; gap: 4px;">DIAGNÓSTICO SLA &amp; IMPACTO <span style="font-size: 10px; color: #fb923c;">ℹ️</span></span>
+                  </th>
                   <th style="padding: 10px 12px; text-align: center;">AÇÕES</th>
                 </tr>
               </thead>
@@ -8104,6 +8389,36 @@
           </div>
         </div>
       </div><!-- FIM subtab-detection-fastmatching -->
+
+      <!-- MODAL FLUTUANTE DE PLAYBOOK HOW-TO CIRÚRGICO PARA A PRAÇA SELECIONADA -->
+      <div id="fmHowToModal" style="display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(5px); z-index: 10000; align-items: center; justify-content: center; padding: 20px;">
+        <div style="background: #0f172a; border: 1px solid rgba(168, 85, 247, 0.4); border-radius: 12px; max-width: 820px; width: 100%; max-height: 90vh; overflow-y: auto; box-shadow: 0 25px 60px rgba(0, 0, 0, 0.8); padding: 24px;">
+          
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255, 255, 255, 0.1); padding-bottom: 14px; margin-bottom: 18px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="font-size: 24px;">📋</span>
+              <div>
+                <h3 id="fmHowToModalTitle" style="font-size: 16px; font-weight: 800; color: #f8fafc; margin: 0;">Roteiro How-To de Resolução: Praça</h3>
+                <div id="fmHowToModalSubtitle" style="font-size: 11px; color: #c084fc; font-family: monospace; margin-top: 2px;">Procedimento técnico operacional passo a passo para restabelecer a operação</div>
+              </div>
+            </div>
+            <button onclick="closeFmHowToModal()" style="background: none; border: none; color: #94a3b8; font-size: 22px; cursor: pointer; padding: 4px 8px;">✕</button>
+          </div>
+
+          <div id="fmHowToModalBody">
+            <!-- Conteúdo dinâmico injetado via JS -->
+          </div>
+
+          <div style="margin-top: 20px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 14px; flex-wrap: wrap; gap: 10px;">
+            <div id="fmHowToModalFooterStatus" style="font-size: 11px; color: #94a3b8;">Ações registradas e auditadas em tempo real</div>
+            <div style="display: flex; gap: 8px;">
+              <button onclick="closeFmHowToModal()" style="background: #334155; color: #fff; border: none; padding: 7px 16px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer;">Fechar</button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
 
       <!-- SUB-ABA 3: MATRIZ DE RISCO & PRAÇAS CRÍTICAS (ESTILO LINK WAN) -->
       <div id="subtab-detection-riskmatrix" style="display: none;">
