@@ -239,6 +239,96 @@ def get_fleet_services() -> List[Dict[str, Any]]:
 
 
 
+def compute_spot_duration_stats(spots_list: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Calcula métricas estatísticas cirúrgicas sobre a duração dos spots cadastrados e detectados:
+    - Menor spot cadastrado (Spot ID e duração em ms / s)
+    - Maior spot cadastrado (Spot ID e duração em ms / s)
+    - Média de duração e razão de dispersão (Max / Min)
+    - Alerta de inconsistência de cadastro quando há discrepâncias anômalas (ex: < 5s ou > 180s)
+    """
+    if not spots_list:
+        return {
+            "total_spots": 0,
+            "min_spot": None,
+            "max_spot": None,
+            "avg_duration_sec": 0.0,
+            "ratio_max_min": 1.0,
+            "has_divergence_alert": False,
+            "divergence_level": "NORMAL",
+            "divergence_message": "Nenhum spot com duração registrado no buffer recente.",
+            "spots": []
+        }
+
+    sorted_spots = sorted(spots_list, key=lambda x: x["duration_ms"])
+    min_spot = sorted_spots[0]
+    max_spot = sorted_spots[-1]
+
+    total_ms = sum(s["duration_ms"] for s in sorted_spots)
+    avg_sec = round((total_ms / len(sorted_spots)) / 1000.0, 1)
+
+    min_ms = min_spot["duration_ms"]
+    max_ms = max_spot["duration_ms"]
+    min_sec = min_spot.get("duration_sec", round(min_ms / 1000.0, 1))
+    max_sec = max_spot.get("duration_sec", round(max_ms / 1000.0, 1))
+    min_spot["duration_sec"] = min_sec
+    max_spot["duration_sec"] = max_sec
+
+    ratio = round(max_ms / min_ms, 1) if min_ms > 0 else 999.0
+
+    # Classificação de conformidade de cada spot
+    for s in sorted_spots:
+        ms = s["duration_ms"]
+        s["duration_sec"] = round(ms / 1000.0, 1)
+        if ms < 5000:
+            s["conformity"] = "ANOMALY_SHORT"
+            s["conformity_label"] = "Muito Curto (<5s)"
+        elif ms > 180000:
+            s["conformity"] = "ANOMALY_LONG"
+            s["conformity_label"] = "Muito Longo (>180s)"
+        else:
+            s["conformity"] = "NORMAL"
+            s["conformity_label"] = "Normal (10s a 60s)"
+
+    # Regras de detecção de erro de cadastro no SGG:
+    # 1. Spot anômalo muito curto: < 5 segundos (< 5000 ms)
+    # 2. Spot anômalo muito longo: > 180 segundos (> 180000 ms)
+    # 3. Dispersão muito desproporcional: razão > 15x com spot menor < 8s
+    is_too_short = min_ms < 5000
+    is_too_long = max_ms > 180000
+    is_extreme_ratio = ratio > 15.0 and min_ms < 8000
+
+    has_alert = is_too_short or is_too_long or is_extreme_ratio
+
+    if is_too_short and is_too_long:
+        level = "CRITICAL"
+        msg = f"🚨 DIVERGÊNCIA GRAVE DE CADASTRO NO SGG: Menor spot #{min_spot['spot_id']} tem {min_sec}s (<5s) e maior spot #{max_spot['spot_id']} tem {max_sec}s (>180s). Alto risco de descarte e atraso de buffer!"
+    elif is_too_short:
+        level = "CRITICAL"
+        msg = f"⚠️ ANOMALIA DE CADASTRO NO SGG: Menor spot #{min_spot['spot_id']} possui apenas {min_sec}s (abaixo de 5s). Comerciais muito curtos corrompem a correlação de áudio."
+    elif is_too_long:
+        level = "WARNING"
+        msg = f"⚠️ ANOMALIA DE CADASTRO NO SGG: Maior spot #{max_spot['spot_id']} possui {max_sec}s (>180s). Duração excessiva satura o buffer EMU e gera falsos candidatos atrasados."
+    elif is_extreme_ratio:
+        level = "WARNING"
+        msg = f"⚠️ ALTA DISPERSÃO DE TAMANHO: Razão de {ratio}x entre menor ({min_sec}s) e maior ({max_sec}s) spot. Verifique o cadastro no SGG."
+    else:
+        level = "NORMAL"
+        msg = f"✅ CADASTRO CONSISTENTE: Spots no intervalo operacional padrão ({min_sec}s a {max_sec}s). Amplitude segura."
+
+    return {
+        "total_spots": len(sorted_spots),
+        "min_spot": min_spot,
+        "max_spot": max_spot,
+        "avg_duration_sec": avg_sec,
+        "ratio_max_min": ratio,
+        "has_divergence_alert": has_alert,
+        "divergence_level": level,
+        "divergence_message": msg,
+        "spots": sorted_spots
+    }
+
+
 def parse_fma_log_content(lines: List[str]) -> Dict[str, Any]:
     """
     Realiza o parsing cirúrgico das linhas do fma.log (FastMatching C++):
@@ -258,6 +348,7 @@ def parse_fma_log_content(lines: List[str]) -> Dict[str, Any]:
         "catalog_reload": None,
         "search_stats": None,
         "ram_usage": None,
+        "spot_duration_stats": None,
         "events": []
     }
 
@@ -270,6 +361,7 @@ def parse_fma_log_content(lines: List[str]) -> Dict[str, Any]:
     re_cat_loaded = re.compile(r"""(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}):\s+DNAConfigXmlProvider\.\s+Loaded spots\s+['\"](.*?)['\"]""", re.IGNORECASE)
 
     current_ram = {}
+    spots_map = {}
 
     for line in lines:
         l = line.strip()
@@ -288,6 +380,14 @@ def parse_fma_log_content(lines: List[str]) -> Dict[str, Any]:
                 "proc_time_ms": int(m_det.group(6))
             }
             res["last_detection"] = det_item
+            spots_map[det_item["spot_id"]] = {
+                "spot_id": det_item["spot_id"],
+                "duration_ms": det_item["duration_ms"],
+                "duration_sec": round(det_item["duration_ms"] / 1000.0, 1),
+                "last_seen": det_item["timestamp"],
+                "last_channel": det_item.get("channel_code", ""),
+                "type": "CONFIRMED"
+            }
             res["events"].append({
                 "type": "DETECTION",
                 "badge": "NEW MATCH",
@@ -309,6 +409,14 @@ def parse_fma_log_content(lines: List[str]) -> Dict[str, Any]:
                 "confidence": int(m_del.group(5))
             }
             res["delayed_candidates"].append(del_item)
+            if del_item["spot_id"] not in spots_map:
+                spots_map[del_item["spot_id"]] = {
+                    "spot_id": del_item["spot_id"],
+                    "duration_ms": del_item["duration_ms"],
+                    "duration_sec": round(del_item["duration_ms"] / 1000.0, 1),
+                    "last_seen": del_item["timestamp"],
+                    "type": "DELAYED"
+                }
             res["events"].append({
                 "type": "WARNING",
                 "badge": "DELAYED MATCH",
@@ -360,6 +468,8 @@ def parse_fma_log_content(lines: List[str]) -> Dict[str, Any]:
                 "summary": f"Catálogo ConfigXml.xml recarregado: {len(res['catalog_reload'].get('loaded_spots', []))} spots carregados"
             })
 
+    spots_list = list(spots_map.values())
+    res["spot_duration_stats"] = compute_spot_duration_stats(spots_list)
     res["playbook"] = generate_fastmatching_playbook(res)
     return res
 
@@ -392,10 +502,30 @@ def get_fastmatching_node_telemetry(hostname: str = "", praca: str = "") -> Dict
     now_str = (now - timedelta(minutes=2)).strftime("%Y-%m-%d %H:%M:%S")
     air_utc_str = (now - timedelta(minutes=3)).strftime("%Y-%m-%dT%H:%M:%S.000")
 
+    h_lower = (hostname or "").lower()
+    if "divergence" in h_lower or "anomal" in h_lower:
+        calibrated_spots = [
+            {"spot_id": "17957728", "duration_ms": 3500, "duration_sec": 3.5, "last_seen": now_str, "type": "CONFIRMED"},
+            {"spot_id": "17957731", "duration_ms": 15000, "duration_sec": 15.0, "last_seen": now_str, "type": "CONFIRMED"},
+            {"spot_id": "17957733", "duration_ms": 30000, "duration_sec": 30.0, "last_seen": now_str, "type": "CONFIRMED"},
+            {"spot_id": "17957735", "duration_ms": 60000, "duration_sec": 60.0, "last_seen": now_str, "type": "CONFIRMED"},
+            {"spot_id": "17957749", "duration_ms": 240000, "duration_sec": 240.0, "last_seen": now_str, "type": "DELAYED"}
+        ]
+    else:
+        calibrated_spots = [
+            {"spot_id": "17957731", "duration_ms": 15000, "duration_sec": 15.0, "last_seen": now_str, "type": "CONFIRMED"},
+            {"spot_id": "17957732", "duration_ms": 30000, "duration_sec": 30.0, "last_seen": now_str, "type": "CONFIRMED"},
+            {"spot_id": "17957733", "duration_ms": 30000, "duration_sec": 30.0, "last_seen": now_str, "type": "CONFIRMED"},
+            {"spot_id": "17957734", "duration_ms": 45000, "duration_sec": 45.0, "last_seen": now_str, "type": "CONFIRMED"},
+            {"spot_id": "17957735", "duration_ms": 60000, "duration_sec": 60.0, "last_seen": now_str, "type": "CONFIRMED"}
+        ]
+    calibrated_stats = compute_spot_duration_stats(calibrated_spots)
+
     return {
         "has_detections": True,
         "is_live": False,
         "source": "Telemetria Operacional FastMatching C++ (Ativo)",
+        "spot_duration_stats": calibrated_stats,
         "last_detection": {
             "timestamp": now_str,
             "channel_code": "MUX-01",

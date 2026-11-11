@@ -7862,6 +7862,20 @@
 
       </div>
 
+      <!-- SUB-NAVEGAÇÃO: FROTA GERAL CS01 vs FASTMATCHING C++ DEDICADO -->
+      <div style="display: flex; gap: 10px; margin-bottom: 22px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); padding-bottom: 12px;">
+        <button id="btnSubTabDetectionFleet" onclick="switchDetectionSubTab('fleet')" style="background: rgba(59, 130, 246, 0.2); color: #93c5fd; border: 1px solid #3b82f6; padding: 9px 18px; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.2s ease;">
+          <span>🖥️</span> Visão Geral da Frota (CS01 - 120 Praças)
+        </button>
+        <button id="btnSubTabDetectionFastMatching" onclick="switchDetectionSubTab('fastmatching')" style="background: rgba(30, 41, 59, 0.6); color: #94a3b8; border: 1px solid rgba(255, 255, 255, 0.12); padding: 9px 18px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.2s ease;">
+          <span>🎯</span> FastMatching C++ (Exclusivo: Auditoria fma.log &amp; Análise de Spots)
+          <span style="background: #0284c7; color: #fff; font-size: 10px; padding: 2px 7px; border-radius: 10px; font-weight: 700;" id="badgeFastMatchingCount">39 Nós Ativos</span>
+        </button>
+      </div>
+
+      <!-- SUB-ABA 1: VISÃO GERAL DA FROTA CS01 (TABELA COMPLETA) -->
+      <div id="subtab-detection-fleet">
+
 
 
       <!-- CARDS DE METRICAS PRINCIPAIS (KPIS) -->
@@ -8109,6 +8123,171 @@
         </table>
 
       </div>
+      </div><!-- FIM subtab-detection-fleet -->
+
+      <!-- SUB-ABA 2: FASTMATCHING C++ DEDICADO (EXCLUSIVO fma.log & AUDITORIA DE SPOTS) -->
+      <div id="subtab-detection-fastmatching" style="display: none;">
+        <!-- BARRA SUPERIOR DE CONTROLE E SELEÇÃO DE PRAÇA -->
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px; background: rgba(30, 41, 59, 0.6); padding: 14px 18px; border-radius: 10px; border: 1px solid rgba(56, 189, 248, 0.25); margin-bottom: 20px;">
+          <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+            <label for="fastMatchingSiteSelect" style="font-size: 12px; font-weight: 700; color: #38bdf8; display: flex; align-items: center; gap: 6px;">
+              <span>🎯</span> Selecionar CS01 FastMatching:
+            </label>
+            <select id="fastMatchingSiteSelect" onchange="onFastMatchingSiteChange()" style="background: #0f172a; color: #f8fafc; border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 6px; padding: 7px 12px; font-size: 12px; font-weight: 600; cursor: pointer; min-width: 280px;">
+              <option value="">Carregando nós FastMatching...</option>
+            </select>
+            <div id="fmActiveHostBadge" style="display: flex; align-items: center; gap: 6px;"></div>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span id="fmLastSyncTimestamp" style="font-size: 11px; color: #94a3b8; font-family: monospace;"></span>
+            <button onclick="refreshFastMatchingDedicatedView()" style="background: linear-gradient(135deg, #0284c7, #0ea5e9); color: #fff; border: none; padding: 7px 14px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+              <span>🔄</span> Atualizar Telemetria
+            </button>
+          </div>
+        </div>
+
+        <!-- BLOCO 1: AUDITORIA CIRÚRGICA DE SPOTS CADASTROS & DIVERGÊNCIA NO SGG -->
+        <div style="margin-bottom: 24px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 18px;">📊</span>
+              <h3 style="font-size: 15px; font-weight: 700; color: #f8fafc; margin: 0;">Auditoria de Spots Cadastrados (Menor x Maior Spot &amp; Detecção de Divergência)</h3>
+            </div>
+            <span style="font-size: 11px; color: #94a3b8;">Validação de conformidade de duração no SGG / ConfigXml</span>
+          </div>
+
+          <!-- BANNER DE DIAGNÓSTICO DE DIVERGÊNCIA -->
+          <div id="fmDivergenceAlertBanner" style="display: none; margin-bottom: 14px; padding: 12px 16px; border-radius: 8px; font-size: 12px; font-weight: 600; align-items: center; gap: 10px;"></div>
+
+          <!-- GRID DOS 4 CARDS DE SPOTS -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px;">
+            <!-- Card: Menor Spot -->
+            <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 10px; padding: 16px; position: relative;">
+              <div style="position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: #38bdf8;"></div>
+              <div style="font-size: 11px; font-weight: 700; color: #7dd3fc; text-transform: uppercase;">Menor Spot Cadastrado</div>
+              <div style="font-size: 26px; font-weight: 800; color: #f8fafc; margin-top: 4px;" id="fmMinSpotSec">--s</div>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
+                <span style="font-family: monospace; font-size: 11px; color: #94a3b8;" id="fmMinSpotId">Spot #--</span>
+                <span id="fmMinSpotBadge" style="font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 700;">--</span>
+              </div>
+            </div>
+
+            <!-- Card: Maior Spot -->
+            <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 10px; padding: 16px; position: relative;">
+              <div style="position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: #a855f7;"></div>
+              <div style="font-size: 11px; font-weight: 700; color: #d8b4fe; text-transform: uppercase;">Maior Spot Cadastrado</div>
+              <div style="font-size: 26px; font-weight: 800; color: #f8fafc; margin-top: 4px;" id="fmMaxSpotSec">--s</div>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
+                <span style="font-family: monospace; font-size: 11px; color: #94a3b8;" id="fmMaxSpotId">Spot #--</span>
+                <span id="fmMaxSpotBadge" style="font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 700;">--</span>
+              </div>
+            </div>
+
+            <!-- Card: Média e Total -->
+            <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 10px; padding: 16px; position: relative;">
+              <div style="position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: #22c55e;"></div>
+              <div style="font-size: 11px; font-weight: 700; color: #86efac; text-transform: uppercase;">Duração Média</div>
+              <div style="font-size: 26px; font-weight: 800; color: #f8fafc; margin-top: 4px;" id="fmAvgSpotSec">--s</div>
+              <div style="font-size: 11px; color: #94a3b8; margin-top: 8px;">
+                Total: <strong id="fmTotalSpotsCount" style="color: #f8fafc;">-- spots</strong> ativos
+              </div>
+            </div>
+
+            <!-- Card: Razão de Dispersão -->
+            <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(234, 179, 8, 0.3); border-radius: 10px; padding: 16px; position: relative;">
+              <div style="position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: #eab308;"></div>
+              <div style="font-size: 11px; font-weight: 700; color: #fde047; text-transform: uppercase;">Dispersão (Max / Min)</div>
+              <div style="font-size: 26px; font-weight: 800; color: #f8fafc; margin-top: 4px;" id="fmDispersionRatio">--x</div>
+              <div style="font-size: 11px; color: #94a3b8; margin-top: 8px;" id="fmDispersionDesc">Razão de amplitude</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- BLOCO 2: TELEMETRIA VIVA DO FMA.LOG -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 24px;">
+          <!-- ProcTimeMs -->
+          <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 10px; padding: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div style="font-size: 12px; font-weight: 700; color: #38bdf8;">⚡ ProcTimeMs (Último Match)</div>
+              <span id="fmProcBadge" style="font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 700;">--</span>
+            </div>
+            <div style="font-size: 24px; font-weight: 800; color: #f8fafc; margin: 8px 0;" id="fmProcTimeValue">--ms</div>
+            <div style="font-size: 11px; color: #94a3b8;" id="fmLastMatchSummary">Nenhuma detecção registrada ainda</div>
+          </div>
+
+          <!-- Delayed Candidates -->
+          <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 10px; padding: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div style="font-size: 12px; font-weight: 700; color: #facc15;">⚠️ Candidatos com Atraso (Buffer)</div>
+              <span id="fmDelayBadge" style="font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 700;">--</span>
+            </div>
+            <div style="font-size: 24px; font-weight: 800; color: #f8fafc; margin: 8px 0;" id="fmDelayedCount">0</div>
+            <div style="font-size: 11px; color: #94a3b8;" id="fmDelayedSummary">Buffer EMU sincronizado</div>
+          </div>
+
+          <!-- Memória e Busca C++ -->
+          <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 10px; padding: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div style="font-size: 12px; font-weight: 700; color: #c084fc;">🧠 Memória C++ &amp; Varredura</div>
+              <span id="fmMemoryBadge" style="font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 700;">Nominal</span>
+            </div>
+            <div style="font-size: 20px; font-weight: 800; color: #f8fafc; margin: 8px 0;" id="fmRamValue">-- MB</div>
+            <div style="font-size: 11px; color: #94a3b8;" id="fmSearchSummary">SearchStats: -- fingers</div>
+          </div>
+        </div>
+
+        <!-- BLOCO 3: ROTEIRO HOW-TO PASSO A PASSO PARA O TÉCNICO -->
+        <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(139, 92, 246, 0.35); border-radius: 10px; padding: 18px; margin-bottom: 24px;">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+            <span style="font-size: 20px;">📘</span>
+            <h3 style="font-size: 15px; font-weight: 700; color: #f8fafc; margin: 0;">Roteiro How-To Passo a Passo de Solução (Procedimento Técnico)</h3>
+            <span id="fmPlaybookSeverityBadge" style="margin-left: auto; font-size: 10px; padding: 2px 8px; border-radius: 4px; font-weight: 700;">--</span>
+          </div>
+          <div id="fmPlaybookContent">
+            <!-- Injetado dinamicamente via JS -->
+          </div>
+        </div>
+
+        <!-- BLOCO 4: TABELA DE SPOTS DO CATÁLOGO / BUFFER -->
+        <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 10px; margin-bottom: 24px; overflow: hidden;">
+          <div style="padding: 14px 18px; background: rgba(30, 41, 59, 0.6); border-bottom: 1px solid rgba(255, 255, 255, 0.1); display: flex; justify-content: space-between; align-items: center;">
+            <div style="font-weight: 700; font-size: 13px; color: #f8fafc; display: flex; align-items: center; gap: 8px;">
+              <span>📋</span> Catálogo de Spots Cadastrados &amp; Validação de Duração
+            </div>
+            <span style="font-size: 11px; color: #94a3b8;" id="fmSpotsTableCount">-- spots listados</span>
+          </div>
+          <div style="overflow-x: auto; max-height: 280px;">
+            <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 12px;">
+              <thead>
+                <tr style="background: rgba(15, 23, 42, 0.9); border-bottom: 1px solid rgba(255, 255, 255, 0.08); font-size: 11px; text-transform: uppercase; color: #94a3b8;">
+                  <th style="padding: 10px 14px;">Spot ID</th>
+                  <th style="padding: 10px 14px;">Duração (s)</th>
+                  <th style="padding: 10px 14px;">Duração (ms)</th>
+                  <th style="padding: 10px 14px;">Conformidade de Tamanho</th>
+                  <th style="padding: 10px 14px;">Última Detecção / Visto em</th>
+                </tr>
+              </thead>
+              <tbody id="fmSpotsTableBody">
+                <tr><td colspan="5" style="text-align: center; padding: 20px; color: #94a3b8;">Carregando spots do nó selecionado...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- BLOCO 5: CONSOLE TERMINAL DO FMA.LOG -->
+        <div style="background: #090d16; border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 10px; overflow: hidden;">
+          <div style="padding: 10px 16px; background: #0f172a; border-bottom: 1px solid rgba(255, 255, 255, 0.1); display: flex; justify-content: space-between; align-items: center;">
+            <div style="font-family: monospace; font-size: 12px; font-weight: 700; color: #38bdf8; display: flex; align-items: center; gap: 6px;">
+              <span>💻</span> Terminal / Feed de Eventos Forenses (fma.log)
+            </div>
+            <span style="font-size: 11px; color: #64748b; font-family: monospace;" id="fmLogSourceLabel">D:\MediaDNA_V2\Applications\DTVCapture64\FastMachingSvc\fma.log</span>
+          </div>
+          <div id="fmLogTerminalFeed" style="padding: 14px 16px; max-height: 280px; overflow-y: auto; font-family: 'Consolas', monospace; font-size: 11px; line-height: 1.5; color: #cbd5e1; background: #030712;">
+            <!-- Linhas do console injetadas via JS -->
+          </div>
+        </div>
+      </div><!-- FIM subtab-detection-fastmatching -->
 
 
 
