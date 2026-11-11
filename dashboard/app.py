@@ -2439,6 +2439,23 @@ async def diagnose_detection_with_ai(payload: DetectionAIDiagnoseRequest):
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 
+@app.get("/api/fleet/detection/fastmatching/logs/{hostname}")
+async def get_fastmatching_logs(hostname: str):
+    """Retorna telemetria detalhada e eventos de log do FastMatching para o host."""
+    try:
+        from tracking_detection_monitor import get_fastmatching_node_telemetry
+        telemetry = get_fastmatching_node_telemetry(hostname)
+        return {
+            "success": True,
+            "hostname": hostname,
+            "telemetry": telemetry
+        }
+    except Exception as e:
+        logger.error(f"[DetectionAPI] Erro ao obter logs do FastMatching para {hostname}: {e}", exc_info=True)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
+
 # ==============================================================================
 # Rotas do Sistema de Auto-Healing da Frota & Destravamento de Tracking
 # ==============================================================================

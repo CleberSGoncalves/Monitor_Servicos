@@ -8248,6 +8248,37 @@
 
       </div>
 
+    
+      <!-- MODAL DE AUDITORIA E TELEMETRIA ATIVA DO FASTMATCHING (fma.log) -->
+      <div id="fastMatchingLogsModal" style="display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(5px); z-index: 9999; align-items: center; justify-content: center; padding: 20px;">
+        <div style="background: #0f172a; border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 12px; max-width: 860px; width: 100%; max-height: 90vh; overflow-y: auto; box-shadow: 0 25px 50px rgba(0, 0, 0, 0.7); padding: 24px;">
+          
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255, 255, 255, 0.1); padding-bottom: 14px; margin-bottom: 18px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="font-size: 24px;">🎯</span>
+              <div>
+                <h3 id="fmModalTitle" style="font-size: 16px; font-weight: 700; color: #f8fafc; margin: 0;">Auditoria Operacional FastMatching C++ (fma.log)</h3>
+                <div id="fmModalSubtitle" style="font-size: 11px; color: #94a3b8; font-family: monospace; margin-top: 2px;">Coleta ativa de candidatos, ProcTimeMs e catálogo ConfigXml.xml</div>
+              </div>
+            </div>
+            <button onclick="closeFastMatchingLogsModal()" style="background: none; border: none; color: #94a3b8; font-size: 22px; cursor: pointer; padding: 4px 8px;">✕</button>
+          </div>
+
+          <div id="fmModalContent">
+            <!-- Conteúdo dinâmico injetado via JS -->
+          </div>
+
+          <div style="margin-top: 20px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 14px;">
+            <div id="fmModalFooterStatus" style="font-size: 11px; color: #64748b; font-family: monospace;"></div>
+            <div style="display: flex; gap: 8px;">
+              <button id="fmModalRefreshBtn" onclick="refreshFastMatchingModalData()" style="background: #1e293b; color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); padding: 7px 14px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer;">🔄 Atualizar Log</button>
+              <button onclick="closeFastMatchingLogsModal()" style="background: #334155; color: #fff; border: none; padding: 7px 16px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer;">Fechar</button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
     </section>
 
 
