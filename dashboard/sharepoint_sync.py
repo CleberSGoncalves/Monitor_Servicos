@@ -166,6 +166,13 @@ def sanitize_and_recalculate_cache(force_refresh_time: bool = False, save_to_dis
 
             return
 
+        # REGRA FÉRREA DE AUDITORIA: Purga serviços sintéticos clonados (_cs1) do cache em memória e disco
+        clean_services = [s for s in services if "_cs1" not in str(s.get("id", "")) and not s.get("is_synthetic")]
+        if len(clean_services) != len(services):
+            _cached_data["services"] = clean_services
+            services = clean_services
+            save_to_disk = True
+
 
 
         active_recordings_by_praca = {}
