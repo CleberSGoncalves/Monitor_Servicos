@@ -1052,6 +1052,43 @@ async def download_planilha_atria_xlsx_endpoint():
     return JSONResponse(status_code=404, content={"error": "Planilha CS_Brasil_ATRIA.xlsx não encontrada"})
 
 
+@app.get("/api/agent/download/{service_name}/{version}")
+async def download_agent_package_endpoint(service_name: str, version: str):
+    """
+    Endpoint de contingência para download direto de pacotes de binários homologados.
+    Procura arquivos .zip correspondentes em publish/, releases/ ou raiz.
+    """
+    s_clean = service_name.strip()
+    v_clean = version.strip().lstrip("vV")
+    
+    candidates = [
+        ROOT_DIR / "publish" / f"{s_clean}_v{v_clean}.zip",
+        ROOT_DIR / "publish" / f"{s_clean}.zip",
+        ROOT_DIR / "publish" / f"DNA.{s_clean}_v{v_clean}.zip",
+        ROOT_DIR / "publish" / f"DNA.{s_clean}.zip",
+        ROOT_DIR / "publish" / f"DTVCapture64_v{v_clean}.zip",
+        ROOT_DIR / "publish" / "DTVCapture64.zip",
+        ROOT_DIR / "publish" / f"DNA.MonitorServiceSVC_v{v_clean}.zip",
+        ROOT_DIR.parent / "publish" / f"{s_clean}_v{v_clean}.zip",
+    ]
+    
+    for cand in candidates:
+        if cand.exists():
+            return FileResponse(
+                str(cand),
+                media_type="application/zip",
+                filename=cand.name
+            )
+            
+    return JSONResponse(
+        status_code=404,
+        content={
+            "error": f"Pacote para {service_name} v{version} não encontrado no repositório local.",
+            "hint": "O pacote pode ser obtido via biblioteca oficial SharePoint: Repositorio_Automacoes/Releases_Servicos_CS"
+        }
+    )
+
+
 class LinkDiagnoseRequest(BaseModel):
     praca: str
     cs: int = 1

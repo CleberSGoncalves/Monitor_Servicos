@@ -18,7 +18,7 @@ from dashboard.geo_topology import (
     get_markets_map_data,
     get_topology_full_payload
 )
-from dashboard.fleet_actions import get_host_service_action_status
+from dashboard.fleet_actions import get_host_service_action_status, build_service_contingency_command
 
 
 class TestRFTopologyRootCause:
@@ -148,3 +148,30 @@ class TestUpdateProgressModalBackend:
         assert status_info["success"] is False
         assert status_info["current_step"] == 1
         assert "status_badge" in status_info
+
+    def test_contingency_script_uses_official_dtvcapture64_directory(self):
+        """
+        Garante que o script de contingência para o Atria Capture utilize estritamente
+        o diretório D:\\MediaDNA_V2\\applications\\DTVCapture64 e NÃO C:\\Atria Capture.
+        """
+        cmd = build_service_contingency_command("Atria Capture", "2.0.0.2")
+        assert r"D:\MediaDNA_V2\applications\DTVCapture64" in cmd
+        assert r"C:\Atria Capture" not in cmd
+        assert "DTVCapture64" in cmd
+        assert "Stop-Process" in cmd
+        assert "2.0.0.2" in cmd
+
+    def test_contingency_script_handles_other_fleet_services(self):
+        """
+        Garante diretórios corretos para FastMatching e serviços DNA.
+        """
+        fm_cmd = build_service_contingency_command("FastMatchingSvc", "1.1.0.0")
+        assert r"D:\MediaDNA_V2\applications\DTVCapture64\FastMachingSvc" in fm_cmd
+        assert "FastMatchingSvc" in fm_cmd
+
+        det_cmd = build_service_contingency_command("DNA.DetectionSVC", "3.4.6040.21056")
+        assert r"D:\MediaDNA_V2\applications\DNA.DetectionSVC" in det_cmd
+
+        agent_cmd = build_service_contingency_command("DNA.MonitorServiceSVC", "1.0.20.0")
+        assert r"D:\MediaDNA_V2\Applications\MonitorServiceSVC" in agent_cmd
+        assert "bootstrap_update.ps1" in agent_cmd

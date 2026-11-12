@@ -12,7 +12,11 @@ def capture():
         # Open update progress modal for Anápolis CS 2 (BRGO-ANA-DT02) with target 2.0.0.2
         page.evaluate("openFleetUpdateProgressModal('BRGO-ANA-DT02', 'Atria Capture', '2.0.0.2')")
         page.wait_for_selector("#fleetUpdateProgressModal", state="visible", timeout=10000)
-        page.wait_for_timeout(3500)
+        page.wait_for_timeout(2000)
+
+        # Expand the manual contingency plan accordion
+        page.evaluate("if (typeof toggleUpProgManualBox === 'function') toggleUpProgManualBox()")
+        page.wait_for_timeout(1500)
 
         screenshot_path = "C:/Users/Cleber/.gemini/antigravity/brain/69a25dad-6420-47a9-86ae-6c86aeed62ba/modal_progresso_atualizacao_anapolis_corrigido.png"
         page.screenshot(path=screenshot_path)

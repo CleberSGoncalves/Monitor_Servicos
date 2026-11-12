@@ -313,6 +313,80 @@ def get_fleet_update_evolution(target_version: str = "1.0.20.0") -> Dict[str, An
     }
 
 
+def build_service_contingency_command(service_name: str, target_version: str) -> str:
+    """
+    Gera o script PowerShell oficial de 1 linha para contingência via GV / Tanium,
+    respeitando estritamente os diretórios de instalação de cada serviço na frota:
+    - Atria Capture: D:\\MediaDNA_V2\\applications\\DTVCapture64 (DTVCapture64.exe)
+    - FastMatchingSvc: D:\\MediaDNA_V2\\applications\\DTVCapture64\\FastMachingSvc
+    - DNA.MonitorServiceSVC: D:\\MediaDNA_V2\\applications\\MonitorServiceSVC (bootstrap_update.ps1)
+    - Demais serviços DNA: D:\\MediaDNA_V2\\applications\\DNA.<NomeServico>
+    """
+    s_clean = service_name.strip()
+    s_lower = s_clean.lower()
+    target_v = str(target_version or "latest").strip().lstrip("vV")
+
+    # 1. Atria Capture (DTVCapture64)
+    if "atria" in s_lower or "dtvcapture" in s_lower:
+        dest_d = r"D:\MediaDNA_V2\applications\DTVCapture64"
+        dest_c = r"C:\MediaDNA_V2\applications\DTVCapture64"
+        return (
+            f"powershell -ExecutionPolicy Bypass -Command \""
+            f"& {{ $dest = if (Test-Path '{dest_d}') {{ '{dest_d}' }} elseif (Test-Path 'D:\\') {{ '{dest_d}' }} else {{ '{dest_c}' }}; "
+            f"Stop-Process -Name DTVCapture64, AtriaCapture -Force -ErrorAction SilentlyContinue; "
+            f"Stop-Service -Name AtriaCaptureService -Force -ErrorAction SilentlyContinue; "
+            f"[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12; "
+            f"$zip = \\\"$env:TEMP\\DTVCapture64_v{target_v}.zip\\\"; "
+            f"if (-not (Test-Path $zip)) {{ try {{ Invoke-WebRequest -Uri 'http://10.1.30.1:8092/api/agent/download/DTVCapture64/{target_v}' -OutFile $zip -TimeoutSec 30 }} catch {{}} }}; "
+            f"if (Test-Path $zip) {{ Expand-Archive -Path $zip -DestinationPath $dest -Force }}; "
+            f"if (Get-Service -Name AtriaCaptureService -ErrorAction SilentlyContinue) {{ Start-Service AtriaCaptureService }} elseif (Test-Path (Join-Path $dest 'DTVCapture64.exe')) {{ Start-Process (Join-Path $dest 'DTVCapture64.exe') }}; "
+            f"Write-Host '[OK] Atria Capture atualizado em ' $dest }}\""
+        )
+
+    # 2. FastMatchingSvc
+    elif "fastmatch" in s_lower:
+        dest_d = r"D:\MediaDNA_V2\applications\DTVCapture64\FastMachingSvc"
+        dest_c = r"C:\MediaDNA_V2\applications\DTVCapture64\FastMachingSvc"
+        return (
+            f"powershell -ExecutionPolicy Bypass -Command \""
+            f"& {{ $dest = if (Test-Path '{dest_d}') {{ '{dest_d}' }} elseif (Test-Path 'D:\\') {{ '{dest_d}' }} else {{ '{dest_c}' }}; "
+            f"Stop-Service -Name FastMatchingSvc, FastMachingSvc -Force -ErrorAction SilentlyContinue; "
+            f"Stop-Process -Name FastMatchingSvc, FastMachingSvc -Force -ErrorAction SilentlyContinue; "
+            f"[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12; "
+            f"$zip = \\\"$env:TEMP\\FastMatchingSvc_v{target_v}.zip\\\"; "
+            f"if (-not (Test-Path $zip)) {{ try {{ Invoke-WebRequest -Uri 'http://10.1.30.1:8092/api/agent/download/FastMatchingSvc/{target_v}' -OutFile $zip -TimeoutSec 30 }} catch {{}} }}; "
+            f"if (Test-Path $zip) {{ Expand-Archive -Path $zip -DestinationPath $dest -Force }}; "
+            f"Start-Service -Name FastMatchingSvc, FastMachingSvc -ErrorAction SilentlyContinue; "
+            f"Write-Host '[OK] FastMatchingSvc atualizado em ' $dest }}\""
+        )
+
+    # 3. DNA.MonitorServiceSVC (Agente Central)
+    elif "monitorservice" in s_lower or "winfleet" in s_lower:
+        return (
+            f"powershell.exe -ExecutionPolicy Bypass -NoProfile -Command \""
+            f"$d = if (Test-Path 'D:\\MediaDNA_V2\\Applications\\MonitorServiceSVC') {{ 'D:\\MediaDNA_V2\\Applications\\MonitorServiceSVC' }} elseif (Test-Path 'C:\\MediaDNA_V2\\Applications\\MonitorServiceSVC') {{ 'C:\\MediaDNA_V2\\Applications\\MonitorServiceSVC' }} else {{ $null }}; "
+            f"if ($d) {{ $b = Join-Path $d 'bootstrap_update.ps1'; if (Test-Path $b) {{ Start-Process powershell.exe -ArgumentList '-ExecutionPolicy', 'Bypass', '-NoProfile', '-WindowStyle', 'Hidden', '-Command', ('Start-Sleep -Seconds 5; & \\\"' + $b + '\\\" -Force') -WindowStyle Hidden; Write-Host '[OK] Disparado'; exit 0 }} }}\""
+        )
+
+    # 4. Demais Serviços DNA.* (Detection, ConfigMonitor, Filetransfer, MediaRecorder, etc.)
+    else:
+        svc_clean = s_clean.replace("DNA.", "").replace(".exe", "")
+        dest_d = f"D:\\MediaDNA_V2\\applications\\DNA.{svc_clean}"
+        dest_c = f"C:\\MediaDNA_V2\\applications\\DNA.{svc_clean}"
+        return (
+            f"powershell -ExecutionPolicy Bypass -Command \""
+            f"& {{ $dest = if (Test-Path '{dest_d}') {{ '{dest_d}' }} elseif (Test-Path 'D:\\') {{ '{dest_d}' }} else {{ '{dest_c}' }}; "
+            f"Stop-Service -Name '{s_clean}', 'DNA.{svc_clean}', '{svc_clean}' -Force -ErrorAction SilentlyContinue; "
+            f"Stop-Process -Name '{svc_clean}', 'DNA.{svc_clean}' -Force -ErrorAction SilentlyContinue; "
+            f"[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12; "
+            f"$zip = \\\"$env:TEMP\\{svc_clean}_v{target_v}.zip\\\"; "
+            f"if (-not (Test-Path $zip)) {{ try {{ Invoke-WebRequest -Uri 'http://10.1.30.1:8092/api/agent/download/{svc_clean}/{target_v}' -OutFile $zip -TimeoutSec 30 }} catch {{}} }}; "
+            f"if (Test-Path $zip) {{ Expand-Archive -Path $zip -DestinationPath $dest -Force }}; "
+            f"Start-Service -Name '{s_clean}', 'DNA.{svc_clean}', '{svc_clean}' -ErrorAction SilentlyContinue; "
+            f"Write-Host '[OK] {s_clean} atualizado em ' $dest }}\""
+        )
+
+
 def get_host_service_action_status(host: str, service_name: str, target_version: Optional[str] = None) -> Dict[str, Any]:
     """
     Retorna o status em tempo real do ciclo de vida da atualização de um serviço específico em um host,
@@ -583,13 +657,7 @@ def get_host_service_action_status(host: str, service_name: str, target_version:
         ]
 
     # Comando manual pronto de 1 linha para contingência via GV / Tanium
-    manual_ps = (
-        f"powershell -ExecutionPolicy Bypass -Command \""
-        f"& {{ [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12; "
-        f"Invoke-WebRequest -Uri 'http://10.1.30.1:8092/api/agent/download/{service_name}/{desired_ver}' -OutFile '$env:TEMP\\update.zip'; "
-        f"Expand-Archive -Path '$env:TEMP\\update.zip' -DestinationPath 'C:\\{service_name}' -Force; "
-        f"Restart-Service -Name '{service_name}' -Force }}\""
-    )
+    manual_ps = build_service_contingency_command(service_name, desired_ver)
 
     return {
         "success": True,
