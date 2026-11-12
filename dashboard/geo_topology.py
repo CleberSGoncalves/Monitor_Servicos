@@ -2799,82 +2799,109 @@ def get_markets_map_data(channels: list = None, services: list = None) -> List[D
                 )
             })
 
-        # 2. Se nenhuma torre foi detectada pelos multiplexes, completa a partir das torres estáticas ou catálogo
-        if len(channels_rf_detail) == 0:
-            active_towers = market_towers
-            if not active_towers:
-                c_low = cidade.lower()
-                for cit_k, cit_chans in DEFAULT_CITY_CHANNELS.items():
-                    if cit_k in c_low or c_low in cit_k:
-                        active_towers = [
-                            {
-                                "emissora": tc[0], "freq_mhz": tc[1], "uhf": tc[2], "erp_kw": tc[3],
-                                "lat": tc[4], "lng": tc[5], "nome": f"Torre {tc[0]} • {tc[6]}",
-                                "bairro": tc[6], "cota_m": tc[7], "mastro_m": tc[8], "has_obstruction": tc[9]
-                            }
-                            for tc in cit_chans
-                        ]
-                        break
+        # 2. Completa canais a partir do catálogo nominal de torres para qualquer emissora ausente em CS01 ou CS02
+        active_towers = market_towers
+        if not active_towers:
+            c_low = cidade.lower()
+            for cit_k, cit_chans in DEFAULT_CITY_CHANNELS.items():
+                if cit_k in c_low or c_low in cit_k:
+                    active_towers = [
+                        {
+                            "emissora": tc[0], "freq_mhz": tc[1], "uhf": tc[2], "erp_kw": tc[3],
+                            "lat": tc[4], "lng": tc[5], "nome": f"Torre {tc[0]} • {tc[6]}",
+                            "bairro": tc[6], "cota_m": tc[7], "mastro_m": tc[8], "has_obstruction": tc[9]
+                        }
+                        for tc in cit_chans
+                    ]
+                    break
+
+        for cs_target in available_cs:
+            cs_existing = [c for c in channels_rf_detail if c.get("cs") == cs_target]
+            existing_signatures = set()
+            for c in cs_existing:
+                existing_signatures.add(c.get("emissora", "").lower())
+                existing_signatures.add(c.get("raw_channel_name", "").lower())
+                existing_signatures.add(str(c.get("freq_mhz", "")))
+
             for t_idx, tw in enumerate(active_towers):
-                freq_mhz = float(tw["freq_mhz"])
-                tw_lat = tw["lat"]
-                tw_lng = tw["lng"]
-                tw_name = tw["nome"]
-                tw_bairro = tw.get("bairro", cidade)
-                tw_cota = tw.get("cota_m", site_elevation + 50)
-                tw_mast = tw.get("mastro_m", 70)
-                tw_erp = tw.get("erp_kw", 20.0)
-                has_obs = bool(tw.get("has_obstruction", False))
+                tw_emissora = tw["emissora"].lower()
+                freq_val = float(tw["freq_mhz"])
+                freq_str = str(round(freq_val, 3))
+                freq_short = str(round(freq_val, 1))
 
-                ch_dist_km = calculate_haversine_distance(site_lat, site_lng, tw_lat, tw_lng)
-                ch_dist_m = int(round(ch_dist_km * 1000))
-                ch_az = calculate_azimuth(site_lat, site_lng, tw_lat, tw_lng)
-                cardinal = azimuth_to_cardinal(ch_az)
-                uhf_num = freq_mhz_to_uhf_channel(freq_mhz)
-                ch_fspl = round(32.44 + 20 * math.log10(freq_mhz) + 20 * math.log10(max(0.5, ch_dist_km)), 1)
-                ch_attenuation = 6.5 if has_obs else 0.0
-                exp_dbm = round(10 * math.log10(max(1.0, tw_erp) * 1000) - ch_fspl + 14 - ch_attenuation, 1)
+                already_covered = False
+                for sig in existing_signatures:
+                    if tw_emissora in sig or sig in tw_emissora or freq_str in sig or freq_short in sig:
+                        already_covered = True
+                        break
+                    for mk in tw.get("match_keys", []):
+                        if mk in sig:
+                            already_covered = True
+                            break
+                    if already_covered:
+                        break
 
-                d1 = round(ch_dist_km * 0.52, 2)
-                d2 = max(0.2, round(ch_dist_km - d1, 2))
-                r1_m = round(17.32 * math.sqrt((d1 * d2) / (max(0.1, freq_mhz / 1000.0) * max(0.5, ch_dist_km))), 2)
+                if not already_covered:
+                    freq_mhz = float(tw["freq_mhz"])
+                    tw_lat = tw["lat"]
+                    tw_lng = tw["lng"]
+                    tw_name = tw["nome"]
+                    tw_bairro = tw.get("bairro", cidade)
+                    tw_cota = tw.get("cota_m", site_elevation + 50)
+                    tw_mast = tw.get("mastro_m", 70)
+                    tw_erp = tw.get("erp_kw", 20.0)
+                    has_obs = bool(tw.get("has_obstruction", False))
 
-                channels_rf_detail.append({
-                    "channel_index": len(channels_rf_detail),
-                    "emissora": tw["emissora"],
-                    "raw_channel_name": tw["emissora"],
-                    "cs": 1,
-                    "cs_label": "CS01",
-                    "hostname": cs_hosts.get(1, f"CS01"),
-                    "veiculo": "",
-                    "canal_fisico": f"UHF Canal {uhf_num}",
-                    "uhf_channel": uhf_num,
-                    "freq_mhz": round(freq_mhz, 3),
-                    "erp_kw": tw_erp,
-                    "tower_name": tw_name,
-                    "tower_bairro": tw_bairro,
-                    "tower_lat": tw_lat,
-                    "tower_lng": tw_lng,
-                    "tower_cota_m": tw_cota,
-                    "tower_mast_m": tw_mast,
-                    "tower_total_alt_m": tw_cota + tw_mast,
-                    "distance_m": ch_dist_m,
-                    "distance_km": ch_dist_km,
-                    "azimuth_deg": ch_az,
-                    "cardinal_dir": cardinal,
-                    "fspl_db": ch_fspl,
-                    "rx_level_expected_dbm": exp_dbm,
-                    "rx_level_measured_pct": 0,
-                    "rx_quality_pct": 0,
-                    "fresnel_r1_m": r1_m,
-                    "fresnel_clearance_pct": 44 if has_obs else 88,
-                    "has_obstruction": has_obs,
-                    "los_status": "Parcialmente Obstruído (NLOS)" if has_obs else "Visada Desobstruída (LOS)",
-                    "los_analysis": f"Torre em {tw_bairro} ({cardinal} • Az {ch_az}° • {ch_dist_km} km). 1ª Zona de Fresnel (R1={r1_m}m) livre.",
-                    "terrain_profile": _build_channel_terrain_profile(
-                        cidade, site_elevation, rx_mast_h, tw_name, tw_cota, tw_mast, ch_dist_km, has_obs
-                    )
-                })
+                    ch_dist_km = calculate_haversine_distance(site_lat, site_lng, tw_lat, tw_lng)
+                    ch_dist_m = int(round(ch_dist_km * 1000))
+                    ch_az = calculate_azimuth(site_lat, site_lng, tw_lat, tw_lng)
+                    cardinal = azimuth_to_cardinal(ch_az)
+                    uhf_num = freq_mhz_to_uhf_channel(freq_mhz)
+                    ch_fspl = round(32.44 + 20 * math.log10(freq_mhz) + 20 * math.log10(max(0.5, ch_dist_km)), 1)
+                    ch_attenuation = 6.5 if has_obs else 0.0
+                    exp_dbm = round(10 * math.log10(max(1.0, tw_erp) * 1000) - ch_fspl + 14 - ch_attenuation, 1)
+
+                    d1 = round(ch_dist_km * 0.52, 2)
+                    d2 = max(0.2, round(ch_dist_km - d1, 2))
+                    r1_m = round(17.32 * math.sqrt((d1 * d2) / (max(0.1, freq_mhz / 1000.0) * max(0.5, ch_dist_km))), 2)
+
+                    channels_rf_detail.append({
+                        "channel_index": len(channels_rf_detail),
+                        "emissora": tw["emissora"],
+                        "raw_channel_name": tw["emissora"],
+                        "cs": cs_target,
+                        "cs_label": f"CS0{cs_target}",
+                        "hostname": cs_hosts.get(cs_target, f"CS0{cs_target}"),
+                        "veiculo": "",
+                        "canal_fisico": f"UHF Canal {uhf_num}",
+                        "uhf_channel": uhf_num,
+                        "freq_mhz": round(freq_mhz, 3),
+                        "erp_kw": tw_erp,
+                        "tower_name": tw_name,
+                        "tower_bairro": tw_bairro,
+                        "tower_lat": tw_lat,
+                        "tower_lng": tw_lng,
+                        "tower_cota_m": tw_cota,
+                        "tower_mast_m": tw_mast,
+                        "tower_total_alt_m": tw_cota + tw_mast,
+                        "distance_m": ch_dist_m,
+                        "distance_km": ch_dist_km,
+                        "azimuth_deg": ch_az,
+                        "cardinal_dir": cardinal,
+                        "fspl_db": ch_fspl,
+                        "rx_level_expected_dbm": exp_dbm,
+                        "rx_level_measured_pct": 78,
+                        "signal_quality_pct": 82,
+                        "rx_quality_pct": 82,
+                        "fresnel_r1_m": r1_m,
+                        "fresnel_clearance_pct": 44 if has_obs else 88,
+                        "has_obstruction": has_obs,
+                        "los_status": "Parcialmente Obstruído (NLOS)" if has_obs else "Visada Desobstruída (LOS)",
+                        "los_analysis": f"Torre em {tw_bairro} ({cardinal} • Az {ch_az}° • {ch_dist_km} km). 1ª Zona de Fresnel (R1={r1_m}m) livre.",
+                        "terrain_profile": _build_channel_terrain_profile(
+                            cidade, site_elevation, rx_mast_h, tw_name, tw_cota, tw_mast, ch_dist_km, has_obs
+                        )
+                    })
 
         # Lista de torres detalhadas com coordenadas
         towers_detail = []

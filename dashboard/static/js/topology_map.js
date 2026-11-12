@@ -55,19 +55,29 @@ const CITY_LABEL_CONFIG = {
     "Itumbiara": { dx: -18, dy: 12, anchor: "end", side: "bottom-left" }
 };
 
-async function loadTopologyMapData() {
+async function loadTopologyMapData(force = false) {
     try {
         const token = (typeof getAuthToken === "function") ? getAuthToken() : (localStorage.getItem("fleet_token") || "");
         const res = await fetch(`/api/fleet/topology-map?_t=${Date.now()}`, {
             cache: "no-store",
-            headers: token ? { "Authorization": `Bearer ${token}` } : {}
+            headers: {
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                ...(token ? { "Authorization": `Bearer ${token}` } : {})
+            }
         });
         if (!res.ok) return;
         topologyMarketsData = await res.json();
         window.topologyMarketsData = topologyMarketsData;
         renderTopologyMap();
 
-        if (!selectedMarket && topologyMarketsData.length > 0) {
+        if (selectedMarket) {
+            const updated = topologyMarketsData.find(m => m.id === selectedMarket.id);
+            if (updated) {
+                selectedMarket = updated;
+                window.selectedMarket = updated;
+            }
+        } else if (topologyMarketsData.length > 0) {
             const defaultM = topologyMarketsData.find(m => m.cidade.toLowerCase().includes("são josé") || m.cidade.toLowerCase().includes("campos")) ||
                              topologyMarketsData.find(m => m.cidade.toLowerCase() === "pelotas") ||
                              topologyMarketsData[0];
@@ -969,7 +979,17 @@ function updateRfModalEngineeringNotes(market, channelIdx = null) {
             <div>💡 <strong>Recomendações Técnicas:</strong> Clique em cada emissora na tabela acima para alternar entre o corte transversal de 4.2 km (RBS TV) e o de 14.8 km (SBT RS) ou simule a elevação do mastro receptor ao lado.</div>
         `;
     } else {
-        const chSummary = channels.map(c => `<strong>${escapeHtml(c.emissora)}</strong> (${Number(c.freq_mhz).toFixed(3).replace('.', ',')} MHz • ${escapeHtml(c.tower_bairro || c.tower_name)} • Az ${c.azimuth_deg}° • ${c.distance_km} km)`).join(" | ");
+        // Deduplica emissoras por (nome, freq_mhz) para evitar duplicatas em praças com CS01 e CS02
+        const seenSummary = new Set();
+        const uniqueChannels = [];
+        for (const c of channels) {
+            const k = `${c.emissora}_${c.freq_mhz}`;
+            if (!seenSummary.has(k)) {
+                seenSummary.add(k);
+                uniqueChannels.push(c);
+            }
+        }
+        const chSummary = uniqueChannels.map(c => `<strong>${escapeHtml(c.emissora)}</strong> (${Number(c.freq_mhz).toFixed(3).replace('.', ',')} MHz • ${escapeHtml(c.tower_bairro || c.tower_name)} • Az ${c.azimuth_deg}° • ${c.distance_km} km)`).join(" | ");
         notesEl.innerHTML = `
             <div style="margin-bottom: 8px;"><strong>Topologia Multi-Torre • ${escapeHtml(market.cidade)} (${escapeHtml(market.uf)}):</strong> Capture Site situado em <strong>${escapeHtml(market.site_bairro || 'Centro')}</strong> (cota ${market.site_elevation_m}m + mastro ${market.rx_antenna_height_m}m).</div>
             <div style="margin-bottom: 8px; color: #38bdf8;">📡 <strong>Enlaces Sintonizados no Multiplex:</strong> ${chSummary || 'Canais em operação nominal'}.</div>
@@ -981,12 +1001,12 @@ function updateRfModalEngineeringNotes(market, channelIdx = null) {
 // ==============================================================================
 // MODAL DE GEOLOCALIZAÇÃO PRECISA, RELEVO TOPOGRÁFICO & CANAIS DIGITAIS TERRESTRES (WIDESCREEN)
 // ==============================================================================
-async function openMarketRfModal(marketId, targetCs = "all") {
+async function openMarketRfModal(marketId, targetCs = "all", forceRefresh = true) {
     currentRfModalCs = (targetCs !== undefined && targetCs !== null) ? targetCs : "all";
     window.currentRfModalCs = currentRfModalCs;
-    if (!topologyMarketsData || topologyMarketsData.length === 0) {
+    if (forceRefresh || !topologyMarketsData || topologyMarketsData.length === 0) {
         if (typeof loadTopologyMapData === "function") {
-            await loadTopologyMapData();
+            await loadTopologyMapData(true);
         }
     }
     let market = null;
@@ -1128,6 +1148,20 @@ function closeMarketRfModal() {
     if (modal) modal.style.display = "none";
 }
 window.closeMarketRfModal = closeMarketRfModal;
+window.closeRfTopographyModal = closeMarketRfModal;
+
+async function reloadRfModalLive() {
+    const market = selectedMarket || window.selectedMarket;
+    const marketId = market ? market.id : null;
+    const targetCs = currentRfModalCs || "all";
+    if (typeof loadTopologyMapData === "function") {
+        await loadTopologyMapData(true);
+    }
+    if (marketId) {
+        await openMarketRfModal(marketId, targetCs, false);
+    }
+}
+window.reloadRfModalLive = reloadRfModalLive;
 window.closeRfTopographyModal = closeMarketRfModal;
 
 // ==============================================================================

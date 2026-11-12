@@ -46,7 +46,7 @@
 
 
 
-    <link rel="stylesheet" href="/static/css/style.css?v=3.9.73">
+    <link rel="stylesheet" href="/static/css/style.css?v=3.9.74">
 
 
 
@@ -2790,7 +2790,7 @@
 
       <button type="button" class="btn-secondary" id="btnHandoverReport" onclick="openHandoverReportModal()" style="display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; font-size: 11px; background: rgba(99,102,241,0.18); border: 1px solid rgba(99,102,241,0.45); color: #a5b4fc; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; white-space: nowrap;" title="Gerar Relatório Executivo de Passagem de Turno (Handover)"><i class="fas fa-clipboard-list"></i> <span>Turno</span></button>
 
-      <button type="button" class="btn-secondary" id="btnSystemUpdate" onclick="openSystemUpdateModal()" style="display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; font-size: 11px; background: rgba(37,99,235,0.15); border: 1px solid rgba(37,99,235,0.4); color: #38bdf8; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; white-space: nowrap;" title="Verificar atualizações do sistema"><i class="fas fa-sync-alt" id="iconSystemUpdate"></i> <span id="labelSystemVersion">v3.9.71</span></button>
+      <button type="button" class="btn-secondary" id="btnSystemUpdate" onclick="openSystemUpdateModal()" style="display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; font-size: 11px; background: rgba(37,99,255,0.15); border: 1px solid rgba(37,99,255,0.4); color: #38bdf8; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; white-space: nowrap;" title="Verificar atualizações do sistema"><i class="fas fa-sync-alt" id="iconSystemUpdate"></i> <span id="labelSystemVersion">v3.9.74</span></button>
 
       <div class="user-badge" style="padding: 4px 10px; font-size: 11px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;">
 
@@ -17127,7 +17127,7 @@
 
             <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Versão Instalada</div>
 
-            <div id="sys-update-local-version" style="font-size: 14px; font-weight: 700; color: #38bdf8; margin-top: 2px;">v3.9.71 (<span id="sys-update-local-sha">...</span>)</div>
+            <div id="sys-update-local-version" style="font-size: 14px; font-weight: 700; color: #38bdf8; margin-top: 2px;">v3.9.74 (<span id="sys-update-local-sha">...</span>)</div>
 
           </div>
 
@@ -17435,6 +17435,8 @@
 
           </div>
 
+          <button type="button" class="btn-secondary" onclick="reloadRfModalLive()" style="display: inline-flex; align-items: center; gap: 6px; font-size: 11px; padding: 6px 12px; font-weight: 700; color: #38bdf8; border-color: rgba(56,189,248,0.4);" title="Atualizar dados e forçar telemetria fresca"><i class="fas fa-sync-alt"></i> Atualizar</button>
+
           <button type="button" class="btn-primary" onclick="openTopologyAiTradeoffModal()" style="display: inline-flex; align-items: center; gap: 6px; font-size: 11px; padding: 6px 12px; background: linear-gradient(135deg, #7c3aed, #2563eb); border: none; font-weight: 700; border-radius: var(--radius-sm); cursor: pointer; white-space: nowrap;" title="Otimização de apontamento e trade-off com IA para torres dispersas em azimutes opostos"><i class="fas fa-brain"></i> ✨ Aprimorar Análise com IA</button>
 
           <button type="button" class="btn-secondary" style="padding: 6px 12px; font-weight: 700;" onclick="closeMarketRfModal()">✕</button>
@@ -17691,27 +17693,27 @@
 
 
 
-  <script src="/static/js/app.js?v=3.9.73"></script>
+  <script src="/static/js/app.js?v=3.9.74"></script>
 
-  <script src="/static/js/ai_insights.js?v=3.9.73"></script>
+  <script src="/static/js/ai_insights.js?v=3.9.74"></script>
 
-  <script src="/static/js/fleet_ops.js?v=3.9.73"></script>
+  <script src="/static/js/fleet_ops.js?v=3.9.74"></script>
 
-  <script src="/static/js/remote_commands.js?v=3.9.73"></script>
+  <script src="/static/js/remote_commands.js?v=3.9.74"></script>
 
-  <script src="/static/js/signals_analysis.js?v=3.9.73"></script>
+  <script src="/static/js/signals_analysis.js?v=3.9.74"></script>
 
-  <script src="/static/js/mosaic_wall.js?v=3.9.73"></script>
+  <script src="/static/js/mosaic_wall.js?v=3.9.74"></script>
 
-  <script src="/static/js/topology_map.js?v=3.9.73"></script>
+  <script src="/static/js/topology_map.js?v=3.9.74"></script>
 
-  <script src="/static/js/network_link.js?v=3.9.73"></script>
+  <script src="/static/js/network_link.js?v=3.9.74"></script>
 
-  <script src="/static/js/fiscalizacao.js?v=3.9.73"></script>
+  <script src="/static/js/fiscalizacao.js?v=3.9.74"></script>
 
-  <script src="/static/js/classificador_falhas.js?v=3.9.73"></script>
+  <script src="/static/js/classificador_falhas.js?v=3.9.74"></script>
 
-  <script src="/static/js/audio_sync.js?v=3.9.73"></script>
+  <script src="/static/js/audio_sync.js?v=3.9.74"></script>
 
 
 
@@ -18011,7 +18013,7 @@
 
       <div style="padding: 14px 20px; background: rgba(15, 23, 42, 0.95); border-top: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center;">
 
-        <span style="font-size: 11px; color: var(--text-muted);">MediaDNA Incident Cockpit • Handover Engine v3.9.71</span>
+        <span style="font-size: 11px; color: var(--text-muted);">MediaDNA Incident Cockpit • Handover Engine v3.9.74</span>
 
         <div style="display: flex; gap: 10px;">
 

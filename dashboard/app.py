@@ -971,7 +971,15 @@ async def get_topology_map_endpoint(user: dict = Depends(get_current_user)):
     data = get_cached_data()
     services = data.get("services", [])
     channels = data.get("channels", [])
-    return get_markets_map_data(channels, services)
+    payload = get_markets_map_data(channels, services)
+    return JSONResponse(
+        content=payload,
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0"
+        }
+    )
 
 
 class TopologyAimingAiRequest(BaseModel):
