@@ -146,7 +146,7 @@ from datetime import datetime, timezone, timedelta
 
 
 
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 
 
 
@@ -477,25 +477,52 @@ def parse_fma_log_content(lines: List[str]) -> Dict[str, Any]:
     return res
 
 
-# Cache em memória da telemetria FastMatching para coerência e performance determinística
-_FASTMATCHING_FLEET_CACHE: Dict[str, Dict[str, Any]] = {}
+# Cache em memória da telemetria FastMatching (com TTL de 45s) para coerência e performance
+_FASTMATCHING_FLEET_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
 
 
-def get_fastmatching_node_telemetry(hostname: str = "", praca: str = "") -> Dict[str, Any]:
+def parse_ram_to_mb(ram_str: Any) -> Optional[int]:
+    """Converte valores de RAM do Capture Site ('1,03 GB', '552 MB', '16 MB', '17% (91 MB)') em MB numérico."""
+    if not ram_str or str(ram_str).strip() in ("N/A", "N/D", "-", "None", ""):
+        return None
+    import re
+    s_val = str(ram_str).strip()
+    m_gb = re.search(r"([\d\.,]+)\s*GB", s_val, re.IGNORECASE)
+    if m_gb:
+        try:
+            val = float(m_gb.group(1).replace(",", "."))
+            return int(val * 1024)
+        except ValueError:
+            pass
+    m_mb = re.search(r"([\d\.,]+)\s*MB", s_val, re.IGNORECASE)
+    if m_mb:
+        try:
+            val = float(m_mb.group(1).replace(",", "."))
+            return int(val)
+        except ValueError:
+            pass
+    return None
+
+
+def get_fastmatching_node_telemetry(hostname: str = "", praca: str = "", force_refresh: bool = False) -> Dict[str, Any]:
     """
-    Obtém a telemetria operacional enriquecida do FastMatching para um nó CS01:
-    1. Se houver fma.log em disco local, lê e extrai os dados reais.
-    2. Caso contrário, gera modelo telemetrado calibrado e dinâmico específico para o nó.
+    Obtém a telemetria operacional estritamente REAL do FastMatching para um nó CS01:
+    1. Se houver fma.log em disco local, lê e extrai os dados reais com parse_fma_log_content.
+    2. Caso contrário, consulta os dados reais coletados pelo agente DNA.MonitorServiceSVC
+       no Capture Site físico (status do serviço, consumo real de RAM, CPU e versão).
+    3. PROIBIDO gerar números sintéticos, fallbacks estáticos ou mocks de dados não coletados.
     """
     global _FASTMATCHING_FLEET_CACHE
-    import hashlib
+    import time
 
     h_str = (hostname or "DEFAULT").strip().upper()
-    p_str = (praca or "São Paulo" if "SPO" in h_str or "BKP2" in h_str else (praca or "Frota")).strip()
+    p_str = (praca or "").strip()
 
-    # 1. Se já existe telemetria canônica em cache para este host, retorna imediatamente (Single Source of Truth)
-    if h_str in _FASTMATCHING_FLEET_CACHE and _FASTMATCHING_FLEET_CACHE[h_str]:
-        return _FASTMATCHING_FLEET_CACHE[h_str]
+    # 1. Se já existe telemetria canônica em cache vivo e válida pelo TTL (45s), retorna
+    if not force_refresh and h_str in _FASTMATCHING_FLEET_CACHE:
+        cached_ts, cached_data = _FASTMATCHING_FLEET_CACHE[h_str]
+        if time.time() - cached_ts < 45.0:
+            return cached_data
 
     possible_paths = [
         Path(r"D:\MediaDNA_V2\Applications\DTVCapture64\FastMachingSvc\fma.log"),
@@ -510,178 +537,218 @@ def get_fastmatching_node_telemetry(hostname: str = "", praca: str = "") -> Dict
                 parsed = parse_fma_log_content(lines)
                 parsed["source"] = str(p)
                 parsed["is_live"] = True
+                parsed["is_installed"] = True
+                parsed["is_running"] = True
                 parsed["playbook"] = generate_fastmatching_playbook(parsed, hostname)
-                _FASTMATCHING_FLEET_CACHE[h_str] = parsed
+                _FASTMATCHING_FLEET_CACHE[h_str] = (time.time(), parsed)
                 return parsed
             except Exception as e:
                 logger.warning(f"Erro ao ler fma.log em {p}: {e}")
 
-    # Hash determinístico canônico:
-    # Para BRSP-RADIO-BKP2 (São Paulo), mantém estritamente o seed que gera ProcTime 3747ms e estado Crítico auditado
-    if h_str == "BRSP-RADIO-BKP2":
-        h_hash = hashlib.md5("BRSP-RADIO-BKP2_Araçatuba".encode("utf-8")).hexdigest()
-        p_str = "São Paulo"
-    else:
-        h_hash = hashlib.md5(h_str.encode("utf-8")).hexdigest()
-    h_seed = int(h_hash[:8], 16)
-    
-    now = datetime.now(timezone.utc)
-    now_str = (now - timedelta(minutes=1 + (h_seed % 3))).strftime("%Y-%m-%d %H:%M:%S")
-    air_utc_str = (now - timedelta(minutes=2 + (h_seed % 4))).strftime("%Y-%m-%dT%H:%M:%S.000")
-    
-    # 1. Determinação do Perfil da Praça
-    is_major_market = any(k in h_str for k in ["SPO", "RIO", "RJO", "BH", "BSA", "SKY", "PAYTV", "NACIONAL", "CAS-ATRIA"])
-    is_anomaly_host = ("divergence" in h_str.lower() or "anomal" in h_str.lower() or "sgg-err" in h_str.lower() or (h_seed % 17 == 0 and "CAS-ATRIA" not in h_str and "TEST" not in h_str))
-    is_overloaded_host = (h_seed % 11 == 0)
-    has_delayed_candidates = (h_seed % 6 == 0)
-    
-    # 2. Geração Dinâmica do Catálogo de Spots (Menor x Maior Spot)
-    base_spot_id = 17950000 + (h_seed % 40000)
-    spots_list = []
-    
-    if is_anomaly_host:
-        # Praça com anomalia de cadastro no SGG (comercial muito curto < 5s ou muito longo > 180s)
-        durations = [3500, 15000, 30000, 45000, 60000, 240000]
-    elif is_major_market:
-        # Grande praça: catálogo amplo com spots de 10s a 90s
-        durations = [10000, 15000, 15000, 30000, 30000, 30000, 45000, 60000, 90000]
-    else:
-        # Praça regional padrão: spots de 15s, 30s, 45s, 60s com variações
-        durations_options = [
-            [15000, 30000, 30000, 45000, 60000],
-            [10000, 15000, 30000, 45000, 60000],
-            [15000, 15000, 30000, 60000, 60000],
-            [12000, 15000, 30000, 30000, 45000, 60000]
-        ]
-        durations = durations_options[h_seed % len(durations_options)]
-        
-    for idx, d_ms in enumerate(durations):
-        s_id = str(base_spot_id + idx * 3)
-        s_time = (now - timedelta(minutes=idx * 2 + 1)).strftime("%Y-%m-%d %H:%M:%S")
-        is_del = (has_delayed_candidates and idx == len(durations) - 1)
-        spots_list.append({
-            "spot_id": s_id,
-            "duration_ms": d_ms,
-            "duration_sec": round(d_ms / 1000.0, 1),
-            "last_seen": s_time,
-            "last_channel": f"MUX-0{(h_seed % 3) + 1}",
-            "type": "DELAYED" if is_del else "CONFIRMED"
-        })
-    
-    # 3. Métricas de Escaneamento e Performance fma.log
-    num_fingers = 5200 + len(durations) * 950 + (h_seed % 8500)
-    if is_overloaded_host:
-        proc_time = 3200 + (h_seed % 1400) # Alerta > 3000ms
-        search_ms = round(210.0 + (h_seed % 180) + ((h_seed % 100) / 100.0), 2)
-        private_mb = 8800 + (h_seed % 2600) # Risco OOM (> 8000 MB)
-        working_set_mb = int(private_mb * 0.45) + (h_seed % 350)
-    elif is_major_market:
-        proc_time = 1100 + (h_seed % 550) # 1100 a 1650ms
-        search_ms = round(85.0 + (h_seed % 60) + ((h_seed % 100) / 100.0), 2)
-        private_mb = 450 + int(num_fingers * 0.056) + (len(spots_list) * 22) + (h_seed % 280)
-        working_set_mb = int(private_mb * 0.76) + (h_seed % 120)
-    else:
-        proc_time = 780 + (h_seed % 480) # 780 a 1260ms (Excelente)
-        search_ms = round(42.0 + (h_seed % 55) + ((h_seed % 100) / 100.0), 2)
-        private_mb = 350 + int(num_fingers * 0.048) + (len(spots_list) * 16) + (h_seed % 190)
-        working_set_mb = int(private_mb * 0.68) + (h_seed % 90)
-    
-    # Candidatos atrasados
-    delayed_candidates = []
-    if has_delayed_candidates:
-        del_spot = spots_list[-1]
-        delayed_candidates.append({
-            "timestamp": now_str,
-            "spot_id": del_spot["spot_id"],
-            "duration_ms": del_spot["duration_ms"],
-            "broadcast_utc": air_utc_str,
-            "confidence": 68 + (h_seed % 28)
-        })
-        
-    # Último match
-    last_match_spot = spots_list[1] if len(spots_list) > 1 else spots_list[0]
-    last_det = {
-        "timestamp": now_str,
-        "channel_code": f"MUX-0{(h_seed % 3) + 1}",
-        "spot_id": last_match_spot["spot_id"],
-        "duration_ms": last_match_spot["duration_ms"],
-        "air_utc": air_utc_str,
-        "proc_time_ms": proc_time
-    }
-    
-    # Eventos da praça
-    events = [
-        {
-            "type": "DETECTION",
-            "badge": "NEW MATCH",
-            "color": "green",
-            "timestamp": now_str,
-            "summary": f"Spot #{last_det['spot_id']} detectado em {proc_time}ms ({last_det['duration_ms']/1000.0}s) no canal {last_det['channel_code']}"
+    # 2. Obter telemetria física REAL coletada no Capture Site pelo agente
+    raw_services = get_fleet_services()
+    fm_svc = None
+    det_svc = None
+    matched_host = h_str
+    matched_praca = p_str
+
+    for s in raw_services:
+        s_host = str(s.get("hostname") or "").strip().upper()
+        s_praca = str(s.get("praca") or "").strip()
+        match = False
+        if s_host and (s_host == h_str or h_str in s_host or s_host in h_str):
+            match = True
+        elif p_str and s_praca and (p_str.lower() == s_praca.lower()):
+            cs_num = int(float(s.get("cs", 1) or 1))
+            if cs_num == 1:
+                match = True
+
+        if match:
+            matched_host = s_host
+            if s_praca:
+                matched_praca = s_praca
+            s_name = str(s.get("nome_servico") or "").lower().replace(" ", "").replace(".", "")
+            if "fastmatching" in s_name:
+                fm_svc = s
+            elif "detectionsvc" in s_name:
+                det_svc = s
+
+    # 3. Analisar status real no Capture Site
+    fm_status_raw = fm_svc.get("status_servico") if fm_svc else None
+    fm_status_norm = get_service_status_normalized(fm_status_raw) if fm_status_raw else "Não Encontrado"
+    fm_is_running = is_service_running(fm_status_norm)
+    fm_is_installed = fm_status_norm not in ("Não Encontrado", "Inexistente", "Desconhecido") and (fm_svc is not None)
+
+    det_status_raw = det_svc.get("status_servico") if det_svc else None
+    det_status_norm = get_service_status_normalized(det_status_raw) if det_status_raw else "Não Encontrado"
+    det_is_running = is_service_running(det_status_norm)
+
+    ram_raw = fm_svc.get("ram_uso", "N/A") if fm_svc else "N/A"
+    ram_mb = parse_ram_to_mb(ram_raw)
+    cpu_raw = fm_svc.get("cpu_uso", "N/A") if fm_svc else "N/A"
+    versao = fm_svc.get("versao_instalada", "N/A") if fm_svc else "N/A"
+    last_update = fm_svc.get("ultima_atualizacao", "") if fm_svc else ""
+
+    # Caso A: FastMatching desinstalado / não encontrado no Capture Site (Ex: Montes Claros)
+    if not fm_is_installed:
+        alt_engine = "DNA.DetectionSVC" if det_is_running else ("DNA.DetectionSVC (Parado)" if det_svc else "Nenhum")
+        res = {
+            "has_detections": False,
+            "is_live": False,
+            "is_installed": False,
+            "is_running": False,
+            "service_status": "Não Encontrado",
+            "installed_version": versao,
+            "engine_in_use": alt_engine,
+            "source": f"Capture Site {matched_host} (Agente DNA.MonitorServiceSVC)",
+            "ram_usage": {
+                "timestamp": last_update,
+                "raw": "N/A",
+                "private_mb": None,
+                "working_set_mb": None,
+                "private_working_set_mb": None,
+                "formatted": "N/A (Não Instalado)"
+            },
+            "cpu_usage": "N/A",
+            "search_stats": None,
+            "spot_duration_stats": None,
+            "last_detection": None,
+            "delayed_candidates_count": 0,
+            "has_delayed_warning": False,
+            "delayed_candidates": [],
+            "catalog_reload": None,
+            "events": [
+                {
+                    "type": "INFO",
+                    "badge": "MOTOR ALTERNATIVO",
+                    "color": "blue",
+                    "timestamp": last_update or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+                    "summary": f"FastMatchingSvc não instalado neste CS01. Este nó opera com {alt_engine}."
+                }
+            ],
+            "playbook": {
+                "problem_title": f"FastMatching Não Instalado no Host ({matched_praca})",
+                "severity": "INFO",
+                "impact": f"O Capture Site opera com o motor alternativo {alt_engine}.",
+                "root_cause": "O serviço FastMatchingSvc não faz parte do catálogo deste nó ou foi migrado/desinstalado.",
+                "steps": [
+                    f"1. Validar se o motor ativo ({alt_engine}) está em execução no host.",
+                    "2. Caso a engenharia pretenda migrar para FastMatching, implantar o pacote via painel de serviços.",
+                    "3. Nenhuma ação corretiva de emergência é necessária pois a praça utiliza o pipeline correspondente."
+                ],
+                "quick_action": "none"
+            }
         }
-    ]
-    if delayed_candidates:
-        events.append({
-            "type": "WARNING",
-            "badge": "DELAYED MATCH",
-            "color": "yellow",
-            "timestamp": now_str,
-            "summary": f"Candidato com atraso: Spot #{delayed_candidates[0]['spot_id']} (Exibição: {delayed_candidates[0]['broadcast_utc']})"
-        })
-    events.append({
-        "type": "CATALOG",
-        "badge": "CONFIG RELOAD",
-        "color": "blue",
-        "timestamp": (now - timedelta(minutes=20 + (h_seed % 50))).strftime("%Y-%m-%d %H:%M:%S"),
-        "summary": f"Catálogo ConfigXml.xml recarregado: {len(spots_list)} spots ativos carregados no índice"
-    })
-    
-    calibrated_stats = compute_spot_duration_stats(spots_list)
-    parsed_mock = {
-        "has_detections": True,
-        "last_detection": last_det,
-        "has_delayed_warning": len(delayed_candidates) > 0,
-        "delayed_candidates_count": len(delayed_candidates),
-        "ram_usage": {
-            "private_mb": private_mb,
-            "working_set_mb": working_set_mb,
-            "private_working_set_mb": private_mb
+        _FASTMATCHING_FLEET_CACHE[h_str] = (time.time(), res)
+        return res
+
+    # Caso B: FastMatching instalado mas Parado no Capture Site
+    if not fm_is_running:
+        res = {
+            "has_detections": False,
+            "is_live": False,
+            "is_installed": True,
+            "is_running": False,
+            "service_status": "Parado",
+            "installed_version": versao,
+            "engine_in_use": "FastMatchingSvc (Parado)",
+            "source": f"Capture Site {matched_host} (Agente DNA.MonitorServiceSVC)",
+            "ram_usage": {
+                "timestamp": last_update,
+                "raw": ram_raw if ram_raw != "N/A" else "N/A (Serviço Parado)",
+                "private_mb": ram_mb,
+                "working_set_mb": ram_mb,
+                "private_working_set_mb": ram_mb,
+                "formatted": "Parado (N/A)"
+            },
+            "cpu_usage": "0%",
+            "search_stats": None,
+            "spot_duration_stats": None,
+            "last_detection": None,
+            "delayed_candidates_count": 0,
+            "has_delayed_warning": False,
+            "delayed_candidates": [],
+            "catalog_reload": None,
+            "events": [
+                {
+                    "type": "CRITICAL",
+                    "badge": "SERVIÇO PARADO",
+                    "color": "red",
+                    "timestamp": last_update or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+                    "summary": f"FastMatchingSvc está parado no Capture Site {matched_host}. A detecção de comerciais está interrompida."
+                }
+            ],
+            "playbook": {
+                "problem_title": f"Serviço FastMatchingSvc Parado no CS01 ({matched_praca})",
+                "severity": "CRITICAL",
+                "impact": "Parada total na esteira de detecção de comerciais ao vivo.",
+                "root_cause": "O serviço FastMatchingSvc não está em execução no services.msc do host.",
+                "steps": [
+                    f"1. Iniciar o serviço FastMatchingSvc via comando remoto no painel.",
+                    "2. Verificar no Visualizador de Eventos do Windows se houve encerramento inesperado.",
+                    "3. Confirmar que o serviço entra em status 'Em Execução' e volta a consumir recursos."
+                ],
+                "quick_action": "restart_fastmatching"
+            }
         }
-    }
-    playbook = generate_fastmatching_playbook(parsed_mock, hostname)
-    
-    ret_telemetry = {
+        _FASTMATCHING_FLEET_CACHE[h_str] = (time.time(), res)
+        return res
+
+    # Caso C: FastMatching Em Execução no Capture Site (Dados reais de telemetria)
+    res = {
         "has_detections": True,
         "is_live": False,
-        "source": f"Telemetria FastMatching C++ ({p_str} • {h_str})",
-        "spot_duration_stats": calibrated_stats,
-        "last_detection": last_det,
-        "delayed_candidates_count": len(delayed_candidates),
-        "has_delayed_warning": len(delayed_candidates) > 0,
-        "delayed_candidates": delayed_candidates,
-        "catalog_reload": {
-            "timestamp": (now - timedelta(minutes=20 + (h_seed % 50))).strftime("%Y-%m-%d %H:%M:%S"),
-            "spots_count": len(spots_list),
-            "duration_sec": 45 + (h_seed % 40),
-            "loaded_spots": [s["spot_id"] for s in spots_list[:3]]
-        },
-        "search_stats": {
-            "timestamp": now_str,
-            "packets": 2 + (h_seed % 3),
-            "content_ms": 120000,
-            "search_ms": search_ms,
-            "num_fingers": num_fingers
-        },
+        "is_installed": True,
+        "is_running": True,
+        "service_status": "Em Execução",
+        "installed_version": versao,
+        "engine_in_use": "FastMatchingSvc",
+        "source": f"Capture Site {matched_host} (Telemetria do Agente DNA.MonitorServiceSVC)",
         "ram_usage": {
-            "timestamp": now_str,
-            "private_mb": private_mb,
-            "working_set_mb": working_set_mb,
-            "private_working_set_mb": private_mb
+            "timestamp": last_update,
+            "raw": ram_raw,
+            "private_mb": ram_mb,
+            "working_set_mb": ram_mb,
+            "private_working_set_mb": ram_mb,
+            "formatted": ram_raw
         },
-        "playbook": playbook,
-        "events": events
+        "cpu_usage": cpu_raw,
+        "search_stats": None,
+        "spot_duration_stats": None,
+        "last_detection": None,
+        "delayed_candidates_count": 0,
+        "has_delayed_warning": False,
+        "delayed_candidates": [],
+        "catalog_reload": {
+            "timestamp": last_update,
+            "spots_count": 0,
+            "duration_sec": 0,
+            "loaded_spots": []
+        },
+        "events": [
+            {
+                "type": "INFO",
+                "badge": "TELEMETRIA CS",
+                "color": "green",
+                "timestamp": last_update or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+                "summary": f"Serviço em execução no Capture Site. RAM: {ram_raw} | CPU: {cpu_raw} | Versão: {versao}"
+            }
+        ],
+        "playbook": {
+            "problem_title": f"FastMatching Em Execução Nominal ({matched_praca})",
+            "severity": "NOMINAL",
+            "impact": "Motor ativo processando no Capture Site físico.",
+            "root_cause": f"Telemetria do agente no CS01 confirma processo ativo com RAM {ram_raw} e CPU {cpu_raw}.",
+            "steps": [
+                f"1. Telemetria do host {matched_host} sincronizada normalmente.",
+                "2. Acompanhar a geração contínua de comprovações na pasta data\\tracking.",
+                "3. Nenhuma intervenção técnica necessária."
+            ],
+            "quick_action": "none"
+        }
     }
-    _FASTMATCHING_FLEET_CACHE[h_str] = ret_telemetry
-    return ret_telemetry
+    _FASTMATCHING_FLEET_CACHE[h_str] = (time.time(), res)
+    return res
 
 
 def generate_fastmatching_playbook(parsed: Dict[str, Any], hostname: str = "", engine_tier: str = "PRIMARY") -> Dict[str, Any]:
@@ -1188,6 +1255,8 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
             "log_erro": s.get("log_erro", ""),
             "acao_solicitada": s.get("acao_solicitada", "Nenhuma"),
             "cs": s.get("cs", 1),
+            "ram_uso": s.get("ram_uso", "N/A"),
+            "cpu_uso": s.get("cpu_uso", "N/A"),
             "ultima_atualizacao": new_up
         }
 
@@ -2016,50 +2085,42 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
 
 
             "pipeline_services": {
-
-
-
                 "fast_matching": {
                     "name": "FastMatchingSvc",
                     "status": "Indeterminado" if (health_status == "COMM_LOST" and not fm_running) else fm_status,
                     "running": fm_running,
                     "is_stale": fm_is_stale,
                     "last_update": fm_up_str,
-
-
-
+                    "ram_uso": fm_svc.get("ram_uso", "N/A") if fm_svc else "N/A",
+                    "cpu_uso": fm_svc.get("cpu_uso", "N/A") if fm_svc else "N/A",
+                    "ram_mb": parse_ram_to_mb(fm_svc.get("ram_uso")) if fm_svc else None,
+                    "versao": fm_svc.get("versao", "N/A") if fm_svc else "N/A",
                     "role": "Estágio 1 — Motor Primário (C++) ➔ Grava em data\\detection",
-                    "is_uninstalled": fm_is_uninstalled,
                     "is_uninstalled": fm_is_uninstalled
-
-
-
                 },
-
-
-
+                "fastmatching": {
+                    "name": "FastMatchingSvc",
+                    "status": "Indeterminado" if (health_status == "COMM_LOST" and not fm_running) else fm_status,
+                    "running": fm_running,
+                    "is_stale": fm_is_stale,
+                    "last_update": fm_up_str,
+                    "ram_uso": fm_svc.get("ram_uso", "N/A") if fm_svc else "N/A",
+                    "cpu_uso": fm_svc.get("cpu_uso", "N/A") if fm_svc else "N/A",
+                    "ram_mb": parse_ram_to_mb(fm_svc.get("ram_uso")) if fm_svc else None,
+                    "versao": fm_svc.get("versao", "N/A") if fm_svc else "N/A",
+                    "role": "Estágio 1 — Motor Primário (C++) ➔ Grava em data\\detection",
+                    "is_uninstalled": fm_is_uninstalled
+                },
                 "detection_svc": {
-
-
-
                     "name": "DNA.DetectionSVC",
-
-
-
                     "status": "Indeterminado" if (health_status == "COMM_LOST" and not det_running) else det_status,
-
-
-
                     "running": det_running,
-
-
-
+                    "ram_uso": det_svc.get("ram_uso", "N/A") if det_svc else "N/A",
+                    "cpu_uso": det_svc.get("cpu_uso", "N/A") if det_svc else "N/A",
+                    "ram_mb": parse_ram_to_mb(det_svc.get("ram_uso")) if det_svc else None,
+                    "versao": det_svc.get("versao", "N/A") if det_svc else "N/A",
                     "role": "Estágio 1 — Motor Fallback (.NET) ➔ Grava em data\\detection",
-                    "is_uninstalled": det_is_uninstalled,
                     "is_uninstalled": det_is_uninstalled
-
-
-
                 },
 
 

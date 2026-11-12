@@ -919,11 +919,11 @@ function initFastMatchingDedicatedView() {
     const badgeCount = document.getElementById("badgeFastMatchingCount");
     if (!select) return;
 
-    // Filtrar apenas sites que possuem FastMatching ativo ou configurado como Primário
+    // Filtrar apenas sites que possuem FastMatching ativo e instalado (exclui nós desinstalados como Montes Claros)
     const allSites = (typeof detectionCachedSites !== "undefined" && detectionCachedSites.length > 0) ? detectionCachedSites : (typeof detectionSitesData !== "undefined" ? detectionSitesData : []);
     const fmSites = allSites.filter(s => {
-        const fm = s.pipeline_services?.fastmatching;
-        return (fm && fm.running) || s.engine_tier === "PRIMARY" || s.active_engine === "FastMatching";
+        const fm = s.pipeline_services?.fast_matching || s.pipeline_services?.fastmatching;
+        return fm && !fm.is_uninstalled && fm.status !== "Não Encontrado" && (fm.running || s.engine_tier === "PRIMARY" || s.active_engine === "FastMatching");
     });
 
     if (badgeCount) {
@@ -977,7 +977,7 @@ async function loadFastMatchingDedicatedTelemetry(hostname, praca) {
     const syncTimeEl = document.getElementById("fmLastSyncTimestamp");
     if (badgeHost) {
         badgeHost.innerHTML = `
-            <span style="background: rgba(34, 197, 94, 0.15); color: #86efac; border: 1px solid rgba(34, 197, 94, 0.35); padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700;">🟢 FastMatching Ativo</span>
+            <span style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700;">🔄 Sincronizando...</span>
             <span style="font-family: monospace; font-size: 11px; color: #94a3b8;">${hostname}</span>
         `;
     }
@@ -992,6 +992,25 @@ async function loadFastMatchingDedicatedTelemetry(hostname, praca) {
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
         const t = data.telemetry || {};
+
+        if (badgeHost) {
+            if (t.is_installed === false) {
+                badgeHost.innerHTML = `
+                    <span style="background: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.35); padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700;">⚠️ FastMatching Não Instalado (Usa ${t.engine_in_use || 'DNA.DetectionSVC'})</span>
+                    <span style="font-family: monospace; font-size: 11px; color: #94a3b8;">${hostname}</span>
+                `;
+            } else if (!t.is_running || t.service_status === "Parado") {
+                badgeHost.innerHTML = `
+                    <span style="background: rgba(239, 68, 68, 0.25); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.5); padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700;">🔴 FastMatching Parado</span>
+                    <span style="font-family: monospace; font-size: 11px; color: #94a3b8;">${hostname}</span>
+                `;
+            } else {
+                badgeHost.innerHTML = `
+                    <span style="background: rgba(34, 197, 94, 0.15); color: #86efac; border: 1px solid rgba(34, 197, 94, 0.35); padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700;">🟢 FastMatching Ativo</span>
+                    <span style="font-family: monospace; font-size: 11px; color: #94a3b8;">${hostname}</span>
+                `;
+            }
+        }
 
         if (syncTimeEl) {
             const now = new Date();
@@ -1054,8 +1073,14 @@ function renderSpotAuditCards(stats) {
             minBadgeEl.textContent = "✅ Normal (>=10s)";
         }
     } else if (minSecEl) {
-        minSecEl.textContent = "--s";
-        if (minIdEl) minIdEl.textContent = "Nenhum spot";
+        minSecEl.textContent = "N/A";
+        if (minIdEl) minIdEl.textContent = "Sem log local";
+        if (minBadgeEl) {
+            minBadgeEl.style.background = "rgba(100, 116, 139, 0.2)";
+            minBadgeEl.style.color = "#94a3b8";
+            minBadgeEl.style.border = "1px solid rgba(100, 116, 139, 0.4)";
+            minBadgeEl.textContent = "Telemetria CS";
+        }
     }
 
     // Maior Spot
@@ -1074,14 +1099,20 @@ function renderSpotAuditCards(stats) {
             maxBadgeEl.textContent = "✅ Normal (<=60s)";
         }
     } else if (maxSecEl) {
-        maxSecEl.textContent = "--s";
-        if (maxIdEl) maxIdEl.textContent = "Nenhum spot";
+        maxSecEl.textContent = "N/A";
+        if (maxIdEl) maxIdEl.textContent = "Sem log local";
+        if (maxBadgeEl) {
+            maxBadgeEl.style.background = "rgba(100, 116, 139, 0.2)";
+            maxBadgeEl.style.color = "#94a3b8";
+            maxBadgeEl.style.border = "1px solid rgba(100, 116, 139, 0.4)";
+            maxBadgeEl.textContent = "Telemetria CS";
+        }
     }
 
     // Médias
-    if (avgSecEl) avgSecEl.textContent = `${stats.avg_duration_sec || 0}s`;
-    if (totalCountEl) totalCountEl.textContent = `${stats.total_spots || 0} spots`;
-    if (ratioEl) ratioEl.textContent = `${stats.ratio_max_min || 1}x`;
+    if (avgSecEl) avgSecEl.textContent = stats.avg_duration_sec ? `${stats.avg_duration_sec}s` : "N/A";
+    if (totalCountEl) totalCountEl.textContent = stats.total_spots ? `${stats.total_spots} spots` : "N/A (Sem log)";
+    if (ratioEl) ratioEl.textContent = stats.ratio_max_min ? `${stats.ratio_max_min}x` : "-";
 
     // Banner de Divergência
     if (bannerEl) {
@@ -1091,11 +1122,16 @@ function renderSpotAuditCards(stats) {
             bannerEl.style.border = "1px solid rgba(220, 38, 38, 0.45)";
             bannerEl.style.color = "#fecaca";
             bannerEl.innerHTML = `<span>🚨</span> <div>${stats.divergence_message}</div>`;
-        } else {
+        } else if (minSpot) {
             bannerEl.style.background = "rgba(34, 197, 94, 0.12)";
             bannerEl.style.border = "1px solid rgba(34, 197, 94, 0.35)";
             bannerEl.style.color = "#86efac";
             bannerEl.innerHTML = `<span>✅</span> <div>${stats.divergence_message || "Cadastro consistente no SGG: todos os spots dentro do intervalo comercial padrão."}</div>`;
+        } else {
+            bannerEl.style.background = "rgba(56, 189, 248, 0.1)";
+            bannerEl.style.border = "1px solid rgba(56, 189, 248, 0.3)";
+            bannerEl.style.color = "#93c5fd";
+            bannerEl.innerHTML = `<span>ℹ️</span> <div>Telemetria de processo ativa via Capture Site. Detalhes de catálogo de spots requerem fma.log local ou sincronização via SGG.</div>`;
         }
     }
 }
@@ -1128,9 +1164,13 @@ function renderFmLogTelemetry(t) {
             procBadge.textContent = "⚠️ Proc Elevado";
         }
     } else if (procVal) {
-        procVal.textContent = "1037ms";
-        if (procBadge) procBadge.textContent = "⚡ Nominal";
-        if (lastSummary) lastSummary.textContent = "Coleta ativa nominal";
+        procVal.textContent = "N/A (Sem log)";
+        if (procBadge) {
+            procBadge.style.background = "rgba(100, 116, 139, 0.2)";
+            procBadge.style.color = "#94a3b8";
+            procBadge.textContent = "Telemetria CS";
+        }
+        if (lastSummary) lastSummary.textContent = t.is_installed === false ? "FastMatching desinstalado no CS01" : "Serviço ativo no Capture Site (Sem fma.log em disco)";
     }
 
     const delCount = t.delayed_candidates_count || 0;
@@ -1152,16 +1192,21 @@ function renderFmLogTelemetry(t) {
     const ram = t.ram_usage;
     const search = t.search_stats;
     if (ramVal && ramBadge && searchSummary) {
-        const valMb = ram?.working_set_mb || ram?.private_mb || ram?.private_working_set_mb || (search?.num_fingers ? Math.round(350 + search.num_fingers * 0.052) : null);
-        if (valMb) {
+        const rawFormatted = ram?.formatted || ram?.raw;
+        const valMb = ram?.working_set_mb || ram?.private_mb || ram?.private_working_set_mb;
+        if (rawFormatted && rawFormatted !== "N/A") {
+            ramVal.textContent = rawFormatted;
+        } else if (valMb) {
             ramVal.textContent = `${valMb} MB`;
+        } else if (t.is_installed === false) {
+            ramVal.textContent = "N/A (Não Instalado)";
         } else {
-            ramVal.textContent = "Sob Demanda";
+            ramVal.textContent = "N/A";
         }
         if (search) {
-            searchSummary.textContent = `SearchStats: ${search.num_fingers ? search.num_fingers.toLocaleString() : '8442'} fingers (${search.packets || 2} ccd pkts em ${search.search_ms || 87.9}ms)`;
+            searchSummary.textContent = `SearchStats: ${search.num_fingers ? search.num_fingers.toLocaleString() : '0'} fingers (${search.packets || 0} ccd pkts em ${search.search_ms || 0}ms)`;
         } else {
-            searchSummary.textContent = "SearchStats: Em sincronização";
+            searchSummary.textContent = t.is_installed === false ? "Motor clássico: DNA.DetectionSVC" : "Telemetria de processo do Capture Site";
         }
     }
 }
@@ -1613,86 +1658,101 @@ function renderFastMatchingFleetTable(filterStatus = currentFmFleetFilter, searc
 
     const enrichedList = fmSites.map(s => {
         const t = s.fastmatching_telemetry || {};
-        const lastDet = t.last_detection || {};
-        const procMs = lastDet.proc_time_ms || 1037;
+        const fmPipeline = s.pipeline_services?.fast_matching || s.pipeline_services?.fastmatching;
+        const fmInstalled = (t.is_installed !== false) && (!fmPipeline || !fmPipeline.is_uninstalled);
+        const fmRunning = (t.is_running !== false) && (!fmPipeline || fmPipeline.running);
+
+        const lastDet = t.last_detection;
+        const procMs = lastDet ? lastDet.proc_time_ms : null;
         const delayedCount = t.delayed_candidates_count || 0;
-        const searchStats = t.search_stats || {};
-        const numFingers = searchStats.num_fingers || 0;
-        const searchMs = searchStats.search_ms || 87.95;
-        const ramMb = t.ram_usage?.private_working_set_mb || t.ram_usage?.private_mb || t.ram_usage?.working_set_mb || (numFingers ? Math.round(350 + numFingers * 0.052) : null);
-        const spotStats = t.spot_duration_stats || {};
-        const minSec = spotStats.min_spot?.duration_sec ?? 15.0;
-        const maxSec = spotStats.max_spot?.duration_sec ?? 60.0;
-        const hasDivergence = spotStats.has_divergence_alert || false;
+        const searchStats = t.search_stats;
+        const numFingers = searchStats ? searchStats.num_fingers : null;
+        const searchMs = searchStats ? searchStats.search_ms : null;
 
-        // =========================================================================
-        // MOTOR INTELIGENTE DE IMPACTO REAL & ANTI-FLAPPING (HISTERESE TEMPORAL)
-        // Evita falsos alarmes transitórios e oscilações ("fica indo e voltando")
-        // =========================================================================
-        const isProcTimeSlow = procMs >= 2200;
-        const isProcTimeCritical = procMs >= 3000;
-        
-        // Atrasos no buffer: 1 soluço isolado com ProcTime veloz é reabsorvido sem impacto operacional
-        const isTransientHiccup = delayedCount === 1 && procMs < 1600;
-        const isBufferStalled = delayedCount >= 3 || (delayedCount >= 2 && procMs >= 1600);
-        const isBufferCritical = delayedCount >= 5;
-
-        // Memória C++
-        const isRamWarning = ramMb >= 6000;
-        const isRamCritical = ramMb >= 8000;
-
-        // Divergência SGG: Só gera alerta se estiver gerando impacto real (lentidão ou acúmulo)
-        const isDivergenceWithImpact = hasDivergence && (procMs >= 1800 || searchMs >= 200 || delayedCount >= 2);
-        const isDivergenceCatalogOnly = hasDivergence && !isDivergenceWithImpact;
-
-        // Varredura Saturada
-        const isScanSaturated = numFingers > 80000 || searchMs > 400;
-
-        // Classificação Efetiva de Impacto
-        const isCriticalImpact = isProcTimeCritical || isBufferCritical || isRamCritical;
-        const isWarningImpact = isProcTimeSlow || isBufferStalled || isRamWarning || isDivergenceWithImpact || isScanSaturated;
+        const ramFormatted = t.ram_usage?.formatted || fmPipeline?.ram_uso || (t.ram_usage?.private_mb ? `${t.ram_usage.private_mb} MB` : (fmPipeline?.ram_mb ? `${fmPipeline.ram_mb} MB` : null));
+        const ramMb = t.ram_usage?.private_mb || fmPipeline?.ram_mb || null;
+        const spotStats = t.spot_duration_stats;
+        const minSec = spotStats?.min_spot?.duration_sec ?? null;
+        const maxSec = spotStats?.max_spot?.duration_sec ?? null;
+        const hasDivergence = spotStats?.has_divergence_alert || false;
 
         let condition = "NOMINAL";
         let conditionLabel = "🟢 Boa (Nominal)";
         let conditionBadgeStyle = "background: rgba(34, 197, 94, 0.15); color: #86efac; border: 1px solid rgba(34, 197, 94, 0.4);";
-        let diagDesc = "Motor operando em tempo real com excelente velocidade e sincronismo.";
+        let diagDesc = "Motor operando em tempo real no Capture Site.";
         let impactCategory = "NOMINAL";
 
-        if (isCriticalImpact) {
-            condition = "CRITICAL";
-            conditionLabel = "🔴 Ruim (Crítica)";
-            conditionBadgeStyle = "background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.45);";
-            impactCategory = "CRITICAL_IMPACT";
-            if (isProcTimeCritical) diagDesc = `Varredura Crítica: ProcTimeMs (${procMs}ms) > 3000ms. Risco de perda de blocos.`;
-            else if (isBufferCritical) diagDesc = `Buffer Represado Crítico: ${delayedCount} candidatos acumulados sem correlação.`;
-            else diagDesc = `Risco de Crash OOM: Private Working Set (${ramMb} MB) > 8000 MB.`;
-            countCritical++;
-        } else if (isWarningImpact) {
+        if (!fmInstalled) {
             condition = "WARNING";
-            conditionLabel = "🟡 Alerta (Impacto Real)";
-            conditionBadgeStyle = "background: rgba(234, 179, 8, 0.15); color: #fde047; border: 1px solid rgba(234, 179, 8, 0.4);";
-            impactCategory = "WARNING_IMPACT";
-            if (isBufferStalled) diagDesc = `Buffer Defasado Persistente: ${delayedCount} ocorrências contínuas de atraso.`;
-            else if (isProcTimeSlow) diagDesc = `ProcTime em elevação persistente (${procMs}ms). Sobrecarga de CPU/disco.`;
-            else if (isDivergenceWithImpact) diagDesc = `Divergência SGG gerando lentidão (${procMs}ms). Spots anômalos (${minSec}s x ${maxSec}s).`;
-            else if (isRamWarning) diagDesc = `Memória em elevação contínua (${ramMb} MB). Monitorar fragmentação.`;
-            else diagDesc = `Catálogo saturado (${numFingers} huellas). Varredura operando em ${searchMs}ms.`;
+            conditionLabel = "⚪ Desinstalado";
+            conditionBadgeStyle = "background: rgba(100, 116, 139, 0.2); color: #cbd5e1; border: 1px solid rgba(100, 116, 139, 0.4);";
+            diagDesc = `FastMatchingSvc não instalado no nó. Opera via ${t.engine_in_use || 'DNA.DetectionSVC'}.`;
             countWarning++;
-        } else if (isTransientHiccup) {
-            condition = "NOMINAL";
-            conditionLabel = "🟢 Boa (Soluço Reabsorvido)";
-            conditionBadgeStyle = "background: rgba(34, 197, 94, 0.15); color: #86efac; border: 1px solid rgba(34, 197, 94, 0.4);";
-            diagDesc = `Soluço transitório reabsorvido (1 atraso pontual). ProcTime veloz (${procMs}ms) e esteira em tempo real sem impacto no SLA.`;
-            impactCategory = "TRANSIENT_RECOVERED";
-            countGood++;
-        } else if (isDivergenceCatalogOnly) {
-            condition = "NOMINAL";
-            conditionLabel = "🟢 Boa (Nota SGG)";
-            conditionBadgeStyle = "background: rgba(34, 197, 94, 0.15); color: #86efac; border: 1px solid rgba(34, 197, 94, 0.4);";
-            diagDesc = `Cadastro SGG com spot anômalo (${minSec}s x ${maxSec}s), mas esteira sem impacto operacional: ProcTime excelente (${procMs}ms).`;
-            impactCategory = "CATALOG_NOTE_NO_IMPACT";
-            countGood++;
+        } else if (!fmRunning) {
+            condition = "CRITICAL";
+            conditionLabel = "🔴 Serviço Parado";
+            conditionBadgeStyle = "background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.45);";
+            diagDesc = `FastMatchingSvc parado no CS01 (${s.praca}). Ação: Iniciar serviço via painel.`;
+            countCritical++;
+        } else if (procMs !== null) {
+            // MOTOR INTELIGENTE DE IMPACTO REAL & ANTI-FLAPPING
+            const isProcTimeSlow = procMs >= 2200;
+            const isProcTimeCritical = procMs >= 3000;
+            const isTransientHiccup = delayedCount === 1 && procMs < 1600;
+            const isBufferStalled = delayedCount >= 3 || (delayedCount >= 2 && procMs >= 1600);
+            const isBufferCritical = delayedCount >= 5;
+            const isRamWarning = ramMb && ramMb >= 6000;
+            const isRamCritical = ramMb && ramMb >= 8000;
+            const isDivergenceWithImpact = hasDivergence && (procMs >= 1800 || (searchMs && searchMs >= 200) || delayedCount >= 2);
+            const isDivergenceCatalogOnly = hasDivergence && !isDivergenceWithImpact;
+            const isScanSaturated = (numFingers && numFingers > 80000) || (searchMs && searchMs > 400);
+
+            const isCriticalImpact = isProcTimeCritical || isBufferCritical || isRamCritical;
+            const isWarningImpact = isProcTimeSlow || isBufferStalled || isRamWarning || isDivergenceWithImpact || isScanSaturated;
+
+            if (isCriticalImpact) {
+                condition = "CRITICAL";
+                conditionLabel = "🔴 Ruim (Crítica)";
+                conditionBadgeStyle = "background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.45);";
+                impactCategory = "CRITICAL_IMPACT";
+                if (isProcTimeCritical) diagDesc = `Varredura Crítica: ProcTimeMs (${procMs}ms) > 3000ms. Risco de perda de blocos.`;
+                else if (isBufferCritical) diagDesc = `Buffer Represado Crítico: ${delayedCount} candidatos acumulados sem correlação.`;
+                else diagDesc = `Risco de Crash OOM: Private Working Set (${ramMb} MB) > 8000 MB.`;
+                countCritical++;
+            } else if (isWarningImpact) {
+                condition = "WARNING";
+                conditionLabel = "🟡 Alerta (Impacto Real)";
+                conditionBadgeStyle = "background: rgba(234, 179, 8, 0.15); color: #fde047; border: 1px solid rgba(234, 179, 8, 0.4);";
+                impactCategory = "WARNING_IMPACT";
+                if (isBufferStalled) diagDesc = `Buffer Defasado Persistente: ${delayedCount} ocorrências contínuas de atraso.`;
+                else if (isProcTimeSlow) diagDesc = `ProcTime em elevação persistente (${procMs}ms). Sobrecarga de CPU/disco.`;
+                else if (isDivergenceWithImpact) diagDesc = `Divergência SGG gerando lentidão (${procMs}ms). Spots anômalos (${minSec}s x ${maxSec}s).`;
+                else if (isRamWarning) diagDesc = `Memória em elevação contínua (${ramMb} MB). Monitorar fragmentação.`;
+                else diagDesc = `Catálogo saturado (${numFingers} huellas). Varredura operando em ${searchMs}ms.`;
+                countWarning++;
+            } else if (isTransientHiccup) {
+                condition = "NOMINAL";
+                conditionLabel = "🟢 Boa (Soluço Reabsorvido)";
+                conditionBadgeStyle = "background: rgba(34, 197, 94, 0.15); color: #86efac; border: 1px solid rgba(34, 197, 94, 0.4);";
+                diagDesc = `Soluço transitório reabsorvido (1 atraso pontual). ProcTime veloz (${procMs}ms) e esteira em tempo real sem impacto no SLA.`;
+                impactCategory = "TRANSIENT_RECOVERED";
+                countGood++;
+            } else if (isDivergenceCatalogOnly) {
+                condition = "NOMINAL";
+                conditionLabel = "🟢 Boa (Nota SGG)";
+                conditionBadgeStyle = "background: rgba(34, 197, 94, 0.15); color: #86efac; border: 1px solid rgba(34, 197, 94, 0.4);";
+                diagDesc = `Cadastro SGG com spot anômalo (${minSec}s x ${maxSec}s), mas esteira sem impacto operacional: ProcTime excelente (${procMs}ms).`;
+                impactCategory = "CATALOG_NOTE_NO_IMPACT";
+                countGood++;
+            } else {
+                countGood++;
+            }
         } else {
+            condition = "NOMINAL";
+            conditionLabel = "🟢 Em Execução (CS)";
+            conditionBadgeStyle = "background: rgba(34, 197, 94, 0.15); color: #86efac; border: 1px solid rgba(34, 197, 94, 0.4);";
+            diagDesc = `Telemetria CS ativa (${s.praca}). RAM: ${ramFormatted || 'N/A'}. Processo em execução nominal.`;
+            impactCategory = "NOMINAL";
             countGood++;
         }
 
@@ -1707,11 +1767,14 @@ function renderFastMatchingFleetTable(filterStatus = currentFmFleetFilter, searc
             procMs,
             delayedCount,
             ramMb,
+            ramFormatted,
             minSec,
             maxSec,
             hasDivergence,
             numFingers,
-            searchMs
+            searchMs,
+            fmInstalled,
+            fmRunning
         };
     });
     window.currentFmFleetEnrichedList = enrichedList;
@@ -1789,23 +1852,22 @@ function renderFastMatchingFleetTable(filterStatus = currentFmFleetFilter, searc
                     </span>
                 </td>
                 <td style="padding: 10px 12px;">
-                    <div style="font-weight: 800; font-size: 12px; color: ${procColor}; font-family: monospace;">
-                        ⚡ ${item.procMs} ms
+                    <div style="font-weight: 800; font-size: 12px; color: ${item.procMs !== null ? procColor : '#64748b'}; font-family: monospace;">
+                        ${item.procMs !== null ? `⚡ ${item.procMs} ms` : 'N/A (Sem log)'}
                     </div>
-                    <div style="font-size: 9px; color: #64748b;">${item.procMs < 1500 ? 'Excelente (<1.5s)' : (item.procMs < 3000 ? 'Alerta (>1.5s)' : 'Crítico (>3.0s)')}</div>
+                    <div style="font-size: 9px; color: #64748b;">${item.procMs !== null ? (item.procMs < 1500 ? 'Excelente (<1.5s)' : (item.procMs < 3000 ? 'Alerta (>1.5s)' : 'Crítico (>3.0s)')) : 'Telemetria CS'}</div>
                 </td>
                 <td style="padding: 10px 12px;">
-                    ${delayedBadge}
+                    ${item.procMs !== null ? delayedBadge : '<span style="color:#64748b;">-</span>'}
                 </td>
                 <td style="padding: 10px 12px; font-family: monospace; color: #cbd5e1;">
-                    <strong>${item.ramMb ? `${item.ramMb} MB` : '<span style="color:#64748b;">N/D</span>'}</strong>
+                    <strong>${item.ramFormatted || (item.ramMb ? `${item.ramMb} MB` : '<span style="color:#64748b;">N/A</span>')}</strong>
                 </td>
                 <td style="padding: 10px 12px;">
-                    ${spotBadge}
+                    ${item.minSec !== null ? spotBadge : '<span style="color:#64748b;">N/A (Sem log)</span>'}
                 </td>
                 <td style="padding: 10px 12px; font-family: monospace; color: #94a3b8; font-size: 10px;">
-                    <div>${item.numFingers} huellas</div>
-                    <div style="color: #64748b;">${item.searchMs} ms</div>
+                    ${item.numFingers !== null ? `<div>${item.numFingers} huellas</div><div style="color: #64748b;">${item.searchMs} ms</div>` : '<div style="color: #64748b;">-</div>'}
                 </td>
                 <td style="padding: 10px 12px; max-width: 270px;">
                     <div style="color: #cbd5e1; font-size: 10.5px; line-height: 1.3; margin-bottom: 4px;">${item.diagDesc}</div>
@@ -1957,27 +2019,37 @@ function openFmHowToModal(hostname, condition) {
             : (typeof detectionSitesData !== "undefined" ? detectionSitesData : []);
         const s = allSites.find(s => s.hostname === hostname) || { hostname, praca: hostname };
         const t = s.fastmatching_telemetry || {};
-        const lastDet = t.last_detection || {};
-        const procMs = lastDet.proc_time_ms || 1037;
-        const delayedCount = t.delayed_candidates_count || (t.delayed_candidates || []).length || 0;
-        const searchStats = t.search_stats || {};
-        const numFingers = searchStats.num_fingers || 0;
-        const ramMb = t.ram_usage?.private_working_set_mb || t.ram_usage?.private_mb || t.ram_usage?.working_set_mb || (numFingers ? Math.round(350 + numFingers * 0.052) : null) || item?.ramMb;
-        const spotStats = t.spot_duration_stats || {};
-        const minSec = spotStats.min_spot_duration_sec ?? 15.0;
-        const maxSec = spotStats.max_spot_duration_sec ?? 60.0;
-        const hasDivergence = spotStats.has_divergence_alert || false;
+        const fmPipeline = s.pipeline_services?.fast_matching || s.pipeline_services?.fastmatching;
+        const fmInstalled = (t.is_installed !== false) && (!fmPipeline || !fmPipeline.is_uninstalled);
+        const fmRunning = (t.is_running !== false) && (!fmPipeline || fmPipeline.running);
+        const lastDet = t.last_detection;
+        const procMs = lastDet ? lastDet.proc_time_ms : null;
+        const delayedCount = t.delayed_candidates_count || 0;
+        const searchStats = t.search_stats;
+        const numFingers = searchStats ? searchStats.num_fingers : null;
+        const searchMs = searchStats ? searchStats.search_ms : null;
+        const ramFormatted = t.ram_usage?.formatted || fmPipeline?.ram_uso || (t.ram_usage?.private_mb ? `${t.ram_usage.private_mb} MB` : (fmPipeline?.ram_mb ? `${fmPipeline.ram_mb} MB` : null));
+        const ramMb = t.ram_usage?.private_mb || fmPipeline?.ram_mb || null;
+        const spotStats = t.spot_duration_stats;
+        const minSec = spotStats?.min_spot?.duration_sec ?? null;
+        const maxSec = spotStats?.max_spot?.duration_sec ?? null;
+        const hasDivergence = spotStats?.has_divergence_alert || false;
 
         item = {
             hostname,
             praca: s.praca || hostname,
-            condition: condition || (procMs >= 3000 ? "CRITICAL" : (procMs >= 1600 ? "WARNING" : "NOMINAL")),
+            condition: condition || (procMs !== null ? (procMs >= 3000 ? "CRITICAL" : (procMs >= 1600 ? "WARNING" : "NOMINAL")) : (fmRunning ? "NOMINAL" : "CRITICAL")),
             procMs,
             delayedCount,
             ramMb,
+            ramFormatted,
             minSec,
             maxSec,
             hasDivergence,
+            numFingers,
+            searchMs,
+            fmInstalled,
+            fmRunning,
             diagDesc: ""
         };
     }
@@ -1986,6 +2058,7 @@ function openFmHowToModal(hostname, condition) {
     const procMs = item.procMs;
     const delayedCount = item.delayedCount;
     const ramMb = item.ramMb;
+    const ramFormatted = item.ramFormatted || (ramMb ? `${ramMb} MB` : "N/A");
     const minSec = item.minSec;
     const maxSec = item.maxSec;
     const hasDivergence = item.hasDivergence;
@@ -1999,9 +2072,13 @@ function openFmHowToModal(hostname, condition) {
     }
 
     let badgeCond = `<span style="background: rgba(34, 197, 94, 0.15); color: #86efac; border: 1px solid rgba(34, 197, 94, 0.35); padding: 3px 8px; border-radius: 4px; font-weight: 700; font-size: 11px;">🟢 Operação Saudável (Nominal)</span>`;
-    if (cond === "CRITICAL" || procMs >= 3000 || delayedCount >= 5 || ramMb >= 8000) {
+    if (item.fmInstalled === false) {
+        badgeCond = `<span style="background: rgba(100, 116, 139, 0.2); color: #cbd5e1; border: 1px solid rgba(100, 116, 139, 0.45); padding: 3px 8px; border-radius: 4px; font-weight: 700; font-size: 11px;">⚪ FastMatching Não Instalado</span>`;
+    } else if (item.fmRunning === false) {
+        badgeCond = `<span style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.45); padding: 3px 8px; border-radius: 4px; font-weight: 700; font-size: 11px;">🔴 Serviço Parado (Ação Imediata P0)</span>`;
+    } else if (cond === "CRITICAL" || (procMs !== null && procMs >= 3000) || delayedCount >= 5 || (ramMb && ramMb >= 8000)) {
         badgeCond = `<span style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.45); padding: 3px 8px; border-radius: 4px; font-weight: 700; font-size: 11px;">🔴 Falha Crítica (Ação Imediata P0)</span>`;
-    } else if (cond === "WARNING" || procMs >= 1600 || delayedCount > 0 || hasDivergence || ramMb >= 6000) {
+    } else if (cond === "WARNING" || (procMs !== null && procMs >= 1600) || delayedCount > 0 || hasDivergence || (ramMb && ramMb >= 6000)) {
         badgeCond = `<span style="background: rgba(234, 179, 8, 0.2); color: #fde047; border: 1px solid rgba(234, 179, 8, 0.45); padding: 3px 8px; border-radius: 4px; font-weight: 700; font-size: 11px;">🟡 Alerta Operacional P1</span>`;
     }
 
@@ -2009,8 +2086,51 @@ function openFmHowToModal(hostname, condition) {
     let primaryActionBtn = "";
     let secondaryActionBtn = "";
 
-    // 1. CASO CRÍTICO: Sobrecarga de CPU / Varredura Lenta (ProcTimeMs >= 3000ms) - Caso São Paulo (3747ms)
-    if (cond === "CRITICAL" || procMs >= 3000) {
+    // 0. CASO NÃO INSTALADO
+    if (item.fmInstalled === false) {
+        specificPlaybookSteps = `
+            <div style="background: rgba(100, 116, 139, 0.15); border: 1px solid rgba(100, 116, 139, 0.4); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+                <div style="font-weight: 800; color: #93c5fd; font-size: 13px; margin-bottom: 6px;">ℹ️ FastMatchingSvc Não Instalado Neste CS01</div>
+                <div style="font-size: 11px; color: #cbd5e1; line-height: 1.45;">
+                    O nó <strong>${hostname}</strong> (${pracaName}) não possui o binário FastMatching C++ instalado no Capture Site. A praça opera com o motor clássico <strong>DNA.DetectionSVC</strong>.
+                </div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                <div style="background: #1e293b; padding: 12px 14px; border-radius: 6px; font-size: 11.5px; color: #e2e8f0; line-height: 1.4;">
+                    <strong style="color: #38bdf8;">Passo 1:</strong> Validar se <code>DNA.DetectionSVC</code> está em execução normal neste nó.
+                </div>
+                <div style="background: #1e293b; padding: 12px 14px; border-radius: 6px; font-size: 11.5px; color: #e2e8f0; line-height: 1.4;">
+                    <strong style="color: #38bdf8;">Passo 2:</strong> Nenhuma intervenção técnica imediata é necessária pois este nó não utiliza a pipeline FastMatching.
+                </div>
+            </div>
+        `;
+    }
+    // 1. CASO SERVIÇO PARADO
+    else if (item.fmRunning === false) {
+        specificPlaybookSteps = `
+            <div style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+                <div style="font-weight: 800; color: #fca5a5; font-size: 13px; margin-bottom: 6px;">🚨 Serviço FastMatchingSvc Parado no CS01</div>
+                <div style="font-size: 11px; color: #cbd5e1; line-height: 1.45;">
+                    O serviço FastMatchingSvc está em status <strong>Parado</strong> no Windows do Capture Site. A detecção de comerciais está interrompida neste nó.
+                </div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                <div style="background: #1e293b; padding: 12px 14px; border-radius: 6px; font-size: 11.5px; color: #e2e8f0; line-height: 1.4;">
+                    <strong style="color: #f87171;">Passo 1:</strong> Disparar comando remoto PowerShell para iniciar o serviço imediatamente.
+                </div>
+                <div style="background: #1e293b; padding: 12px 14px; border-radius: 6px; font-size: 11.5px; color: #e2e8f0; line-height: 1.4;">
+                    <strong style="color: #f87171;">Passo 2:</strong> Acompanhar telemetria para confirmar que o processo voltou ao estado de execução nominal.
+                </div>
+            </div>
+        `;
+        primaryActionBtn = `
+            <button type="button" onclick="triggerFmRemoteRemediation('${hostname}', 'restart_fastmatching', this)" style="background: linear-gradient(135deg, #dc2626, #ef4444); color: #fff; border: none; padding: 9px 18px; border-radius: 6px; font-weight: 700; font-size: 11px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 14px rgba(239, 68, 68, 0.4);">
+                <span>🚀</span> Iniciar / Reiniciar FastMatchingSvc Remotamente
+            </button>
+        `;
+    }
+    // 2. CASO CRÍTICO: Sobrecarga de CPU / Varredura Lenta (ProcTimeMs >= 3000ms ou cond == "CRITICAL")
+    else if (cond === "CRITICAL" || (procMs !== null && procMs >= 3000)) {
         specificPlaybookSteps = `
             <div style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
                 <div style="font-weight: 800; color: #fca5a5; font-size: 13px; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
@@ -2164,7 +2284,9 @@ function openFmHowToModal(hostname, condition) {
             <div style="background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
                 <div style="font-weight: 800; color: #86efac; font-size: 13px; margin-bottom: 6px;">🟢 Operação Saudável e Nominal</div>
                 <div style="font-size: 11px; color: #cbd5e1; line-height: 1.45;">
-                    O nó está operando com ProcTime excelente (<strong>${procMs}ms</strong>), 0 candidatos atrasados e spots no padrão de conformidade (15s a 60s).
+                    ${procMs !== null
+                        ? `O nó está operando com ProcTime excelente (<strong>${procMs}ms</strong>), 0 candidatos atrasados e spots no padrão de conformidade (15s a 60s).`
+                        : `O serviço FastMatchingSvc está em execução no Capture Site físico com <strong>RAM: ${ramFormatted}</strong>. Nenhum desvio ou travamento registrado no agente de telemetria.`}
                 </div>
             </div>
             <div style="background: #1e293b; padding: 12px 14px; border-radius: 6px; font-size: 11.5px; color: #94a3b8; line-height: 1.4;">
@@ -2191,19 +2313,19 @@ function openFmHowToModal(hostname, condition) {
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 16px;">
             <div style="background: rgba(15, 23, 42, 0.6); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.06);">
                 <div style="font-size: 10px; color: #94a3b8;">ProcTimeMs</div>
-                <div style="font-size: 16px; font-weight: 800; color: ${procMs < 1500 ? '#86efac' : (procMs < 3000 ? '#fde047' : '#fca5a5')}; font-family: monospace;">${procMs} ms</div>
+                <div style="font-size: 16px; font-weight: 800; color: ${procMs !== null ? (procMs < 1500 ? '#86efac' : (procMs < 3000 ? '#fde047' : '#fca5a5')) : '#94a3b8'}; font-family: monospace;">${procMs !== null ? `⚡ ${procMs} ms` : 'N/A (Sem log)'}</div>
             </div>
             <div style="background: rgba(15, 23, 42, 0.6); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.06);">
                 <div style="font-size: 10px; color: #94a3b8;">Atrasos Buffer</div>
-                <div style="font-size: 16px; font-weight: 800; color: ${delayedCount === 0 ? '#86efac' : '#fde047'}; font-family: monospace;">${delayedCount}</div>
+                <div style="font-size: 16px; font-weight: 800; color: ${delayedCount === 0 ? '#86efac' : '#fde047'}; font-family: monospace;">${procMs !== null ? delayedCount : '-'}</div>
             </div>
             <div style="background: rgba(15, 23, 42, 0.6); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.06);">
-                <div style="font-size: 10px; color: #94a3b8;">RAM C++ (Private)</div>
-                <div style="font-size: 16px; font-weight: 800; color: #c084fc; font-family: monospace;">${ramMb ? `${ramMb} MB` : 'Sob Demanda'}</div>
+                <div style="font-size: 10px; color: #94a3b8;">Memória RAM (Capture Site)</div>
+                <div style="font-size: 16px; font-weight: 800; color: #c084fc; font-family: monospace;">${ramFormatted}</div>
             </div>
             <div style="background: rgba(15, 23, 42, 0.6); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.06);">
                 <div style="font-size: 10px; color: #94a3b8;">Spots Menor x Maior</div>
-                <div style="font-size: 16px; font-weight: 800; color: ${hasDivergence ? '#fca5a5' : '#cbd5e1'}; font-family: monospace;">${minSec}s x ${maxSec}s</div>
+                <div style="font-size: 16px; font-weight: 800; color: ${hasDivergence ? '#fca5a5' : '#cbd5e1'}; font-family: monospace;">${minSec !== null ? `${minSec}s x ${maxSec}s` : 'N/A (Sem log)'}</div>
             </div>
         </div>
 

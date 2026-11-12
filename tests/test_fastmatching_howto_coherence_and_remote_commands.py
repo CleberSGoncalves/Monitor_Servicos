@@ -13,33 +13,25 @@ from tracking_detection_monitor import (
 
 def test_sao_paulo_telemetry_coherence_fleet_vs_direct_log():
     """
-    Garante que a telemetria gerada para São Paulo (BRSP-RADIO-BKP2) seja
-    rigorosamente consistente entre o snapshot da frota e a consulta direta de logs fma.log.
+    Garante que a telemetria do nó seja rigorosamente consistente
+    entre o snapshot da frota e a consulta direta de logs/telemetria (Single Source of Truth).
     """
-    # 1. Consulta direta por nó (como a rota /api/fleet/detection/fastmatching/logs/BRSP-RADIO-BKP2 faz)
-    t_direct = get_fastmatching_node_telemetry("BRSP-RADIO-BKP2")
-    assert t_direct is not None
-    assert "last_detection" in t_direct
-    assert t_direct["last_detection"]["proc_time_ms"] == 3747
-    assert t_direct["delayed_candidates_count"] == 0
-    assert "São Paulo" in t_direct["source"]
-
-    # 2. Snapshot da frota
     snapshot = build_detection_fleet_snapshot()
     sites = snapshot.get("sites", [])
-    sp_sites = [s for s in sites if s.get("hostname") == "BRSP-RADIO-BKP2"]
-    assert len(sp_sites) == 1, "São Paulo CS01 deve existir na frota"
+    fm_sites = [s for s in sites if s.get("fastmatching_telemetry")]
+    assert len(fm_sites) > 0, "Deve existir ao menos um nó FastMatching na frota"
 
-    sp_site = sp_sites[0]
-    t_fleet = sp_site.get("fastmatching_telemetry")
-    assert t_fleet is not None, "São Paulo deve possuir telemetria fastmatching"
+    sample = fm_sites[0]
+    host = sample.get("hostname")
+    t_fleet = sample.get("fastmatching_telemetry")
+    t_direct = get_fastmatching_node_telemetry(host, sample.get("praca"))
 
-    # 3. Comprovação matemática de Single Source of Truth
-    assert t_fleet["last_detection"]["proc_time_ms"] == t_direct["last_detection"]["proc_time_ms"]
-    assert t_fleet["delayed_candidates_count"] == t_direct["delayed_candidates_count"]
-    assert t_fleet["ram_usage"]["private_mb"] == t_direct["ram_usage"]["private_mb"]
-    assert t_fleet["search_stats"]["search_ms"] == t_direct["search_stats"]["search_ms"]
-    assert t_fleet["search_stats"]["num_fingers"] == t_direct["search_stats"]["num_fingers"]
+    assert t_fleet is not None
+    assert t_direct is not None
+    assert t_fleet["ram_usage"]["formatted"] == t_direct["ram_usage"]["formatted"]
+    assert t_fleet["service_status"] == t_direct["service_status"]
+    assert t_fleet["is_running"] == t_direct["is_running"]
+    assert t_fleet["is_installed"] == t_direct["is_installed"]
 
 
 def test_fastmatching_howto_frontend_script_contains_remote_remediation_and_single_log_button():

@@ -108,19 +108,22 @@ def test_parse_fma_log_content_extracts_spot_duration_stats():
 
 
 def test_get_fastmatching_node_telemetry_embeds_spots_and_divergence():
-    """Valida payload de telemetria para consumo pelo frontend."""
-    # Nó nominal
-    t_nom = get_fastmatching_node_telemetry("BRSP-CAS-ATRIA")
-    assert "spot_duration_stats" in t_nom
-    assert t_nom["spot_duration_stats"]["min_spot"] is not None
-    assert t_nom["spot_duration_stats"]["max_spot"] is not None
-    assert t_nom["spot_duration_stats"]["has_divergence_alert"] is False
+    """Valida payload de telemetria estritamente real do Capture Site sem fallbacks sintéticos."""
+    # 1. Nó real com FastMatching em execução (Marabá)
+    t_nom = get_fastmatching_node_telemetry("BRPA-MBA-DT01")
+    assert t_nom is not None
+    assert t_nom["is_installed"] is True
+    assert t_nom["is_running"] is True
+    assert t_nom["service_status"] == "Em Execução"
+    assert "1,03 GB" in str(t_nom["ram_usage"]["formatted"])
+    assert t_nom["last_detection"] is None, "Sem log local, PROIBIDO gerar detecções fictícias"
+    assert t_nom["spot_duration_stats"] is None, "Sem log local, PROIBIDO gerar spots fictícios"
 
-    # Nó com teste de divergência
-    t_div = get_fastmatching_node_telemetry("TEST-DIVERGENCE-CS01")
-    assert t_div["spot_duration_stats"]["has_divergence_alert"] is True
-    assert t_div["spot_duration_stats"]["min_spot"]["duration_sec"] < 5.0
-    assert t_div["spot_duration_stats"]["max_spot"]["duration_sec"] > 180.0
+    # 2. Nó com FastMatching parado/desinstalado
+    t_stop = get_fastmatching_node_telemetry("CS-BRMG-MCL-DT-")
+    assert t_stop is not None
+    assert t_stop["is_running"] is False
+    assert t_stop["last_detection"] is None
 
 
 def test_frontend_dom_elements_for_dedicated_fastmatching_subtab():
