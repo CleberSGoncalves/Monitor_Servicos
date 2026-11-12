@@ -164,11 +164,18 @@ def start_service():
     start_script = str(ROOT_DIR / "start_service.py")
 
     # 1. Tenta disparar através da Tarefa Agendada nativa do Windows se instalada
+    started = False
     task_res = subprocess.run(f'schtasks /Query /TN "{TASK_NAME}"', shell=True, capture_output=True, text=True, creationflags=SUBPROCESS_FLAGS)
     if task_res.returncode == 0:
         print(f"[*] Disparando via Tarefa Agendada do Windows '{TASK_NAME}'...")
         subprocess.run(f'schtasks /Run /TN "{TASK_NAME}"', shell=True, capture_output=True, text=True, creationflags=SUBPROCESS_FLAGS)
-    else:
+        for _ in range(3):
+            time.sleep(1)
+            if get_running_service_pid():
+                started = True
+                break
+
+    if not started and not get_running_service_pid():
         # Fallback Popen desacoplado
         detached_flag = getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
         creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP | detached_flag | SUBPROCESS_FLAGS
@@ -192,7 +199,7 @@ def start_service():
 
     # Aguarda inicialização
     print(f"[*] Aguardando inicializacao e porta {PORT}...")
-    for _ in range(20):
+    for _ in range(45):
         time.sleep(1)
         if is_port_listening(PORT):
             break

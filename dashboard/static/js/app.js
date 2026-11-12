@@ -928,6 +928,8 @@ function setupTabNavigation() {
 
                 if (typeof loadServicesTable === "function") loadServicesTable();
 
+                if (typeof loadFleetGovernanceSummary === "function") loadFleetGovernanceSummary();
+
                 if (typeof loadFleetUpdateEvolution === "function") loadFleetUpdateEvolution();
 
 

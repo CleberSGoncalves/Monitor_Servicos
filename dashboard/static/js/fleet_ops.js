@@ -2,7 +2,7 @@
 
 function getFleetAuthToken() {
     if (typeof authToken !== "undefined" && authToken) return authToken;
-    return localStorage.getItem("dna_auth_token") || localStorage.getItem("token") || "";
+    return localStorage.getItem("fleet_token") || localStorage.getItem("dna_auth_token") || localStorage.getItem("token") || "";
 }
 
 async function loadCanaryPipelineStatus() {
@@ -359,15 +359,124 @@ document.addEventListener("DOMContentLoaded", () => {
 let cachedFleetEvolutionData = null;
 let currentFleetEvolutionFilter = "all";
 let searchFleetEvolutionQuery = "";
+let currentGovernanceService = "DNA.MonitorServiceSVC";
+let cachedGovernanceSummary = null;
+
+async function loadFleetGovernanceSummary(forceRefresh = false) {
+    const iconReload = document.getElementById("iconReloadGovernanceSummary");
+    if (iconReload) iconReload.classList.add("fa-spin");
+
+    try {
+        const resp = await fetch(`/api/fleet/governance/summary?_t=${Date.now()}`, {
+            headers: { "Authorization": `Bearer ${getFleetAuthToken()}` }
+        });
+        if (!resp.ok) return;
+
+        const data = await resp.json();
+        cachedGovernanceSummary = data;
+        renderFleetGovernanceGrid(data.services || []);
+
+        if (forceRefresh && typeof showToast === "function") {
+            showToast("Matriz de governança oficial atualizada!", "success");
+        }
+    } catch (e) {
+        console.error("Erro ao carregar sumario de governanca:", e);
+    } finally {
+        if (iconReload) iconReload.classList.remove("fa-spin");
+    }
+}
+
+function renderFleetGovernanceGrid(services) {
+    const grid = document.getElementById("fleetGovernanceGrid");
+    if (!grid) return;
+
+    if (!services || services.length === 0) {
+        grid.innerHTML = `<div style="text-align: center; color: #94a3b8; padding: 20px; grid-column: 1 / -1;">Nenhum serviço rastreado no momento.</div>`;
+        return;
+    }
+
+    grid.innerHTML = services.map(s => {
+        const isSelected = s.service_name === currentGovernanceService;
+        const borderStyle = isSelected ? "border: 2px solid #38bdf8; box-shadow: 0 0 15px rgba(56, 189, 248, 0.3);" : "border: 1px solid rgba(148, 163, 184, 0.2);";
+        const bgGrad = isSelected ? "linear-gradient(135deg, rgba(30, 58, 138, 0.4), rgba(15, 23, 42, 0.9))" : "rgba(15, 23, 42, 0.75)";
+        
+        let barColor = "linear-gradient(90deg, #059669, #10b981)";
+        let badgeBg = "rgba(16, 185, 129, 0.2)";
+        let badgeColor = "#34d399";
+        if (s.health === "warning") {
+            barColor = "linear-gradient(90deg, #d97706, #f59e0b)";
+            badgeBg = "rgba(245, 158, 11, 0.2)";
+            badgeColor = "#fbbf24";
+        } else if (s.health === "critical") {
+            barColor = "linear-gradient(90deg, #dc2626, #ef4444)";
+            badgeBg = "rgba(239, 68, 68, 0.2)";
+            badgeColor = "#f87171";
+        }
+
+        return `
+            <div style="background: ${bgGrad}; ${borderStyle} border-radius: 10px; padding: 14px; display: flex; flex-direction: column; justify-content: space-between; transition: all 0.2s ease;">
+                <div>
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 8px;">
+                        <span style="font-weight: 700; font-size: 13px; color: #f8fafc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${s.service_name}">
+                            ${s.service_name}
+                        </span>
+                        <span style="background: ${badgeBg}; color: ${badgeColor}; font-size: 10px; padding: 2px 7px; border-radius: 10px; font-weight: 700; white-space: nowrap;">
+                            ${s.health_label}
+                        </span>
+                    </div>
+
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; font-size: 11px; margin-bottom: 6px;">
+                        <span style="color: #94a3b8;">Homologado: <strong style="color: #38bdf8; font-family: monospace;">v${s.target_version}</strong></span>
+                        <span style="color: #f8fafc; font-weight: 800; font-size: 13px;">${s.updated_pct}%</span>
+                    </div>
+
+                    <!-- Mini Barra -->
+                    <div style="height: 8px; border-radius: 4px; background: rgba(30, 41, 59, 0.8); overflow: hidden; margin-bottom: 10px;">
+                        <div style="height: 100%; width: ${s.updated_pct}%; background: ${barColor}; border-radius: 4px;"></div>
+                    </div>
+
+                    <div style="display: flex; justify-content: space-between; font-size: 11px; color: #cbd5e1; margin-bottom: 12px;">
+                        <span>Atualizados: <strong style="color: #34d399;">${s.updated_count} / ${s.total_hosts}</strong></span>
+                        <span>Pendentes: <strong style="color: #fbbf24;">${s.pending_online_count}</strong></span>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 6px;">
+                    <button class="btn-sm" onclick="selectGovernanceService('${s.service_name}')" style="flex: 1; padding: 6px 10px; font-size: 11px; font-weight: 700; background: ${isSelected ? '#0284c7' : 'rgba(56, 189, 248, 0.15)'}; color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 5px;">
+                        <i class="fas fa-search"></i> ${isSelected ? 'Auditando Agora' : 'Auditar Rollout'}
+                    </button>
+                    <button class="btn-sm" onclick="openSetTargetVersionModalFor('${s.service_name}', '${s.target_version}')" style="padding: 6px 8px; font-size: 11px; background: rgba(148, 163, 184, 0.15); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 6px; cursor: pointer;" title="Alterar versão homologada deste serviço">
+                        <i class="fas fa-cog"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join("");
+}
+
+function selectGovernanceService(serviceName) {
+    currentGovernanceService = serviceName;
+    const selEl = document.getElementById("selectFleetGovernanceService");
+    if (selEl) selEl.value = serviceName;
+
+    const titleEl = document.getElementById("titleSelectedServiceEvolution");
+    if (titleEl) titleEl.innerText = `Evolução de Atualizações da Frota — ${serviceName}`;
+
+    // Re-renderiza o grid para destacar o selecionado
+    if (cachedGovernanceSummary && cachedGovernanceSummary.services) {
+        renderFleetGovernanceGrid(cachedGovernanceSummary.services);
+    }
+
+    loadFleetUpdateEvolution(true);
+}
 
 async function loadFleetUpdateEvolution(forceRefresh = false) {
     const iconReload = document.getElementById("iconReloadFleetEvolution");
     if (iconReload) iconReload.classList.add("fa-spin");
 
     try {
-        const targetVerInput = document.getElementById("canaryTargetVersion");
-        const targetVer = (targetVerInput && targetVerInput.value ? targetVerInput.value : "1.0.20.0").trim();
-        const resp = await fetch(`/api/fleet/update-evolution?target_version=${encodeURIComponent(targetVer)}&_t=${Date.now()}`, {
+        const svc = currentGovernanceService || "DNA.MonitorServiceSVC";
+        const resp = await fetch(`/api/fleet/governance/service/${encodeURIComponent(svc)}?_t=${Date.now()}`, {
             headers: { "Authorization": `Bearer ${getFleetAuthToken()}` }
         });
         if (!resp.ok) return;
@@ -455,7 +564,7 @@ async function loadFleetUpdateEvolution(forceRefresh = false) {
         renderFleetEvolutionTable();
 
         if (forceRefresh && typeof showToast === "function") {
-            showToast("Telemetria de evolução da frota sincronizada com sucesso!", "success");
+            showToast(`Telemetria de evolução de ${svc} atualizada!`, "success");
         }
 
     } catch (e) {
@@ -639,6 +748,102 @@ function copyGvCommandToClipboard() {
     });
 }
 
+function openSetTargetVersionModal() {
+    const modal = document.getElementById("modalSetDesiredVersion");
+    if (!modal) return;
+    
+    const sel = document.getElementById("modalSelectService");
+    if (sel) sel.value = currentGovernanceService || "DNA.MonitorServiceSVC";
+    
+    const inp = document.getElementById("modalInputVersion");
+    if (inp && cachedFleetEvolutionData) {
+        inp.value = cachedFleetEvolutionData.target_version || "";
+    }
+    
+    modal.style.display = "flex";
+}
+
+function openSetTargetVersionModalFor(serviceName, currentVersion) {
+    const modal = document.getElementById("modalSetDesiredVersion");
+    if (!modal) return;
+
+    const sel = document.getElementById("modalSelectService");
+    if (sel) sel.value = serviceName;
+
+    const inp = document.getElementById("modalInputVersion");
+    if (inp) inp.value = currentVersion || "";
+
+    modal.style.display = "flex";
+}
+
+function closeSetTargetVersionModal() {
+    const modal = document.getElementById("modalSetDesiredVersion");
+    if (modal) modal.style.display = "none";
+}
+
+function onModalServiceChange(serviceName) {
+    if (cachedGovernanceSummary && cachedGovernanceSummary.services) {
+        const item = cachedGovernanceSummary.services.find(s => s.service_name === serviceName);
+        if (item) {
+            const inp = document.getElementById("modalInputVersion");
+            if (inp) inp.value = item.target_version || "";
+        }
+    }
+}
+
+async function submitSetDesiredVersion(event) {
+    if (event) event.preventDefault();
+    
+    const sel = document.getElementById("modalSelectService");
+    const inp = document.getElementById("modalInputVersion");
+    if (!sel || !inp) return;
+
+    const serviceName = sel.value;
+    const targetVersion = inp.value.trim();
+    if (!serviceName || !targetVersion) {
+        if (typeof showToast === "function") showToast("Selecione o serviço e informe a versão!", "warning");
+        return;
+    }
+
+    try {
+        const resp = await fetch("/api/fleet/governance/set-version", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${getFleetAuthToken()}`
+            },
+            body: JSON.stringify({ service_name: serviceName, target_version: targetVersion })
+        });
+
+        const data = await resp.json();
+        if (!resp.ok || !data.success) {
+            if (typeof showToast === "function") showToast(data.error || "Erro ao salvar versão", "error");
+            return;
+        }
+
+        closeSetTargetVersionModal();
+        if (typeof showToast === "function") {
+            showToast(`Versão homologada de ${serviceName} alterada para v${targetVersion}!`, "success");
+        }
+
+        // Recarrega matriz e evolução do serviço
+        await loadFleetGovernanceSummary(false);
+        if (currentGovernanceService === serviceName) {
+            await loadFleetUpdateEvolution(false);
+        }
+    } catch (err) {
+        console.error("Erro ao enviar set-version:", err);
+        if (typeof showToast === "function") showToast("Falha de rede ao salvar versão homologada", "error");
+    }
+}
+
+window.loadFleetGovernanceSummary = loadFleetGovernanceSummary;
+window.selectGovernanceService = selectGovernanceService;
+window.openSetTargetVersionModal = openSetTargetVersionModal;
+window.openSetTargetVersionModalFor = openSetTargetVersionModalFor;
+window.closeSetTargetVersionModal = closeSetTargetVersionModal;
+window.onModalServiceChange = onModalServiceChange;
+window.submitSetDesiredVersion = submitSetDesiredVersion;
 window.loadFleetUpdateEvolution = loadFleetUpdateEvolution;
 window.filterFleetEvolutionTable = filterFleetEvolutionTable;
 window.handleFleetEvolutionSearch = handleFleetEvolutionSearch;
@@ -649,6 +854,7 @@ window.copyGvCommandToClipboard = copyGvCommandToClipboard;
 setInterval(() => {
     const activeTab = document.querySelector(".nav-btn.active")?.dataset?.tab;
     if (activeTab === "fleet") {
+        loadFleetGovernanceSummary(false);
         loadFleetUpdateEvolution(false);
     }
 }, 30000);

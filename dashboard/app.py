@@ -189,6 +189,15 @@ class AiDecisionRequest(BaseModel):
     suggestion_id: str
     approve: bool
 
+class SetDesiredVersionRequest(BaseModel):
+    service_name: str
+    target_version: str
+
+class DispatchServiceUpdateRequest(BaseModel):
+    service_name: str
+    hosts: Optional[List[str]] = None
+    target_version: Optional[str] = None
+
 
 def get_current_user(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
     """Dependency injection para validacao de token de sessao com fallback local resiliente."""
@@ -656,6 +665,100 @@ async def get_fleet_update_evolution_endpoint(
         return get_fleet_update_evolution(target_version=target_version)
     except Exception as e:
         logger.error(f"Erro ao obter evolucao de updates da frota: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/fleet/governance/summary")
+async def get_governance_summary_endpoint(user: dict = Depends(get_current_user)):
+    """Retorna o sumário de governança oficial de versões para todos os serviços da frota."""
+    try:
+        from version_governance import get_all_services_governance_summary
+        return get_all_services_governance_summary()
+    except Exception as e:
+        logger.error(f"Erro ao obter sumário de governança: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/fleet/governance/service/{service_name}")
+async def get_governance_service_endpoint(
+    service_name: str,
+    target_version: Optional[str] = None,
+    user: dict = Depends(get_current_user)
+):
+    """Retorna a evolução e adoção detalhada de um serviço específico."""
+    try:
+        from version_governance import get_service_fleet_evolution
+        return get_service_fleet_evolution(service_name, target_version)
+    except Exception as e:
+        logger.error(f"Erro ao obter evolução do serviço {service_name}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/fleet/governance/set-version")
+async def set_governance_version_endpoint(
+    req: SetDesiredVersionRequest,
+    user: dict = Depends(get_current_user)
+):
+    """Atualiza a versão homologada desejada de um serviço no painel de governança central."""
+    try:
+        from version_governance import set_desired_version
+        res = set_desired_version(req.service_name, req.target_version)
+        if not res.get("success"):
+            raise HTTPException(status_code=400, detail=res.get("error", "Erro ao atualizar versão"))
+        return res
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erro ao atualizar versão de {req.service_name}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/fleet/governance/dispatch-update")
+async def dispatch_governance_update_endpoint(
+    req: DispatchServiceUpdateRequest,
+    user: dict = Depends(get_current_user)
+):
+    """Dispara a esteira de atualização para as máquinas pendentes do serviço."""
+    try:
+        from version_governance import get_service_fleet_evolution
+        from fleet_actions import execute_predefined_action
+        
+        evol = get_service_fleet_evolution(req.service_name, req.target_version)
+        hosts_to_update = req.hosts or evol.get("pending_online_hosts", [])
+        
+        dispatched = []
+        failed = []
+        target_v = req.target_version or evol.get("target_version")
+        
+        for h in hosts_to_update:
+            try:
+                res = execute_predefined_action(
+                    action_type="update_service",
+                    host=h,
+                    service_name=req.service_name,
+                    target_version=target_v,
+                    operator_username=user.get("sub", "admin"),
+                    operator_name=user.get("name", "Operador NOC")
+                )
+                if res.get("success"):
+                    dispatched.append(h)
+                else:
+                    failed.append({"host": h, "error": res.get("error")})
+            except Exception as e:
+                failed.append({"host": h, "error": str(e)})
+                
+        return {
+            "success": True,
+            "service_name": req.service_name,
+            "target_version": target_v,
+            "total_targets": len(hosts_to_update),
+            "dispatched_count": len(dispatched),
+            "dispatched_hosts": dispatched,
+            "failed_count": len(failed),
+            "failed_hosts": failed
+        }
+    except Exception as e:
+        logger.error(f"Erro ao despachar atualização de {req.service_name}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
