@@ -557,16 +557,22 @@ def get_fastmatching_node_telemetry(hostname: str = "", praca: str = "", force_r
     matched_host = h_str
     matched_praca = p_str
 
+    h_clean = h_str.rstrip("-").replace("--DT01", "").replace("-DT01", "")
+
     for s in raw_services:
         s_host = str(s.get("hostname") or "").strip().upper()
         s_praca = str(s.get("praca") or "").strip()
         match = False
-        if s_host and (s_host == h_str or h_str in s_host or s_host in h_str):
-            match = True
-        elif p_str and s_praca and (p_str.lower() == s_praca.lower()):
-            cs_num = int(float(s.get("cs", 1) or 1))
-            if cs_num == 1:
+        if h_str and h_str != "DEFAULT":
+            if s_host == h_str:
                 match = True
+            elif s_host.rstrip("-") == h_clean and not any(tag in s_host for tag in ["DT02", "CS02", "DT03", "CS03"]):
+                match = True
+        elif p_str:
+            if s_praca and (p_str.lower() == s_praca.lower()):
+                cs_num = int(float(s.get("cs", 1) or 1))
+                if cs_num == 1:
+                    match = True
 
         if match:
             matched_host = s_host
@@ -737,11 +743,11 @@ def get_fastmatching_node_telemetry(hostname: str = "", praca: str = "", force_r
             "cs_host_telemetry": cs_host_telemetry,
             "ram_usage": {
                 "timestamp": last_update,
-                "raw": ram_raw if ram_raw != "N/A" else "N/A (Serviço Parado)",
+                "raw": ram_raw if ram_raw != "N/A" else "0 MB (Serviço Parado)",
                 "private_mb": ram_mb,
                 "working_set_mb": ram_mb,
                 "private_working_set_mb": ram_mb,
-                "formatted": "Parado (N/A)"
+                "formatted": f"Parado (Host: {agent_ram})" if (agent_ram and agent_ram != "N/A") else ("0 MB (Svc Parado)" if ram_mb is None else f"{ram_mb} MB")
             },
             "cpu_usage": "0%",
             "search_stats": None,
@@ -1355,6 +1361,14 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
         # LEI DA VALIDADE DE TELEMETRIA: Mapeia explicitamente o timestamp do agente de monitoramento da frota
         if "monitorservice" in svc_name.lower():
             cs01_hosts_map[canonical_host]["agent_ultima_atualizacao"] = new_up
+            if s.get("cpu_uso") and s.get("cpu_uso") != "N/A":
+                cs01_hosts_map[canonical_host]["cpu_uso"] = s.get("cpu_uso")
+            if s.get("ram_uso") and s.get("ram_uso") != "N/A":
+                cs01_hosts_map[canonical_host]["ram_uso"] = s.get("ram_uso")
+            if s.get("disco_d_livre") and s.get("disco_d_livre") != "N/A":
+                cs01_hosts_map[canonical_host]["disco_d_livre"] = s.get("disco_d_livre")
+            if s.get("uptime") and s.get("uptime") != "N/A":
+                cs01_hosts_map[canonical_host]["uptime"] = s.get("uptime")
 
         curr_up = cs01_hosts_map[canonical_host].get("ultima_atualizacao") or ""
         if new_up and (not curr_up or new_up > curr_up):

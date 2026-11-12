@@ -2020,6 +2020,52 @@ function renderFastMatchingFleetTable(filterStatus = currentFmFleetFilter, searc
         return true;
     });
 
+    // Renderizar Banner Informativo de Filtro
+    const noticeEl = document.getElementById("fmFilterNoticeContainer");
+    if (noticeEl) {
+        if (filterStatus === "critical" && filtered.length > 0) {
+            noticeEl.style.display = "block";
+            noticeEl.innerHTML = `
+                <div style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); border-radius: 8px; padding: 10px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="font-size: 16px;">ℹ️</span>
+                        <div>
+                            <div style="color: #fca5a5; font-size: 11.5px; font-weight: 700;">
+                                Filtro 'Ruins (${filtered.length})' ativo: exibindo apenas nós com serviço FastMatching desligado no CS ou réplicas PayTV.
+                            </div>
+                            <div style="color: #94a3b8; font-size: 10.5px;">
+                                Os demais ${countGood} nós da frota estão 100% saudáveis na aba "Boas". Os hosts físicos abaixo continuam online e reportando telemetria de hardware ativa via agente.
+                            </div>
+                        </div>
+                    </div>
+                    <button type="button" onclick="filterFastMatchingFleetTable('all')" style="background: #2563eb; color: #fff; border: none; padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer; white-space: nowrap;">
+                        Exibir Todas (${totalCount})
+                    </button>
+                </div>
+            `;
+        } else if (filterStatus === "warning" && filtered.length > 0) {
+            noticeEl.style.display = "block";
+            noticeEl.innerHTML = `
+                <div style="background: rgba(234, 179, 8, 0.12); border: 1px solid rgba(234, 179, 8, 0.35); border-radius: 8px; padding: 10px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="font-size: 16px;">⚠️</span>
+                        <div>
+                            <div style="color: #fde047; font-size: 11.5px; font-weight: 700;">
+                                Filtro 'Alertas de Impacto (${filtered.length})' ativo: nós operando com alerta de divergência ou lentidão pontual.
+                            </div>
+                        </div>
+                    </div>
+                    <button type="button" onclick="filterFastMatchingFleetTable('all')" style="background: rgba(255,255,255,0.15); color: #fff; border: 1px solid rgba(255,255,255,0.25); padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer; white-space: nowrap;">
+                        Exibir Todas (${totalCount})
+                    </button>
+                </div>
+            `;
+        } else {
+            noticeEl.style.display = "none";
+            noticeEl.innerHTML = "";
+        }
+    }
+
     // ORDENAÇÃO INTELIGENTE DE ENGENHARIA:
     // 1. Nós em execução e saudáveis (NOMINAL) aparecem NO TOPO da tabela!
     // 2. Nós em alerta (WARNING) no meio.
@@ -2042,6 +2088,14 @@ function renderFastMatchingFleetTable(filterStatus = currentFmFleetFilter, searc
     }
 
     tbody.innerHTML = filtered.map(item => {
+        const s = item.site || {};
+        const t = s.fastmatching_telemetry || {};
+        const hostOnline = !s.is_offline && (s.agent_comm?.status === "ONLINE" || s.agent_comm_status === "ONLINE");
+        const hostUptime = (s.uptime && s.uptime !== "N/A") ? s.uptime : (t.cs_host_telemetry?.agent?.uptime || "");
+        const hostRam = (s.ram_uso && s.ram_uso !== "N/A") ? s.ram_uso : (t.cs_host_telemetry?.agent?.ram || "");
+        const hostDisk = (s.disco_d_livre && s.disco_d_livre !== "N/A") ? s.disco_d_livre : (t.cs_host_telemetry?.agent?.disk_d_free || "");
+        const hostAgentVer = s.agent_comm?.agent_version || t.cs_host_telemetry?.agent?.version || "1.0.20.0";
+
         const procColor = item.procMs < 1500 ? "#86efac" : (item.procMs < 3000 ? "#fde047" : "#fca5a5");
         let delayedBadge = `<span style="color: #86efac; font-weight: 700;">🟢 0 atrasos</span>`;
         if (item.delayedCount === 1 && item.procMs < 1600) {
@@ -2071,22 +2125,33 @@ function renderFastMatchingFleetTable(filterStatus = currentFmFleetFilter, searc
                     </span>
                 </td>
                 <td style="padding: 10px 12px;">
-                    <div style="font-weight: 800; font-size: 12px; color: ${item.procMs !== null ? procColor : (item.fmRunning ? '#86efac' : '#64748b')}; font-family: monospace;">
-                        ${item.procMs !== null ? `⚡ ${item.procMs} ms` : (item.fmRunning ? '🟢 Ao Vivo (CS)' : '🔴 Parado')}
+                    <div style="font-weight: 800; font-size: 12px; color: ${item.procMs !== null ? procColor : (item.fmRunning ? '#86efac' : '#fca5a5')}; font-family: monospace;">
+                        ${item.procMs !== null ? `⚡ ${item.procMs} ms` : (item.fmRunning ? '🟢 Ao Vivo (CS)' : '🔴 Svc Parado')}
                     </div>
-                    <div style="font-size: 9px; color: #64748b;">${item.procMs !== null ? (item.procMs < 1500 ? 'Excelente (<1.5s)' : (item.procMs < 3000 ? 'Alerta (>1.5s)' : 'Crítico (>3.0s)')) : (item.fmRunning ? 'Captura Contínua' : 'Serviço Inativo')}</div>
+                    <div style="font-size: 9px; color: ${item.procMs !== null ? '#64748b' : (item.fmRunning ? '#86efac' : (hostOnline ? '#86efac' : '#94a3b8'))};">
+                        ${item.procMs !== null ? (item.procMs < 1500 ? 'Excelente (<1.5s)' : (item.procMs < 3000 ? 'Alerta (>1.5s)' : 'Crítico (>3.0s)')) : (item.fmRunning ? 'Captura Contínua' : (hostOnline ? `🟢 Host Online${hostUptime ? ` (${hostUptime})` : ''}` : 'Serviço Inativo'))}
+                    </div>
                 </td>
                 <td style="padding: 10px 12px;">
-                    ${item.procMs !== null ? delayedBadge : (item.fmRunning ? '<span style="color: #86efac; font-weight: 700; font-size: 11px;">🟢 0 atrasos</span>' : '<span style="color:#64748b;">-</span>')}
+                    ${item.procMs !== null ? delayedBadge : (item.fmRunning ? '<span style="color: #86efac; font-weight: 700; font-size: 11px;">🟢 0 atrasos</span>' : '<span style="color:#94a3b8; font-size: 10px; font-weight: 600;" title="Serviço parado no host; esteira inativa">0 (Svc Inativo)</span>')}
                 </td>
                 <td style="padding: 10px 12px; font-family: monospace; color: #cbd5e1;">
-                    <strong>${item.ramFormatted || (item.ramMb ? `${item.ramMb} MB` : '<span style="color:#64748b;">N/A</span>')}</strong>
+                    ${item.fmRunning ? `<strong>${item.ramFormatted || (item.ramMb ? `${item.ramMb} MB` : '<span style="color:#64748b;">N/A</span>')}</strong>` : `
+                        <div style="font-weight: 700; color: #cbd5e1; font-size: 11px;">Parado (0 MB)</div>
+                        <div style="font-size: 9px; color: #38bdf8;" title="Consumo real de memória do Host CS">${hostRam && hostRam !== 'N/A' ? `Host: ${hostRam}` : 'Host Online'}</div>
+                    `}
                 </td>
                 <td style="padding: 10px 12px;">
-                    ${item.minSec !== null ? spotBadge : (item.fmRunning ? '<span style="color: #38bdf8; font-size: 10px; font-weight: 600;">Telemetria CS Ativa</span>' : '<span style="color:#64748b;">N/A (Parado)</span>')}
+                    ${item.minSec !== null ? spotBadge : (item.fmRunning ? '<span style="color: #38bdf8; font-size: 10px; font-weight: 600;">Telemetria CS Ativa</span>' : `
+                        <span style="color: #94a3b8; font-size: 10px; font-weight: 600;" title="Aguardando inicialização do serviço FastMatching">Aguardando Início</span>
+                        <div style="font-size: 9px; color: #64748b;">${hostDisk && hostDisk !== 'N/A' ? `Disco D: ${hostDisk}` : 'Host CS01'}</div>
+                    `)}
                 </td>
                 <td style="padding: 10px 12px; font-family: monospace; color: #94a3b8; font-size: 10px;">
-                    ${item.numFingers !== null ? `<div>${item.numFingers} huellas</div><div style="color: #64748b;">${item.searchMs} ms</div>` : '<div style="color: #64748b;">-</div>'}
+                    ${item.numFingers !== null ? `<div>${item.numFingers} huellas</div><div style="color: #64748b;">${item.searchMs} ms</div>` : (item.fmRunning ? '<div style="color: #64748b;">-</div>' : `
+                        <div style="color: #94a3b8; font-size: 10px;">Sem varredura</div>
+                        <div style="color: #64748b; font-size: 9px;">Agente v${hostAgentVer}</div>
+                    `)}
                 </td>
                 <td style="padding: 10px 12px; max-width: 270px;">
                     <div style="color: #cbd5e1; font-size: 10.5px; line-height: 1.3; margin-bottom: 4px;">${item.diagDesc}</div>
