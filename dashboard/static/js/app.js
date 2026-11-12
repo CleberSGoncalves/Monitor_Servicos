@@ -3182,7 +3182,7 @@ function filterServicesTable() {
 
 
 
-                <td><span style="font-family: monospace; color: var(--text-highlight);">${s.versao_desejada}</span></td>
+                <td><span style="font-family: monospace; color: #38bdf8; cursor: pointer; padding: 2px 6px; border-radius: 4px; background: rgba(56,189,248,0.1); border: 1px solid rgba(56,189,248,0.25);" title="Clique para alterar a versão desejada deste serviço no SharePoint" onclick="if(typeof openSetHostDesiredVersionModal==='function') openSetHostDesiredVersionModal('${s.hostname}', '${s.nome_servico}', '${s.versao_desejada}')">${s.versao_desejada} <i class="fas fa-edit" style="font-size: 9px; opacity: 0.8;"></i></span></td>
 
 
 
@@ -3208,7 +3208,7 @@ function filterServicesTable() {
 
                 <td>
 
-
+                    ${!isUpdated ? `<button class="btn-primary" style="padding: 4px 8px; font-size: 11px; background: #0284c7; border: 1px solid #38bdf8; font-weight: 700; margin-right: 4px;" title="Disparar atualização no SharePoint (Versao_Desejada=${s.versao_desejada} & Acao_Solicitada=Atualizar)" onclick="triggerFleetAction('update_service', '${s.hostname}', '${s.nome_servico}', null, '${s.versao_desejada}')">⚡ Atualizar</button>` : ''}
 
                     <button class="btn-secondary" style="padding: 4px 8px; font-size: 11px;" title="Reiniciar Serviço" onclick="triggerFleetAction('restart_service', '${s.hostname}', '${s.nome_servico}')">🔄 Reiniciar</button>
 

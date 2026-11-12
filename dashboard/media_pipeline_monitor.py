@@ -386,10 +386,18 @@ def get_link_monitoring_metrics(services: list = None, channels: list = None) ->
                 "ch_jpeg": 0
             }
 
+    import unicodedata
+
+    def _norm_k(s):
+        if not s:
+            return ""
+        nfkd = unicodedata.normalize('NFKD', str(s))
+        return "".join(ch for ch in nfkd if not unicodedata.combining(ch)).strip().lower()
+
     # 2. Mapeia canais gravados por (praça, cs)
     ch_by_praca_cs = {}
     for c in channels:
-        cid = (c.get("cidade") or "").strip().lower()
+        cid = _norm_k(c.get("cidade") or c.get("praca") or "")
         raw_cs = c.get("cs")
         try:
             cs = int(float(raw_cs)) if raw_cs is not None else 1
@@ -400,9 +408,19 @@ def get_link_monitoring_metrics(services: list = None, channels: list = None) ->
             ch_by_praca_cs[k] = {"video": 0, "audio": 0, "jpeg": 0}
         meio = str(c.get("meio") or "").lower()
         ch_name = str(c.get("canal") or "").lower()
-        if "radio" in meio or "fm" in meio or "rádio" in ch_name or "audio" in ch_name:
+        is_radio = ("radio" in meio or "fm" in meio or "rádio" in ch_name or "audio" in ch_name)
+        g_mp3 = str(c.get("gravando_mp3") or "").lower()
+        g_mp4 = str(c.get("gravando_mp4") or "").lower()
+
+        # Áudio MP3 gerado em D:\MediaDNA_V2\data\audio:
+        # Canais de rádio sempre gravam áudio.
+        # Canais de TV gravam vídeo (.mp4) E também geram áudio (.mp3) para DetectionSVC/FastMatching.
+        has_audio = is_radio or "sim" in g_mp3 or g_mp3 not in ("não", "nao", "false", "0") or not is_radio
+        has_video = not is_radio or "sim" in g_mp4
+
+        if has_audio:
             ch_by_praca_cs[k]["audio"] += 1
-        else:
+        if has_video:
             ch_by_praca_cs[k]["video"] += 1
             ch_by_praca_cs[k]["jpeg"] += 1
 
@@ -411,11 +429,15 @@ def get_link_monitoring_metrics(services: list = None, channels: list = None) ->
     for h, info in hosts_dict.items():
         praca = info["praca"] or "Nacional"
         cs = info["cs"]
-        k = (praca.lower(), cs)
+        norm_p = _norm_k(praca)
+        k = (norm_p, cs)
         if k in ch_by_praca_cs:
             ch_v = ch_by_praca_cs[k]["video"]
             ch_a = ch_by_praca_cs[k]["audio"]
             ch_j = ch_by_praca_cs[k]["jpeg"]
+            # Fallback de integridade: se CS01 tem vídeo ativo, ele obrigatoriamente gera áudio MP3 em d:\mediadna_v2\data\audio
+            if ch_a == 0 and ch_v > 0:
+                ch_a = ch_v
         else:
             ch_v = 3
             ch_a = 2

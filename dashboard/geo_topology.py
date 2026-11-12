@@ -18,12 +18,18 @@ DEFAULT_CITY_CHANNELS = {
         ("Rede Bandeirantes", 647.143, 43, 15.0, -25.4200, -49.2530, "Pilarzinho / Bom Retiro", 950, 65, False)
     ],
     "são luís": [
-        ("Rede Globo (TV Mirante)", 563.143, 29, 25.0, -2.5200, -44.2900, "Monte Castelo / São Francisco", 45, 80, False),
-        ("SBT (TV Difusora)", 617.143, 38, 20.0, -2.5250, -44.2950, "Monte Castelo / Camboa", 42, 70, False)
+        ("Record TV", 605.143, 36, 20.0, -2.5027, -44.2868, "Monte Castelo", 42, 70, False),
+        ("Rede TV", 635.143, 41, 20.0, -2.5107, -44.2778, "Monte Castelo", 42, 70, False),
+        ("SBT (TV Difusora)", 617.143, 38, 20.0, -2.5027, -44.2688, "Monte Castelo / Camboa", 42, 70, False),
+        ("BAND MA (Rede Bandeirantes)", 479.000, 23, 20.0, -2.4947, -44.2868, "Monte Castelo", 42, 70, False),
+        ("MIRANTE DIGITAL (Rede Globo)", 563.000, 24, 25.0, -2.4867, -44.2778, "Monte Castelo / São Francisco", 45, 80, False)
     ],
     "sao luis": [
-        ("Rede Globo (TV Mirante)", 563.143, 29, 25.0, -2.5200, -44.2900, "Monte Castelo / São Francisco", 45, 80, False),
-        ("SBT (TV Difusora)", 617.143, 38, 20.0, -2.5250, -44.2950, "Monte Castelo / Camboa", 42, 70, False)
+        ("Record TV", 605.143, 36, 20.0, -2.5027, -44.2868, "Monte Castelo", 42, 70, False),
+        ("Rede TV", 635.143, 41, 20.0, -2.5107, -44.2778, "Monte Castelo", 42, 70, False),
+        ("SBT (TV Difusora)", 617.143, 38, 20.0, -2.5027, -44.2688, "Monte Castelo / Camboa", 42, 70, False),
+        ("BAND MA (Rede Bandeirantes)", 479.000, 23, 20.0, -2.4947, -44.2868, "Monte Castelo", 42, 70, False),
+        ("MIRANTE DIGITAL (Rede Globo)", 563.000, 24, 25.0, -2.4867, -44.2778, "Monte Castelo / São Francisco", 45, 80, False)
     ],
     "foz do iguaçu": [
         ("Rede Globo (RPC Foz)", 599.143, 35, 15.0, -25.5200, -54.5800, "Centro / Vila Portes", 210, 65, False)
@@ -2198,7 +2204,93 @@ MARKET_TOPOLOGY = [
                       'mastro_m': 120,
                       'match_keys': ['globo'],
                       'nome': 'Torre TV Globo • Av. Paulista'}],
-    'uf': 'SP'}
+    'uf': 'SP'},
+    {
+        "id": "BRMA-SLS",
+        "cidade": "São Luís",
+        "aliases": ["são luís", "sao luis", "sls", "sao luiz", "são luiz", "brma-sls", "brma-sls-dt01", "brma-sls-dt-02"],
+        "uf": "MA",
+        "pais": "Brasil",
+        "regiao": "Nordeste",
+        "lat": -2.5307,
+        "lng": -44.3068,
+        "site_location": "Centro / Monte Castelo (São Luís)",
+        "site_elevation_m": 24,
+        "rx_mast_m": 25,
+        "cs_count": 2,
+        "towers": [
+            {
+                "match_keys": ["record", "record tv"],
+                "emissora": "Record TV",
+                "nome": "Torre Record TV • Monte Castelo",
+                "bairro": "Monte Castelo (Nordeste)",
+                "lat": -2.5027,
+                "lng": -44.2868,
+                "freq_mhz": 605.143,
+                "uhf": 36,
+                "erp_kw": 20.0,
+                "cota_m": 42,
+                "mastro_m": 70,
+                "has_obstruction": False
+            },
+            {
+                "match_keys": ["redetv", "rede tv"],
+                "emissora": "Rede TV",
+                "nome": "Torre Rede TV • Monte Castelo",
+                "bairro": "Monte Castelo (Nordeste)",
+                "lat": -2.5107,
+                "lng": -44.2778,
+                "freq_mhz": 635.143,
+                "uhf": 41,
+                "erp_kw": 20.0,
+                "cota_m": 42,
+                "mastro_m": 70,
+                "has_obstruction": False
+            },
+            {
+                "match_keys": ["sbt", "difusora"],
+                "emissora": "SBT (TV Difusora)",
+                "nome": "Torre SBT / TV Difusora • Monte Castelo / Camboa",
+                "bairro": "Monte Castelo / Camboa (Nordeste)",
+                "lat": -2.5027,
+                "lng": -44.2688,
+                "freq_mhz": 617.143,
+                "uhf": 38,
+                "erp_kw": 20.0,
+                "cota_m": 42,
+                "mastro_m": 70,
+                "has_obstruction": False
+            },
+            {
+                "match_keys": ["band", "bandeirantes", "band ma"],
+                "emissora": "BAND MA (Rede Bandeirantes)",
+                "nome": "Torre BAND MA • Monte Castelo",
+                "bairro": "Monte Castelo (Nordeste)",
+                "lat": -2.4947,
+                "lng": -44.2868,
+                "freq_mhz": 479.000,
+                "uhf": 23,
+                "erp_kw": 20.0,
+                "cota_m": 42,
+                "mastro_m": 70,
+                "has_obstruction": False
+            },
+            {
+                "match_keys": ["mirante", "globo", "mirante digital"],
+                "emissora": "MIRANTE DIGITAL (Rede Globo)",
+                "nome": "Torre TV Mirante Digital • Monte Castelo / São Francisco",
+                "bairro": "Monte Castelo / São Francisco (Nordeste)",
+                "lat": -2.4867,
+                "lng": -44.2778,
+                "freq_mhz": 563.000,
+                "uhf": 24,
+                "erp_kw": 25.0,
+                "cota_m": 45,
+                "mastro_m": 80,
+                "has_obstruction": False
+            }
+        ]
+    }
 ]
 
 
@@ -2510,18 +2602,18 @@ def get_markets_map_data(channels: list = None, services: list = None) -> List[D
             if key not in dedup_terrestrial or score > dedup_terrestrial[key][3]:
                 dedup_terrestrial[key] = (c, f_val, c_cs, score)
 
-        # PARIDADE ABSOLUTA MULTI-CS: Se a praça possui CS01 e CS02 (redunância física)
-        # e os canais sintonizados foram informados apenas para uma das CSs (ex: apenas CS02 no SharePoint),
-        # espelha o canal para a contrapartida da praça com seu respectivo host
+        # PARIDADE ABSOLUTA MULTI-CS: Se a praça possui CS01 e CS02 (redundância física)
+        # e os canais sintonizados foram informados apenas para uma das CSs ou de forma parcial,
+        # espelha os canais faltantes para a contrapartida da praça com seu respectivo host
         if 1 in cs_hosts and 2 in cs_hosts:
-            existing_cs1 = [k for k in dedup_terrestrial.keys() if k[2] == 1]
-            existing_cs2 = [k for k in dedup_terrestrial.keys() if k[2] == 2]
+            existing_cs1_names = {k[0]: k for k in dedup_terrestrial.keys() if k[2] == 1}
+            existing_cs2_names = {k[0]: k for k in dedup_terrestrial.keys() if k[2] == 2}
 
-            if not existing_cs1 and existing_cs2:
-                for k in list(existing_cs2):
+            # Espelha canais faltantes de CS02 para CS01
+            for name, k in list(existing_cs2_names.items()):
+                if name not in existing_cs1_names:
                     c_orig, f_orig, _, sc_orig = dedup_terrestrial[k]
-                    ch_name_k = k[0]
-                    key_cs1 = (ch_name_k, k[1], 1)
+                    key_cs1 = (name, k[1], 1)
                     c_rep = dict(c_orig)
                     c_rep["id_cs"] = 1
                     c_rep["cs"] = 1
@@ -2529,11 +2621,11 @@ def get_markets_map_data(channels: list = None, services: list = None) -> List[D
                     c_rep["hostname"] = c_rep["host"]
                     dedup_terrestrial[key_cs1] = (c_rep, f_orig, 1, sc_orig)
 
-            elif not existing_cs2 and existing_cs1:
-                for k in list(existing_cs1):
+            # Espelha canais faltantes de CS01 para CS02
+            for name, k in list(existing_cs1_names.items()):
+                if name not in existing_cs2_names:
                     c_orig, f_orig, _, sc_orig = dedup_terrestrial[k]
-                    ch_name_k = k[0]
-                    key_cs2 = (ch_name_k, k[1], 2)
+                    key_cs2 = (name, k[1], 2)
                     c_rep = dict(c_orig)
                     c_rep["id_cs"] = 2
                     c_rep["cs"] = 2

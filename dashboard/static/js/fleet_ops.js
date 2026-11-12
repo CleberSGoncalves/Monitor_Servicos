@@ -2,7 +2,11 @@
 
 function getFleetAuthToken() {
     if (typeof authToken !== "undefined" && authToken) return authToken;
-    return localStorage.getItem("fleet_token") || localStorage.getItem("dna_auth_token") || localStorage.getItem("token") || "";
+    if (typeof getAuthToken === "function") {
+        const t = getAuthToken();
+        if (t) return t;
+    }
+    return localStorage.getItem("fleet_token") || localStorage.getItem("access_token") || localStorage.getItem("dna_auth_token") || localStorage.getItem("token") || "";
 }
 
 async function loadCanaryPipelineStatus() {
@@ -343,12 +347,18 @@ window.loadFleetAutoHealingStatus = loadFleetAutoHealingStatus;
 window.filterAutoHealingList = filterAutoHealingList;
 window.triggerFleetAutoHealingBatch = triggerFleetAutoHealingBatch;
 
-document.addEventListener("DOMContentLoaded", () => {
-    setTimeout(() => {
-        loadCanaryPipelineStatus();
-        loadFleetAutoHealingStatus();
-    }, 1200);
-});
+function initFleetOps() {
+    loadCanaryPipelineStatus();
+    loadFleetAutoHealingStatus();
+    loadFleetGovernanceSummary();
+    loadFleetUpdateEvolution();
+}
+
+if (document.readyState === "complete" || document.readyState === "interactive") {
+    setTimeout(initFleetOps, 300);
+} else {
+    document.addEventListener("DOMContentLoaded", () => setTimeout(initFleetOps, 300));
+}
 
 
 
@@ -454,7 +464,7 @@ function renderFleetGovernanceGrid(services) {
     }).join("");
 }
 
-function selectGovernanceService(serviceName) {
+async function selectGovernanceService(serviceName) {
     currentGovernanceService = serviceName;
     const selEl = document.getElementById("selectFleetGovernanceService");
     if (selEl) selEl.value = serviceName;
@@ -463,11 +473,13 @@ function selectGovernanceService(serviceName) {
     if (titleEl) titleEl.innerText = `Evolução de Atualizações da Frota — ${serviceName}`;
 
     // Re-renderiza o grid para destacar o selecionado
-    if (cachedGovernanceSummary && cachedGovernanceSummary.services) {
+    if (!cachedGovernanceSummary || !cachedGovernanceSummary.services) {
+        await loadFleetGovernanceSummary(false);
+    } else {
         renderFleetGovernanceGrid(cachedGovernanceSummary.services);
     }
 
-    loadFleetUpdateEvolution(true);
+    await loadFleetUpdateEvolution(true);
 }
 
 async function loadFleetUpdateEvolution(forceRefresh = false) {
@@ -498,6 +510,15 @@ async function loadFleetUpdateEvolution(forceRefresh = false) {
         if (badgeActive) {
             badgeActive.innerText = `${data.active_adoption_pct}% na frota online ativa (${data.updated_count}/${data.online_count})`;
         }
+
+        const legUpLabel = document.getElementById("legendUpdatedLabel");
+        if (legUpLabel) legUpLabel.innerText = `Atualizados (v${data.target_version}):`;
+
+        const cardUpLabel = document.getElementById("cardUpdatedLabel");
+        if (cardUpLabel) cardUpLabel.innerText = `${data.service_name} v${data.target_version}`;
+
+        const btnBatchCount = document.getElementById("btnBatchUpdateCount");
+        if (btnBatchCount) btnBatchCount.innerText = data.pending_online_count || 0;
 
         const lastSyncEl = document.getElementById("fleetUpdateLastSync");
         if (lastSyncEl && data.last_sync) {
@@ -674,6 +695,12 @@ function renderFleetEvolutionTable() {
             govBadge = `<span style="color: #f87171; font-weight: 600;">Desatualizado</span>`;
         }
 
+        // Ação de Atualização Direta (1 clique no SharePoint)
+        const needsUpdate = (!isUp || h.status_atualizacao === "Desatualizado" || h.versao_instalada !== (h.versao_desejada || targetVer));
+        const actionBtn = needsUpdate
+            ? `<button class="btn-sm btn-primary" onclick="dispatchSingleHostUpdate('${h.hostname}', '${currentGovernanceService}', '${h.versao_desejada || targetVer}')" style="padding: 3px 8px; font-size: 11px; font-weight: 700; background: #0284c7; border: 1px solid #38bdf8; border-radius: 4px; color: #fff; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" title="Disparar ordem no SharePoint: Versao_Desejada=${h.versao_desejada || targetVer} & Acao_Solicitada=Atualizar"><i class="fas fa-bolt"></i> Atualizar</button>`
+            : `<span style="color: #34d399; font-weight: 600; font-size: 11px; display: inline-flex; align-items: center; gap: 3px;"><i class="fas fa-check-circle"></i> Em Dia</span>`;
+
         return `
             <tr style="border-bottom: 1px solid rgba(148,163,184,0.1); transition: background 0.15s ease;" onmouseover="this.style.background='rgba(51,65,85,0.3)'" onmouseout="this.style.background='transparent'">
                 <td style="padding: 8px 12px; font-weight: 600; color: #f8fafc;">
@@ -685,8 +712,10 @@ function renderFleetEvolutionTable() {
                 <td style="padding: 8px 12px; text-align: center;">
                     ${verBadge}
                 </td>
-                <td style="padding: 8px 12px; text-align: center; font-family: monospace; font-size: 11px; color: #94a3b8;">
-                    ${h.versao_desejada || targetVer}
+                <td style="padding: 8px 12px; text-align: center; font-family: monospace; font-size: 11px;">
+                    <span style="color: #38bdf8; cursor: pointer; padding: 2px 6px; border-radius: 4px; background: rgba(56,189,248,0.1); border: 1px solid rgba(56,189,248,0.25);" title="Clique para alterar a versão desejada deste host no SharePoint" onclick="openSetHostDesiredVersionModal('${h.hostname}', '${currentGovernanceService}', '${h.versao_desejada || targetVer}')">
+                        ${h.versao_desejada || targetVer} <i class="fas fa-edit" style="font-size: 9px; margin-left: 2px; opacity: 0.8;"></i>
+                    </span>
                 </td>
                 <td style="padding: 8px 12px; text-align: center; font-size: 11px;">
                     ${svcBadge}
@@ -697,10 +726,102 @@ function renderFleetEvolutionTable() {
                 <td style="padding: 8px 12px; text-align: center; font-size: 11px;">
                     ${govBadge}
                 </td>
+                <td style="padding: 8px 12px; text-align: center; font-size: 11px;">
+                    ${actionBtn}
+                </td>
             </tr>
         `;
     }).join("");
 }
+
+async function dispatchSingleHostUpdate(hostname, serviceName, targetVersion) {
+    if (!confirm(`Confirma disparar atualização de ${serviceName} para a versão ${targetVersion} no host [${hostname}] via SharePoint?`)) {
+        return;
+    }
+    try {
+        const resp = await fetch("/api/fleet/governance/dispatch-update", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${getFleetAuthToken()}`
+            },
+            body: JSON.stringify({
+                service_name: serviceName,
+                target_version: targetVersion,
+                hosts: [hostname]
+            })
+        });
+        const data = await resp.json();
+        if (resp.ok && data.success) {
+            if (typeof showToast === "function") {
+                showToast(`Atualização disparada no SharePoint para ${hostname}!`, "success");
+            }
+            await loadFleetUpdateEvolution(true);
+            await loadFleetGovernanceSummary(false);
+            if (typeof loadServicesTable === "function") loadServicesTable();
+        } else {
+            if (typeof showToast === "function") {
+                showToast(data.error || "Falha ao disparar atualização", "error");
+            }
+        }
+    } catch (err) {
+        console.error("Erro ao disparar atualização unitária:", err);
+        if (typeof showToast === "function") showToast(err.message, "error");
+    }
+}
+window.dispatchSingleHostUpdate = dispatchSingleHostUpdate;
+
+async function dispatchBatchPendingUpdate() {
+    if (!cachedFleetEvolutionData || !cachedFleetEvolutionData.pending_online_hosts || cachedFleetEvolutionData.pending_online_hosts.length === 0) {
+        if (typeof showToast === "function") showToast("Nenhum host pendente online no momento para este serviço!", "info");
+        return;
+    }
+    const count = cachedFleetEvolutionData.pending_online_hosts.length;
+    const svc = currentGovernanceService;
+    const ver = cachedFleetEvolutionData.target_version;
+    if (!confirm(`Confirma disparar atualização no SharePoint para TODOS os ${count} hosts pendentes de ${svc} na versão ${ver}?`)) {
+        return;
+    }
+    try {
+        const resp = await fetch("/api/fleet/governance/dispatch-update", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${getFleetAuthToken()}`
+            },
+            body: JSON.stringify({
+                service_name: svc,
+                target_version: ver,
+                hosts: cachedFleetEvolutionData.pending_online_hosts
+            })
+        });
+        const data = await resp.json();
+        if (resp.ok && data.success) {
+            if (typeof showToast === "function") {
+                showToast(`Atualização despachada no SharePoint para ${data.dispatched_count} hosts!`, "success");
+            }
+            await loadFleetUpdateEvolution(true);
+            await loadFleetGovernanceSummary(false);
+            if (typeof loadServicesTable === "function") loadServicesTable();
+        } else {
+            if (typeof showToast === "function") {
+                showToast(data.error || "Falha ao despachar lote no SharePoint", "error");
+            }
+        }
+    } catch (err) {
+        console.error("Erro ao disparar lote no SharePoint:", err);
+        if (typeof showToast === "function") showToast(err.message, "error");
+    }
+}
+window.dispatchBatchPendingUpdate = dispatchBatchPendingUpdate;
+
+function openSetHostDesiredVersionModal(hostname, serviceName, currentVer) {
+    const newVer = prompt(`Definir Versão Desejada para [${hostname}] (${serviceName}):`, currentVer || "1.0.0.0");
+    if (!newVer || newVer.trim() === "" || newVer.trim() === currentVer) return;
+    
+    dispatchSingleHostUpdate(hostname, serviceName, newVer.trim());
+}
+window.openSetHostDesiredVersionModal = openSetHostDesiredVersionModal;
 
 function copyPendingHostsToClipboard() {
     if (!cachedFleetEvolutionData || !cachedFleetEvolutionData.pending_online_csv) {

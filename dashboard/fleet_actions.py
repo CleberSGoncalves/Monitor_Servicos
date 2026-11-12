@@ -88,6 +88,20 @@ def execute_predefined_action(
             "Status_Atualizacao": "Em Progresso"
         }
         resp = requests.patch(patch_url, headers=headers, json=body, timeout=10)
+        # Atualiza o cache em memória imediatamente para feedback instantâneo (<5ms)
+        try:
+            from sharepoint_sync import get_cached_data
+            c_data = get_cached_data()
+            for s in c_data.get("services", []):
+                if (s.get("hostname", "").strip().lower() == host.strip().lower() and
+                    (s.get("nome_servico", "").strip().lower() == service_name.strip().lower() or
+                     service_name.strip().lower() in s.get("nome_servico", "").strip().lower())):
+                    s["versao_desejada"] = target_version or s.get("versao_desejada")
+                    s["acao_solicitada"] = "Atualizar"
+                    s["status_atualizacao"] = "Em Progresso"
+        except Exception:
+            pass
+
         if resp.ok:
             register_incident_action(
                 incident_key=f"{host}_{service_name}",
@@ -100,7 +114,8 @@ def execute_predefined_action(
                 resolution_status="resolvido"
             )
             sync_fleet_data()
-            return {"success": True, "message": f"Atualização para {target_version} agendada com sucesso."}
+            return {"success": True, "message": f"Atualização para {target_version} agendada com sucesso no SharePoint."}
+        return {"success": False, "error": f"SharePoint HTTP {resp.status_code}: {resp.text}"}
 
     # 4. Disparo do Canary Deployment (Grupo Piloto de 5 Máquinas -> Auto-Promoção após Homologação)
     elif action_type == "canary_deploy":
