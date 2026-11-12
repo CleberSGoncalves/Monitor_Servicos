@@ -1883,7 +1883,7 @@ MARKET_TOPOLOGY = [
                       'match_keys': ['globo', 'anhanguera'],
                       'nome': 'Torre TV Anhanguera • Parque Estrela Dalva'}],
     'uf': 'GO'},
-{   'aliases': ['nacional', 'brasília', 'brasilia', 'df', 'bsb'],
+{   'aliases': ['nacional', 'paytv', 'sky-headend', 'brdf-nac'],
     'cidade': 'Nacional',
     'cs_count': 3,
     'id': 'BRDF-NAC',
@@ -1893,8 +1893,31 @@ MARKET_TOPOLOGY = [
     'regiao': 'Centro-Oeste',
     'rx_mast_m': 40,
     'site_elevation_m': 1172,
-    'site_location': 'Setor de Rádio e TV Sul (Brasília / DF)',
-    'towers': [   {   'bairro': 'Sobradinho',
+    'site_location': 'Headend DTH / PayTV Satélite (Nacional)',
+    'towers': [   {   'bairro': 'Headend Satélite DTH',
+                      'cota_m': 1172,
+                      'emissora': 'SKY Satélite DTH (Feixe Brasil)',
+                      'erp_kw': 100.0,
+                      'freq_mhz': 555.0,
+                      'has_obstruction': False,
+                      'lat': -15.7975,
+                      'lng': -47.8656,
+                      'mastro_m': 45,
+                      'match_keys': ['sky', 'paytv', 'satelite', 'sportv', 'telecine', 'globonews'],
+                      'nome': 'Teleporto DTH / Headend SKY • Feixe Nacional'}],
+    'uf': 'DF'},
+{   'aliases': ['brasília', 'brasilia', 'bsb', 'brdf-bsa', 'brdf-bsa-dt01', 'brdf-bsa-dt02', 'brsp-radio-bkp3'],
+    'cidade': 'Brasília',
+    'cs_count': 2,
+    'id': 'BRDF-BSA',
+    'lat': -15.7975,
+    'lng': -47.8919,
+    'pais': 'Brasil',
+    'regiao': 'Centro-Oeste',
+    'rx_mast_m': 25,
+    'site_elevation_m': 1172,
+    'site_location': 'Setor Central / Eixo Monumental (Brasília / DF)',
+    'towers': [   {   'bairro': 'Sobradinho / Colorado',
                       'cota_m': 1350,
                       'emissora': 'TV Globo Brasília',
                       'erp_kw': 50.0,
@@ -1904,7 +1927,40 @@ MARKET_TOPOLOGY = [
                       'lng': -47.831,
                       'mastro_m': 180,
                       'match_keys': ['globo', 'brasilia'],
-                      'nome': 'Torre Digital de Brasília • Colorado'}],
+                      'nome': 'Torre Digital de Brasília • Flor do Cerrado'},
+                  {   'bairro': 'Eixo Monumental',
+                      'cota_m': 1172,
+                      'emissora': 'Record TV Brasília',
+                      'erp_kw': 30.0,
+                      'freq_mhz': 605.143,
+                      'has_obstruction': False,
+                      'lat': -15.7900,
+                      'lng': -47.8920,
+                      'mastro_m': 224,
+                      'match_keys': ['record'],
+                      'nome': 'Torre de TV de Brasília • Eixo Monumental'},
+                  {   'bairro': 'Eixo Monumental',
+                      'cota_m': 1172,
+                      'emissora': 'SBT Brasília',
+                      'erp_kw': 30.0,
+                      'freq_mhz': 617.143,
+                      'has_obstruction': False,
+                      'lat': -15.7900,
+                      'lng': -47.8920,
+                      'mastro_m': 224,
+                      'match_keys': ['sbt'],
+                      'nome': 'Torre de TV de Brasília • Eixo Monumental'},
+                  {   'bairro': 'Eixo Monumental',
+                      'cota_m': 1172,
+                      'emissora': 'Band Brasília',
+                      'erp_kw': 25.0,
+                      'freq_mhz': 629.143,
+                      'has_obstruction': False,
+                      'lat': -15.7900,
+                      'lng': -47.8920,
+                      'mastro_m': 224,
+                      'match_keys': ['band'],
+                      'nome': 'Torre de TV de Brasília • Eixo Monumental'}],
     'uf': 'DF'},
 {   'aliases': ['montes claros', 'moc'],
     'cidade': 'Montes Claros',
@@ -2355,12 +2411,30 @@ def parse_frequency_mhz(freq_str: Any) -> Optional[float]:
         return None
 
 
+def _norm_city(s: Any) -> str:
+    if not s:
+        return ""
+    import unicodedata
+    s_norm = unicodedata.normalize("NFD", str(s).strip().lower())
+    s_clean = "".join(c for c in s_norm if unicodedata.category(c) != "Mn")
+    return re.sub(r"[^a-z0-9]", "", s_clean)
+
+
 def _match_city(channel_or_service_city: str, market: Dict[str, Any]) -> bool:
-    c_lower = str(channel_or_service_city or "").strip().lower()
-    if not c_lower:
+    c_norm = _norm_city(channel_or_service_city)
+    if not c_norm:
         return False
-    for alias in market.get("aliases", [market["cidade"].lower()]):
-        if alias in c_lower or c_lower in alias:
+    m_city_norm = _norm_city(market.get("cidade") or market.get("city") or "")
+    if c_norm == m_city_norm:
+        return True
+    m_id_norm = _norm_city(market.get("id") or market.get("market_id") or "")
+    if c_norm == m_id_norm:
+        return True
+    for alias in market.get("aliases", []):
+        a_norm = _norm_city(alias)
+        if not a_norm:
+            continue
+        if c_norm == a_norm:
             return True
     return False
 
@@ -2500,11 +2574,11 @@ def get_markets_map_data(channels: list = None, services: list = None) -> List[D
             seen_market_cities.add(al.strip().lower())
         all_target_markets.append(sm)
 
-    # Segundo: praças ativas na frota que NÃO estavam no catálogo estático (síntese dinâmica)
+    # Segundo: praças ativas na frota que NÃO estavam no catálogo estático (síntese dinâmica precisa)
     for p_low, p_orig in active_monitored_pracas_map.items():
-        if not any(p_low == sc or p_low in sc or sc in p_low for sc in seen_market_cities):
+        already_covered = any(_match_city(p_orig, m) for m in all_target_markets)
+        if not already_covered:
             syn_m = _synthesize_market_from_praca(p_orig, channels, services)
-            seen_market_cities.add(p_low)
             all_target_markets.append(syn_m)
 
     result = []
@@ -2517,8 +2591,8 @@ def get_markets_map_data(channels: list = None, services: list = None) -> List[D
         site_total_h = site_elevation + rx_mast_h
 
         # Filtra canais reais da praça (incluindo aliases como 'S.J dos Campos')
-        m_channels = [c for c in channels if _match_city(c.get("cidade", ""), m)]
-        m_services = [s for s in services if _match_city(s.get("praca", ""), m)]
+        m_channels = [c for c in channels if _match_city(c.get("cidade") or c.get("praca") or "", m)]
+        m_services = [s for s in services if _match_city(s.get("praca") or s.get("cidade") or "", m)]
 
         # Identifica todas as CSs disponíveis nesta praça
         cs_hosts: Dict[int, str] = {}

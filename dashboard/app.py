@@ -637,6 +637,19 @@ async def trigger_action(req: FleetActionRequest, user: dict = Depends(get_curre
     return res
 
 
+@app.get("/api/fleet/action/status")
+async def get_fleet_action_status_endpoint(
+    host: str,
+    service_name: str,
+    user: dict = Depends(get_current_user)
+):
+    from fleet_actions import get_host_service_action_status
+    res = get_host_service_action_status(host=host, service_name=service_name)
+    if not res.get("success"):
+        raise HTTPException(status_code=404, detail=res.get("error", "Host ou serviço não encontrado"))
+    return res
+
+
 @app.get("/api/fleet/canary-status")
 async def get_fleet_canary_status_endpoint(
     service_name: str = "DNA.MonitorServiceSVC",

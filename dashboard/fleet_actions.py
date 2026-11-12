@@ -298,3 +298,196 @@ def get_fleet_update_evolution(target_version: str = "1.0.20.0") -> Dict[str, An
         "last_sync": data.get("last_sync", datetime.now(timezone.utc).isoformat())
     }
 
+
+def get_host_service_action_status(host: str, service_name: str) -> Dict[str, Any]:
+    """
+    Retorna o status em tempo real do ciclo de vida da atualização de um serviço específico em um host,
+    permitindo acompanhamento granular via modal (SharePoint ↔ Agente C# ↔ Serviço).
+    """
+    from datetime import datetime, timezone
+    from sharepoint_sync import get_cached_data
+    from version_governance import get_desired_versions
+
+    c_data = get_cached_data()
+    services = c_data.get("services", [])
+    desired_versions_map = get_desired_versions()
+    
+    # 1. Localiza o serviço específico no host
+    target_srv = None
+    agent_srv = None
+    h_clean = host.strip().lower()
+    s_clean = service_name.strip().lower()
+
+    for s in services:
+        curr_h = str(s.get("hostname", "")).strip().lower()
+        if curr_h != h_clean:
+            continue
+        curr_s = str(s.get("nome_servico", "")).strip().lower()
+        if curr_s == s_clean or s_clean in curr_s or curr_s in s_clean:
+            target_srv = s
+        if "monitorservice" in curr_s or "agente" in curr_s:
+            agent_srv = s
+
+    if not target_srv:
+        return {
+            "success": False,
+            "host": host,
+            "hostname": host,
+            "service_name": service_name,
+            "error": f"Serviço '{service_name}' não encontrado no host [{host}].",
+            "current_step": 1,
+            "status_badge": "Não Localizado",
+            "message": f"Serviço '{service_name}' não encontrado no host [{host}].",
+            "steps": [],
+            "manual_command": ""
+        }
+
+    # Dados do serviço
+    praca = target_srv.get("praca", "Praça")
+    cs = target_srv.get("cs", 1)
+    installed_ver = str(target_srv.get("versao_instalada", "0.0.0.0")).strip()
+    desired_ver = str(target_srv.get("versao_desejada") or desired_versions_map.get(service_name, "2.0.0.2")).strip()
+    acao_solicitada = str(target_srv.get("acao_solicitada", "Nenhuma")).strip()
+    status_atualizacao = str(target_srv.get("status_atualizacao", "Atualizado")).strip()
+    status_servico = str(target_srv.get("status_servico", "Em Execução")).strip()
+    last_up_str = str(target_srv.get("ultima_atualizacao", "")).strip()
+
+    # Dados do agente local C#
+    agent_installed = str(agent_srv.get("versao_instalada", "1.0.20.0")).strip() if agent_srv else "1.0.20.0"
+    agent_up_str = str(agent_srv.get("ultima_atualizacao", "")).strip() if agent_srv else last_up_str
+    
+    # Cálculo de idade da telemetria
+    now_utc = datetime.now(timezone.utc)
+    age_seconds = 999999.0
+    telemetria_label = "Desconhecido"
+    
+    ref_ts = agent_up_str or last_up_str
+    if ref_ts:
+        try:
+            ts_clean = ref_ts.replace("Z", "+00:00")
+            if "/" in ts_clean:
+                dt = datetime.strptime(ts_clean[:19], "%d/%m/%Y %H:%M:%S").replace(tzinfo=timezone.utc)
+            else:
+                dt = datetime.fromisoformat(ts_clean)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+            age_seconds = max(0.0, (now_utc - dt).total_seconds())
+            mins = int(age_seconds // 60)
+            if mins == 0:
+                telemetria_label = "Agora mesmo (< 1 min)"
+            elif mins < 60:
+                telemetria_label = f"Há {mins} minuto{'s' if mins > 1 else ''}"
+            else:
+                hrs = mins // 60
+                telemetria_label = f"Há {hrs}h {mins % 60}m"
+        except Exception:
+            telemetria_label = "Horário registrado"
+
+    is_updated = (installed_ver == desired_ver) and (installed_ver not in ("0.0.0.0", "", "N/A"))
+    is_failed = "erro" in status_atualizacao.lower() or "falha" in status_atualizacao.lower()
+    is_in_progress = (acao_solicitada.lower() == "atualizar") or (status_atualizacao.lower() == "em progresso")
+
+    # Determinação do Step atual (1 a 5)
+    steps = [
+        {
+            "step": 1,
+            "title": "Ordem Enviada ao SharePoint",
+            "description": f"Comando registrado: Versao_Desejada={desired_ver} | Acao_Solicitada={acao_solicitada or 'Atualizar'}.",
+            "status": "completed",
+            "time_hint": "Gravado com sucesso no catálogo oficial"
+        },
+        {
+            "step": 2,
+            "title": "Reconhecimento pelo Agente C# (Polling)",
+            "description": f"Agente local (DNA.MonitorServiceSVC v{agent_installed}) processa a fila de ordens.",
+            "status": "completed" if (status_atualizacao == "Em Progresso" or is_updated) else ("in_progress" if is_in_progress else "completed"),
+            "time_hint": f"Último contato do agente: {telemetria_label}"
+        },
+        {
+            "step": 3,
+            "title": "Download do Pacote & Dependências",
+            "description": f"Baixando pacote binário {desired_ver} e validando hash SHA-256 no host.",
+            "status": "completed" if is_updated else ("in_progress" if (status_atualizacao == "Em Progresso") else ("failed" if is_failed else "pending")),
+            "time_hint": "Download direto via repositório homologado"
+        },
+        {
+            "step": 4,
+            "title": "Aplicação da Atualização & Reinício",
+            "description": f"Parada segura da versão anterior, extração de arquivos e reinício de {service_name}.",
+            "status": "completed" if is_updated else ("in_progress" if (status_atualizacao == "Em Progresso" and age_seconds < 180) else ("failed" if is_failed else "pending")),
+            "time_hint": "Execução silenciosa com token elevado"
+        },
+        {
+            "step": 5,
+            "title": "Confirmação & Governança Alinhada",
+            "description": f"Agente reporta Versao_Instalada={desired_ver} e limpa solicitação para 'Nenhuma'.",
+            "status": "completed" if (is_updated and acao_solicitada in ("Nenhuma", "", None)) else ("failed" if is_failed else "pending"),
+            "time_hint": "Auditoria de telemetria em tempo real"
+        }
+    ]
+
+    current_step_num = 1
+    if is_updated and acao_solicitada in ("Nenhuma", "", None):
+        current_step_num = 5
+    elif is_failed:
+        current_step_num = 3
+    elif status_atualizacao == "Em Progresso":
+        current_step_num = 3
+    elif is_in_progress:
+        current_step_num = 2
+
+    # Mensagem de diagnóstico contextual
+    if is_updated and acao_solicitada in ("Nenhuma", "", None):
+        user_message = f"✅ Sucesso! O serviço {service_name} já está homologado e operando na versão {desired_ver} em [{host}]."
+        status_badge = f"Concluído (v{desired_ver})"
+        badge_color = "green"
+    elif is_failed:
+        user_message = f"❌ Falha reportada pelo agente local: {status_atualizacao}. Verifique os logs do host."
+        status_badge = "Falha na Atualização"
+        badge_color = "red"
+    elif status_atualizacao == "Em Progresso":
+        user_message = f"⏳ O agente local de [{host}] já identificou a ordem e está executando o download/instalação da versão {desired_ver}."
+        status_badge = "Instalando no Host"
+        badge_color = "blue"
+    elif is_in_progress:
+        user_message = f"📡 Ordem gravada no SharePoint. O agente DNA.MonitorServiceSVC do host checa ordens pendentes a cada ciclo de heartbeat (último contato: {telemetria_label})."
+        status_badge = "Aguardando Agente C#"
+        badge_color = "yellow"
+    else:
+        user_message = f"Serviço operando normalmente na versão {installed_ver}."
+        status_badge = "Estável"
+        badge_color = "gray"
+
+    # Comando manual pronto de 1 linha para contingência via GV / Tanium
+    manual_ps = (
+        f"powershell -ExecutionPolicy Bypass -Command \""
+        f"& {{ [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12; "
+        f"Invoke-WebRequest -Uri 'http://10.1.30.1:8092/api/agent/download/{service_name}/{desired_ver}' -OutFile '$env:TEMP\\update.zip'; "
+        f"Expand-Archive -Path '$env:TEMP\\update.zip' -DestinationPath 'C:\\{service_name}' -Force; "
+        f"Restart-Service -Name '{service_name}' -Force }}\""
+    )
+
+    return {
+        "success": True,
+        "host": host,
+        "hostname": host,
+        "praca": praca,
+        "cs": cs,
+        "service_name": service_name,
+        "versao_instalada": installed_ver,
+        "versao_desejada": desired_ver,
+        "acao_solicitada": acao_solicitada,
+        "status_atualizacao": status_atualizacao,
+        "status_servico": status_servico,
+        "ultima_atualizacao": last_up_str,
+        "telemetria_label": telemetria_label,
+        "is_finished": (is_updated and acao_solicitada in ("Nenhuma", "", None)) or is_failed,
+        "is_success": (is_updated and acao_solicitada in ("Nenhuma", "", None)),
+        "current_step": current_step_num,
+        "status_badge": status_badge,
+        "badge_color": badge_color,
+        "message": user_message,
+        "steps": steps,
+        "manual_command": manual_ps
+    }
+

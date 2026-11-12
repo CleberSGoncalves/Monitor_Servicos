@@ -3595,17 +3595,12 @@ async function triggerFleetAction(actionType, host, serviceName = null, channelI
 
 
         if (resp.ok) {
-
-
-
-            alert(data.message || "Ação executada com sucesso!");
-
-
-
+            if (actionType === 'update_service' && typeof openFleetUpdateProgressModal === 'function') {
+                openFleetUpdateProgressModal(host, serviceName, targetVersion);
+            } else {
+                alert(data.message || "Ação executada com sucesso!");
+            }
             loadAllData();
-
-
-
         } else {
 
 

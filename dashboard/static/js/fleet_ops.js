@@ -690,7 +690,7 @@ function renderFleetEvolutionTable() {
         // Governança / Ação Solicitada
         let govBadge = `<span style="color: #10b981; font-weight: 600;">Atualizado</span>`;
         if (h.acao_solicitada === "Atualizar") {
-            govBadge = `<span style="color: #f59e0b; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;"><i class="fas fa-arrow-alt-circle-up"></i> Atualizar</span>`;
+            govBadge = `<span style="color: #f59e0b; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; padding: 2px 6px; background: rgba(245, 158, 11, 0.1); border-radius: 4px; border: 1px solid rgba(245, 158, 11, 0.3);" onclick="openFleetUpdateProgressModal('${h.hostname}', '${currentGovernanceService}', '${h.versao_desejada || targetVer}')" title="Atualização em andamento! Clique para acompanhar ao vivo"><i class="fas fa-spinner fa-spin"></i> Atualizar</span>`;
         } else if (h.status_atualizacao === "Desatualizado") {
             govBadge = `<span style="color: #f87171; font-weight: 600;">Desatualizado</span>`;
         }
@@ -759,6 +759,10 @@ async function dispatchSingleHostUpdate(hostname, serviceName, targetVersion) {
             await loadFleetUpdateEvolution(true);
             await loadFleetGovernanceSummary(false);
             if (typeof loadServicesTable === "function") loadServicesTable();
+            // Abre o modal de acompanhamento ao vivo imediatamente!
+            if (typeof openFleetUpdateProgressModal === "function") {
+                openFleetUpdateProgressModal(hostname, serviceName, targetVersion);
+            }
         } else {
             if (typeof showToast === "function") {
                 showToast(data.error || "Falha ao disparar atualização", "error");
@@ -979,3 +983,196 @@ setInterval(() => {
         loadFleetUpdateEvolution(false);
     }
 }, 30000);
+
+
+// ==============================================================================
+// MODAL DE ACOMPANHAMENTO DE ATUALIZAÇÃO EM TEMPO REAL (SHAREPOINT ↔ AGENTE CS ↔ SERVIÇO)
+// ==============================================================================
+
+let currentUpdateProgressHost = null;
+let currentUpdateProgressService = null;
+let currentUpdateProgressTimerInterval = null;
+let currentUpdateProgressPollInterval = null;
+let updateProgressStartTime = null;
+
+async function openFleetUpdateProgressModal(host, serviceName, targetVersion = null) {
+    currentUpdateProgressHost = host;
+    currentUpdateProgressService = serviceName || currentGovernanceService || "Atria Capture";
+    updateProgressStartTime = Date.now();
+
+    const modal = document.getElementById("fleetUpdateProgressModal");
+    if (!modal) return;
+    modal.style.display = "flex";
+
+    // Preenche dados iniciais no cabeçalho
+    const elHost = document.getElementById("upProgHost");
+    if (elHost) elHost.innerText = host;
+    const elSvc = document.getElementById("upProgService");
+    if (elSvc) elSvc.innerText = currentUpdateProgressService;
+    const elDes = document.getElementById("upProgDesired");
+    if (elDes && targetVersion) elDes.innerText = `v${targetVersion}`;
+
+    // Dispara cronômetro
+    if (currentUpdateProgressTimerInterval) clearInterval(currentUpdateProgressTimerInterval);
+    currentUpdateProgressTimerInterval = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - updateProgressStartTime) / 1000);
+        const mm = String(Math.floor(elapsed / 60)).padStart(2, "0");
+        const ss = String(elapsed % 60).padStart(2, "0");
+        const timerEl = document.getElementById("upProgTimer");
+        if (timerEl) timerEl.innerText = `Tempo decorrido: ${mm}:${ss}`;
+    }, 1000);
+
+    // Carrega dados iniciais
+    await refreshFleetUpdateProgressLive();
+
+    // Inicia auto-polling a cada 4 segundos
+    if (currentUpdateProgressPollInterval) clearInterval(currentUpdateProgressPollInterval);
+    currentUpdateProgressPollInterval = setInterval(() => {
+        const chk = document.getElementById("upProgAutoRefresh");
+        if (chk && chk.checked) {
+            refreshFleetUpdateProgressLive();
+        }
+    }, 4000);
+}
+
+function closeFleetUpdateProgressModal() {
+    if (currentUpdateProgressTimerInterval) {
+        clearInterval(currentUpdateProgressTimerInterval);
+        currentUpdateProgressTimerInterval = null;
+    }
+    if (currentUpdateProgressPollInterval) {
+        clearInterval(currentUpdateProgressPollInterval);
+        currentUpdateProgressPollInterval = null;
+    }
+    const modal = document.getElementById("fleetUpdateProgressModal");
+    if (modal) modal.style.display = "none";
+}
+
+async function refreshFleetUpdateProgressLive() {
+    if (!currentUpdateProgressHost || !currentUpdateProgressService) return;
+    const icon = document.getElementById("upProgRefreshIcon");
+    if (icon) icon.classList.add("fa-spin");
+
+    try {
+        const resp = await fetch(`/api/fleet/action/status?host=${encodeURIComponent(currentUpdateProgressHost)}&service_name=${encodeURIComponent(currentUpdateProgressService)}&_t=${Date.now()}`, {
+            headers: {
+                "Authorization": `Bearer ${getFleetAuthToken()}`
+            }
+        });
+        if (!resp.ok) return;
+        const data = await resp.json();
+        renderFleetUpdateProgressData(data);
+    } catch (e) {
+        console.warn("[FleetUpdateProgress] Erro ao obter status:", e);
+    } finally {
+        if (icon) icon.classList.remove("fa-spin");
+    }
+}
+
+function renderFleetUpdateProgressData(data) {
+    if (!data || !data.success) return;
+
+    // Atualiza cabeçalho e pílulas
+    const elPraca = document.getElementById("upProgPraca");
+    if (elPraca) elPraca.innerText = `${data.praca || "Praça"} CS ${data.cs || 1}`;
+    const elHost = document.getElementById("upProgHost");
+    if (elHost) elHost.innerText = data.hostname;
+    const elSvc = document.getElementById("upProgService");
+    if (elSvc) elSvc.innerText = data.service_name;
+    const elInst = document.getElementById("upProgInstalled");
+    if (elInst) elInst.innerText = `v${data.versao_instalada}`;
+    const elDes = document.getElementById("upProgDesired");
+    if (elDes) elDes.innerText = `v${data.versao_desejada}`;
+
+    // Badge de status
+    const badgeEl = document.getElementById("upProgStatusBadge");
+    if (badgeEl) {
+        badgeEl.className = data.badge_color === "green" ? "badge badge-green" :
+                           (data.badge_color === "red" ? "badge badge-red" :
+                           (data.badge_color === "blue" ? "badge badge-blue" : "badge badge-yellow"));
+        badgeEl.innerText = data.status_badge;
+    }
+
+    // Mensagem de explicação
+    const msgTitle = document.getElementById("upProgMessageTitle");
+    if (msgTitle) msgTitle.innerText = data.status_badge;
+    const msgText = document.getElementById("upProgMessageText");
+    if (msgText) msgText.innerHTML = data.message;
+
+    // Comando manual
+    const cmdInput = document.getElementById("upProgManualCmdInput");
+    if (cmdInput && data.manual_command) cmdInput.value = data.manual_command;
+
+    // Renderiza Stepper Visual
+    const container = document.getElementById("upProgStepperContainer");
+    if (!container) return;
+
+    const steps = data.steps || [];
+    container.innerHTML = steps.map(s => {
+        let iconHtml = '<span style="color: #64748b; font-size: 13px;">○</span>';
+        let borderStyle = 'border-left: 3px solid #334155;';
+        let bgStyle = 'background: rgba(15, 23, 42, 0.4);';
+        let titleColor = '#94a3b8';
+
+        if (s.status === "completed") {
+            iconHtml = '<span style="color: #10b981; font-size: 13px;">✅</span>';
+            borderStyle = 'border-left: 3px solid #10b981;';
+            bgStyle = 'background: rgba(16, 185, 129, 0.08);';
+            titleColor = '#34d399';
+        } else if (s.status === "in_progress") {
+            iconHtml = '<i class="fas fa-spinner fa-spin" style="color: #38bdf8; font-size: 12px;"></i>';
+            borderStyle = 'border-left: 3px solid #38bdf8;';
+            bgStyle = 'background: rgba(56, 189, 248, 0.12); box-shadow: 0 0 10px rgba(56, 189, 248, 0.15);';
+            titleColor = '#fff';
+        } else if (s.status === "failed") {
+            iconHtml = '<span style="color: #ef4444; font-size: 13px;">❌</span>';
+            borderStyle = 'border-left: 3px solid #ef4444;';
+            bgStyle = 'background: rgba(239, 68, 68, 0.1);';
+            titleColor = '#f87171';
+        }
+
+        return `
+            <div style="padding: 8px 12px; border-radius: 4px; ${borderStyle} ${bgStyle} display: flex; align-items: flex-start; gap: 10px; transition: all 0.2s ease;">
+                <div style="flex-shrink: 0; margin-top: 1px;">${iconHtml}</div>
+                <div style="flex: 1;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <strong style="color: ${titleColor}; font-size: 12px;">Etapa ${s.step}: ${s.title}</strong>
+                        <span style="font-size: 10px; color: #64748b;">${s.time_hint || ''}</span>
+                    </div>
+                    <div style="font-size: 11px; color: #cbd5e1; margin-top: 2px;">
+                        ${s.description}
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join("");
+
+    // Se finalizou com sucesso, atualiza tabelas do fundo
+    if (data.is_finished && data.is_success) {
+        if (typeof loadFleetUpdateEvolution === "function") loadFleetUpdateEvolution(false);
+        if (typeof loadServicesTable === "function") loadServicesTable();
+    }
+}
+
+function toggleUpProgManualBox() {
+    const box = document.getElementById("upProgManualBox");
+    const icon = document.getElementById("upProgManualToggleIcon");
+    if (!box) return;
+    const isOpen = box.style.display === "block";
+    box.style.display = isOpen ? "none" : "block";
+    if (icon) icon.innerText = isOpen ? "▼" : "▲";
+}
+
+function copyUpProgManualCmd() {
+    const input = document.getElementById("upProgManualCmdInput");
+    if (!input || !input.value) return;
+    navigator.clipboard.writeText(input.value).then(() => {
+        if (typeof showToast === "function") showToast("Comando copiado para a área de transferência!", "success");
+    });
+}
+
+window.openFleetUpdateProgressModal = openFleetUpdateProgressModal;
+window.closeFleetUpdateProgressModal = closeFleetUpdateProgressModal;
+window.refreshFleetUpdateProgressLive = refreshFleetUpdateProgressLive;
+window.toggleUpProgManualBox = toggleUpProgManualBox;
+window.copyUpProgManualCmd = copyUpProgManualCmd;
