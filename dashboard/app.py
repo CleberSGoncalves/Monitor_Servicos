@@ -641,10 +641,11 @@ async def trigger_action(req: FleetActionRequest, user: dict = Depends(get_curre
 async def get_fleet_action_status_endpoint(
     host: str,
     service_name: str,
+    target_version: Optional[str] = None,
     user: dict = Depends(get_current_user)
 ):
     from fleet_actions import get_host_service_action_status
-    res = get_host_service_action_status(host=host, service_name=service_name)
+    res = get_host_service_action_status(host=host, service_name=service_name, target_version=target_version)
     if not res.get("success"):
         raise HTTPException(status_code=404, detail=res.get("error", "Host ou serviço não encontrado"))
     return res
@@ -760,8 +761,14 @@ async def dispatch_governance_update_endpoint(
             except Exception as e:
                 failed.append({"host": h, "error": str(e)})
                 
+        is_overall_success = len(dispatched) > 0 or len(failed) == 0
+        error_msg = None
+        if not is_overall_success and len(failed) > 0:
+            error_msg = failed[0].get("error", "Falha de comunicação com o SharePoint")
+
         return {
-            "success": True,
+            "success": is_overall_success,
+            "error": error_msg,
             "service_name": req.service_name,
             "target_version": target_v,
             "total_targets": len(hosts_to_update),

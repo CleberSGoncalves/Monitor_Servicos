@@ -112,10 +112,11 @@ class TestUpdateProgressModalBackend:
         """
         Valida o retorno estruturado de status para BRGO-ANA-DT02 / Atria Capture.
         """
-        status_info = get_host_service_action_status("BRGO-ANA-DT02", "Atria Capture")
+        status_info = get_host_service_action_status("BRGO-ANA-DT02", "Atria Capture", target_version="2.0.0.2")
         assert status_info["hostname"] == "BRGO-ANA-DT02"
         assert status_info["host"] == "BRGO-ANA-DT02"
         assert status_info["service_name"] == "Atria Capture"
+        assert status_info["versao_desejada"] == "2.0.0.2"
         assert "current_step" in status_info
         assert 1 <= status_info["current_step"] <= 5
         assert "status_badge" in status_info
@@ -124,6 +125,19 @@ class TestUpdateProgressModalBackend:
         assert "Atria" in status_info["manual_command"]
         assert "steps" in status_info
         assert len(status_info["steps"]) == 5
+
+    def test_target_version_resolution_prevents_false_completion(self):
+        """
+        Garante que quando um serviço está na versão 1.4.4.4 e o alvo é 2.0.0.2,
+        o sistema NUNCA reporte falso 'Concluído (v1.4.4.4)' nem 'v1.4.4.4 -> v1.4.4.4'.
+        """
+        status_info = get_host_service_action_status("BRGO-ANA-DT02", "Atria Capture", target_version="2.0.0.2")
+        assert status_info["versao_desejada"] == "2.0.0.2"
+        if status_info["versao_instalada"] != "2.0.0.2":
+            # Não pode reportar concluído se as versões forem diferentes
+            assert status_info["is_updated"] is False
+            assert "Concluído (v1.4.4.4)" not in status_info["status_badge"]
+            assert status_info["steps"][4]["status"] != "completed"
 
     def test_get_host_service_action_status_nonexistent_host(self):
         """

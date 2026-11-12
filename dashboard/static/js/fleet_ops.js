@@ -754,7 +754,11 @@ async function dispatchSingleHostUpdate(hostname, serviceName, targetVersion) {
         const data = await resp.json();
         if (resp.ok && data.success) {
             if (typeof showToast === "function") {
-                showToast(`Atualização disparada no SharePoint para ${hostname}!`, "success");
+                if (data.is_queued) {
+                    showToast(data.message || "Ordem registrada na fila local (Azure em cooldown)", "warning");
+                } else {
+                    showToast(`Atualização disparada para ${hostname} (v${targetVersion})!`, "success");
+                }
             }
             await loadFleetUpdateEvolution(true);
             await loadFleetGovernanceSummary(false);
@@ -764,8 +768,13 @@ async function dispatchSingleHostUpdate(hostname, serviceName, targetVersion) {
                 openFleetUpdateProgressModal(hostname, serviceName, targetVersion);
             }
         } else {
+            const errMsg = data.error || (data.failed_hosts && data.failed_hosts[0]?.error) || "Falha ao disparar ordem no SharePoint";
             if (typeof showToast === "function") {
-                showToast(data.error || "Falha ao disparar atualização", "error");
+                showToast(errMsg, "error");
+            }
+            // Abre o modal de progresso mesmo em caso de erro para o operador ver o diagnóstico e copiar o comando de contingência
+            if (typeof openFleetUpdateProgressModal === "function") {
+                openFleetUpdateProgressModal(hostname, serviceName, targetVersion);
             }
         }
     } catch (err) {
@@ -991,6 +1000,7 @@ setInterval(() => {
 
 let currentUpdateProgressHost = null;
 let currentUpdateProgressService = null;
+let currentUpdateProgressTargetVersion = null;
 let currentUpdateProgressTimerInterval = null;
 let currentUpdateProgressPollInterval = null;
 let updateProgressStartTime = null;
@@ -998,6 +1008,7 @@ let updateProgressStartTime = null;
 async function openFleetUpdateProgressModal(host, serviceName, targetVersion = null) {
     currentUpdateProgressHost = host;
     currentUpdateProgressService = serviceName || currentGovernanceService || "Atria Capture";
+    currentUpdateProgressTargetVersion = targetVersion || (cachedFleetEvolutionData ? cachedFleetEvolutionData.target_version : "2.0.0.2");
     updateProgressStartTime = Date.now();
 
     const modal = document.getElementById("fleetUpdateProgressModal");
@@ -1010,7 +1021,7 @@ async function openFleetUpdateProgressModal(host, serviceName, targetVersion = n
     const elSvc = document.getElementById("upProgService");
     if (elSvc) elSvc.innerText = currentUpdateProgressService;
     const elDes = document.getElementById("upProgDesired");
-    if (elDes && targetVersion) elDes.innerText = `v${targetVersion}`;
+    if (elDes && currentUpdateProgressTargetVersion) elDes.innerText = `v${currentUpdateProgressTargetVersion}`;
 
     // Dispara cronômetro
     if (currentUpdateProgressTimerInterval) clearInterval(currentUpdateProgressTimerInterval);
@@ -1054,7 +1065,8 @@ async function refreshFleetUpdateProgressLive() {
     if (icon) icon.classList.add("fa-spin");
 
     try {
-        const resp = await fetch(`/api/fleet/action/status?host=${encodeURIComponent(currentUpdateProgressHost)}&service_name=${encodeURIComponent(currentUpdateProgressService)}&_t=${Date.now()}`, {
+        const targetParam = currentUpdateProgressTargetVersion ? `&target_version=${encodeURIComponent(currentUpdateProgressTargetVersion)}` : "";
+        const resp = await fetch(`/api/fleet/action/status?host=${encodeURIComponent(currentUpdateProgressHost)}&service_name=${encodeURIComponent(currentUpdateProgressService)}${targetParam}&_t=${Date.now()}`, {
             headers: {
                 "Authorization": `Bearer ${getFleetAuthToken()}`
             }
