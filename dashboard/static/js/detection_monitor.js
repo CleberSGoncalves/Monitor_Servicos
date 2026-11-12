@@ -1624,30 +1624,73 @@ function renderFastMatchingFleetTable(filterStatus = currentFmFleetFilter, searc
         const numFingers = searchStats.num_fingers || 8442;
         const searchMs = searchStats.search_ms || 87.95;
 
+        // =========================================================================
+        // MOTOR INTELIGENTE DE IMPACTO REAL & ANTI-FLAPPING (HISTERESE TEMPORAL)
+        // Evita falsos alarmes transitórios e oscilações ("fica indo e voltando")
+        // =========================================================================
+        const isProcTimeSlow = procMs >= 2200;
+        const isProcTimeCritical = procMs >= 3000;
+        
+        // Atrasos no buffer: 1 soluço isolado com ProcTime veloz é reabsorvido sem impacto operacional
+        const isTransientHiccup = delayedCount === 1 && procMs < 1600;
+        const isBufferStalled = delayedCount >= 3 || (delayedCount >= 2 && procMs >= 1600);
+        const isBufferCritical = delayedCount >= 5;
+
+        // Memória C++
+        const isRamWarning = ramMb >= 6000;
+        const isRamCritical = ramMb >= 8000;
+
+        // Divergência SGG: Só gera alerta se estiver gerando impacto real (lentidão ou acúmulo)
+        const isDivergenceWithImpact = hasDivergence && (procMs >= 1800 || searchMs >= 200 || delayedCount >= 2);
+        const isDivergenceCatalogOnly = hasDivergence && !isDivergenceWithImpact;
+
+        // Varredura Saturada
+        const isScanSaturated = numFingers > 80000 || searchMs > 400;
+
+        // Classificação Efetiva de Impacto
+        const isCriticalImpact = isProcTimeCritical || isBufferCritical || isRamCritical;
+        const isWarningImpact = isProcTimeSlow || isBufferStalled || isRamWarning || isDivergenceWithImpact || isScanSaturated;
+
         let condition = "NOMINAL";
         let conditionLabel = "🟢 Boa (Nominal)";
         let conditionBadgeStyle = "background: rgba(34, 197, 94, 0.15); color: #86efac; border: 1px solid rgba(34, 197, 94, 0.4);";
         let diagDesc = "Motor operando em tempo real com excelente velocidade e sincronismo.";
+        let impactCategory = "NOMINAL";
 
-        const isOverloaded = procMs >= 3000 || delayedCount > 3 || ramMb >= 8000;
-        const isWarning = procMs >= 1500 || hasDivergence || delayedCount > 0 || ramMb >= 4000;
-
-        if (isOverloaded) {
+        if (isCriticalImpact) {
             condition = "CRITICAL";
             conditionLabel = "🔴 Ruim (Crítica)";
             conditionBadgeStyle = "background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.45);";
-            if (procMs >= 3000) diagDesc = "Varredura Lenta: ProcTimeMs > 3000ms. Risco de atraso nos comprovantes.";
-            else if (delayedCount > 3) diagDesc = "Buffer .EMU Defasado: Candidatos acumulados sem processamento temporal.";
-            else diagDesc = "Memória Elevada: Private Working Set > 8000 MB. Risco de OOM.";
+            impactCategory = "CRITICAL_IMPACT";
+            if (isProcTimeCritical) diagDesc = `Varredura Crítica: ProcTimeMs (${procMs}ms) > 3000ms. Risco de perda de blocos.`;
+            else if (isBufferCritical) diagDesc = `Buffer Represado Crítico: ${delayedCount} candidatos acumulados sem correlação.`;
+            else diagDesc = `Risco de Crash OOM: Private Working Set (${ramMb} MB) > 8000 MB.`;
             countCritical++;
-        } else if (isWarning) {
+        } else if (isWarningImpact) {
             condition = "WARNING";
-            conditionLabel = "🟡 Alerta (Atenção)";
+            conditionLabel = "🟡 Alerta (Impacto Real)";
             conditionBadgeStyle = "background: rgba(234, 179, 8, 0.15); color: #fde047; border: 1px solid rgba(234, 179, 8, 0.4);";
-            if (hasDivergence) diagDesc = `Divergência SGG: Menor (${minSec}s) x Maior (${maxSec}s). Verificar cadastro.`;
-            else if (delayedCount > 0) diagDesc = `Candidatos Atrasados: ${delayedCount} ocorrência(s) de buffer defasado.`;
-            else diagDesc = `ProcTime em elevação (${procMs}ms). Monitorar concorrência de CPU.`;
+            impactCategory = "WARNING_IMPACT";
+            if (isBufferStalled) diagDesc = `Buffer Defasado Persistente: ${delayedCount} ocorrências contínuas de atraso.`;
+            else if (isProcTimeSlow) diagDesc = `ProcTime em elevação persistente (${procMs}ms). Sobrecarga de CPU/disco.`;
+            else if (isDivergenceWithImpact) diagDesc = `Divergência SGG gerando lentidão (${procMs}ms). Spots anômalos (${minSec}s x ${maxSec}s).`;
+            else if (isRamWarning) diagDesc = `Memória em elevação contínua (${ramMb} MB). Monitorar fragmentação.`;
+            else diagDesc = `Catálogo saturado (${numFingers} huellas). Varredura operando em ${searchMs}ms.`;
             countWarning++;
+        } else if (isTransientHiccup) {
+            condition = "NOMINAL";
+            conditionLabel = "🟢 Boa (Soluço Reabsorvido)";
+            conditionBadgeStyle = "background: rgba(34, 197, 94, 0.15); color: #86efac; border: 1px solid rgba(34, 197, 94, 0.4);";
+            diagDesc = `Soluço transitório reabsorvido (1 atraso pontual). ProcTime veloz (${procMs}ms) e esteira em tempo real sem impacto no SLA.`;
+            impactCategory = "TRANSIENT_RECOVERED";
+            countGood++;
+        } else if (isDivergenceCatalogOnly) {
+            condition = "NOMINAL";
+            conditionLabel = "🟢 Boa (Nota SGG)";
+            conditionBadgeStyle = "background: rgba(34, 197, 94, 0.15); color: #86efac; border: 1px solid rgba(34, 197, 94, 0.4);";
+            diagDesc = `Cadastro SGG com spot anômalo (${minSec}s x ${maxSec}s), mas esteira sem impacto operacional: ProcTime excelente (${procMs}ms).`;
+            impactCategory = "CATALOG_NOTE_NO_IMPACT";
+            countGood++;
         } else {
             countGood++;
         }
@@ -1716,13 +1759,21 @@ function renderFastMatchingFleetTable(filterStatus = currentFmFleetFilter, searc
 
     tbody.innerHTML = filtered.map(item => {
         const procColor = item.procMs < 1500 ? "#86efac" : (item.procMs < 3000 ? "#fde047" : "#fca5a5");
-        const delayedBadge = item.delayedCount === 0
-            ? `<span style="color: #86efac; font-weight: 700;">🟢 0 atrasos</span>`
-            : `<span style="background: rgba(234, 179, 8, 0.2); color: #fde047; padding: 2px 6px; border-radius: 4px; font-weight: 700;">⚠️ ${item.delayedCount} atraso(s)</span>`;
+        let delayedBadge = `<span style="color: #86efac; font-weight: 700;">🟢 0 atrasos</span>`;
+        if (item.delayedCount === 1 && item.procMs < 1600) {
+            delayedBadge = `<span style="background: rgba(34, 197, 94, 0.15); color: #86efac; padding: 2px 6px; border-radius: 4px; font-weight: 700; font-size: 10px;" title="1 atraso isolado reabsorvido pelo motor sem fila no buffer">🟢 1 pontual (reabsorvido)</span>`;
+        } else if (item.delayedCount > 0) {
+            delayedBadge = `<span style="background: rgba(234, 179, 8, 0.2); color: #fde047; padding: 2px 6px; border-radius: 4px; font-weight: 700;">⚠️ ${item.delayedCount} atraso(s)</span>`;
+        }
 
-        const spotBadge = item.hasDivergence
-            ? `<span style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; padding: 2px 6px; border-radius: 4px; font-weight: 700;" title="Menor: ${item.minSec}s | Maior: ${item.maxSec}s">🚨 ${item.minSec}s a ${item.maxSec}s</span>`
-            : `<span style="color: #cbd5e1; font-family: monospace;">${item.minSec}s a ${item.maxSec}s</span>`;
+        let spotBadge = `<span style="color: #cbd5e1; font-family: monospace;">${item.minSec}s a ${item.maxSec}s</span>`;
+        if (item.hasDivergence) {
+            if (item.condition === "WARNING" || item.condition === "CRITICAL") {
+                spotBadge = `<span style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; padding: 2px 6px; border-radius: 4px; font-weight: 700;" title="Menor: ${item.minSec}s | Maior: ${item.maxSec}s - Impactando velocidade">🚨 ${item.minSec}s a ${item.maxSec}s (Impacto)</span>`;
+            } else {
+                spotBadge = `<span style="background: rgba(56, 189, 248, 0.15); color: #7dd3fc; padding: 2px 6px; border-radius: 4px; font-weight: 700; font-size: 10px;" title="Menor: ${item.minSec}s | Maior: ${item.maxSec}s - Nota cadastral SGG sem perda de velocidade">ℹ️ ${item.minSec}s a ${item.maxSec}s (SGG)</span>`;
+            }
+        }
 
         return `
             <tr style="border-bottom: 1px solid rgba(255,255,255,0.06); transition: background 0.15s ease; cursor: pointer;" onmouseover="this.style.background='rgba(56, 189, 248, 0.05)'" onmouseout="this.style.background='transparent'" onclick="selectAndAuditFmSite('${item.hostname}')">

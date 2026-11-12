@@ -678,8 +678,12 @@ def generate_fastmatching_playbook(parsed: Dict[str, Any], hostname: str = "", e
             "quick_action": "stop_detection_svc"
         }
 
-    if parsed.get("has_delayed_warning"):
-        delayed_count = parsed.get("delayed_candidates_count", 1)
+    delayed_count = parsed.get("delayed_candidates_count", 0)
+    last_det_raw = parsed.get("last_detection") or {}
+    proc_time_raw = last_det_raw.get("proc_time_ms", 1000)
+
+    # ANTI-FLAPPING: Diferenciação entre Atraso Persistente e Soluço Transitório Reabsorvido
+    if delayed_count >= 2 or (delayed_count == 1 and proc_time_raw >= 1800):
         return {
             "problem_title": f"Descompasso de Buffer Circular / Candidatos Atrasados ({delayed_count} avisos no fma.log)",
             "severity": "WARNING",
@@ -692,6 +696,18 @@ def generate_fastmatching_playbook(parsed: Dict[str, Any], hostname: str = "", e
                 "4. [Fluxo de Captura] Verificar no Atria Capture / DigitalTVCapture se há perda de pacotes TS, frozen screen ou falhas de sintonia."
             ],
             "quick_action": "restart_fastmatching"
+        }
+    elif delayed_count == 1:
+        return {
+            "problem_title": "Soluço Transitório Reabsorvido no Buffer (1 ocorrência pontual)",
+            "severity": "INFO",
+            "impact": "Sem impacto operacional no SLA. O buffer foi reprocessado pelo motor sem formação de fila.",
+            "root_cause": "Oscilação momentânea de I/O de disco ou pequeno jitter de rede reabsorvido pela esteira.",
+            "steps": [
+                "1. [Monitoração Passiva] Acompanhar telemetria automática. Não requer intervenção emergencial.",
+                "2. [Verificação] Confirmar que ProcTime permanece veloz e não há novos atrasos acumulados."
+            ],
+            "quick_action": "none"
         }
 
     last_det = parsed.get("last_detection") or {}
