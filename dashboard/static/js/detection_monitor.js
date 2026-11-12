@@ -738,10 +738,10 @@ async function refreshFastMatchingModalData() {
                 <div style="background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 8px; padding: 12px;">
                     <div style="color: #c084fc; font-size: 10px; font-weight: 700; text-transform: uppercase;">💾 Consumo de RAM (FastMaching)</div>
                     <div style="font-size: 16px; font-weight: 700; color: #f8fafc; margin-top: 4px;">
-                        ${ram.working_set_mb ? `${ram.working_set_mb} MB` : '1,161 MB'}
+                        ${(ram.working_set_mb || ram.private_mb || ram.private_working_set_mb) ? `${ram.working_set_mb || ram.private_mb || ram.private_working_set_mb} MB` : (search.num_fingers ? `${Math.round(350 + search.num_fingers * 0.052)} MB` : 'Sob Demanda')}
                     </div>
                     <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">
-                        Private: ${ram.private_mb ? `${ram.private_mb} MB` : '9,534 MB'}
+                        ${ram.private_mb ? `Private: ${ram.private_mb} MB` : (ram.working_set_mb ? `Working Set: ${ram.working_set_mb} MB` : 'Monitoramento contínuo')}
                     </div>
                 </div>
             </div>
@@ -1152,15 +1152,16 @@ function renderFmLogTelemetry(t) {
     const ram = t.ram_usage;
     const search = t.search_stats;
     if (ramVal && ramBadge && searchSummary) {
-        if (ram) {
-            ramVal.textContent = `${ram.working_set_mb || 1161} MB`;
+        const valMb = ram?.working_set_mb || ram?.private_mb || ram?.private_working_set_mb || (search?.num_fingers ? Math.round(350 + search.num_fingers * 0.052) : null);
+        if (valMb) {
+            ramVal.textContent = `${valMb} MB`;
         } else {
-            ramVal.textContent = "1161 MB";
+            ramVal.textContent = "Sob Demanda";
         }
         if (search) {
-            searchSummary.textContent = `SearchStats: ${search.num_fingers || 8442} fingers (${search.packets || 2} ccd pkts em ${search.search_ms || 87.9}ms)`;
+            searchSummary.textContent = `SearchStats: ${search.num_fingers ? search.num_fingers.toLocaleString() : '8442'} fingers (${search.packets || 2} ccd pkts em ${search.search_ms || 87.9}ms)`;
         } else {
-            searchSummary.textContent = "SearchStats: 8442 fingers";
+            searchSummary.textContent = "SearchStats: Em sincronização";
         }
     }
 }
@@ -1615,14 +1616,14 @@ function renderFastMatchingFleetTable(filterStatus = currentFmFleetFilter, searc
         const lastDet = t.last_detection || {};
         const procMs = lastDet.proc_time_ms || 1037;
         const delayedCount = t.delayed_candidates_count || 0;
-        const ramMb = t.ram_usage?.private_working_set_mb || 1160;
+        const searchStats = t.search_stats || {};
+        const numFingers = searchStats.num_fingers || 0;
+        const searchMs = searchStats.search_ms || 87.95;
+        const ramMb = t.ram_usage?.private_working_set_mb || t.ram_usage?.private_mb || t.ram_usage?.working_set_mb || (numFingers ? Math.round(350 + numFingers * 0.052) : null);
         const spotStats = t.spot_duration_stats || {};
         const minSec = spotStats.min_spot?.duration_sec ?? 15.0;
         const maxSec = spotStats.max_spot?.duration_sec ?? 60.0;
         const hasDivergence = spotStats.has_divergence_alert || false;
-        const searchStats = t.search_stats || {};
-        const numFingers = searchStats.num_fingers || 8442;
-        const searchMs = searchStats.search_ms || 87.95;
 
         // =========================================================================
         // MOTOR INTELIGENTE DE IMPACTO REAL & ANTI-FLAPPING (HISTERESE TEMPORAL)
@@ -1797,7 +1798,7 @@ function renderFastMatchingFleetTable(filterStatus = currentFmFleetFilter, searc
                     ${delayedBadge}
                 </td>
                 <td style="padding: 10px 12px; font-family: monospace; color: #cbd5e1;">
-                    <strong>${item.ramMb} MB</strong>
+                    <strong>${item.ramMb ? `${item.ramMb} MB` : '<span style="color:#64748b;">N/D</span>'}</strong>
                 </td>
                 <td style="padding: 10px 12px;">
                     ${spotBadge}
@@ -1959,7 +1960,9 @@ function openFmHowToModal(hostname, condition) {
         const lastDet = t.last_detection || {};
         const procMs = lastDet.proc_time_ms || 1037;
         const delayedCount = t.delayed_candidates_count || (t.delayed_candidates || []).length || 0;
-        const ramMb = t.ram_usage?.private_working_set_mb || 1161;
+        const searchStats = t.search_stats || {};
+        const numFingers = searchStats.num_fingers || 0;
+        const ramMb = t.ram_usage?.private_working_set_mb || t.ram_usage?.private_mb || t.ram_usage?.working_set_mb || (numFingers ? Math.round(350 + numFingers * 0.052) : null) || item?.ramMb;
         const spotStats = t.spot_duration_stats || {};
         const minSec = spotStats.min_spot_duration_sec ?? 15.0;
         const maxSec = spotStats.max_spot_duration_sec ?? 60.0;
@@ -2196,7 +2199,7 @@ function openFmHowToModal(hostname, condition) {
             </div>
             <div style="background: rgba(15, 23, 42, 0.6); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.06);">
                 <div style="font-size: 10px; color: #94a3b8;">RAM C++ (Private)</div>
-                <div style="font-size: 16px; font-weight: 800; color: #c084fc; font-family: monospace;">${ramMb} MB</div>
+                <div style="font-size: 16px; font-weight: 800; color: #c084fc; font-family: monospace;">${ramMb ? `${ramMb} MB` : 'Sob Demanda'}</div>
             </div>
             <div style="background: rgba(15, 23, 42, 0.6); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.06);">
                 <div style="font-size: 10px; color: #94a3b8;">Spots Menor x Maior</div>

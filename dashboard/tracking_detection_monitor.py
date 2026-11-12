@@ -440,10 +440,13 @@ def parse_fma_log_content(lines: List[str]) -> Dict[str, Any]:
         m_ram_p = re_ram_priv.search(l)
         if m_ram_p:
             current_ram["timestamp"] = m_ram_p.group(1)
-            current_ram["private_mb"] = int(m_ram_p.group(2))
+            p_val = int(m_ram_p.group(2))
+            current_ram["private_mb"] = p_val
+            current_ram["private_working_set_mb"] = p_val
         m_ram_w = re_ram_work.search(l)
         if m_ram_w:
-            current_ram["working_set_mb"] = int(m_ram_w.group(2))
+            w_val = int(m_ram_w.group(2))
+            current_ram["working_set_mb"] = w_val
             res["ram_usage"] = dict(current_ram)
             continue
 
@@ -566,21 +569,22 @@ def get_fastmatching_node_telemetry(hostname: str = "", praca: str = "") -> Dict
         })
     
     # 3. Métricas de Escaneamento e Performance fma.log
+    num_fingers = 5200 + len(durations) * 950 + (h_seed % 8500)
     if is_overloaded_host:
         proc_time = 3200 + (h_seed % 1400) # Alerta > 3000ms
         search_ms = round(210.0 + (h_seed % 180) + ((h_seed % 100) / 100.0), 2)
-        private_mb = 9400 + (h_seed % 2200) # Risco OOM
+        private_mb = 8800 + (h_seed % 2600) # Risco OOM (> 8000 MB)
+        working_set_mb = int(private_mb * 0.45) + (h_seed % 350)
     elif is_major_market:
         proc_time = 1100 + (h_seed % 550) # 1100 a 1650ms
         search_ms = round(85.0 + (h_seed % 60) + ((h_seed % 100) / 100.0), 2)
-        private_mb = 3200 + (h_seed % 2800)
+        private_mb = 450 + int(num_fingers * 0.056) + (len(spots_list) * 22) + (h_seed % 280)
+        working_set_mb = int(private_mb * 0.76) + (h_seed % 120)
     else:
         proc_time = 780 + (h_seed % 480) # 780 a 1260ms (Excelente)
         search_ms = round(42.0 + (h_seed % 55) + ((h_seed % 100) / 100.0), 2)
-        private_mb = 1450 + (h_seed % 2100)
-        
-    working_set_mb = int(private_mb * 0.18) + (h_seed % 200)
-    num_fingers = 5200 + len(durations) * 950 + (h_seed % 8500)
+        private_mb = 350 + int(num_fingers * 0.048) + (len(spots_list) * 16) + (h_seed % 190)
+        working_set_mb = int(private_mb * 0.68) + (h_seed % 90)
     
     # Candidatos atrasados
     delayed_candidates = []
@@ -637,7 +641,11 @@ def get_fastmatching_node_telemetry(hostname: str = "", praca: str = "") -> Dict
         "last_detection": last_det,
         "has_delayed_warning": len(delayed_candidates) > 0,
         "delayed_candidates_count": len(delayed_candidates),
-        "ram_usage": {"private_mb": private_mb, "working_set_mb": working_set_mb}
+        "ram_usage": {
+            "private_mb": private_mb,
+            "working_set_mb": working_set_mb,
+            "private_working_set_mb": private_mb
+        }
     }
     playbook = generate_fastmatching_playbook(parsed_mock, hostname)
     
@@ -666,7 +674,8 @@ def get_fastmatching_node_telemetry(hostname: str = "", praca: str = "") -> Dict
         "ram_usage": {
             "timestamp": now_str,
             "private_mb": private_mb,
-            "working_set_mb": working_set_mb
+            "working_set_mb": working_set_mb,
+            "private_working_set_mb": private_mb
         },
         "playbook": playbook,
         "events": events

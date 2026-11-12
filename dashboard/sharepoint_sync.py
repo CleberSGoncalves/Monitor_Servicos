@@ -112,6 +112,8 @@ def recalculate_fleet_stats(services_list: list, channels_list: list) -> dict:
 
         "total_services": len(services_list),
 
+        "services_required": services_running + services_stopped,
+
         "services_running": services_running,
 
         "services_stopped": services_stopped,
@@ -1449,6 +1451,8 @@ def sync_fleet_data():
             "hosts_offline": hosts_offline,
 
             "total_services": len(services_list),
+
+            "services_required": sum(1 for s in services_list if s["status_servico"] == "Em Execução") + services_stopped,
 
             "services_running": sum(1 for s in services_list if s["status_servico"] == "Em Execução"),
 

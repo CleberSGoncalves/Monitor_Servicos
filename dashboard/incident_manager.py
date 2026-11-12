@@ -162,6 +162,10 @@ def register_incident_action(
 ) -> int:
     """Registra uma ação manual realizada pelo operador em um incidente."""
     init_incidents_db()
+    try:
+        sync_live_fleet_to_incident_events()
+    except Exception:
+        pass
     with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
         cursor = conn.cursor()
         cursor.execute("""
@@ -177,6 +181,166 @@ def register_incident_action(
         conn.commit()
         return cursor.lastrowid
 
+
+
+
+def sync_live_fleet_to_incident_events() -> int:
+    """
+    Sincroniza ativamente os incidentes reais da frota (canais em queda, serviços críticos
+    parados e hosts desconectados) com a tabela 'incident_events'.
+    Aplica matriz estrita de gravidade broadcast (P0 Crítico, P1 Alerta, P2 Aviso).
+    Auto-resolve incidentes cujas causas foram normalizadas.
+    """
+    init_incidents_db()
+    try:
+        from sharepoint_sync import get_cached_data
+        data = get_cached_data()
+        channels = data.get("channels", [])
+        services = data.get("services", [])
+    except Exception as e:
+        return 0
+
+    now_dt = datetime.now()
+    now_str = now_dt.strftime("%Y-%m-%d %H:%M:%S")
+    active_codes = set()
+
+    hosts_svcs = {}
+    for s in services:
+        h = s.get("hostname") or s.get("host")
+        if not h or h == "N/A":
+            continue
+        hosts_svcs.setdefault(h, []).append(s)
+
+    with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
+        cursor = conn.cursor()
+
+        # 1. Canais com Outage
+        outages = [c for c in channels if c.get("has_outage")]
+        for c in outages:
+            praca = c.get("cidade") or "Geral"
+            canal = c.get("canal") or "Canal"
+            cs = c.get("cs") or c.get("id_cs") or 1
+            ch_low = canal.lower()
+            meio = str(c.get("meio") or "").lower()
+
+            slug = re.sub(r"[^a-zA-Z0-9]", "", f"{praca}_{canal}_{cs}").upper()
+            code = f"INC-CH-{slug}"
+            active_codes.add(code)
+
+            is_obs = any(k in ch_low for k in ["obs", "teste", "stream_obs", "monitoramento"])
+            is_radio = any(k in meio for k in ["radio", "fm", "am", "mp3"]) or any(k in ch_low for k in [" fm", " am"])
+            is_open_tv = any(k in ch_low for k in ["globo", "sbt", "record", "band", "redetv", "cultura"])
+            is_storage = "⚠️" in str(c.get("gravando_mp4", "")) or "travado" in str(c.get("motivo", "")).lower()
+
+            if is_obs:
+                sev = "aviso"
+                itype = "obs_feed_stall"
+            elif is_storage or is_open_tv:
+                sev = "critico"
+                itype = "storage_fault" if is_storage else ("gop_stall" if "congelado" in str(c.get("motivo", "")).lower() else "rf_outage")
+            elif is_radio:
+                sev = "alerta"
+                itype = "radio_carrier_loss"
+            else:
+                sev = "alerta"
+                itype = "paytv_signal_loss"
+
+            summary = c.get("motivo") or "Anomalia operacional de transmissão"
+            root_cause = f"Telemetria reporta anomalia no canal {canal} em {praca}: {summary}"
+            host = c.get("host") or c.get("hostname") or f"CS-{praca[:3].upper()}-0{cs}"
+
+            cursor.execute("""
+                INSERT INTO incident_events (
+                    incident_code, praca, host, target_name, incident_type,
+                    severity, status, duration_minutes, impact_summary, root_cause,
+                    tower_reference, distance_km, azimuth_deg, operator_assigned, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, 'aberto', 25, ?, ?, ?, 8.0, 120.0, 'N1', ?)
+                ON CONFLICT(incident_code) DO UPDATE SET
+                    status = 'aberto',
+                    severity = excluded.severity,
+                    impact_summary = excluded.impact_summary,
+                    root_cause = excluded.root_cause
+            """, (code, praca, host, canal, itype, sev, summary, root_cause, f"Torre {praca}", now_str))
+
+        # 2. Serviços Essenciais Parados
+        for h, svcs in hosts_svcs.items():
+            praca = svcs[0].get("praca") or "Geral"
+            cs = svcs[0].get("cs") or 1
+            try:
+                cs_num = int(float(cs))
+            except Exception:
+                cs_num = 1
+
+            # A. Motor de gravação
+            atria = next((s for s in svcs if s.get("nome_servico") == "Atria Capture"), None)
+            mrec = next((s for s in svcs if s.get("nome_servico") == "DNA.MediaRecorderSVC"), None)
+            atria_run = atria and any(x in (atria.get("status_servico") or "").lower() for x in ["execu", "running", "ok"])
+            mrec_run = mrec and any(x in (mrec.get("status_servico") or "").lower() for x in ["execu", "running", "ok"])
+            if not atria_run and not mrec_run and (atria or mrec):
+                code = f"INC-SRV-REC-{re.sub(r'[^a-zA-Z0-9]', '', h).upper()}"
+                active_codes.add(code)
+                cursor.execute("""
+                    INSERT INTO incident_events (
+                        incident_code, praca, host, target_name, incident_type,
+                        severity, status, duration_minutes, impact_summary, root_cause,
+                        tower_reference, distance_km, azimuth_deg, operator_assigned, created_at
+                    ) VALUES (?, ?, ?, ?, 'service_stopped', 'critico', 'aberto', 30, ?, ?, ?, 0.0, 0.0, 'N1', ?)
+                    ON CONFLICT(incident_code) DO UPDATE SET
+                        status = 'aberto',
+                        severity = 'critico',
+                        impact_summary = excluded.impact_summary
+                """, (code, praca, h, "Motor de Gravação", "Nenhum motor de gravação ativo no host (Atria e MediaRecorder parados). Gravação paralisada.", f"Falha de processos de captura em {h}", f"Capture Site {praca}", now_str))
+
+            # B. Detecção CS01
+            if cs_num == 1:
+                fma = next((s for s in svcs if "fastmatching" in (s.get("nome_servico") or "").lower()), None)
+                det = next((s for s in svcs if s.get("nome_servico") == "DNA.DetectionSVC"), None)
+                fma_run = fma and any(x in (fma.get("status_servico") or "").lower() for x in ["execu", "running", "ok"])
+                det_run = det and any(x in (det.get("status_servico") or "").lower() for x in ["execu", "running", "ok"])
+                if not fma_run and not det_run and (fma or det):
+                    code = f"INC-SRV-DET-{re.sub(r'[^a-zA-Z0-9]', '', h).upper()}"
+                    active_codes.add(code)
+                    cursor.execute("""
+                        INSERT INTO incident_events (
+                            incident_code, praca, host, target_name, incident_type,
+                            severity, status, duration_minutes, impact_summary, root_cause,
+                            tower_reference, distance_km, azimuth_deg, operator_assigned, created_at
+                        ) VALUES (?, ?, ?, ?, 'service_stopped', 'critico', 'aberto', 30, ?, ?, ?, 0.0, 0.0, 'N1', ?)
+                        ON CONFLICT(incident_code) DO UPDATE SET
+                            status = 'aberto',
+                            severity = 'critico',
+                            impact_summary = excluded.impact_summary
+                    """, (code, praca, h, "Motor de Detecção", "Nenhum motor de detecção ativo no CS01 (FastMatching e DetectionSVC parados). Geração de XMLs paralisada.", f"Parada da esteira de matching em {h}", f"Capture Site {praca}", now_str))
+
+            # C. FileTransfer
+            ft = next((s for s in svcs if s.get("nome_servico") == "DNA.FiletransferSVC"), None)
+            if ft and ft.get("status_servico") == "Parado":
+                code = f"INC-SRV-FT-{re.sub(r'[^a-zA-Z0-9]', '', h).upper()}"
+                active_codes.add(code)
+                cursor.execute("""
+                    INSERT INTO incident_events (
+                        incident_code, praca, host, target_name, incident_type,
+                        severity, status, duration_minutes, impact_summary, root_cause,
+                        tower_reference, distance_km, azimuth_deg, operator_assigned, created_at
+                    ) VALUES (?, ?, ?, ?, 'service_stopped', 'critico', 'aberto', 30, ?, ?, ?, 0.0, 0.0, 'N1', ?)
+                    ON CONFLICT(incident_code) DO UPDATE SET
+                        status = 'aberto',
+                        severity = 'critico',
+                        impact_summary = excluded.impact_summary
+                """, (code, praca, h, "DNA.FiletransferSVC", "Serviço DNA.FiletransferSVC parado. Mídias e comprovantes retidos sem envio à matriz.", f"Parada do serviço de transferência em {h}", f"Capture Site {praca}", now_str))
+
+        # 3. Auto-resolução de incidentes corrigidos
+        if active_codes:
+            placeholders = ",".join("?" for _ in active_codes)
+            cursor.execute(f"""
+                UPDATE incident_events
+                SET status = 'resolvido', resolved_at = ?
+                WHERE status = 'aberto' AND (incident_code LIKE 'INC-CH-%' OR incident_code LIKE 'INC-SRV-%')
+                  AND incident_code NOT IN ({placeholders})
+            """, [now_str] + list(active_codes))
+
+        conn.commit()
+        return len(active_codes)
 
 def get_incident_history(
     incident_key: Optional[str] = None,

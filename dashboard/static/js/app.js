@@ -12431,17 +12431,122 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
 
 
     
-    // PRÉ-REQUISITO UNIVERSAL OBRIGATÓRIO DE TELEMETRIA:
-    // Se o agente tem mais de 20 min sem reporte (diff_hours > 0.33) OU o agente não está rodando,
-    // o host NÃO possui comunicação ativa em tempo real.
-    // Todos os processos locais são INDETERMINADOS e é PROIBIDO emitir incidentes operacionais de canal, RF, hardware ou pipeline!
-    const staleCommHostsSet = new Set(
-        Object.values(hostsMap).filter(h => h.diff_hours > 0.33 || !h.agent_running).map(h => (h.hostname || '').toLowerCase().trim())
-    );
-    const staleCommPracasMap = new Set(
-        Object.values(hostsMap).filter(h => h.diff_hours > 0.33 || !h.agent_running).map(h => `${(h.praca || '').toLowerCase().trim()}_${h.cs}`)
-    );
-allNocHostsTelemetryCache = Object.values(hostsMap);
+    allNocHostsTelemetryCache = Object.values(hostsMap);
+
+    // 1.5. Incidentes de Serviços Essenciais Parados no Host Ativo (P0 Crítico)
+    function anyStatusRunning(st) {
+        if (!st) return false;
+        const low = String(st).toLowerCase();
+        return low.includes("execu") || low.includes("running") || low.includes("ok");
+    }
+
+    Object.values(hostsMap).forEach(h => {
+        if (h.is_offline) return;
+        const hLow = (h.hostname || '').toLowerCase().trim();
+        const hostSvcs = (servicesList || []).filter(s => (s.hostname || s.host || '').toLowerCase().trim() === hLow);
+        if (hostSvcs.length === 0) return;
+        const csNum = parseInt(h.cs || 1);
+
+        // A. Motor de Gravação: Atria Capture vs DNA.MediaRecorderSVC
+        const atria = hostSvcs.find(s => s.nome_servico === "Atria Capture");
+        const mrec = hostSvcs.find(s => s.nome_servico === "DNA.MediaRecorderSVC");
+        const atriaRun = atria && anyStatusRunning(atria.status_servico || atria.status);
+        const mrecRun = mrec && anyStatusRunning(mrec.status_servico || mrec.status);
+
+        if (!atriaRun && !mrecRun && (atria || mrec)) {
+            incidents.push({
+                id: `p0_rec_${h.hostname}`,
+                key: `rec_engine_${h.hostname}`,
+                severity: "P0",
+                severity_label: "CRÍTICO (P0)",
+                trigger_type: "service_stopped",
+                category: "servicos_essenciais",
+                category_label: "Motor de Gravação Paralisado",
+                category_icon: "fa-video-slash",
+                praca: h.praca,
+                region: h.region,
+                cs: csNum,
+                hostname: h.hostname,
+                target: `Motor de Gravação (${h.praca})`,
+                title: `Interrupção de Gravação: Nem Atria nem MediaRecorder em Execução`,
+                summary: `Host ${h.hostname} sem software de captura ativo. Gravação de mídias paralisada.`,
+                telemetry: `Atria: ${atria?.status_servico || 'Inexistente'} | MediaRecorder: ${mrec?.status_servico || 'Inexistente'}`,
+                time_ago: "Tempo real",
+                how_to_steps: [
+                    "1. Identificar se o host opera Atria Capture ou DNA.MediaRecorderSVC.",
+                    "2. Se Atria: iniciar DigitalTVReceiver via Remote Command.",
+                    "3. Se MediaRecorder: iniciar serviço DNA.MediaRecorderSVC."
+                ]
+            });
+        }
+
+        // B. Motor de Detecção CS01
+        if (csNum === 1) {
+            const fma = hostSvcs.find(s => (s.nome_servico || '').toLowerCase().includes("fastmatching"));
+            const det = hostSvcs.find(s => s.nome_servico === "DNA.DetectionSVC");
+            const fmaRun = fma && anyStatusRunning(fma.status_servico || fma.status);
+            const detRun = det && anyStatusRunning(det.status_servico || det.status);
+
+            if (!fmaRun && !detRun && (fma || det)) {
+                const alreadyCovered = (detectionSites || []).some(ds => (ds.hostname || '').toLowerCase().trim() === hLow);
+                if (!alreadyCovered) {
+                    incidents.push({
+                        id: `p0_det_${h.hostname}`,
+                        key: `det_engine_${h.hostname}`,
+                        severity: "P0",
+                        severity_label: "CRÍTICO (P0)",
+                        trigger_type: "service_stopped",
+                        category: "servicos_essenciais",
+                        category_label: "Motor de Detecção CS01 Paralisado",
+                        category_icon: "fa-ban",
+                        praca: h.praca,
+                        region: h.region,
+                        cs: 1,
+                        hostname: h.hostname,
+                        target: `Detecção CS01 (${h.praca})`,
+                        title: `Detecção Paralisada: Nem FastMatching nem DetectionSVC em Execução`,
+                        summary: `Host CS01 ${h.hostname} sem motor de matching ativo. Geração de comprovantes comerciais (.XML) paralisada.`,
+                        telemetry: `FastMatching: ${fma?.status_servico || 'Inativo'} | DetectionSVC: ${det?.status_servico || 'Inativo'}`,
+                        time_ago: "Tempo real",
+                        how_to_steps: [
+                            "1. Iniciar serviço FastMatchingSvc pelo Remote Commands.",
+                            "2. Se falhar, iniciar DNA.DetectionSVC como fallback legado.",
+                            "3. Validar se novos XMLs são gerados em D:\\MediaDNA_V2\\data\\tracking."
+                        ]
+                    });
+                }
+            }
+        }
+
+        // C. DNA.FiletransferSVC
+        const ft = hostSvcs.find(s => s.nome_servico === "DNA.FiletransferSVC");
+        if (ft && !anyStatusRunning(ft.status_servico || ft.status) && ft.status_servico === "Parado") {
+            incidents.push({
+                id: `p0_ft_${h.hostname}`,
+                key: `ft_stopped_${h.hostname}`,
+                severity: "P0",
+                severity_label: "CRÍTICO (P0)",
+                trigger_type: "service_stopped",
+                category: "servicos_essenciais",
+                category_label: "Transporte FileTransfer Parado",
+                category_icon: "fa-shipping-fast",
+                praca: h.praca,
+                region: h.region,
+                cs: csNum,
+                hostname: h.hostname,
+                target: `DNA.FiletransferSVC (${h.praca})`,
+                title: `Transporte de Mídia Interrompido (DNA.FiletransferSVC Parado)`,
+                summary: `Serviço DNA.FiletransferSVC parado em ${h.hostname}. Mídias e telemetria retidas localmente sem envio à matriz.`,
+                telemetry: `Status: Parado | Host: ${h.hostname}`,
+                time_ago: "Tempo real",
+                how_to_steps: [
+                    "1. Executar 'net start DNA.FiletransferSVC' no nó.",
+                    "2. Validar conexão de rede com os servidores de destino.",
+                    "3. Conferir se a fila de arquivos outbox diminui."
+                ]
+            });
+        }
+    });
 
 
 
@@ -12493,39 +12598,15 @@ allNocHostsTelemetryCache = Object.values(hostsMap);
 
 
 
-        // Se o host físico do canal estiver offline, a telemetria é inválida/estagnada (suprime falso alarme de queda)
-
-        if (staleCommHostsSet.has(chHost) || staleCommPracasMap.has(chPracaCs) || offlineHostsSet.has(chHost) || offlinePracasMap.has(chPracaCs)) {
+        // Se o host físico do canal estiver offline (>24h sem telemetria), suprime canal individual e agrupa no host
+        if (offlineHostsSet.has(chHost) || offlinePracasMap.has(chPracaCs)) {
             return false;
         }
-
-
 
         // Apenas canais de praças sendo ativamente monitoradas
-
         if (!pracaLower || (monitoredPracas.size > 0 && !monitoredPracas.has(pracaLower))) {
-
             return false;
-
         }
-
-
-
-        // Descarta registros órfãos sem atualização há mais de 3 horas
-
-        if (c.atualizacao) {
-
-            try {
-
-                const diffMin = Math.floor((Date.now() - new Date(c.atualizacao.replace("Z", "+00:00")).getTime()) / 60000);
-
-                if (diffMin > 20) return false;
-
-            } catch(e) {}
-
-        }
-
-
 
         return true;
 
@@ -12865,122 +12946,44 @@ allNocHostsTelemetryCache = Object.values(hostsMap);
 
 
 
-        // Regra de Severidade Refinada
-
-
-
+        // Regra de Severidade Refinada e Calibrada
         let assignedSeverity = "P0";
-
-
-
         let assignedSeverityLabel = "CRÍTICO (P0)";
 
-
-
-
-
-
+        const isOpenTvMain = chNameLower.includes("globo") || chNameLower.includes("sbt") || 
+                             chNameLower.includes("record") || chNameLower.includes("band") || 
+                             chNameLower.includes("redetv") || chNameLower.includes("cultura");
 
         if (isMonitoringFeed) {
-
-
-
-            // Feeds de OBS / Streams internos nunca são P0/P1
-
-
-
             assignedSeverity = "P2";
-
-
-
             assignedSeverityLabel = "FEED MONITORAMENTO (P2)";
-
-
-
             chronBadge = chronBadge || "📡 Feed Interno de Apoio (Sem Impacto Broadcast)";
-
-
-
-        } else if (isEfemero) {
-
-
-
-            // Anti-Alarme Fugaz: Micro-ocorrências transitórias (< 4 min) não disparam P0 no N1
-
-
-
+        } else if (isEfemero && curDurMin < 4.0) {
             assignedSeverity = "P2";
-
-
-
             assignedSeverityLabel = "EM OBSERVAÇÃO (P2)";
-
-
-
             chronBadge = chronBadge || `🟡 Recente (${curDurMin} min) • N1 aguarda cronicidade (>= 4 min)`;
-
-
-
-        } else if (isChronic) {
-
-
-
-            // Falha crônica comprovada: persistente >= 4 min ou flapping
-
-
-
-            if (curDurMin >= 15.0 || ep1h >= 5) {
-
-
-
+        } else if (isStorageErr) {
+            assignedSeverity = "P0";
+            assignedSeverityLabel = "GRAVAÇÃO TRAVADA (P0)";
+            chronBadge = chronBadge || `🔴 Falha de Gravação / Storage (${curDurMin} min)`;
+        } else if (isOpenTvMain) {
+            assignedSeverity = "P0";
+            assignedSeverityLabel = "INTERRUPÇÃO CRÍTICA (P0)";
+            chronBadge = chronBadge || `🔴 Sinal Interrompido TV Aberta (${curDurMin} min)`;
+        } else if (isRadio) {
+            assignedSeverity = "P1";
+            assignedSeverityLabel = "RÁDIO FM (P1)";
+            chronBadge = chronBadge || `📻 Áudio/Gravação Rádio FM (${curDurMin} min)`;
+        } else {
+            if (curDurMin >= 30.0 || ep1h >= 5) {
                 assignedSeverity = "P0";
-
-
-
                 assignedSeverityLabel = "CRÍTICO PERSISTENTE (P0)";
-
-
-
-                chronBadge = chronBadge || `🔴 Crítico Persistente (${curDurMin} min contínuos)`;
-
-
-
-            } else if (ep1h >= 3) {
-
-
-
-                assignedSeverity = "P1";
-
-
-
-                assignedSeverityLabel = "CRÔNICO / FLAPPING (P1)";
-
-
-
-                chronBadge = chronBadge || `🔁 Crônico / Flapping (${ep1h}x na última hora)`;
-
-
-
+                chronBadge = chronBadge || `🔴 Queda Persistente (${curDurMin} min)`;
             } else {
-
-
-
                 assignedSeverity = "P1";
-
-
-
-                assignedSeverityLabel = "PERSISTENTE (P1)";
-
-
-
+                assignedSeverityLabel = "FALHA DE TRANSMISSÃO (P1)";
                 chronBadge = chronBadge || `⏱️ Persistente (${curDurMin} min contínuos)`;
-
-
-
             }
-
-
-
         }
 
 
@@ -13177,7 +13180,7 @@ allNocHostsTelemetryCache = Object.values(hostsMap);
 
         const chPracaCs = `${(c.cidade || "").trim().toLowerCase()}_${c.cs || c.id_cs || 1}`;
 
-        if (staleCommHostsSet.has(chHost) || staleCommPracasMap.has(chPracaCs) || offlineHostsSet.has(chHost) || offlinePracasMap.has(chPracaCs)) return false;
+        if (offlineHostsSet.has(chHost) || offlinePracasMap.has(chPracaCs)) return false;
 
 
 
@@ -13319,7 +13322,7 @@ allNocHostsTelemetryCache = Object.values(hostsMap);
 
         const pHost = (inc.hostname || inc.host || "").toLowerCase().trim();
 
-        if (staleCommHostsSet.has(pHost) || offlineHostsSet.has(pHost)) return false;
+        if (offlineHostsSet.has(pHost)) return false;
 
         return true;
 
@@ -13445,7 +13448,7 @@ allNocHostsTelemetryCache = Object.values(hostsMap);
 
         const bHost = (b.hostname || b.host || "").toLowerCase().trim();
 
-        if (staleCommHostsSet.has(bHost) || offlineHostsSet.has(bHost)) return false;
+        if (offlineHostsSet.has(bHost)) return false;
 
         return true;
 
@@ -14016,21 +14019,10 @@ function updateNocTopKpis(summary, servicesList, channelsList, detectionSummary 
 
 
     if (kpiServices) {
-
-
-
-        const totalSvc = st.total_services || servicesList?.length || 312;
-
-
-
+        const totalReq = st.services_required || (st.services_running + (st.services_stopped || 0)) || 2089;
         const activeSvc = (st.services_running !== undefined) ? st.services_running : (servicesList || []).filter(s => (s.status_servico || s.status || "").toLowerCase().includes("run") || (s.status_servico || s.status || "").toLowerCase().includes("em exec") || (s.status_servico || s.status || "").toLowerCase().includes("ok")).length;
-
-
-
-        kpiServices.textContent = `${activeSvc}/${totalSvc} Ativos`;
-
-
-
+        kpiServices.textContent = `${activeSvc}/${totalReq} Ativos`;
+        kpiServices.title = `${activeSvc} em execução de ${totalReq} serviços instalados/requeridos (${st.services_stopped || 0} parados, ${st.services_inexistent || 0} não aplicáveis ao papel do host)`;
     }
 
 

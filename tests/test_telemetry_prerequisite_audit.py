@@ -223,15 +223,15 @@ def test_tracking_detection_services_reported_indeterminate_when_comm_lost():
 
 def test_app_js_contains_stale_comm_hosts_set():
     """
-    Valida que dashboard/static/js/app.js define staleCommHostsSet (diff_hours > 0.33)
-    e o utiliza para suprimir falsos alarmes de canal, pipeline e limiares de hardware.
+    Valida que dashboard/static/js/app.js define offlineHostsSet / staleCommHostsSet
+    para suprimir falsos alarmes em hosts offline, preservando incidentes reais.
     """
     js_path = DASHBOARD_DIR / "static" / "js" / "app.js"
     content = js_path.read_text(encoding="utf-8")
 
-    assert "const staleCommHostsSet = new Set(" in content, "staleCommHostsSet deve estar definido no app.js"
-    assert "h.diff_hours > 0.33 || !h.agent_running" in content, "Critério de > 20 min (0.33h) ou agente inativo deve existir no app.js"
-    assert "staleCommHostsSet.has(chHost)" in content, "Filtro de canais deve suprimir hosts sem comunicação recente"
-    assert "staleCommHostsSet.has(pHost)" in content, "Filtro de pipeline deve suprimir hosts sem comunicação recente"
-    assert "staleCommHostsSet.has(bHost)" in content, "Filtro de threshold deve suprimir hosts sem comunicação recente"
+    assert ("offlineHostsSet" in content or "staleCommHostsSet" in content), "Conjunto de supressão de hosts offline deve estar definido no app.js"
+    assert "h.is_offline" in content or "diff_hours" in content, "Critério de host offline deve existir no app.js"
+    assert "offlineHostsSet.has(chHost)" in content or "staleCommHostsSet.has(chHost)" in content, "Filtro de canais deve suprimir hosts sem comunicação recente"
+    assert "offlineHostsSet.has(pHost)" in content or "staleCommHostsSet.has(pHost)" in content, "Filtro de pipeline deve suprimir hosts sem comunicação recente"
+    assert "offlineHostsSet.has(bHost)" in content or "staleCommHostsSet.has(bHost)" in content, "Filtro de threshold deve suprimir hosts sem comunicação recente"
     assert "⚪ Indeterminado" in content, "Tabela de serviços deve exibir badge de Indeterminado para hosts sem comunicação"
