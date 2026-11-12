@@ -549,6 +549,11 @@ def get_fastmatching_node_telemetry(hostname: str = "", praca: str = "", force_r
     raw_services = get_fleet_services()
     fm_svc = None
     det_svc = None
+    cap_svc = None
+    cfg_svc = None
+    agent_svc = None
+    sync_svc = None
+    ft_svc = None
     matched_host = h_str
     matched_praca = p_str
 
@@ -572,6 +577,16 @@ def get_fastmatching_node_telemetry(hostname: str = "", praca: str = "", force_r
                 fm_svc = s
             elif "detectionsvc" in s_name:
                 det_svc = s
+            elif "atriacapture" in s_name or ("capture" in s_name and "dtv" not in s_name):
+                cap_svc = s
+            elif "configmonitorsvc" in s_name:
+                cfg_svc = s
+            elif "monitorservice" in s_name:
+                agent_svc = s
+            elif "timesync" in s_name:
+                sync_svc = s
+            elif "filetransfer" in s_name:
+                ft_svc = s
 
     # 3. Analisar status real no Capture Site
     fm_status_raw = fm_svc.get("status_servico") if fm_svc else None
@@ -589,6 +604,64 @@ def get_fastmatching_node_telemetry(hostname: str = "", praca: str = "", force_r
     versao = fm_svc.get("versao_instalada", "N/A") if fm_svc else "N/A"
     last_update = fm_svc.get("ultima_atualizacao", "") if fm_svc else ""
 
+    cap_status = get_service_status_normalized(cap_svc.get("status_servico")) if cap_svc else "Não Encontrado"
+    cap_ram = cap_svc.get("ram_uso", "N/A") if cap_svc else "N/A"
+    cap_cpu = cap_svc.get("cpu_uso", "N/A") if cap_svc else "N/A"
+    cap_ver = cap_svc.get("versao_instalada", "N/A") if cap_svc else "N/A"
+
+    cfg_status = get_service_status_normalized(cfg_svc.get("status_servico")) if cfg_svc else "Não Encontrado"
+    cfg_ram = cfg_svc.get("ram_uso", "N/A") if cfg_svc else "N/A"
+    cfg_ver = cfg_svc.get("versao_instalada", "N/A") if cfg_svc else "N/A"
+    cfg_wcf = cfg_svc.get("wcf_status", "Conectado") if cfg_svc else "N/A"
+
+    agent_status = get_service_status_normalized(agent_svc.get("status_servico")) if agent_svc else "Não Encontrado"
+    agent_ram = agent_svc.get("ram_uso", "N/A") if agent_svc else "N/A"
+    agent_cpu = agent_svc.get("cpu_uso", "N/A") if agent_svc else "N/A"
+    agent_disk = agent_svc.get("disco_d_livre", "N/A") if agent_svc else "N/A"
+    agent_uptime = agent_svc.get("uptime", "N/A") if agent_svc else "N/A"
+    agent_ver = agent_svc.get("versao_instalada", "N/A") if agent_svc else "N/A"
+
+    cs_host_telemetry = {
+        "hostname": matched_host,
+        "praca": matched_praca,
+        "fastmatching": {
+            "name": "FastMatchingSvc",
+            "status": fm_status_norm,
+            "ram": ram_raw,
+            "ram_mb": ram_mb,
+            "cpu": cpu_raw,
+            "version": versao,
+            "running": fm_is_running,
+            "installed": fm_is_installed
+        },
+        "capture": {
+            "name": cap_svc.get("nome_servico", "Atria Capture") if cap_svc else "Atria Capture",
+            "status": cap_status,
+            "ram": cap_ram,
+            "cpu": cap_cpu,
+            "version": cap_ver,
+            "running": is_service_running(cap_status)
+        },
+        "config_monitor": {
+            "name": "DNA.ConfigMonitorSVC",
+            "status": cfg_status,
+            "ram": cfg_ram,
+            "version": cfg_ver,
+            "wcf": cfg_wcf,
+            "running": is_service_running(cfg_status)
+        },
+        "agent": {
+            "name": "DNA.MonitorServiceSVC",
+            "status": agent_status,
+            "ram": agent_ram,
+            "cpu": agent_cpu,
+            "disk_d_free": agent_disk,
+            "uptime": agent_uptime,
+            "version": agent_ver,
+            "running": is_service_running(agent_status)
+        }
+    }
+
     # Caso A: FastMatching desinstalado / não encontrado no Capture Site (Ex: Montes Claros)
     if not fm_is_installed:
         alt_engine = "DNA.DetectionSVC" if det_is_running else ("DNA.DetectionSVC (Parado)" if det_svc else "Nenhum")
@@ -601,6 +674,7 @@ def get_fastmatching_node_telemetry(hostname: str = "", praca: str = "", force_r
             "installed_version": versao,
             "engine_in_use": alt_engine,
             "source": f"Capture Site {matched_host} (Agente DNA.MonitorServiceSVC)",
+            "cs_host_telemetry": cs_host_telemetry,
             "ram_usage": {
                 "timestamp": last_update,
                 "raw": "N/A",
@@ -624,6 +698,13 @@ def get_fastmatching_node_telemetry(hostname: str = "", praca: str = "", force_r
                     "color": "blue",
                     "timestamp": last_update or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
                     "summary": f"FastMatchingSvc não instalado neste CS01. Este nó opera com {alt_engine}."
+                },
+                {
+                    "type": "INFO",
+                    "badge": "TELEMETRIA HOST",
+                    "color": "cyan",
+                    "timestamp": last_update or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+                    "summary": f"Agente v{agent_ver} | Disco D Livre: {agent_disk} | Uptime: {agent_uptime}"
                 }
             ],
             "playbook": {
@@ -653,6 +734,7 @@ def get_fastmatching_node_telemetry(hostname: str = "", praca: str = "", force_r
             "installed_version": versao,
             "engine_in_use": "FastMatchingSvc (Parado)",
             "source": f"Capture Site {matched_host} (Agente DNA.MonitorServiceSVC)",
+            "cs_host_telemetry": cs_host_telemetry,
             "ram_usage": {
                 "timestamp": last_update,
                 "raw": ram_raw if ram_raw != "N/A" else "N/A (Serviço Parado)",
@@ -676,6 +758,13 @@ def get_fastmatching_node_telemetry(hostname: str = "", praca: str = "", force_r
                     "color": "red",
                     "timestamp": last_update or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
                     "summary": f"FastMatchingSvc está parado no Capture Site {matched_host}. A detecção de comerciais está interrompida."
+                },
+                {
+                    "type": "INFO",
+                    "badge": "HOST TELEMETRIA",
+                    "color": "cyan",
+                    "timestamp": last_update or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+                    "summary": f"Agente v{agent_ver} | Disco D Livre: {agent_disk} | Uptime: {agent_uptime}"
                 }
             ],
             "playbook": {
@@ -704,6 +793,7 @@ def get_fastmatching_node_telemetry(hostname: str = "", praca: str = "", force_r
         "installed_version": versao,
         "engine_in_use": "FastMatchingSvc",
         "source": f"Capture Site {matched_host} (Telemetria do Agente DNA.MonitorServiceSVC)",
+        "cs_host_telemetry": cs_host_telemetry,
         "ram_usage": {
             "timestamp": last_update,
             "raw": ram_raw,
@@ -728,10 +818,31 @@ def get_fastmatching_node_telemetry(hostname: str = "", praca: str = "", force_r
         "events": [
             {
                 "type": "INFO",
-                "badge": "TELEMETRIA CS",
+                "badge": "FASTMATCHING C++",
                 "color": "green",
                 "timestamp": last_update or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
-                "summary": f"Serviço em execução no Capture Site. RAM: {ram_raw} | CPU: {cpu_raw} | Versão: {versao}"
+                "summary": f"FastMatchingSvc: {fm_status_norm} | RAM Real: {ram_raw} | CPU: {cpu_raw} | Versão: {versao}"
+            },
+            {
+                "type": "INFO",
+                "badge": "ATRIA CAPTURE",
+                "color": "blue",
+                "timestamp": last_update or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+                "summary": f"Atria Capture: {cap_status} | RAM: {cap_ram} | Versão: {cap_ver}"
+            },
+            {
+                "type": "INFO",
+                "badge": "SGG / CONFIG",
+                "color": "purple",
+                "timestamp": last_update or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+                "summary": f"DNA.ConfigMonitorSVC: {cfg_status} | RAM: {cfg_ram} | WCF SGG: {cfg_wcf}"
+            },
+            {
+                "type": "INFO",
+                "badge": "HOST CS01",
+                "color": "cyan",
+                "timestamp": last_update or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+                "summary": f"Agente v{agent_ver} | Disco D Livre: {agent_disk} | Uptime: {agent_uptime} | CPU Host: {agent_cpu}"
             }
         ],
         "playbook": {

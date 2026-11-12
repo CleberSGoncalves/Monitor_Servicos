@@ -110,7 +110,7 @@ def test_parse_fma_log_content_extracts_spot_duration_stats():
 def test_get_fastmatching_node_telemetry_embeds_spots_and_divergence():
     """Valida payload de telemetria estritamente real do Capture Site sem fallbacks sintéticos."""
     # 1. Nó real com FastMatching em execução (Marabá)
-    t_nom = get_fastmatching_node_telemetry("BRPA-MBA-DT01")
+    t_nom = get_fastmatching_node_telemetry("BRPA-MBA-DT01", force_refresh=True)
     assert t_nom is not None
     assert t_nom["is_installed"] is True
     assert t_nom["is_running"] is True
@@ -118,12 +118,24 @@ def test_get_fastmatching_node_telemetry_embeds_spots_and_divergence():
     assert "1,03 GB" in str(t_nom["ram_usage"]["formatted"])
     assert t_nom["last_detection"] is None, "Sem log local, PROIBIDO gerar detecções fictícias"
     assert t_nom["spot_duration_stats"] is None, "Sem log local, PROIBIDO gerar spots fictícios"
+    assert "cs_host_telemetry" in t_nom, "Deve incluir telemetria física real do Capture Site"
+    assert t_nom["cs_host_telemetry"]["fastmatching"]["running"] is True
 
     # 2. Nó com FastMatching parado/desinstalado
-    t_stop = get_fastmatching_node_telemetry("CS-BRMG-MCL-DT-")
+    t_stop = get_fastmatching_node_telemetry("CS-BRMG-MCL-DT-", force_refresh=True)
     assert t_stop is not None
     assert t_stop["is_running"] is False
     assert t_stop["last_detection"] is None
+    assert "cs_host_telemetry" in t_stop
+
+    # 3. Nó de Balsas (BRMA-BLA-DT01)
+    t_bla = get_fastmatching_node_telemetry("BRMA-BLA-DT01", "Balsas", force_refresh=True)
+    assert t_bla is not None
+    assert t_bla["is_running"] is True
+    assert "MB" in str(t_bla["cs_host_telemetry"]["fastmatching"]["ram"])
+    assert t_bla["cs_host_telemetry"]["fastmatching"]["ram_mb"] > 0
+    assert "MB" in str(t_bla["cs_host_telemetry"]["capture"]["ram"])
+    assert t_bla["cs_host_telemetry"]["agent"]["disk_d_free"] is not None
 
 
 def test_frontend_dom_elements_for_dedicated_fastmatching_subtab():
@@ -144,6 +156,7 @@ def test_frontend_dom_elements_for_dedicated_fastmatching_subtab():
     assert 'id="fmDivergenceAlertBanner"' in content
     assert 'id="fmSpotsTableBody"' in content
     assert 'id="fmLogTerminalFeed"' in content
+    assert 'triggerFmRemoteLogFetch()' in content, "Botão de coleta remota deve estar presente no HTML"
 
 
 def test_frontend_detection_table_is_clean():
@@ -158,6 +171,8 @@ def test_frontend_detection_table_is_clean():
     assert "function renderSpotAuditCards(" in content
     assert "function renderFmLogTelemetry(" in content
     assert "function renderFmSpotsTable(" in content
+    assert "function triggerFmRemoteLogFetch(" in content
+    assert 'x.fmRunning && x.condition === "NOMINAL"' in content, "Tabela deve priorizar praças ativas no topo"
 
     # Verifica que a tabela geral foi limpa:
     # Não deve ter o botão "fma.log" dentro de renderDetectionTable

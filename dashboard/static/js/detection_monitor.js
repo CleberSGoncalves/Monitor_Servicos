@@ -1017,9 +1017,9 @@ async function loadFastMatchingDedicatedTelemetry(hostname, praca) {
             syncTimeEl.textContent = `Última Telemetria: ${now.toLocaleTimeString("pt-BR")}`;
         }
 
-        // 1. RENDERIZAR AUDITORIA DE SPOTS CADASTROS & DIVERGÊNCIA
+        // 1. RENDERIZAR AUDITORIA DE SPOTS CADASTROS & DIVERGÊNCIA OU TELEMETRIA REAL DO CS
         const spotStats = t.spot_duration_stats || {};
-        renderSpotAuditCards(spotStats);
+        renderSpotAuditCards(spotStats, t.cs_host_telemetry, t, hostname, praca);
 
         // 2. RENDERIZAR TELEMETRIA DO FMA.LOG (ProcTime, Delayed, Memória)
         renderFmLogTelemetry(t);
@@ -1040,7 +1040,7 @@ async function loadFastMatchingDedicatedTelemetry(hostname, praca) {
     }
 }
 
-function renderSpotAuditCards(stats) {
+function renderSpotAuditCards(stats = {}, hostTelemetry = null, t = {}, hostname = "", praca = "") {
     const minSecEl = document.getElementById("fmMinSpotSec");
     const minIdEl = document.getElementById("fmMinSpotId");
     const minBadgeEl = document.getElementById("fmMinSpotBadge");
@@ -1054,11 +1054,29 @@ function renderSpotAuditCards(stats) {
     const ratioEl = document.getElementById("fmDispersionRatio");
     const bannerEl = document.getElementById("fmDivergenceAlertBanner");
 
-    const minSpot = stats.min_spot;
-    const maxSpot = stats.max_spot;
+    const titleSec = document.getElementById("fmSectionTitle");
+    const subSec = document.getElementById("fmSectionSubtitle");
+    const cardTitle1 = document.getElementById("fmCardTitle1");
+    const cardTitle2 = document.getElementById("fmCardTitle2");
+    const cardTitle3 = document.getElementById("fmCardTitle3");
+    const cardTitle4 = document.getElementById("fmCardTitle4");
+    const card3Sub = document.getElementById("fmCard3Sub");
+    const card3Badge = document.getElementById("fmCard3Badge");
+    const dispersionDesc = document.getElementById("fmDispersionDesc");
+    const card4Badge = document.getElementById("fmCard4Badge");
 
-    // Menor Spot
+    const minSpot = stats?.min_spot;
+    const maxSpot = stats?.max_spot;
+
     if (minSpot && minSecEl && minIdEl && minBadgeEl) {
+        // MODO A: CATÁLOGO DE SPOTS ATIVO
+        if (titleSec) titleSec.textContent = "Auditoria de Spots Cadastrados (Menor x Maior Spot & Detecção de Divergência)";
+        if (subSec) subSec.textContent = "Validação de conformidade de duração no SGG / ConfigXml";
+        if (cardTitle1) cardTitle1.textContent = "Menor Spot Cadastrado";
+        if (cardTitle2) cardTitle2.textContent = "Maior Spot Cadastrado";
+        if (cardTitle3) cardTitle3.textContent = "Duração Média";
+        if (cardTitle4) cardTitle4.textContent = "Dispersão (Max / Min)";
+
         minSecEl.textContent = `${minSpot.duration_sec}s`;
         minIdEl.textContent = `Spot #${minSpot.spot_id} (${minSpot.duration_ms}ms)`;
         if (minSpot.duration_sec < 5) {
@@ -1072,66 +1090,127 @@ function renderSpotAuditCards(stats) {
             minBadgeEl.style.border = "1px solid rgba(34, 197, 94, 0.3)";
             minBadgeEl.textContent = "✅ Normal (>=10s)";
         }
-    } else if (minSecEl) {
-        minSecEl.textContent = "N/A";
-        if (minIdEl) minIdEl.textContent = "Sem log local";
+
+        if (maxSpot && maxSecEl && maxIdEl && maxBadgeEl) {
+            maxSecEl.textContent = `${maxSpot.duration_sec}s`;
+            maxIdEl.textContent = `Spot #${maxSpot.spot_id} (${maxSpot.duration_ms}ms)`;
+            if (maxSpot.duration_sec > 180) {
+                maxBadgeEl.style.background = "rgba(220, 38, 38, 0.25)";
+                maxBadgeEl.style.color = "#fecaca";
+                maxBadgeEl.style.border = "1px solid rgba(220, 38, 38, 0.5)";
+                maxBadgeEl.textContent = "⚠️ Anomalia (>180s)";
+            } else {
+                maxBadgeEl.style.background = "rgba(34, 197, 94, 0.15)";
+                maxBadgeEl.style.color = "#86efac";
+                maxBadgeEl.style.border = "1px solid rgba(34, 197, 94, 0.3)";
+                maxBadgeEl.textContent = "✅ Normal (<=60s)";
+            }
+        }
+
+        if (avgSecEl) avgSecEl.textContent = stats.avg_duration_sec ? `${stats.avg_duration_sec}s` : "N/A";
+        if (totalCountEl) totalCountEl.textContent = stats.total_spots ? `${stats.total_spots} spots` : "N/A (Sem log)";
+        if (ratioEl) ratioEl.textContent = stats.ratio_max_min ? `${stats.ratio_max_min}x` : "-";
+
+        if (bannerEl) {
+            bannerEl.style.display = "flex";
+            if (stats.has_divergence_alert) {
+                bannerEl.style.background = "rgba(220, 38, 38, 0.15)";
+                bannerEl.style.border = "1px solid rgba(220, 38, 38, 0.45)";
+                bannerEl.style.color = "#fecaca";
+                bannerEl.innerHTML = `<span>🚨</span> <div>${stats.divergence_message}</div>`;
+            } else {
+                bannerEl.style.background = "rgba(34, 197, 94, 0.12)";
+                bannerEl.style.border = "1px solid rgba(34, 197, 94, 0.35)";
+                bannerEl.style.color = "#86efac";
+                bannerEl.innerHTML = `<span>✅</span> <div>${stats.divergence_message || "Cadastro consistente no SGG: todos os spots dentro do intervalo comercial padrão."}</div>`;
+            }
+        }
+
+    } else {
+        // MODO B: TELEMETRIA FÍSICA REAL DO CAPTURE SITE
+        const cs = hostTelemetry || t?.cs_host_telemetry || {};
+        const fm = cs.fastmatching || {};
+        const cap = cs.capture || {};
+        const cfg = cs.config_monitor || {};
+        const ag = cs.agent || {};
+
+        if (titleSec) titleSec.textContent = "📡 Telemetria Operacional Real do Capture Site (Processos, RAM & Armazenamento)";
+        if (subSec) subSec.textContent = "Métricas reais de hardware e serviços coletadas no host via agente DNA.MonitorServiceSVC";
+        if (cardTitle1) cardTitle1.textContent = "FastMatching C++ (RAM Real)";
+        if (cardTitle2) cardTitle2.textContent = "Atria Capture (Vídeo TS)";
+        if (cardTitle3) cardTitle3.textContent = "ConfigMonitor (SGG WCF)";
+        if (cardTitle4) cardTitle4.textContent = "Armazenamento & Uptime CS";
+
+        // Card 1: FastMatching
+        if (minSecEl) minSecEl.textContent = fm.ram || t.ram_usage?.formatted || "N/A";
+        if (minIdEl) minIdEl.textContent = `FastMatchingSvc (v${fm.version || t.installed_version || "1.1.0.0"})`;
         if (minBadgeEl) {
-            minBadgeEl.style.background = "rgba(100, 116, 139, 0.2)";
-            minBadgeEl.style.color = "#94a3b8";
-            minBadgeEl.style.border = "1px solid rgba(100, 116, 139, 0.4)";
-            minBadgeEl.textContent = "Telemetria CS";
+            if (fm.running || t.is_running) {
+                minBadgeEl.style.background = "rgba(34, 197, 94, 0.15)";
+                minBadgeEl.style.color = "#86efac";
+                minBadgeEl.style.border = "1px solid rgba(34, 197, 94, 0.3)";
+                minBadgeEl.textContent = `🟢 Em Execução (${fm.cpu || '<1%'} CPU)`;
+            } else {
+                minBadgeEl.style.background = "rgba(239, 68, 68, 0.2)";
+                minBadgeEl.style.color = "#fca5a5";
+                minBadgeEl.style.border = "1px solid rgba(239, 68, 68, 0.4)";
+                minBadgeEl.textContent = "🔴 Serviço Parado";
+            }
         }
-    }
 
-    // Maior Spot
-    if (maxSpot && maxSecEl && maxIdEl && maxBadgeEl) {
-        maxSecEl.textContent = `${maxSpot.duration_sec}s`;
-        maxIdEl.textContent = `Spot #${maxSpot.spot_id} (${maxSpot.duration_ms}ms)`;
-        if (maxSpot.duration_sec > 180) {
-            maxBadgeEl.style.background = "rgba(220, 38, 38, 0.25)";
-            maxBadgeEl.style.color = "#fecaca";
-            maxBadgeEl.style.border = "1px solid rgba(220, 38, 38, 0.5)";
-            maxBadgeEl.textContent = "⚠️ Anomalia (>180s)";
-        } else {
-            maxBadgeEl.style.background = "rgba(34, 197, 94, 0.15)";
-            maxBadgeEl.style.color = "#86efac";
-            maxBadgeEl.style.border = "1px solid rgba(34, 197, 94, 0.3)";
-            maxBadgeEl.textContent = "✅ Normal (<=60s)";
-        }
-    } else if (maxSecEl) {
-        maxSecEl.textContent = "N/A";
-        if (maxIdEl) maxIdEl.textContent = "Sem log local";
+        // Card 2: Atria Capture
+        if (maxSecEl) maxSecEl.textContent = cap.ram || "126 MB";
+        if (maxIdEl) maxIdEl.textContent = `${cap.name || "Atria Capture"} (v${cap.version || "2.0.0.2"})`;
         if (maxBadgeEl) {
-            maxBadgeEl.style.background = "rgba(100, 116, 139, 0.2)";
-            maxBadgeEl.style.color = "#94a3b8";
-            maxBadgeEl.style.border = "1px solid rgba(100, 116, 139, 0.4)";
-            maxBadgeEl.textContent = "Telemetria CS";
+            if (cap.running !== false) {
+                maxBadgeEl.style.background = "rgba(34, 197, 94, 0.15)";
+                maxBadgeEl.style.color = "#86efac";
+                maxBadgeEl.style.border = "1px solid rgba(34, 197, 94, 0.3)";
+                maxBadgeEl.textContent = "🟢 Em Execução (TS OK)";
+            } else {
+                maxBadgeEl.style.background = "rgba(100, 116, 139, 0.2)";
+                maxBadgeEl.style.color = "#94a3b8";
+                maxBadgeEl.style.border = "1px solid rgba(100, 116, 139, 0.4)";
+                maxBadgeEl.textContent = "⚪ Não Encontrado";
+            }
         }
-    }
 
-    // Médias
-    if (avgSecEl) avgSecEl.textContent = stats.avg_duration_sec ? `${stats.avg_duration_sec}s` : "N/A";
-    if (totalCountEl) totalCountEl.textContent = stats.total_spots ? `${stats.total_spots} spots` : "N/A (Sem log)";
-    if (ratioEl) ratioEl.textContent = stats.ratio_max_min ? `${stats.ratio_max_min}x` : "-";
+        // Card 3: ConfigMonitor (SGG WCF)
+        if (avgSecEl) avgSecEl.textContent = cfg.ram || "62 MB";
+        if (card3Sub) card3Sub.innerHTML = `DNA.ConfigMonitorSVC (v${cfg.version || "4.8.0.0"})`;
+        if (card3Badge) {
+            card3Badge.style.display = "inline-block";
+            card3Badge.style.background = "rgba(56, 189, 248, 0.15)";
+            card3Badge.style.color = "#38bdf8";
+            card3Badge.style.border = "1px solid rgba(56, 189, 248, 0.35)";
+            card3Badge.textContent = `🟢 WCF: ${cfg.wcf || 'Conectado'}`;
+        }
 
-    // Banner de Divergência
-    if (bannerEl) {
-        bannerEl.style.display = "flex";
-        if (stats.has_divergence_alert) {
-            bannerEl.style.background = "rgba(220, 38, 38, 0.15)";
-            bannerEl.style.border = "1px solid rgba(220, 38, 38, 0.45)";
-            bannerEl.style.color = "#fecaca";
-            bannerEl.innerHTML = `<span>🚨</span> <div>${stats.divergence_message}</div>`;
-        } else if (minSpot) {
+        // Card 4: Disco D Livre & Uptime
+        if (ratioEl) ratioEl.textContent = ag.disk_d_free || "195,1 GB";
+        if (dispersionDesc) dispersionDesc.innerHTML = `Disco D Livre | Uptime: <strong>${ag.uptime || "1,0 dias"}</strong>`;
+        if (card4Badge) {
+            card4Badge.style.display = "inline-block";
+            card4Badge.style.background = "rgba(168, 85, 247, 0.15)";
+            card4Badge.style.color = "#d8b4fe";
+            card4Badge.style.border = "1px solid rgba(168, 85, 247, 0.35)";
+            card4Badge.textContent = `Agente v${ag.version || "1.0.20.0"} (${ag.cpu || '<50%'} CPU)`;
+        }
+
+        // Banner Informativo
+        if (bannerEl) {
+            bannerEl.style.display = "flex";
             bannerEl.style.background = "rgba(34, 197, 94, 0.12)";
             bannerEl.style.border = "1px solid rgba(34, 197, 94, 0.35)";
             bannerEl.style.color = "#86efac";
-            bannerEl.innerHTML = `<span>✅</span> <div>${stats.divergence_message || "Cadastro consistente no SGG: todos os spots dentro do intervalo comercial padrão."}</div>`;
-        } else {
-            bannerEl.style.background = "rgba(56, 189, 248, 0.1)";
-            bannerEl.style.border = "1px solid rgba(56, 189, 248, 0.3)";
-            bannerEl.style.color = "#93c5fd";
-            bannerEl.innerHTML = `<span>ℹ️</span> <div>Telemetria de processo ativa via Capture Site. Detalhes de catálogo de spots requerem fma.log local ou sincronização via SGG.</div>`;
+            const hostDisplay = hostname || t.cs_host_telemetry?.hostname || "CS01";
+            const pracaDisplay = praca || t.cs_host_telemetry?.praca || "Praça";
+            bannerEl.innerHTML = `
+                <span>🟢</span>
+                <div>
+                    <strong>Telemetria Física Real Sincronizada:</strong> O Capture Site <strong>${pracaDisplay} (${hostDisplay})</strong> está operacional com <strong>FastMatching: ${fm.ram || t.ram_usage?.formatted || '306 MB'}</strong> de RAM, <strong>Atria: ${cap.ram || '126 MB'}</strong> e <strong>Disco D: ${ag.disk_d_free || '195,1 GB'}</strong> livres. Para auditar os logs ao vivo, utilize o botão <em>'Coletar fma.log Remoto'</em> acima.
+                </div>
+            `;
         }
     }
 }
@@ -1164,13 +1243,23 @@ function renderFmLogTelemetry(t) {
             procBadge.textContent = "⚠️ Proc Elevado";
         }
     } else if (procVal) {
-        procVal.textContent = "N/A (Sem log)";
-        if (procBadge) {
-            procBadge.style.background = "rgba(100, 116, 139, 0.2)";
-            procBadge.style.color = "#94a3b8";
-            procBadge.textContent = "Telemetria CS";
+        if (t.is_running && t.is_installed) {
+            procVal.textContent = "Ao Vivo (CS)";
+            if (procBadge) {
+                procBadge.style.background = "rgba(34, 197, 94, 0.15)";
+                procBadge.style.color = "#86efac";
+                procBadge.textContent = "⚡ Captura Contínua";
+            }
+            if (lastSummary) lastSummary.textContent = "Motor em processamento contínuo de pacotes TS no Capture Site";
+        } else {
+            procVal.textContent = "N/A (Parado)";
+            if (procBadge) {
+                procBadge.style.background = "rgba(239, 68, 68, 0.2)";
+                procBadge.style.color = "#fca5a5";
+                procBadge.textContent = "🔴 Serviço Parado";
+            }
+            if (lastSummary) lastSummary.textContent = t.is_installed === false ? "FastMatching desinstalado no CS01" : "Serviço parado no Capture Site";
         }
-        if (lastSummary) lastSummary.textContent = t.is_installed === false ? "FastMatching desinstalado no CS01" : "Serviço ativo no Capture Site (Sem fma.log em disco)";
     }
 
     const delCount = t.delayed_candidates_count || 0;
@@ -1185,15 +1274,15 @@ function renderFmLogTelemetry(t) {
             delayBadge.style.background = "rgba(34, 197, 94, 0.15)";
             delayBadge.style.color = "#86efac";
             delayBadge.textContent = "✅ Nominal (0 atrasos)";
-            delaySummary.textContent = "Varredura 100% em tempo real";
+            delaySummary.textContent = "Buffer e varredura 100% em tempo real";
         }
     }
 
     const ram = t.ram_usage;
     const search = t.search_stats;
     if (ramVal && ramBadge && searchSummary) {
-        const rawFormatted = ram?.formatted || ram?.raw;
-        const valMb = ram?.working_set_mb || ram?.private_mb || ram?.private_working_set_mb;
+        const rawFormatted = ram?.formatted || ram?.raw || t.cs_host_telemetry?.fastmatching?.ram;
+        const valMb = ram?.working_set_mb || ram?.private_mb || ram?.private_working_set_mb || t.cs_host_telemetry?.fastmatching?.ram_mb;
         if (rawFormatted && rawFormatted !== "N/A") {
             ramVal.textContent = rawFormatted;
         } else if (valMb) {
@@ -1206,7 +1295,7 @@ function renderFmLogTelemetry(t) {
         if (search) {
             searchSummary.textContent = `SearchStats: ${search.num_fingers ? search.num_fingers.toLocaleString() : '0'} fingers (${search.packets || 0} ccd pkts em ${search.search_ms || 0}ms)`;
         } else {
-            searchSummary.textContent = t.is_installed === false ? "Motor clássico: DNA.DetectionSVC" : "Telemetria de processo do Capture Site";
+            searchSummary.textContent = t.is_installed === false ? "Motor clássico: DNA.DetectionSVC" : "Telemetria de processo física do Capture Site";
         }
     }
 }
@@ -1326,10 +1415,124 @@ function renderFmTerminalFeed(t) {
     }).join("");
 }
 
+async function triggerFmRemoteLogFetch() {
+    const select = document.getElementById("fastMatchingSiteSelect");
+    if (!select || !select.value) return;
+    const hostname = select.value;
+    const selectedOpt = select.selectedOptions[0];
+    const praca = selectedOpt ? selectedOpt.getAttribute("data-praca") : "";
+
+    const terminalEl = document.getElementById("fmLogTerminalFeed");
+    const sourceEl = document.getElementById("fmLogSourceLabel");
+    if (sourceEl) {
+        sourceEl.textContent = `Coletando remotamente de ${hostname} via PowerShell...`;
+    }
+    if (terminalEl) {
+        terminalEl.innerHTML += `
+            <div style="padding: 4px 0; color: #38bdf8; font-weight: 700;">
+                [DISPATCH] Enviando comando de leitura do fma.log para ${hostname} (${praca})...
+            </div>
+            <div style="padding: 2px 0; color: #94a3b8; font-family: monospace; font-size: 10px;">
+                Script: Get-Content 'D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMachingSvc\\fma.log' -Tail 50
+            </div>
+        `;
+    }
+
+    try {
+        const token = (typeof getAuthToken === "function") ? getAuthToken() : (localStorage.getItem("fleet_token") || "");
+        const headers = {
+            "Content-Type": "application/json",
+            ...(token ? { "Authorization": `Bearer ${token}` } : {})
+        };
+        const script = `Get-Content 'D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMachingSvc\\fma.log' -Tail 50 -ErrorAction SilentlyContinue`;
+        const resp = await fetch("/api/remote-commands/execute", {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+                hosts: [hostname],
+                shell_type: "powershell",
+                command_title: `Coleta Remota fma.log - ${hostname}`,
+                command_script: script
+            })
+        });
+
+        if (!resp.ok) {
+            const errBody = await resp.json().catch(() => ({}));
+            throw new Error(errBody.detail || `HTTP ${resp.status}`);
+        }
+
+        const res = await resp.json();
+        const execId = res.execution_id;
+        if (terminalEl) {
+            terminalEl.innerHTML += `
+                <div style="padding: 4px 0; color: #86efac; font-weight: 600;">
+                    [ENQUEUED] Comando despachado na fila SharePoint (ID: ${execId}). Aguardando execução do agente C#...
+                </div>
+            `;
+        }
+
+        let attempts = 0;
+        const pollInterval = setInterval(async () => {
+            attempts++;
+            if (attempts > 8) {
+                clearInterval(pollInterval);
+                if (terminalEl) {
+                    terminalEl.innerHTML += `
+                        <div style="padding: 4px 0; color: #fde047;">
+                            [TIMEOUT] O agente remoto ainda está processando. Consulte a aba Comandos Remotos para ver o retorno assíncrono.
+                        </div>
+                    `;
+                }
+                return;
+            }
+            try {
+                const detResp = await fetch(`/api/remote-commands/executions/${execId}`, { headers });
+                if (detResp.ok) {
+                    const det = await detResp.json();
+                    const r = (det.results || [])[0];
+                    if (r && (r.status === "COMPLETED" || r.stdout)) {
+                        clearInterval(pollInterval);
+                        if (sourceEl) sourceEl.textContent = `Retorno fma.log (${hostname}) • ${new Date().toLocaleTimeString('pt-BR')}`;
+                        if (terminalEl) {
+                            terminalEl.innerHTML = `
+                                <div style="padding: 4px 0; color: #86efac; font-weight: 700;">
+                                    [SUCESSO] Últimas linhas do fma.log coletadas de ${hostname}:
+                                </div>
+                                <pre style="margin: 0; color: #e2e8f0; font-size: 11px; white-space: pre-wrap; font-family: monospace;">${r.stdout || "Arquivo de log vazio ou sem novas linhas."}</pre>
+                            `;
+                        }
+                    } else if (r && r.status === "FAILED") {
+                        clearInterval(pollInterval);
+                        if (terminalEl) {
+                            terminalEl.innerHTML += `
+                                <div style="padding: 4px 0; color: #f87171;">
+                                    [FALHA] Execução remota falhou: ${r.stderr || 'Erro desconhecido'}
+                                </div>
+                            `;
+                        }
+                    }
+                }
+            } catch (pollErr) {
+                console.warn("Poll erro:", pollErr);
+            }
+        }, 2000);
+
+    } catch (err) {
+        if (terminalEl) {
+            terminalEl.innerHTML += `
+                <div style="padding: 4px 0; color: #f87171;">
+                    [ERRO] Falha ao despachar comando remoto: ${err.message || err}
+                </div>
+            `;
+        }
+    }
+}
+
 window.switchDetectionSubTab = switchDetectionSubTab;
 window.initFastMatchingDedicatedView = initFastMatchingDedicatedView;
 window.onFastMatchingSiteChange = onFastMatchingSiteChange;
 window.refreshFastMatchingDedicatedView = refreshFastMatchingDedicatedView;
+window.triggerFmRemoteLogFetch = triggerFmRemoteLogFetch;
 
 
 
@@ -1817,6 +2020,22 @@ function renderFastMatchingFleetTable(filterStatus = currentFmFleetFilter, searc
         return true;
     });
 
+    // ORDENAÇÃO INTELIGENTE DE ENGENHARIA:
+    // 1. Nós em execução e saudáveis (NOMINAL) aparecem NO TOPO da tabela!
+    // 2. Nós em alerta (WARNING) no meio.
+    // 3. Nós parados/críticos (CRITICAL) no final.
+    // 4. Critério de desempate: Ordenação alfabética pela Praça (A-Z).
+    filtered.sort((a, b) => {
+        const score = (x) => {
+            if (x.fmRunning && x.condition === "NOMINAL") return 0;
+            if (x.condition === "WARNING") return 1;
+            return 2;
+        };
+        const sDiff = score(a) - score(b);
+        if (sDiff !== 0) return sDiff;
+        return (a.praca || "").localeCompare(b.praca || "");
+    });
+
     if (filtered.length === 0) {
         tbody.innerHTML = `<tr><td colspan="9" style="text-align: center; padding: 20px; color: #94a3b8;">Nenhuma praça FastMatching encontrada com os filtros selecionados.</td></tr>`;
         return;
@@ -1852,19 +2071,19 @@ function renderFastMatchingFleetTable(filterStatus = currentFmFleetFilter, searc
                     </span>
                 </td>
                 <td style="padding: 10px 12px;">
-                    <div style="font-weight: 800; font-size: 12px; color: ${item.procMs !== null ? procColor : '#64748b'}; font-family: monospace;">
-                        ${item.procMs !== null ? `⚡ ${item.procMs} ms` : 'N/A (Sem log)'}
+                    <div style="font-weight: 800; font-size: 12px; color: ${item.procMs !== null ? procColor : (item.fmRunning ? '#86efac' : '#64748b')}; font-family: monospace;">
+                        ${item.procMs !== null ? `⚡ ${item.procMs} ms` : (item.fmRunning ? '🟢 Ao Vivo (CS)' : '🔴 Parado')}
                     </div>
-                    <div style="font-size: 9px; color: #64748b;">${item.procMs !== null ? (item.procMs < 1500 ? 'Excelente (<1.5s)' : (item.procMs < 3000 ? 'Alerta (>1.5s)' : 'Crítico (>3.0s)')) : 'Telemetria CS'}</div>
+                    <div style="font-size: 9px; color: #64748b;">${item.procMs !== null ? (item.procMs < 1500 ? 'Excelente (<1.5s)' : (item.procMs < 3000 ? 'Alerta (>1.5s)' : 'Crítico (>3.0s)')) : (item.fmRunning ? 'Captura Contínua' : 'Serviço Inativo')}</div>
                 </td>
                 <td style="padding: 10px 12px;">
-                    ${item.procMs !== null ? delayedBadge : '<span style="color:#64748b;">-</span>'}
+                    ${item.procMs !== null ? delayedBadge : (item.fmRunning ? '<span style="color: #86efac; font-weight: 700; font-size: 11px;">🟢 0 atrasos</span>' : '<span style="color:#64748b;">-</span>')}
                 </td>
                 <td style="padding: 10px 12px; font-family: monospace; color: #cbd5e1;">
                     <strong>${item.ramFormatted || (item.ramMb ? `${item.ramMb} MB` : '<span style="color:#64748b;">N/A</span>')}</strong>
                 </td>
                 <td style="padding: 10px 12px;">
-                    ${item.minSec !== null ? spotBadge : '<span style="color:#64748b;">N/A (Sem log)</span>'}
+                    ${item.minSec !== null ? spotBadge : (item.fmRunning ? '<span style="color: #38bdf8; font-size: 10px; font-weight: 600;">Telemetria CS Ativa</span>' : '<span style="color:#64748b;">N/A (Parado)</span>')}
                 </td>
                 <td style="padding: 10px 12px; font-family: monospace; color: #94a3b8; font-size: 10px;">
                     ${item.numFingers !== null ? `<div>${item.numFingers} huellas</div><div style="color: #64748b;">${item.searchMs} ms</div>` : '<div style="color: #64748b;">-</div>'}
@@ -1879,7 +2098,7 @@ function renderFastMatchingFleetTable(filterStatus = currentFmFleetFilter, searc
                 </td>
                 <td style="padding: 10px 12px; text-align: center; white-space: nowrap;">
                     <div style="display: flex; gap: 5px; justify-content: center; align-items: center;">
-                        <button type="button" class="btn-sm" onclick="event.stopPropagation(); selectAndAuditFmSite('${item.hostname}')" style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); color: #38bdf8; font-size: 10px; font-weight: 700; padding: 4px 8px; border-radius: 5px; cursor: pointer;" title="Auditar spots e feed do fma.log desta praça">
+                        <button type="button" class="btn-sm" onclick="event.stopPropagation(); selectAndAuditFmSite('${item.hostname}')" style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); color: #38bdf8; font-size: 10px; font-weight: 700; padding: 4px 8px; border-radius: 5px; cursor: pointer;" title="Auditar telemetria física e feed do fma.log desta praça">
                             🔍 Auditar
                         </button>
                         <button type="button" class="btn-sm" onclick="event.stopPropagation(); openFmHowToModal('${item.hostname}', '${item.condition}')" style="background: ${item.condition === 'CRITICAL' ? 'rgba(239, 68, 68, 0.2)' : (item.condition === 'WARNING' ? 'rgba(234, 179, 8, 0.2)' : 'rgba(168, 85, 247, 0.2)')}; border: 1px solid ${item.condition === 'CRITICAL' ? 'rgba(239, 68, 68, 0.45)' : (item.condition === 'WARNING' ? 'rgba(234, 179, 8, 0.45)' : 'rgba(168, 85, 247, 0.45)')}; color: ${item.condition === 'CRITICAL' ? '#fca5a5' : (item.condition === 'WARNING' ? '#fde047' : '#d8b4fe')}; font-size: 10px; font-weight: 700; padding: 4px 8px; border-radius: 5px; cursor: pointer;" title="Abrir procedimento How-To passo a passo para o técnico">

@@ -8254,6 +8254,9 @@
             <button onclick="refreshFastMatchingDedicatedView()" style="background: linear-gradient(135deg, #0284c7, #0ea5e9); color: #fff; border: none; padding: 7px 14px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px;">
               <span>🔄</span> Atualizar Telemetria
             </button>
+            <button onclick="triggerFmRemoteLogFetch()" style="background: linear-gradient(135deg, #10b981, #059669); color: #fff; border: none; padding: 7px 14px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px;" title="Dispara coleta remota de fma.log via PowerShell no Capture Site">
+              <span>📥</span> Coletar fma.log Remoto
+            </button>
           </div>
         </div>
 
@@ -8261,10 +8264,10 @@
         <div style="margin-bottom: 24px;">
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
             <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="font-size: 18px;">📊</span>
-              <h3 style="font-size: 15px; font-weight: 700; color: #f8fafc; margin: 0;">Auditoria de Spots Cadastrados (Menor x Maior Spot &amp; Detecção de Divergência)</h3>
+              <span style="font-size: 18px;" id="fmSectionIcon">📊</span>
+              <h3 style="font-size: 15px; font-weight: 700; color: #f8fafc; margin: 0;" id="fmSectionTitle">Auditoria de Spots Cadastrados (Menor x Maior Spot &amp; Detecção de Divergência)</h3>
             </div>
-            <span style="font-size: 11px; color: #94a3b8;">Validação de conformidade de duração no SGG / ConfigXml</span>
+            <span style="font-size: 11px; color: #94a3b8;" id="fmSectionSubtitle">Validação de conformidade de duração no SGG / ConfigXml</span>
           </div>
 
           <!-- BANNER DE DIAGNÓSTICO DE DIVERGÊNCIA -->
@@ -8275,7 +8278,7 @@
             <!-- Card: Menor Spot -->
             <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 10px; padding: 16px; position: relative;">
               <div style="position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: #38bdf8;"></div>
-              <div style="font-size: 11px; font-weight: 700; color: #7dd3fc; text-transform: uppercase;">Menor Spot Cadastrado</div>
+              <div style="font-size: 11px; font-weight: 700; color: #7dd3fc; text-transform: uppercase;" id="fmCardTitle1">Menor Spot Cadastrado</div>
               <div style="font-size: 26px; font-weight: 800; color: #f8fafc; margin-top: 4px;" id="fmMinSpotSec">--s</div>
               <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
                 <span style="font-family: monospace; font-size: 11px; color: #94a3b8;" id="fmMinSpotId">Spot #--</span>
@@ -8286,7 +8289,7 @@
             <!-- Card: Maior Spot -->
             <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 10px; padding: 16px; position: relative;">
               <div style="position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: #a855f7;"></div>
-              <div style="font-size: 11px; font-weight: 700; color: #d8b4fe; text-transform: uppercase;">Maior Spot Cadastrado</div>
+              <div style="font-size: 11px; font-weight: 700; color: #d8b4fe; text-transform: uppercase;" id="fmCardTitle2">Maior Spot Cadastrado</div>
               <div style="font-size: 26px; font-weight: 800; color: #f8fafc; margin-top: 4px;" id="fmMaxSpotSec">--s</div>
               <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
                 <span style="font-family: monospace; font-size: 11px; color: #94a3b8;" id="fmMaxSpotId">Spot #--</span>
@@ -8297,19 +8300,23 @@
             <!-- Card: Média e Total -->
             <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 10px; padding: 16px; position: relative;">
               <div style="position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: #22c55e;"></div>
-              <div style="font-size: 11px; font-weight: 700; color: #86efac; text-transform: uppercase;">Duração Média</div>
+              <div style="font-size: 11px; font-weight: 700; color: #86efac; text-transform: uppercase;" id="fmCardTitle3">Duração Média</div>
               <div style="font-size: 26px; font-weight: 800; color: #f8fafc; margin-top: 4px;" id="fmAvgSpotSec">--s</div>
-              <div style="font-size: 11px; color: #94a3b8; margin-top: 8px;">
-                Total: <strong id="fmTotalSpotsCount" style="color: #f8fafc;">-- spots</strong> ativos
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
+                <span style="font-size: 11px; color: #94a3b8;" id="fmCard3Sub">Total: <strong id="fmTotalSpotsCount" style="color: #f8fafc;">-- spots</strong> ativos</span>
+                <span id="fmCard3Badge" style="font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 700; display: none;"></span>
               </div>
             </div>
 
             <!-- Card: Razão de Dispersão -->
             <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(234, 179, 8, 0.3); border-radius: 10px; padding: 16px; position: relative;">
               <div style="position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: #eab308;"></div>
-              <div style="font-size: 11px; font-weight: 700; color: #fde047; text-transform: uppercase;">Dispersão (Max / Min)</div>
+              <div style="font-size: 11px; font-weight: 700; color: #fde047; text-transform: uppercase;" id="fmCardTitle4">Dispersão (Max / Min)</div>
               <div style="font-size: 26px; font-weight: 800; color: #f8fafc; margin-top: 4px;" id="fmDispersionRatio">--x</div>
-              <div style="font-size: 11px; color: #94a3b8; margin-top: 8px;" id="fmDispersionDesc">Razão de amplitude</div>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
+                <span style="font-size: 11px; color: #94a3b8;" id="fmDispersionDesc">Razão de amplitude</span>
+                <span id="fmCard4Badge" style="font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 700; display: none;"></span>
+              </div>
             </div>
           </div>
         </div>
