@@ -1713,6 +1713,7 @@ function renderFastMatchingFleetTable(filterStatus = currentFmFleetFilter, searc
             searchMs
         };
     });
+    window.currentFmFleetEnrichedList = enrichedList;
 
     const totalCount = fmSites.length;
     const elTotal = document.getElementById("badgeFmFleetTotalCount");
@@ -1941,41 +1942,175 @@ function openFmHowToModal(hostname, condition) {
     const titleEl = document.getElementById("fmHowToModalTitle");
     const subtitleEl = document.getElementById("fmHowToModalSubtitle");
     const bodyEl = document.getElementById("fmHowToModalBody");
+    const footerStatus = document.getElementById("fmHowToModalFooterStatus");
     if (!modal || !bodyEl) return;
 
-    // Buscar dados do site
-    const allSites = (typeof detectionCachedSites !== "undefined" && detectionCachedSites.length > 0) ? detectionCachedSites : (typeof detectionSitesData !== "undefined" ? detectionSitesData : []);
-    const site = allSites.find(s => s.hostname === hostname) || { hostname, praca: hostname };
-    const t = site.fastmatching_telemetry || {};
-    const procMs = t.last_match?.proctime_ms || 1037;
-    const delayedCount = (t.delayed_candidates || []).length;
-    const ramMb = t.ram_usage?.private_working_set_mb || 1161;
-    const spotStats = t.spot_stats || {};
-    const minSec = spotStats.min_spot?.duration_sec ?? 15.0;
-    const maxSec = spotStats.max_spot?.duration_sec ?? 60.0;
-    const hasDivergence = spotStats.has_divergence_alert || false;
+    // 1. Buscar dados prioritariamente da lista enriquecida da tabela da frota (Single Source of Truth)
+    let item = (typeof currentFmFleetEnrichedList !== "undefined" && currentFmFleetEnrichedList.length > 0)
+        ? currentFmFleetEnrichedList.find(x => x.hostname === hostname)
+        : null;
 
-    const pracaName = site.praca || hostname;
-    if (titleEl) titleEl.innerHTML = `📋 Roteiro How-To de Resolução: <span style="color: #38bdf8;">${pracaName}</span> (${hostname})`;
-    if (subtitleEl) subtitleEl.textContent = `Procedimento técnico operacional para restabelecimento da cadeia FastMatching`;
+    if (!item) {
+        const allSites = (typeof detectionCachedSites !== "undefined" && detectionCachedSites.length > 0)
+            ? detectionCachedSites
+            : (typeof detectionSitesData !== "undefined" ? detectionSitesData : []);
+        const s = allSites.find(s => s.hostname === hostname) || { hostname, praca: hostname };
+        const t = s.fastmatching_telemetry || {};
+        const lastDet = t.last_detection || {};
+        const procMs = lastDet.proc_time_ms || 1037;
+        const delayedCount = t.delayed_candidates_count || (t.delayed_candidates || []).length || 0;
+        const ramMb = t.ram_usage?.private_working_set_mb || 1161;
+        const spotStats = t.spot_duration_stats || {};
+        const minSec = spotStats.min_spot_duration_sec ?? 15.0;
+        const maxSec = spotStats.max_spot_duration_sec ?? 60.0;
+        const hasDivergence = spotStats.has_divergence_alert || false;
 
-    let badgeCond = `<span style="background: rgba(34, 197, 94, 0.15); color: #86efac; border: 1px solid rgba(34, 197, 94, 0.35); padding: 3px 8px; border-radius: 4px; font-weight: 700; font-size: 11px;">🟢 Nominal</span>`;
-    if (condition === "CRITICAL" || procMs >= 3000 || delayedCount > 3 || ramMb >= 8000) {
-        badgeCond = `<span style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.45); padding: 3px 8px; border-radius: 4px; font-weight: 700; font-size: 11px;">🔴 Crítico (Ação Imediata P0)</span>`;
-    } else if (condition === "WARNING" || procMs >= 1500 || delayedCount > 0 || hasDivergence || ramMb >= 4000) {
-        badgeCond = `<span style="background: rgba(234, 179, 8, 0.2); color: #fde047; border: 1px solid rgba(234, 179, 8, 0.45); padding: 3px 8px; border-radius: 4px; font-weight: 700; font-size: 11px;">🟡 Alerta P1</span>`;
+        item = {
+            hostname,
+            praca: s.praca || hostname,
+            condition: condition || (procMs >= 3000 ? "CRITICAL" : (procMs >= 1600 ? "WARNING" : "NOMINAL")),
+            procMs,
+            delayedCount,
+            ramMb,
+            minSec,
+            maxSec,
+            hasDivergence,
+            diagDesc: ""
+        };
+    }
+
+    const pracaName = item.praca || hostname;
+    const procMs = item.procMs;
+    const delayedCount = item.delayedCount;
+    const ramMb = item.ramMb;
+    const minSec = item.minSec;
+    const maxSec = item.maxSec;
+    const hasDivergence = item.hasDivergence;
+    const cond = item.condition || condition || "NOMINAL";
+
+    if (titleEl) {
+        titleEl.innerHTML = `📋 Roteiro How-To de Resolução: <span style="color: #38bdf8;">${pracaName}</span> (${hostname})`;
+    }
+    if (subtitleEl) {
+        subtitleEl.textContent = `Procedimento técnico operacional passo a passo para restabelecimento da esteira FastMatching`;
+    }
+
+    let badgeCond = `<span style="background: rgba(34, 197, 94, 0.15); color: #86efac; border: 1px solid rgba(34, 197, 94, 0.35); padding: 3px 8px; border-radius: 4px; font-weight: 700; font-size: 11px;">🟢 Operação Saudável (Nominal)</span>`;
+    if (cond === "CRITICAL" || procMs >= 3000 || delayedCount >= 5 || ramMb >= 8000) {
+        badgeCond = `<span style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.45); padding: 3px 8px; border-radius: 4px; font-weight: 700; font-size: 11px;">🔴 Falha Crítica (Ação Imediata P0)</span>`;
+    } else if (cond === "WARNING" || procMs >= 1600 || delayedCount > 0 || hasDivergence || ramMb >= 6000) {
+        badgeCond = `<span style="background: rgba(234, 179, 8, 0.2); color: #fde047; border: 1px solid rgba(234, 179, 8, 0.45); padding: 3px 8px; border-radius: 4px; font-weight: 700; font-size: 11px;">🟡 Alerta Operacional P1</span>`;
     }
 
     let specificPlaybookSteps = "";
     let primaryActionBtn = "";
+    let secondaryActionBtn = "";
 
-    if (hasDivergence) {
+    // 1. CASO CRÍTICO: Sobrecarga de CPU / Varredura Lenta (ProcTimeMs >= 3000ms) - Caso São Paulo (3747ms)
+    if (cond === "CRITICAL" || procMs >= 3000) {
         specificPlaybookSteps = `
-            <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
-                <div style="font-weight: 800; color: #fca5a5; font-size: 13px; margin-bottom: 6px;">🚨 Diagnóstico Detectado: Divergência Crítica de Duração no SGG</div>
+            <div style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+                <div style="font-weight: 800; color: #fca5a5; font-size: 13px; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                    <span>🚨</span> Diagnóstico Crítico Detectado: Sobrecarga de CPU / Varredura Lenta (ProcTimeMs: ${procMs}ms &gt; 3000ms)
+                </div>
                 <div style="font-size: 11px; color: #cbd5e1; line-height: 1.45;">
-                    O catálogo <code>ConfigXml.xml</code> contém spots com duração anômala (Menor: <strong>${minSec}s</strong>, Maior: <strong>${maxSec}s</strong>).
-                    Isso descalibra a janela temporal do motor C++, causando falsos positivos ou buscas redundantes na árvore de huellas.
+                    <strong>Causa-Raiz:</strong> O motor FastMatching C++ está operando com latência excessiva por varredura. Isto decorre de concorrência indevida de CPU/disco (ex: antivírus Tanium/Defender varrendo <code>D:\\MediaDNA_V2\\Data</code> ou serviço legado <code>DNA.DetectionSVC</code> ativo) ou fragmentação profunda de fingerprints em memória RAM.<br>
+                    <strong>Impacto Operacional:</strong> Atraso na correlação ao vivo, risco iminente de represamento e descarte de blocos de comerciais por expiração de janela temporal.
+                </div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                <div style="background: #1e293b; padding: 12px 14px; border-radius: 6px; font-size: 11.5px; color: #e2e8f0; line-height: 1.4;">
+                    <strong style="color: #f87171;">Passo 1 (Concorrência de Serviços):</strong> Verificar se o serviço legado <code>DNA.DetectionSVC</code> está em execução. Em nós FastMatching, o serviço legado DEVE estar desativado para não disputar o mesmo tuner/feed.
+                </div>
+                <div style="background: #1e293b; padding: 12px 14px; border-radius: 6px; font-size: 11.5px; color: #e2e8f0; line-height: 1.4;">
+                    <strong style="color: #f87171;">Passo 2 (Exclusão Antivírus):</strong> Validar se o antivírus corporativo (Tanium / Microsoft Defender) está inspecionando arquivos <code>.emu</code> ou <code>.xml</code> na pasta <code>D:\\MediaDNA_V2\\Data</code>. Adicionar exclusão se necessário.
+                </div>
+                <div style="background: #1e293b; padding: 12px 14px; border-radius: 6px; font-size: 11.5px; color: #e2e8f0; line-height: 1.4;">
+                    <strong style="color: #f87171;">Passo 3 (Ação Corretiva Remota):</strong> Executar reinicialização forçada do <code>FastMatchingSvc</code> para liberar buffers paginados e reconstruir a árvore de huellas em RAM com ProcTime &lt; 1500ms.
+                </div>
+                <div style="background: #1e293b; padding: 12px 14px; border-radius: 6px; font-size: 11.5px; color: #e2e8f0; line-height: 1.4;">
+                    <strong style="color: #f87171;">Passo 4 (Auditoria Pós-Ação):</strong> Acompanhar no <code>fma.log</code> e confirmar se os próximos comerciais registram <code>ProcTimeMs &lt; 1500ms</code>.
+                </div>
+            </div>
+        `;
+        primaryActionBtn = `
+            <button type="button" onclick="triggerFmRemoteRemediation('${hostname}', 'restart_fastmatching', this)" style="background: linear-gradient(135deg, #dc2626, #ef4444); color: #fff; border: none; padding: 9px 18px; border-radius: 6px; font-weight: 700; font-size: 11px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 14px rgba(239, 68, 68, 0.4);">
+                <span>🚀</span> Executar Reinício Remoto (FastMatchingSvc)
+            </button>
+        `;
+        secondaryActionBtn = `
+            <button type="button" onclick="triggerFmRemoteRemediation('${hostname}', 'reset_buffers', this)" style="background: rgba(234, 179, 8, 0.2); color: #fde047; border: 1px solid rgba(234, 179, 8, 0.4); padding: 8px 14px; border-radius: 6px; font-weight: 700; font-size: 11px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;">
+                <span>⚡</span> Reset Buffers & NTP
+            </button>
+        `;
+    }
+    // 2. CASO CRÍTICO: Buffer Represado / Atrasos Severos (delayedCount >= 5)
+    else if (delayedCount >= 5) {
+        specificPlaybookSteps = `
+            <div style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+                <div style="font-weight: 800; color: #fca5a5; font-size: 13px; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                    <span>🚨</span> Diagnóstico Crítico Detectado: Buffer Represado Severo (${delayedCount} atrasos acumulados)
+                </div>
+                <div style="font-size: 11px; color: #cbd5e1; line-height: 1.45;">
+                    <strong>Causa-Raiz:</strong> Atraso crítico acumulado na esteira circular de blocos <code>.EMU</code> ou relógio do Windows descompassado (&gt;2s).<br>
+                    <strong>Impacto Operacional:</strong> Risco severo de comerciais serem descartados antes da correlação.
+                </div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                <div style="background: #1e293b; padding: 12px 14px; border-radius: 6px; font-size: 11.5px; color: #e2e8f0; line-height: 1.4;">
+                    <strong style="color: #f87171;">Passo 1 (Ressincronizar Relógio):</strong> Forçar sincronização NTP do Windows (<code>w32tm /resync /force</code>).
+                </div>
+                <div style="background: #1e293b; padding: 12px 14px; border-radius: 6px; font-size: 11.5px; color: #e2e8f0; line-height: 1.4;">
+                    <strong style="color: #f87171;">Passo 2 (Reset de Buffers):</strong> Reiniciar o serviço FastMatchingSvc com expurgo de blocos obsoletos.
+                </div>
+            </div>
+        `;
+        primaryActionBtn = `
+            <button type="button" onclick="triggerFmRemoteRemediation('${hostname}', 'reset_buffers', this)" style="background: linear-gradient(135deg, #d97706, #f59e0b); color: #fff; border: none; padding: 9px 18px; border-radius: 6px; font-weight: 700; font-size: 11px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+                <span>⚡</span> Resetar Buffers EMU & NTP
+            </button>
+        `;
+    }
+    // 3. CASO ALERTA: Candidatos Atrasados no Buffer (1 a 4 ocorrências)
+    else if (delayedCount > 0) {
+        specificPlaybookSteps = `
+            <div style="background: rgba(234, 179, 8, 0.1); border: 1px solid rgba(234, 179, 8, 0.3); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+                <div style="font-weight: 800; color: #fde047; font-size: 13px; margin-bottom: 6px;">⚠️ Diagnóstico Detectado: Candidatos Atrasados no Buffer (${delayedCount} ocorrência(s))</div>
+                <div style="font-size: 11px; color: #cbd5e1; line-height: 1.45;">
+                    O log registra <code>*WARNING* DELAYED CANDIDATE</code>. Comerciais estão sendo processados com atraso temporal em relação à transmissão real.
+                </div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                <div style="background: #1e293b; padding: 12px 14px; border-radius: 6px; font-size: 11.5px; color: #e2e8f0; line-height: 1.4;">
+                    <strong style="color: #facc15;">Passo 1:</strong> Conferir sincronismo NTP executando no CMD do CS: <code>w32tm /query /status</code> e checar se o desvio é &gt; 1s.
+                </div>
+                <div style="background: #1e293b; padding: 12px 14px; border-radius: 6px; font-size: 11.5px; color: #e2e8f0; line-height: 1.4;">
+                    <strong style="color: #facc15;">Passo 2:</strong> Inspecionar pasta de blocos circulares: <code>D:\\MediaDNA_V2\\Data\\emu</code>. Se houver mais de 5 arquivos, há lentidão de I/O em disco.
+                </div>
+                <div style="background: #1e293b; padding: 12px 14px; border-radius: 6px; font-size: 11.5px; color: #e2e8f0; line-height: 1.4;">
+                    <strong style="color: #facc15;">Passo 3:</strong> Reiniciar <code>FastMatchingSvc</code> para expurgar a fila represada e reinicializar o ponteiro de gravação.
+                </div>
+            </div>
+        `;
+        primaryActionBtn = `
+            <button type="button" onclick="triggerFmRemoteRemediation('${hostname}', 'reset_buffers', this)" style="background: linear-gradient(135deg, #d97706, #f59e0b); color: #fff; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 700; font-size: 11px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;">
+                <span>⚡</span> Resetar Buffers EMU & NTP
+            </button>
+        `;
+        secondaryActionBtn = `
+            <button type="button" onclick="triggerFmRemoteRemediation('${hostname}', 'restart_fastmatching', this)" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); padding: 8px 14px; border-radius: 6px; font-weight: 700; font-size: 11px; cursor: pointer;">
+                <span>🔄</span> Reiniciar FastMatchingSvc
+            </button>
+        `;
+    }
+    // 4. CASO ALERTA: Divergência Crítica de Duração no SGG
+    else if (hasDivergence) {
+        specificPlaybookSteps = `
+            <div style="background: rgba(234, 179, 8, 0.1); border: 1px solid rgba(234, 179, 8, 0.3); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+                <div style="font-weight: 800; color: #fde047; font-size: 13px; margin-bottom: 6px;">🚨 Diagnóstico Detectado: Divergência de Duração no SGG (Menor: ${minSec}s x Maior: ${maxSec}s)</div>
+                <div style="font-size: 11px; color: #cbd5e1; line-height: 1.45;">
+                    O catálogo <code>ConfigXml.xml</code> contém spots com duração anômala (fora da faixa padrão de 10s a 60s).
+                    Isso pode descalibrar a janela temporal do motor C++ ou sobrecarregar a árvore de fingerprints.
                 </div>
             </div>
             <div style="display: flex; flex-direction: column; gap: 10px;">
@@ -1990,62 +2125,54 @@ function openFmHowToModal(hostname, condition) {
                 </div>
             </div>
         `;
-        primaryActionBtn = `<button onclick="executeFmQuickAction('sync_sgg', 'DNA.ConfigMonitorSVC', '${hostname}')" style="background: linear-gradient(135deg, #7c3aed, #a855f7); color: #fff; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 700; font-size: 11px; cursor: pointer;">📥 Forçar Sync SGG (ConfigMonitor)</button>`;
-    } else if (delayedCount > 0) {
+        primaryActionBtn = `
+            <button type="button" onclick="triggerFmRemoteRemediation('${hostname}', 'sync_sgg', this)" style="background: linear-gradient(135deg, #7c3aed, #a855f7); color: #fff; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 700; font-size: 11px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;">
+                <span>📥</span> Forçar Sync SGG (ConfigMonitor)
+            </button>
+        `;
+    }
+    // 5. CASO ALERTA: Latência de Varredura Moderada (1600ms <= ProcTimeMs < 3000ms)
+    else if (procMs >= 1600) {
         specificPlaybookSteps = `
             <div style="background: rgba(234, 179, 8, 0.1); border: 1px solid rgba(234, 179, 8, 0.3); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
-                <div style="font-weight: 800; color: #fde047; font-size: 13px; margin-bottom: 6px;">⚠️ Diagnóstico Detectado: Candidatos Atrasados no Buffer (${delayedCount} ocorrências)</div>
+                <div style="font-weight: 800; color: #fde047; font-size: 13px; margin-bottom: 6px;">⚡ Diagnóstico Detectado: Latência de Varredura Moderada (ProcTimeMs: ${procMs}ms)</div>
                 <div style="font-size: 11px; color: #cbd5e1; line-height: 1.45;">
-                    O log registra <code>*WARNING* DELAYED CANDIDATE</code>. Comerciais estão sendo processados com atraso temporal em relação à transmissão real.
+                    O tempo de matching por comercial está acima do limiar recomendado (&lt;1500ms). Risco de enfileiramento caso ocorram rajadas de comerciais.
                 </div>
             </div>
             <div style="display: flex; flex-direction: column; gap: 10px;">
                 <div style="background: #1e293b; padding: 12px 14px; border-radius: 6px; font-size: 11.5px; color: #e2e8f0; line-height: 1.4;">
-                    <strong style="color: #facc15;">Passo 1:</strong> Conferir sincronismo NTP executando no CMD do CS: <code>w32tm /query /status</code> e checar se o desvio é &gt; 1s.
+                    <strong style="color: #facc15;">Passo 1:</strong> Garantir que <code>DNA.DetectionSVC</code> está desativado (concorrência indevida com FastMatching).
                 </div>
                 <div style="background: #1e293b; padding: 12px 14px; border-radius: 6px; font-size: 11.5px; color: #e2e8f0; line-height: 1.4;">
-                    <strong style="color: #facc15;">Passo 2:</strong> Inspecionar pasta de blocos circulares: <code>D:\MediaDNA_V2\Data\emu</code>. Se houver mais de 5 arquivos, há lentidão de I/O em disco.
-                </div>
-                <div style="background: #1e293b; padding: 12px 14px; border-radius: 6px; font-size: 11.5px; color: #e2e8f0; line-height: 1.4;">
-                    <strong style="color: #facc15;">Passo 3:</strong> Reiniciar <code>FastMatchingSvc</code> para expurgar a fila represada e reinicializar o ponteiro de gravação.
+                    <strong style="color: #facc15;">Passo 2:</strong> Reiniciar <code>FastMatchingSvc</code> para desfragmentar o índice de busca em RAM.
                 </div>
             </div>
         `;
-        primaryActionBtn = `<button onclick="executeFmQuickAction('reset_buffers', 'FastMatchingSvc', '${hostname}')" style="background: linear-gradient(135deg, #d97706, #f59e0b); color: #fff; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 700; font-size: 11px; cursor: pointer;">⚡ Resetar Buffers EMU</button>`;
-    } else if (procMs >= 1500) {
-        specificPlaybookSteps = `
-            <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
-                <div style="font-weight: 800; color: #fca5a5; font-size: 13px; margin-bottom: 6px;">⚡ Diagnóstico Detectado: Latência de Varredura Elevada (ProcTimeMs: ${procMs}ms)</div>
-                <div style="font-size: 11px; color: #cbd5e1; line-height: 1.45;">
-                    O tempo de matching por comercial está acima do limiar recomendado (&lt;1500ms). Risco de enfileiramento e atraso na comprovação.
-                </div>
-            </div>
-            <div style="display: flex; flex-direction: column; gap: 10px;">
-                <div style="background: #1e293b; padding: 12px 14px; border-radius: 6px; font-size: 11.5px; color: #e2e8f0; line-height: 1.4;">
-                    <strong style="color: #86efac;">Passo 1:</strong> Garantir que <code>DNA.DetectionSVC</code> está desativado (concorrência indevida com FastMatching).
-                </div>
-                <div style="background: #1e293b; padding: 12px 14px; border-radius: 6px; font-size: 11.5px; color: #e2e8f0; line-height: 1.4;">
-                    <strong style="color: #86efac;">Passo 2:</strong> Configurar exclusão no antivírus corporativo para a pasta <code>D:\MediaDNA_V2\Data</code>.
-                </div>
-                <div style="background: #1e293b; padding: 12px 14px; border-radius: 6px; font-size: 11.5px; color: #e2e8f0; line-height: 1.4;">
-                    <strong style="color: #86efac;">Passo 3:</strong> Reiniciar <code>FastMatchingSvc</code> para desfragmentar a tabela de huellas e liberar memória de paginação.
-                </div>
-            </div>
+        primaryActionBtn = `
+            <button type="button" onclick="triggerFmRemoteRemediation('${hostname}', 'restart_fastmatching', this)" style="background: linear-gradient(135deg, #0284c7, #38bdf8); color: #fff; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 700; font-size: 11px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;">
+                <span>🔄</span> Reiniciar FastMatchingSvc
+            </button>
         `;
-        primaryActionBtn = `<button onclick="executeFmQuickAction('restart', 'FastMatchingSvc', '${hostname}')" style="background: linear-gradient(135deg, #0284c7, #38bdf8); color: #fff; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 700; font-size: 11px; cursor: pointer;">🔄 Reiniciar FastMatching</button>`;
-    } else {
+    }
+    // 6. CASO NOMINAL: Operação Saudável
+    else {
         specificPlaybookSteps = `
             <div style="background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
                 <div style="font-weight: 800; color: #86efac; font-size: 13px; margin-bottom: 6px;">🟢 Operação Saudável e Nominal</div>
                 <div style="font-size: 11px; color: #cbd5e1; line-height: 1.45;">
-                    O nó está operando com ProcTime excelente (<strong>${procMs}ms</strong>), 0 candidatos atrasados e spots no padrão de mercado (15s a 60s).
+                    O nó está operando com ProcTime excelente (<strong>${procMs}ms</strong>), 0 candidatos atrasados e spots no padrão de conformidade (15s a 60s).
                 </div>
             </div>
             <div style="background: #1e293b; padding: 12px 14px; border-radius: 6px; font-size: 11.5px; color: #94a3b8; line-height: 1.4;">
                 Nenhuma ação emergencial necessária. A esteira continua sob monitoração automática contínua de telemetria.
             </div>
         `;
-        primaryActionBtn = `<button onclick="selectAndAuditFmSite('${hostname}'); closeFmHowToModal();" style="background: #1e293b; color: #38bdf8; border: 1px solid rgba(56,189,248,0.4); padding: 8px 16px; border-radius: 6px; font-weight: 700; font-size: 11px; cursor: pointer;">🔍 Inspecionar fma.log ao Vivo</button>`;
+        primaryActionBtn = `
+            <button type="button" onclick="triggerFmRemoteRemediation('${hostname}', 'restart_fastmatching', this)" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); padding: 8px 14px; border-radius: 6px; font-weight: 700; font-size: 11px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;">
+                <span>🔄</span> Reiniciar Preventivo (FastMatchingSvc)
+            </button>
+        `;
     }
 
     bodyEl.innerHTML = `
@@ -2080,12 +2207,29 @@ function openFmHowToModal(hostname, condition) {
         <!-- Passo a Passo -->
         ${specificPlaybookSteps}
 
-        <!-- Botões de Ação Rápida -->
-        <div style="margin-top: 18px; display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap;">
-            ${primaryActionBtn}
-            <button onclick="selectAndAuditFmSite('${hostname}'); closeFmHowToModal();" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); padding: 8px 14px; border-radius: 6px; font-weight: 700; font-size: 11px; cursor: pointer;">
-                🔍 Abrir Inspeção Detalhada
-            </button>
+        <!-- Painel de Execução Remota ao Vivo -->
+        <div id="fmRemoteCmdExecPanel" style="display: none; margin-top: 16px; background: #090d16; border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 8px; padding: 12px;">
+            <div id="fmRemoteCmdExecStatus" style="font-size: 11.5px; font-weight: 700; color: #38bdf8; display: flex; align-items: center; gap: 8px;">
+                <div style="width: 14px; height: 14px; border: 2px solid #38bdf8; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite;"></div>
+                <span>Disparando comando PowerShell no host...</span>
+            </div>
+            <pre id="fmRemoteCmdExecOutput" style="margin-top: 8px; font-size: 10.5px; color: #94a3b8; font-family: monospace; max-height: 120px; overflow-y: auto; white-space: pre-wrap; background: rgba(0,0,0,0.4); padding: 8px; border-radius: 4px;"></pre>
+        </div>
+
+        <!-- Botões de Ação Rápida (Sem Duplicidades: Comandos Remotos + Ver Log + Fechar) -->
+        <div style="margin-top: 18px; display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                ${primaryActionBtn}
+                ${secondaryActionBtn}
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <button type="button" onclick="selectAndAuditFmSite('${hostname}'); closeFmHowToModal();" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); padding: 8px 14px; border-radius: 6px; font-weight: 700; font-size: 11px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;" title="Rolar até o terminal do fma.log desta praça">
+                    <span>🔍</span> Ver Terminal fma.log
+                </button>
+                <button type="button" onclick="closeFmHowToModal()" style="background: #334155; color: #e2e8f0; border: none; padding: 8px 14px; border-radius: 6px; font-weight: 700; font-size: 11px; cursor: pointer;">
+                    Fechar
+                </button>
+            </div>
         </div>
     `;
 
@@ -2099,25 +2243,89 @@ function closeFmHowToModal() {
 }
 window.closeFmHowToModal = closeFmHowToModal;
 
-function executeFmQuickAction(actionType, targetService, hostname = "") {
-    let msg = "";
-    if (actionType === "restart") {
-        msg = `Comando enviado: Reinicialização preventiva de ${targetService}${hostname ? ' em ' + hostname : ''}. Memória e buffers em processo de expurgo.`;
+async function triggerFmRemoteRemediation(hostname, actionType, btnEl) {
+    const execPanel = document.getElementById("fmRemoteCmdExecPanel");
+    const execStatus = document.getElementById("fmRemoteCmdExecStatus");
+    const execOutput = document.getElementById("fmRemoteCmdExecOutput");
+    if (execPanel) execPanel.style.display = "block";
+
+    let script = "";
+    let title = "";
+    if (actionType === "restart_fastmatching") {
+        script = "Restart-Service -Name FastMatchingSvc -Force; Start-Sleep -Seconds 2; Get-Service -Name FastMatchingSvc | Select-Object Name, Status, StartType | Format-Table -AutoSize";
+        title = `Reiniciar FastMatchingSvc em ${hostname}`;
     } else if (actionType === "reset_buffers") {
-        msg = `Comando enviado: Limpeza de fila de buffer .EMU e reset de memória circular em ${targetService}.`;
+        script = "Restart-Service -Name FastMatchingSvc -Force; Start-Sleep -Seconds 1; w32tm /resync /force; Write-Host 'Buffers .EMU limpos e sincronismo de relógio NTP concluído!'";
+        title = `Reset Buffers EMU e NTP em ${hostname}`;
     } else if (actionType === "sync_sgg") {
-        msg = `Comando enviado: Recarga forçada do catálogo SGG via ${targetService}. Novo ConfigXml.xml em processamento.`;
+        script = "Restart-Service -Name DNA.ConfigMonitorSVC -Force; Start-Sleep -Seconds 2; Get-Service -Name DNA.ConfigMonitorSVC | Select-Object Name, Status, StartType | Format-Table -AutoSize";
+        title = `Forçar Sincronismo SGG (ConfigMonitor) em ${hostname}`;
     }
-    
-    // Feedback visual
-    const footerStatus = document.getElementById("fmHowToModalFooterStatus");
-    if (footerStatus) {
-        footerStatus.innerHTML = `<span style="color: #86efac; font-weight: 700;">✅ ${msg}</span>`;
+
+    if (execStatus) {
+        execStatus.innerHTML = `
+            <div style="width: 14px; height: 14px; border: 2px solid #38bdf8; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite;"></div>
+            <span>Disparando comando PowerShell no host <strong>${hostname}</strong>...</span>
+        `;
     }
-    alert(`[COMANDO DISPARADO]
+    if (execOutput) {
+        execOutput.textContent = `[PowerShell] Disparando: ${script}\nDestino: ${hostname}\nHorário: ${new Date().toLocaleTimeString('pt-BR')}`;
+    }
 
-${msg}
+    try {
+        const token = (typeof getAuthToken === "function") ? getAuthToken() : (localStorage.getItem("fleet_token") || localStorage.getItem("token") || "");
+        const headers = {
+            "Content-Type": "application/json"
+        };
+        if (token) headers["Authorization"] = `Bearer ${token}`;
 
-O resultado será refletido no próximo ciclo de telemetria do fma.log.`);
+        const resp = await fetch("/api/remote-commands/execute", {
+            method: "POST",
+            headers: headers,
+            body: JSON.stringify({
+                hosts: [hostname],
+                shell_type: "powershell",
+                command_script: script,
+                command_title: title
+            })
+        });
+
+        if (!resp.ok) {
+            const errData = await resp.json().catch(() => ({}));
+            throw new Error(errData.detail || `Erro HTTP ${resp.status}`);
+        }
+
+        const data = await resp.json();
+        const execId = data.execution_id;
+
+        if (execStatus) {
+            execStatus.innerHTML = `
+                <span style="color: #86efac; font-weight: 800;">✅ Comando #${execId ? execId.substring(0,8) : 'OK'} enviado com sucesso!</span>
+                <span style="color: #94a3b8; font-size: 10px;">Aguardando retorno do host...</span>
+            `;
+        }
+        if (execOutput) {
+            execOutput.textContent += `\n\n[Status]: Comando enviado com sucesso. Execution ID: ${execId}\nO agente CS01 está processando a solicitação de reinicialização.`;
+        }
+
+        // Feedback no rodapé geral do modal
+        const footerStatus = document.getElementById("fmHowToModalFooterStatus");
+        if (footerStatus) {
+            footerStatus.innerHTML = `<span style="color: #86efac; font-weight: 700;">✅ Comando remoto executado para ${hostname} (#${execId ? execId.substring(0,8) : 'OK'})</span>`;
+        }
+
+    } catch (err) {
+        if (execStatus) {
+            execStatus.innerHTML = `<span style="color: #f87171; font-weight: 800;">❌ Falha na execução remota: ${err.message}</span>`;
+        }
+        if (execOutput) {
+            execOutput.textContent += `\n\n[ERRO]: ${err.message}`;
+        }
+    }
+}
+window.triggerFmRemoteRemediation = triggerFmRemoteRemediation;
+
+function executeFmQuickAction(actionType, targetService, hostname = "") {
+    triggerFmRemoteRemediation(hostname, actionType === "restart" ? "restart_fastmatching" : actionType);
 }
 window.executeFmQuickAction = executeFmQuickAction;
