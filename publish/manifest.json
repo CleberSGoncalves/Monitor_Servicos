@@ -4,7 +4,7 @@
     "DNA.MonitorServiceSVC": {
       "version": "1.0.21.0",
       "package_name": "DNA.MonitorServiceSVC_v1.0.21.0.zip",
-      "download_url": "https://raw.githubusercontent.com/CleberSGoncalves/Monitor_Servicos/main/publish/DNA.MonitorServiceSVC_v1.0.21.0.zip",
+      "download_url": "https://storage.googleapis.com/kantar-fleet-releases/DNA.MonitorServiceSVC_v1.0.21.0.zip",
       "sha256": "2ed366a18565df2310cfeabd60c718935c9c356d213352a7b8df87a417fdd2a7"
     },
     "Atria Capture": {
