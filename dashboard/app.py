@@ -197,11 +197,15 @@ class AiDecisionRequest(BaseModel):
 class SetDesiredVersionRequest(BaseModel):
     service_name: str
     target_version: str
+    auto_dispatch: bool = True
 
 class DispatchServiceUpdateRequest(BaseModel):
     service_name: str
     hosts: Optional[List[str]] = None
     target_version: Optional[str] = None
+
+class RemoveHostRequest(BaseModel):
+    hostname: str
 
 
 def get_current_user(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
@@ -756,12 +760,37 @@ async def set_governance_version_endpoint(
     req: SetDesiredVersionRequest,
     user: dict = Depends(get_current_user)
 ):
-    """Atualiza a versão homologada desejada de um serviço no painel de governança central."""
+    """Atualiza a versão homologada desejada de um serviço no painel de governança central, sincroniza o manifest.json do GCS e dispara o rollout via Google Cloud se auto_dispatch=True."""
     try:
-        from version_governance import set_desired_version
+        from version_governance import set_desired_version, get_service_fleet_evolution
+        from gcp_sync import update_gcs_manifest_version
+        from sharepoint_sync import sanitize_and_recalculate_cache
+
         res = set_desired_version(req.service_name, req.target_version)
         if not res.get("success"):
             raise HTTPException(status_code=400, detail=res.get("error", "Erro ao atualizar versão"))
+
+        # Atualiza o manifest.json público no Google Cloud Storage para auto-update dos agentes
+        gcs_ok = update_gcs_manifest_version(req.service_name, req.target_version)
+        res["gcs_manifest_updated"] = gcs_ok
+
+        sanitize_and_recalculate_cache(force_refresh_time=True, save_to_disk=True)
+
+        dispatched_count = 0
+        if req.auto_dispatch:
+            evol = get_service_fleet_evolution(req.service_name, req.target_version)
+            pending_hosts = evol.get("pending_online_hosts", [])
+            if pending_hosts:
+                disp_res = await dispatch_governance_update_endpoint(
+                    req=DispatchServiceUpdateRequest(
+                        service_name=req.service_name,
+                        hosts=pending_hosts,
+                        target_version=req.target_version,
+                    ),
+                    user=user,
+                )
+                dispatched_count = disp_res.get("dispatched_count", 0)
+        res["dispatched_count"] = dispatched_count
         return res
     except HTTPException:
         raise
@@ -770,44 +799,93 @@ async def set_governance_version_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/api/fleet/governance/remove-host")
+async def remove_host_from_fleet_endpoint(
+    req: RemoveHostRequest,
+    user: dict = Depends(get_current_user)
+):
+    """Envia ordem remota de desinstalação do serviço no computador via Google Cloud e remove a máquina da telemetria."""
+    try:
+        from gcp_sync import decommission_host_completely
+        operator = user.get("full_name") or user.get("username") or "Operador NOC"
+        res = decommission_host_completely(req.hostname, requested_by=operator)
+        if not res.get("success"):
+            raise HTTPException(status_code=400, detail=res.get("error", "Falha ao remover máquina"))
+        return res
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erro ao remover host {req.hostname}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/fleet/governance/dispatch-update")
 async def dispatch_governance_update_endpoint(
     req: DispatchServiceUpdateRequest,
     user: dict = Depends(get_current_user)
 ):
-    """Dispara a esteira de atualização para as máquinas pendentes do serviço."""
+    """Dispara a esteira de atualização em paralelo via Google Cloud Firestore para as máquinas pendentes do serviço."""
     try:
+        from concurrent.futures import ThreadPoolExecutor
+        import uuid
         from version_governance import get_service_fleet_evolution
-        from fleet_actions import execute_predefined_action
-        
+        from fleet_actions import build_service_raw_script
+        from gcp_sync import dispatch_remote_command_to_firestore, update_gcs_manifest_version
+        from sharepoint_sync import get_cached_data, sanitize_and_recalculate_cache
+
         evol = get_service_fleet_evolution(req.service_name, req.target_version)
         hosts_to_update = req.hosts or evol.get("pending_online_hosts", [])
-        
+        target_v = str(req.target_version or evol.get("target_version") or "1.0.21.3").strip().lstrip("vV")
+
+        # Garante que o manifest.json no GCS está alinhado com a versão alvo
+        update_gcs_manifest_version(req.service_name, target_v)
+
+        raw_script = build_service_raw_script(req.service_name, target_v)
+        operator = user.get("full_name") or user.get("username") or "Operador NOC"
+
+        def _dispatch_one(h: str):
+            cid = f"upd_{uuid.uuid4().hex[:8]}"
+            ok = dispatch_remote_command_to_firestore(
+                command_id=cid,
+                hostname=h,
+                service_name=req.service_name,
+                action="Atualizar",
+                target_version=target_v,
+                shell_type="powershell",
+                script=raw_script,
+                requested_by=operator,
+            )
+            return h, ok
+
         dispatched = []
         failed = []
-        target_v = req.target_version or evol.get("target_version")
-        
-        for h in hosts_to_update:
-            try:
-                res = execute_predefined_action(
-                    action_type="update_service",
-                    host=h,
-                    service_name=req.service_name,
-                    target_version=target_v,
-                    operator_username=user.get("sub", "admin"),
-                    operator_name=user.get("name", "Operador NOC")
-                )
-                if res.get("success"):
-                    dispatched.append(h)
-                else:
-                    failed.append({"host": h, "error": res.get("error")})
-            except Exception as e:
-                failed.append({"host": h, "error": str(e)})
-                
+        if hosts_to_update:
+            with ThreadPoolExecutor(max_workers=20) as ex:
+                for h_name, ok in ex.map(_dispatch_one, hosts_to_update):
+                    if ok:
+                        dispatched.append(h_name)
+                    else:
+                        failed.append({"host": h_name, "error": "Falha ao enfileirar no Google Cloud Firestore"})
+
+        # Atualiza estado em memória dos hosts despachados
+        dispatched_set = {h.upper() for h in dispatched}
+        c_data = get_cached_data()
+        for s in c_data.get("services", []):
+            h_curr = str(s.get("hostname") or "").strip().upper()
+            if h_curr in dispatched_set and (
+                s.get("nome_servico", "").strip().lower() == req.service_name.strip().lower()
+                or req.service_name.strip().lower() in s.get("nome_servico", "").strip().lower()
+            ):
+                s["versao_desejada"] = target_v
+                s["acao_solicitada"] = "Atualizar"
+                s["status_atualizacao"] = "Em Progresso"
+
+        sanitize_and_recalculate_cache(save_to_disk=True, force_refresh_time=True)
+
         is_overall_success = len(dispatched) > 0 or len(failed) == 0
         error_msg = None
         if not is_overall_success and len(failed) > 0:
-            error_msg = failed[0].get("error", "Falha de comunicação com o SharePoint")
+            error_msg = failed[0].get("error", "Falha de comunicação com o Google Cloud")
 
         return {
             "success": is_overall_success,
@@ -1183,6 +1261,13 @@ async def gcp_telemetry_status_endpoint():
     """Retorna o status operacional da integração em tempo real com Google Cloud Firestore."""
     from gcp_sync import get_gcp_telemetry_status
     return get_gcp_telemetry_status()
+
+
+@app.get("/api/gcp/consumption")
+async def gcp_consumption_metrics_endpoint():
+    """Retorna o consumo detalhado e estimativa de gastos mensais (USD e BRL) do Google Cloud Firestore + Cloud Storage."""
+    from gcp_sync import get_gcp_consumption_and_cost_metrics
+    return get_gcp_consumption_and_cost_metrics()
 
 
 @app.post("/api/gcp/sync")

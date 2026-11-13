@@ -694,11 +694,15 @@ function renderFleetEvolutionTable() {
             govBadge = `<span style="color: #f87171; font-weight: 600;">Desatualizado</span>`;
         }
 
-        // Ação de Atualização Direta (1 clique via Google Cloud)
+        // Ação de Atualização Direta (1 clique via Google Cloud) + Botão de Remover Máquina (Desinstalar e Excluir da Telemetria)
         const needsUpdate = (!isUp || h.status_atualizacao === "Desatualizado");
-        const actionBtn = needsUpdate
+        const updateBtn = needsUpdate
             ? `<button class="btn-sm btn-primary" onclick="dispatchSingleHostUpdate('${h.hostname}', '${currentGovernanceService}', '${h.versao_desejada || targetVer}')" style="padding: 3px 8px; font-size: 11px; font-weight: 700; background: #0284c7; border: 1px solid #38bdf8; border-radius: 4px; color: #fff; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" title="Disparar atualização direta via Google Cloud Firestore: v${h.versao_desejada || targetVer}"><i class="fas fa-bolt"></i> Atualizar</button>`
-            : `<span style="color: #34d399; font-weight: 600; font-size: 11px; display: inline-flex; align-items: center; gap: 3px;"><i class="fas fa-check-circle"></i> Em Dia</span>`;
+            : `<button class="btn-sm" onclick="dispatchSingleHostUpdate('${h.hostname}', '${currentGovernanceService}', '${h.versao_desejada || targetVer}')" style="padding: 3px 8px; font-size: 11px; font-weight: 600; background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.35); border-radius: 4px; color: #34d399; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" title="Em dia! Clique se desejar forçar reinstalação via Google Cloud"><i class="fas fa-check-circle"></i> Em Dia</button>`;
+
+        const removeHostBtn = `<button class="btn-sm" onclick="removeHostFromFleet('${h.hostname}', '${h.praca}')" style="padding: 3px 7px; font-size: 11px; background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.4); border-radius: 4px; color: #f87171; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;" title="Desinstalar serviço na máquina remota e remover [${h.hostname}] da telemetria"><i class="fas fa-trash-alt"></i> Remover</button>`;
+
+        const actionBtn = `<div style="display: inline-flex; align-items: center; gap: 6px; justify-content: center;">${updateBtn}${removeHostBtn}</div>`;
 
         return `
             <tr style="border-bottom: 1px solid rgba(148,163,184,0.1); transition: background 0.15s ease;" onmouseover="this.style.background='rgba(51,65,85,0.3)'" onmouseout="this.style.background='transparent'">
@@ -923,10 +927,12 @@ async function submitSetDesiredVersion(event) {
     
     const sel = document.getElementById("modalSelectService");
     const inp = document.getElementById("modalInputVersion");
+    const chkAuto = document.getElementById("modalAutoDispatchCloud");
     if (!sel || !inp) return;
 
     const serviceName = sel.value;
     const targetVersion = inp.value.trim();
+    const autoDispatch = chkAuto ? chkAuto.checked : true;
     if (!serviceName || !targetVersion) {
         if (typeof showToast === "function") showToast("Selecione o serviço e informe a versão!", "warning");
         return;
@@ -939,7 +945,11 @@ async function submitSetDesiredVersion(event) {
                 "Content-Type": "application/json",
                 ...(getFleetAuthToken() ? { "Authorization": `Bearer ${getFleetAuthToken()}` } : {})
             },
-            body: JSON.stringify({ service_name: serviceName, target_version: targetVersion })
+            body: JSON.stringify({
+                service_name: serviceName,
+                target_version: targetVersion,
+                auto_dispatch: autoDispatch
+            })
         });
 
         const data = await resp.json();
@@ -950,7 +960,8 @@ async function submitSetDesiredVersion(event) {
 
         closeSetTargetVersionModal();
         if (typeof showToast === "function") {
-            showToast(`Versão homologada de ${serviceName} alterada para v${targetVersion}!`, "success");
+            const dispMsg = data.dispatched_count > 0 ? ` e atualização disparada para ${data.dispatched_count} máquinas via Google Cloud!` : "!";
+            showToast(`Versão homologada de ${serviceName} alterada para v${targetVersion}${dispMsg}`, "success");
         }
 
         // Recarrega matriz e evolução do serviço
@@ -963,6 +974,38 @@ async function submitSetDesiredVersion(event) {
         if (typeof showToast === "function") showToast("Falha de rede ao salvar versão homologada", "error");
     }
 }
+
+async function removeHostFromFleet(hostname, praca) {
+    const label = praca ? `${praca} (${hostname})` : hostname;
+    const msg = `⚠️ ATENÇÃO: Deseja realmente REMOVER a máquina [${label}]?\n\nEsta ação irá:\n1. Enviar comando via Google Cloud para parar e DESINSTALAR o serviço DNA.MonitorServiceSVC no computador remoto.\n2. Excluir a máquina da telemetria do Google Cloud Firestore e do Dashboard.\n\nConfirmar desinstalação e remoção?`;
+    if (!confirm(msg)) return;
+
+    try {
+        const resp = await fetch("/api/fleet/governance/remove-host", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...(getFleetAuthToken() ? { "Authorization": `Bearer ${getFleetAuthToken()}` } : {})
+            },
+            body: JSON.stringify({ hostname: hostname })
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.success) {
+            if (typeof showToast === "function") showToast(data.error || "Erro ao remover máquina", "error");
+            return;
+        }
+        if (typeof showToast === "function") {
+            showToast(data.message || `Máquina ${hostname} desinstalada e removida da telemetria!`, "success");
+        }
+        await loadFleetUpdateEvolution(false);
+        await loadFleetGovernanceSummary(false);
+        if (typeof loadServicesTable === "function") loadServicesTable();
+    } catch (err) {
+        console.error("Erro ao remover host da frota:", err);
+        if (typeof showToast === "function") showToast("Falha ao remover máquina da frota", "error");
+    }
+}
+window.removeHostFromFleet = removeHostFromFleet;
 
 window.loadFleetGovernanceSummary = loadFleetGovernanceSummary;
 window.selectGovernanceService = selectGovernanceService;

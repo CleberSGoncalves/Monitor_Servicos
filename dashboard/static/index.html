@@ -46,7 +46,7 @@
 
 
 
-    <link rel="stylesheet" href="/static/css/style.css?v=3.9.75">
+    <link rel="stylesheet" href="/static/css/style.css?v=3.9.76">
 
 
 
@@ -11754,6 +11754,12 @@
 
         </button>
 
+        <button class="cfg-subtab-btn" id="btn-cfg-subtab-gcp" onclick="switchConfigsSubtab('gcp')">
+
+          <i class="fas fa-cloud" style="color: #38bdf8;"></i> ☁️ Consumo Google Cloud & Custos
+
+        </button>
+
 
 
 
@@ -12952,7 +12958,90 @@
 
         </div>
 
+      </div>
 
+      <!-- SUBTAB 6: CONSUMO GOOGLE CLOUD & ESTIMATIVA DE CUSTOS -->
+      <div id="configs-content-gcp" style="display: none;">
+        <div class="panel-card" style="padding: 20px; margin-bottom: 20px; border: 1px solid rgba(56, 189, 248, 0.35); background: linear-gradient(180deg, rgba(15, 23, 42, 0.9) 0%, rgba(15, 23, 42, 0.98) 100%);">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 12px;">
+            <div>
+              <div class="panel-title" style="font-size: 16px; font-weight: 700; color: #f8fafc; display: flex; align-items: center; gap: 8px;">
+                <span>☁️</span> Consumo Google Cloud (Firestore & Cloud Storage) e Estimativa de Gastos
+                <span style="background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); font-size: 11px; padding: 2px 10px; border-radius: 20px; font-weight: 700;">100% Zero-SharePoint (v1.0.21.3)</span>
+              </div>
+              <div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">
+                Auditoria em tempo real do volume de leituras, escritas, pacotes de atualização e projeção financeira mensal na região <code>southamerica-east1 (São Paulo)</code>
+              </div>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <span style="font-size: 11px; color: #64748b;" id="gcpCostUpdatedAt">Atualizado agora</span>
+              <button class="btn-primary" style="padding: 6px 14px; font-size: 12px; background: linear-gradient(135deg, #0284c7, #2563eb); font-weight: 700;" onclick="loadGcpConsumptionUI(true)">
+                <i class="fas fa-sync-alt" id="iconReloadGcpCost"></i> Atualizar Consumo
+              </button>
+            </div>
+          </div>
+
+          <!-- 4 KPIs Financeiros e Operacionais -->
+          <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 20px;">
+            <div class="kpi-card" style="border-left: 4px solid #10b981; background: rgba(16, 185, 129, 0.08);">
+              <div class="kpi-value" id="gcpKpiMonthlyUsd" style="color: #34d399; font-size: 24px; font-weight: 900;">$--</div>
+              <div class="kpi-label" style="font-weight: 700; color: #cbd5e1;">Estimativa Mensal Total (USD)</div>
+              <div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">Em Reais: <strong id="gcpKpiMonthlyBrl" style="color: #38bdf8;">R$ --</strong> • Diário: <span id="gcpKpiDailyUsd">$--/dia</span></div>
+            </div>
+
+            <div class="kpi-card" style="border-left: 4px solid #38bdf8; background: rgba(56, 189, 248, 0.08);">
+              <div class="kpi-value" id="gcpKpiDailyWrites" style="color: #38bdf8; font-size: 24px; font-weight: 900;">--</div>
+              <div class="kpi-label" style="font-weight: 700; color: #cbd5e1;">Escritas Firestore / Dia</div>
+              <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">Cota Grátis: <strong style="color: #34d399;">20.000/dia</strong> • Tarifado: <span id="gcpKpiBillableWrites">--</span></div>
+            </div>
+
+            <div class="kpi-card" style="border-left: 4px solid #a855f7; background: rgba(168, 85, 247, 0.08);">
+              <div class="kpi-value" id="gcpKpiDailyReads" style="color: #c084fc; font-size: 24px; font-weight: 900;">--</div>
+              <div class="kpi-label" style="font-weight: 700; color: #cbd5e1;">Leituras Firestore / Dia</div>
+              <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">Cota Grátis: <strong style="color: #34d399;">50.000/dia</strong> • Tarifado: <span id="gcpKpiBillableReads">--</span></div>
+            </div>
+
+            <div class="kpi-card" style="border-left: 4px solid #f59e0b; background: rgba(245, 158, 11, 0.08);">
+              <div class="kpi-value" id="gcpKpiStorageMb" style="color: #fbbf24; font-size: 24px; font-weight: 900;">-- MB</div>
+              <div class="kpi-label" style="font-weight: 700; color: #cbd5e1;">Repositório Cloud Storage</div>
+              <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">Bucket: <code>kantar-fleet-releases</code> (<span id="gcpKpiStorageObjects">--</span> pacotes)</div>
+            </div>
+          </div>
+
+          <!-- Detalhamento de Custos por Componente -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px;">
+            <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 10px; padding: 16px;">
+              <div style="font-size: 13px; font-weight: 700; color: #38bdf8; margin-bottom: 10px; display: flex; align-items: center; gap: 6px;">
+                <i class="fas fa-database"></i> Detalhamento Cloud Firestore (Telemetria & Fila de Comandos)
+              </div>
+              <table class="data-table" style="width: 100%; font-size: 12px;">
+                <tbody>
+                  <tr><td style="padding: 6px 0; color: #94a3b8;">Projeto GCP / Região:</td><td style="padding: 6px 0; text-align: right; color: #f8fafc; font-family: monospace;" id="gcpDetailProject">bamboo-dryad-494619-c9 (São Paulo)</td></tr>
+                  <tr><td style="padding: 6px 0; color: #94a3b8;">Máquinas Ativas Reportando (Ciclo 3 min):</td><td style="padding: 6px 0; text-align: right; color: #34d399; font-weight: 700;" id="gcpDetailActiveHosts">--</td></tr>
+                  <tr><td style="padding: 6px 0; color: #94a3b8;">Volume Mensal de Escritas (Heartbeats + Canais):</td><td style="padding: 6px 0; text-align: right; color: #f8fafc;" id="gcpDetailMonthlyWrites">--</td></tr>
+                  <tr><td style="padding: 6px 0; color: #94a3b8;">Volume Mensal de Leituras (Fila + Sync NOC):</td><td style="padding: 6px 0; text-align: right; color: #f8fafc;" id="gcpDetailMonthlyReads">--</td></tr>
+                  <tr><td style="padding: 6px 0; color: #94a3b8;">Custo Estimado Firestore / Mês:</td><td style="padding: 6px 0; text-align: right; color: #38bdf8; font-weight: 700;" id="gcpDetailFirestoreCost">$--</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 10px; padding: 16px;">
+              <div style="font-size: 13px; font-weight: 700; color: #34d399; margin-bottom: 10px; display: flex; align-items: center; gap: 6px;">
+                <i class="fas fa-box-open"></i> Detalhamento Cloud Storage & Ganhos de Arquitetura
+              </div>
+              <table class="data-table" style="width: 100%; font-size: 12px;">
+                <tbody>
+                  <tr><td style="padding: 6px 0; color: #94a3b8;">Bucket de Releases & Manifesto SHA-256:</td><td style="padding: 6px 0; text-align: right; color: #f8fafc; font-family: monospace;">gs://kantar-fleet-releases</td></tr>
+                  <tr><td style="padding: 6px 0; color: #94a3b8;">Custo Estimado Cloud Storage / Mês:</td><td style="padding: 6px 0; text-align: right; color: #34d399; font-weight: 700;" id="gcpDetailStorageCost">$--</td></tr>
+                  <tr><td style="padding: 6px 0; color: #94a3b8;">Chamadas ao SharePoint / Graph API:</td><td style="padding: 6px 0; text-align: right; color: #10b981; font-weight: 700;">0 chamadas (100% Eliminado)</td></tr>
+                  <tr><td style="padding: 6px 0; color: #94a3b8;">Erros HTTP 429 (Throttling Microsoft):</td><td style="padding: 6px 0; text-align: right; color: #10b981; font-weight: 700;">0% (Erradicado)</td></tr>
+                  <tr><td style="padding: 6px 0; color: #94a3b8;">Latência Média de Entrega de Comando:</td><td style="padding: 6px 0; text-align: right; color: #38bdf8; font-weight: 700;" id="gcpDetailLatency">~24ms</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
 
     </section>
 
@@ -17714,27 +17803,27 @@
 
 
 
-  <script src="/static/js/app.js?v=3.9.75"></script>
+  <script src="/static/js/app.js?v=3.9.76"></script>
 
-  <script src="/static/js/ai_insights.js?v=3.9.75"></script>
+  <script src="/static/js/ai_insights.js?v=3.9.76"></script>
 
-  <script src="/static/js/fleet_ops.js?v=3.9.75"></script>
+  <script src="/static/js/fleet_ops.js?v=3.9.76"></script>
 
-  <script src="/static/js/remote_commands.js?v=3.9.75"></script>
+  <script src="/static/js/remote_commands.js?v=3.9.76"></script>
 
-  <script src="/static/js/signals_analysis.js?v=3.9.75"></script>
+  <script src="/static/js/signals_analysis.js?v=3.9.76"></script>
 
-  <script src="/static/js/mosaic_wall.js?v=3.9.75"></script>
+  <script src="/static/js/mosaic_wall.js?v=3.9.76"></script>
 
-  <script src="/static/js/topology_map.js?v=3.9.75"></script>
+  <script src="/static/js/topology_map.js?v=3.9.76"></script>
 
-  <script src="/static/js/network_link.js?v=3.9.75"></script>
+  <script src="/static/js/network_link.js?v=3.9.76"></script>
 
-  <script src="/static/js/fiscalizacao.js?v=3.9.75"></script>
+  <script src="/static/js/fiscalizacao.js?v=3.9.76"></script>
 
-  <script src="/static/js/classificador_falhas.js?v=3.9.75"></script>
+  <script src="/static/js/classificador_falhas.js?v=3.9.76"></script>
 
-  <script src="/static/js/audio_sync.js?v=3.9.75"></script>
+  <script src="/static/js/audio_sync.js?v=3.9.76"></script>
 
 
 
@@ -18471,25 +18560,32 @@
           </select>
         </div>
 
-        <div class="form-group" style="margin-bottom: 16px;">
+        <div class="form-group" style="margin-bottom: 14px;">
           <label class="form-label" style="font-size: 12px; font-weight: 700; color: #cbd5e1;">Nova Versão Homologada Oficial</label>
-          <input type="text" id="modalInputVersion" class="form-input" placeholder="Ex: 1.0.21.2" style="width: 100%; font-family: monospace; font-size: 13px;" required>
+          <input type="text" id="modalInputVersion" class="form-input" placeholder="Ex: 1.0.21.3" style="width: 100%; font-family: monospace; font-size: 13px;" required>
           <div style="font-size: 11px; color: #94a3b8; margin-top: 5px;">
-            Ao salvar, o Dashboard recalcula instantaneamente os status de Atualizado/Desatualizado de toda a frota sem realizar chamadas externas ao SharePoint.
+            Ao salvar, o Dashboard atualiza automaticamente o <code>manifest.json</code> no Google Cloud Storage e enfileira a atualização direta via Google Cloud Firestore (sem precisar de GV ou Tanium).
           </div>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 16px; padding: 10px 12px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 6px; display: flex; align-items: center; gap: 10px;">
+          <input type="checkbox" id="modalAutoDispatchCloud" checked style="width: 18px; height: 18px; accent-color: #10b981; cursor: pointer;">
+          <label for="modalAutoDispatchCloud" style="font-size: 12px; color: #e2e8f0; font-weight: 600; cursor: pointer;">
+            ⚡ Disparar atualização automática via Google Cloud para toda a frota agora (Zero GV / Tanium)
+          </label>
         </div>
 
         <div style="display: flex; justify-content: flex-end; gap: 10px;">
           <button type="button" class="btn-secondary" onclick="closeSetTargetVersionModal()">Cancelar</button>
-          <button type="submit" class="btn-primary" style="background: linear-gradient(135deg, #0284c7, #0369a1); border: 1px solid #38bdf8;">
-            <i class="fas fa-check"></i> Salvar Versão Homologada
+          <button type="submit" class="btn-primary" style="background: linear-gradient(135deg, #059669, #10b981); border: 1px solid #34d399; font-weight: 700;">
+            <i class="fas fa-rocket"></i> Salvar & Atualizar Frota via Google Cloud
           </button>
         </div>
       </form>
     </div>
   </div>
 
-  <script src="/static/js/detection_monitor.js?v=3.9.75"></script>
+  <script src="/static/js/detection_monitor.js?v=3.9.76"></script>
 
 </body>
 

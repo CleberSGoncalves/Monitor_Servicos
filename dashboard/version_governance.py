@@ -16,6 +16,33 @@ logger = logging.getLogger("version_governance")
 DATA_DIR = Path(__file__).resolve().parent / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DESIRED_VERSIONS_FILE = DATA_DIR / "desired_versions.json"
+DECOMMISSIONED_HOSTS_FILE = DATA_DIR / "decommissioned_hosts.json"
+
+
+def get_decommissioned_hosts() -> List[str]:
+    """Retorna a lista de hostnames desinstalados/removidos da frota para nao reaparecerem na telemetria."""
+    if DECOMMISSIONED_HOSTS_FILE.exists():
+        try:
+            data = json.loads(DECOMMISSIONED_HOSTS_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                return [str(h).strip().upper() for h in data if str(h).strip()]
+        except Exception:
+            pass
+    return []
+
+
+def add_decommissioned_host(hostname: str) -> List[str]:
+    """Adiciona um host na lista de desinstalados/removidos permanentemente."""
+    h_clean = str(hostname or "").strip().upper()
+    current = set(get_decommissioned_hosts())
+    if h_clean:
+        current.add(h_clean)
+    out = sorted(current)
+    try:
+        DECOMMISSIONED_HOSTS_FILE.write_text(json.dumps(out, indent=2, ensure_ascii=False), encoding="utf-8")
+    except Exception as ex:
+        logger.warning(f"Erro ao gravar {DECOMMISSIONED_HOSTS_FILE}: {ex}")
+    return out
 
 # Versões oficiais padrão homologadas pela engenharia
 DEFAULT_DESIRED_VERSIONS: Dict[str, str] = {
@@ -56,8 +83,6 @@ def _is_version_up_to_date(installed: str, target: str, service_name: str = "") 
     if not v_inst or v_inst in ("Desconhecido", "Não Instalado", "0.0.0.0", "N/A"):
         return False
     if v_inst == v_targ:
-        return True
-    if "monitorservice" in str(service_name).lower() and v_inst.startswith("1.0.21.") and v_targ.startswith("1.0.21."):
         return True
     t_inst = _parse_ver_tuple(v_inst)
     t_targ = _parse_ver_tuple(v_targ)

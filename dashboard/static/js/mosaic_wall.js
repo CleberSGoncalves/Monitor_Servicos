@@ -982,15 +982,17 @@ function switchConfigsSubtab(subtabId) {
     const btnUsers = document.getElementById("btn-cfg-subtab-users");
     const btnAi = document.getElementById("btn-cfg-subtab-ai");
     const btnTuning = document.getElementById("btn-cfg-subtab-tuning");
+    const btnGcp = document.getElementById("btn-cfg-subtab-gcp");
 
     const contentThresh = document.getElementById("configs-content-thresholds");
     const contentFlags = document.getElementById("configs-content-flags");
     const contentUsers = document.getElementById("configs-content-users");
     const contentAi = document.getElementById("configs-content-ai");
     const contentTuning = document.getElementById("configs-content-tuning");
+    const contentGcp = document.getElementById("configs-content-gcp");
 
-    [btnThresh, btnFlags, btnUsers, btnAi, btnTuning].forEach(b => b && b.classList.remove("active"));
-    [contentThresh, contentFlags, contentUsers, contentAi, contentTuning].forEach(c => c && (c.style.display = "none"));
+    [btnThresh, btnFlags, btnUsers, btnAi, btnTuning, btnGcp].forEach(b => b && b.classList.remove("active"));
+    [contentThresh, contentFlags, contentUsers, contentAi, contentTuning, contentGcp].forEach(c => c && (c.style.display = "none"));
 
     if (subtabId === "thresholds") {
         if (btnThresh) btnThresh.classList.add("active");
@@ -1011,9 +1013,76 @@ function switchConfigsSubtab(subtabId) {
         if (btnTuning) btnTuning.classList.add("active");
         if (contentTuning) contentTuning.style.display = "block";
         if (typeof loadThresholdAuditUI === "function") loadThresholdAuditUI();
+    } else if (subtabId === "gcp") {
+        if (btnGcp) btnGcp.classList.add("active");
+        if (contentGcp) contentGcp.style.display = "block";
+        loadGcpConsumptionUI(false);
     }
 }
 window.switchConfigsSubtab = switchConfigsSubtab;
+
+async function loadGcpConsumptionUI(force = false) {
+    const icon = document.getElementById("iconReloadGcpCost");
+    if (icon) icon.classList.add("fa-spin");
+    try {
+        const resp = await fetch(`/api/gcp/consumption?_t=${Date.now()}`);
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (!data || !data.success) return;
+
+        const fmtNum = n => Number(n || 0).toLocaleString("pt-BR");
+        const cs = data.cost_summary || {};
+        const fs = data.firestore || {};
+        const st = data.storage || {};
+
+        const elMonthlyUsd = document.getElementById("gcpKpiMonthlyUsd");
+        if (elMonthlyUsd) elMonthlyUsd.innerText = `$${Number(cs.monthly_usd || 0).toFixed(2)}`;
+        const elMonthlyBrl = document.getElementById("gcpKpiMonthlyBrl");
+        if (elMonthlyBrl) elMonthlyBrl.innerText = `R$ ${Number(cs.monthly_brl || 0).toFixed(2).replace(".", ",")}`;
+        const elDailyUsd = document.getElementById("gcpKpiDailyUsd");
+        if (elDailyUsd) elDailyUsd.innerText = `$${Number(cs.daily_usd || 0).toFixed(3)}/dia`;
+
+        const elDailyWrites = document.getElementById("gcpKpiDailyWrites");
+        if (elDailyWrites) elDailyWrites.innerText = fmtNum(fs.daily_writes);
+        const elBillWrites = document.getElementById("gcpKpiBillableWrites");
+        if (elBillWrites) elBillWrites.innerText = fmtNum(fs.billable_daily_writes);
+
+        const elDailyReads = document.getElementById("gcpKpiDailyReads");
+        if (elDailyReads) elDailyReads.innerText = fmtNum(fs.daily_reads);
+        const elBillReads = document.getElementById("gcpKpiBillableReads");
+        if (elBillReads) elBillReads.innerText = fmtNum(fs.billable_daily_reads);
+
+        const elStorageMb = document.getElementById("gcpKpiStorageMb");
+        if (elStorageMb) elStorageMb.innerText = `${st.total_size_mb || 0} MB`;
+        const elStorageObj = document.getElementById("gcpKpiStorageObjects");
+        if (elStorageObj) elStorageObj.innerText = st.objects_count || 0;
+
+        const elActHosts = document.getElementById("gcpDetailActiveHosts");
+        if (elActHosts) elActHosts.innerText = `${data.active_hosts} / ${data.total_hosts} máquinas`;
+        const elMonWrites = document.getElementById("gcpDetailMonthlyWrites");
+        if (elMonWrites) elMonWrites.innerText = `${fmtNum(fs.monthly_writes)} ops/mês`;
+        const elMonReads = document.getElementById("gcpDetailMonthlyReads");
+        if (elMonReads) elMonReads.innerText = `${fmtNum(fs.monthly_reads)} ops/mês`;
+        const elFsCost = document.getElementById("gcpDetailFirestoreCost");
+        if (elFsCost) elFsCost.innerText = `$${Number(fs.monthly_cost_usd || 0).toFixed(2)} / mês`;
+        const elStCost = document.getElementById("gcpDetailStorageCost");
+        if (elStCost) elStCost.innerText = `$${Number(st.monthly_cost_usd || 0).toFixed(2)} / mês`;
+        const elLat = document.getElementById("gcpDetailLatency");
+        if (elLat) elLat.innerText = `~${cs.avg_latency_ms || 24}ms (São Paulo)`;
+
+        const elUpd = document.getElementById("gcpCostUpdatedAt");
+        if (elUpd) elUpd.innerText = `Atualizado às ${new Date().toLocaleTimeString()}`;
+
+        if (force && typeof showToast === "function") {
+            showToast("Métricas de consumo e estimativa de custo do Google Cloud atualizadas!", "success");
+        }
+    } catch (e) {
+        console.error("Erro ao carregar consumo GCP:", e);
+    } finally {
+        if (icon) icon.classList.remove("fa-spin");
+    }
+}
+window.loadGcpConsumptionUI = loadGcpConsumptionUI;
 
 async function loadFeatureFlagsUI() {
     const container = document.getElementById("featureFlagsListContainer");

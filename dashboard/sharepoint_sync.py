@@ -168,8 +168,15 @@ def sanitize_and_recalculate_cache(force_refresh_time: bool = False, save_to_dis
 
             return
 
-        # REGRA FÉRREA DE AUDITORIA: Purga serviços sintéticos clonados (_cs1) do cache em memória e disco
-        clean_services = [s for s in services if "_cs1" not in str(s.get("id", "")) and not s.get("is_synthetic")]
+        # REGRA FÉRREA DE AUDITORIA: Purga serviços sintéticos clonados (_cs1) e máquinas desinstaladas/removidas do cache
+        from version_governance import get_decommissioned_hosts
+        decomm_set = set(get_decommissioned_hosts())
+        clean_services = [
+            s for s in services
+            if "_cs1" not in str(s.get("id", ""))
+            and not s.get("is_synthetic")
+            and str(s.get("hostname") or "").strip().upper() not in decomm_set
+        ]
         if len(clean_services) != len(services):
             _cached_data["services"] = clean_services
             services = clean_services
