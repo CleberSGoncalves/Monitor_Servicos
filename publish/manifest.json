@@ -1,0 +1,15 @@
+{
+  "updated_at": "2026-11-13T12:00:00Z",
+  "services": {
+    "DNA.MonitorServiceSVC": {
+      "version": "1.0.21.0",
+      "package_name": "DNA.MonitorServiceSVC_v1.0.21.0.zip",
+      "download_url": "https://raw.githubusercontent.com/CleberSGoncalves/Monitor_Servicos/main/publish/DNA.MonitorServiceSVC_v1.0.21.0.zip",
+      "sha256": "7e987a2caf77cce395feeb1d515f5e7ec24301e7826f228e9ca8b26eb0b1a785"
+    },
+    "Atria Capture": {
+      "version": "2.0.0.2",
+      "install_url": "https://stgengineeringreleases.blob.core.windows.net/atriacapture/v2.0.0.0_x64_AVX2/install_v2000_x64.ps1"
+    }
+  }
+}
