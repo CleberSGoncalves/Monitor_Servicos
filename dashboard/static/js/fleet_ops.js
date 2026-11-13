@@ -96,7 +96,7 @@ async function triggerCanaryFromDashboard() {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "Authorization": `Bearer ${getFleetAuthToken()}`
+                ...(getFleetAuthToken() ? { "Authorization": `Bearer ${getFleetAuthToken()}` } : {})
             },
             body: JSON.stringify({
                 action_type: "canary_deploy",
@@ -138,7 +138,7 @@ async function triggerPromoteFleetFromDashboard() {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "Authorization": `Bearer ${getFleetAuthToken()}`
+                ...(getFleetAuthToken() ? { "Authorization": `Bearer ${getFleetAuthToken()}` } : {})
             },
             body: JSON.stringify({
                 action_type: "promote_fleet",
@@ -743,7 +743,7 @@ async function dispatchSingleHostUpdate(hostname, serviceName, targetVersion) {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "Authorization": `Bearer ${getFleetAuthToken()}`
+                ...(getFleetAuthToken() ? { "Authorization": `Bearer ${getFleetAuthToken()}` } : {})
             },
             body: JSON.stringify({
                 service_name: serviceName,
@@ -800,7 +800,7 @@ async function dispatchBatchPendingUpdate() {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "Authorization": `Bearer ${getFleetAuthToken()}`
+                ...(getFleetAuthToken() ? { "Authorization": `Bearer ${getFleetAuthToken()}` } : {})
             },
             body: JSON.stringify({
                 service_name: svc,
@@ -944,7 +944,7 @@ async function submitSetDesiredVersion(event) {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "Authorization": `Bearer ${getFleetAuthToken()}`
+                ...(getFleetAuthToken() ? { "Authorization": `Bearer ${getFleetAuthToken()}` } : {})
             },
             body: JSON.stringify({ service_name: serviceName, target_version: targetVersion })
         });
@@ -1190,8 +1190,12 @@ function copyUpProgManualCmd() {
 }
 
 async function executeDirectUpdateFromDashboard() {
-    if (!currentUpdateProgressHost || !currentUpdateProgressService) {
-        if (typeof showToast === "function") showToast("Host ou serviço não selecionado", "error");
+    const host = (currentUpdateProgressHost || document.getElementById("upProgHost")?.innerText || "").trim();
+    const service = (currentUpdateProgressService || document.getElementById("upProgService")?.innerText || "").trim();
+    const targetVer = (currentUpdateProgressTargetVersion || document.getElementById("upProgDesired")?.innerText || "2.0.0.2").replace("v", "").replace("V", "").trim();
+
+    if (!host || !service) {
+        if (typeof showToast === "function") showToast("Host ou serviço não selecionado no modal", "error");
         return;
     }
     const btn = document.getElementById("btnDirectExecuteModal");
@@ -1204,26 +1208,43 @@ async function executeDirectUpdateFromDashboard() {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "Authorization": `Bearer ${getFleetAuthToken()}`
+                ...(getFleetAuthToken() ? { "Authorization": `Bearer ${getFleetAuthToken()}` } : {})
             },
             body: JSON.stringify({
-                host: currentUpdateProgressHost,
-                service_name: currentUpdateProgressService,
-                target_version: currentUpdateProgressTargetVer || "2.0.0.2"
+                host: host,
+                service_name: service,
+                target_version: targetVer
             })
         });
         const data = await resp.json();
         if (resp.ok && data.success) {
-            if (typeof showToast === "function") showToast(data.message || "Atualização disparada com sucesso diretamente pelo Dashboard!", "success");
+            if (btn) {
+                btn.innerHTML = '<i class="fas fa-check-circle" style="color: #34d399;"></i> Disparado com Sucesso!';
+                btn.style.background = "#059669";
+                btn.style.borderColor = "#10b981";
+            }
+            if (typeof showToast === "function") {
+                showToast(data.message || `Atualização disparada com sucesso diretamente pelo Dashboard para [${host}]!`, "success");
+            }
             await refreshFleetUpdateProgressLive();
+
+            setTimeout(() => {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-play" id="btnDirectExecuteIcon"></i> Executar Novamente';
+                    btn.style.background = "#0284c7";
+                    btn.style.borderColor = "#38bdf8";
+                }
+            }, 5000);
         } else {
-            const err = data.detail || data.error || "Erro ao disparar atualização direta";
+            const err = typeof data.detail === "string" ? data.detail : (data.error || "Erro ao disparar atualização direta");
             if (typeof showToast === "function") showToast(err, "error");
+            if (btn) btn.disabled = false;
+            if (icon) icon.className = "fas fa-play";
         }
     } catch (e) {
         console.error("Erro na execução direta:", e);
-        if (typeof showToast === "function") showToast("Falha de rede ao disparar comando", "error");
-    } finally {
+        if (typeof showToast === "function") showToast(`Falha de comunicação ao disparar comando: ${e.message}`, "error");
         if (btn) btn.disabled = false;
         if (icon) icon.className = "fas fa-play";
     }

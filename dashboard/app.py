@@ -663,6 +663,16 @@ async def force_execute_action_endpoint(req: ForceExecuteRequest, user: dict = D
     return res
 
 
+@app.post("/api/fleet/action/update-desired")
+async def update_desired_action_alias_endpoint(
+    req: DispatchServiceUpdateRequest,
+    user: dict = Depends(get_current_user)
+):
+    """Alias garantido para disparar atualização de serviços unitária ou em lote."""
+    return await dispatch_governance_update_endpoint(req=req, user=user)
+
+
+
 @app.get("/api/fleet/action/status")
 async def get_fleet_action_status_endpoint(
     host: str,

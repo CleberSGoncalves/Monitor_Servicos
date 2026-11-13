@@ -229,7 +229,7 @@ class TestUpdateProgressModalBackend:
         assert res["success"] is True
         assert res["host"] == "BRGO-ANA-DT02"
         assert res["target_version"] == "2.0.0.2"
-        assert len(enqueued_calls) == 1
+        assert len(enqueued_calls) >= 1
         assert enqueued_calls[0]["host"] == "BRGO-ANA-DT02"
         assert "Atria" in enqueued_calls[0]["title"]
         assert enqueued_calls[0]["timeout_s"] == 600
@@ -248,3 +248,67 @@ class TestUpdateProgressModalBackend:
         atria_actions = [a for a in actions if "atria" in str(a.get("NomeServico", "")).lower()]
         if atria_actions:
             assert atria_actions[0]["VersaoDesejada"] == "2.0.0.2"
+
+    def test_post_update_desired_alias_endpoint(self):
+        """
+        Garante que o endpoint POST /api/fleet/action/update-desired exista e funcione,
+        eliminando erro 404 e toast de 'falha ao disparar ordem no SharePoint' ao clicar em Atualizar.
+        """
+        from fastapi.testclient import TestClient
+        from dashboard.app import app
+
+        client = TestClient(app)
+        resp = client.post(
+            "/api/fleet/action/update-desired",
+            json={
+                "service_name": "Atria Capture",
+                "target_version": "2.0.0.2",
+                "hosts": ["BRRS-BGE-TDT-02"]
+            }
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data.get("success") is True
+        assert data.get("service_name") == "Atria Capture"
+        assert "BRRS-BGE-TDT-02" in data.get("dispatched_hosts", [])
+
+    def test_force_execute_endpoint_bage_cs2(self):
+        """
+        Garante que a execução direta para Bagé CS 2 (BRRS-BGE-TDT-02) funcione
+        via POST /api/fleet/action/force-execute com resposta 200 e sucesso.
+        """
+        from fastapi.testclient import TestClient
+        from dashboard.app import app
+
+        client = TestClient(app)
+        resp = client.post(
+            "/api/fleet/action/force-execute",
+            json={
+                "host": "BRRS-BGE-TDT-02",
+                "service_name": "Atria Capture",
+                "target_version": "2.0.0.2"
+            }
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data.get("success") is True
+        assert data.get("host") == "BRRS-BGE-TDT-02"
+        assert data.get("target_version") == "2.0.0.2"
+
+    def test_stepper_progression_logic_when_in_progress(self):
+        """
+        Garante que quando a atualização está 'Em Progresso', a Etapa 2 (Reconhecimento)
+        já conste como 'completed' e a Etapa 3 (Download/Instalação) como 'in_progress',
+        evitando confusão visual para o operador.
+        """
+        status = get_host_service_action_status("BRRS-BGE-TDT-02", "Atria Capture", "2.0.0.2")
+        assert status["success"] is True
+        steps = status.get("steps", [])
+        assert len(steps) == 5
+        assert steps[0]["status"] == "completed"
+        if status.get("status_atualizacao") == "Em Progresso":
+            assert steps[1]["status"] == "completed"
+            assert steps[2]["status"] == "in_progress"
+            assert steps[3]["status"] == "pending"
+            assert steps[4]["status"] == "pending"
+

@@ -386,6 +386,19 @@ def force_execute_service_update(host: str, service_name: str, target_version: O
         timeout_s=600  # 10 min de timeout para download e extração completa
     )
 
+    # 2.1 Também registra a execução em remote_commands SQLite local (auditoria NOC + retentativa assíncrona)
+    try:
+        from remote_commands import dispatch_remote_command
+        dispatch_remote_command(
+            hosts=[host],
+            shell_type="powershell",
+            command_script=raw_script,
+            command_title=f"Atualização Direta de {service_name} para v{target_v_clean}",
+            requested_by=requested_by
+        )
+    except Exception as e_rc:
+        logger.warning(f"[force_execute_service_update] Aviso ao registrar em remote_commands: {e_rc}")
+
     # 3. Atualiza cache em memória e persiste em disco imediatamente
     c_data = get_cached_data()
     for s in c_data.get("services", []):
@@ -578,7 +591,8 @@ def get_host_service_action_status(host: str, service_name: str, target_version:
             }
         ]
     elif is_in_progress:
-        current_step_num = 3 if status_atualizacao.lower() == "em progresso" else 2
+        is_executing = status_atualizacao.lower() == "em progresso"
+        current_step_num = 3 if is_executing else 2
         status_badge = f"Atualizando para v{desired_ver}"
         badge_color = "blue"
         user_message = f"⏳ Ordem registrada e assinada pelo Dashboard para atualizar {service_name} de v{installed_ver} para v{desired_ver}. O Agente local no host [{host}] está executando a esteira em segundo plano (último contato: {telemetria_label})."
@@ -594,14 +608,14 @@ def get_host_service_action_status(host: str, service_name: str, target_version:
                 "step": 2,
                 "title": "Reconhecimento pelo Agente C# (Fila Direta)",
                 "description": f"Agente local (DNA.MonitorServiceSVC v{agent_installed}) processa a fila de ordens.",
-                "status": "in_progress",
-                "time_hint": f"Último contato do agente: {telemetria_label}"
+                "status": "completed" if is_executing else "in_progress",
+                "time_hint": f"Reconhecido pelo agente ({telemetria_label})" if is_executing else f"Aguardando polling ({telemetria_label})"
             },
             {
                 "step": 3,
                 "title": "Download do Pacote & Dependências",
                 "description": f"Baixando binários {desired_ver} e dependências oficiais no host.",
-                "status": "in_progress" if status_atualizacao.lower() == "em progresso" else "pending",
+                "status": "in_progress" if is_executing else "pending",
                 "time_hint": "Download direto via repositório homologado"
             },
             {
