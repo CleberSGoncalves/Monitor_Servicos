@@ -303,29 +303,31 @@ def build_service_raw_script(service_name: str, target_version: str) -> str:
         dest_c = r"C:\MediaDNA_V2\applications\DTVCapture64\FastMachingSvc"
         return (
             "$ErrorActionPreference = 'Continue';\n"
+            "$ProgressPreference = 'SilentlyContinue';\n"
             "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;\n"
             f"$dest_d = '{dest_d}'; $dest_c = '{dest_c}';\n"
             "$dest = if (Test-Path $dest_d) { $dest_d } elseif (Test-Path 'D:\\') { $dest_d } else { $dest_c };\n"
             "Stop-Service -Name FastMatchingSvc, FastMachingSvc -Force -ErrorAction SilentlyContinue;\n"
             "Stop-Process -Name FastMatchingSvc, FastMachingSvc -Force -ErrorAction SilentlyContinue;\n"
             f"$zip = \"$env:TEMP\\FastMatchingSvc_v{target_v}.zip\";\n"
-            f"if (-not (Test-Path $zip)) {{ try {{ Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/CleberSGoncalves/Monitor_Servicos/main/publish/FastMatchingSvc_v{target_v}.zip' -OutFile $zip -TimeoutSec 30 -UseBasicParsing }} catch {{}} }};\n"
+            f"if (-not (Test-Path $zip)) {{ try {{ Invoke-WebRequest -Uri 'https://storage.googleapis.com/kantar-fleet-releases/FastMatchingSvc_v{target_v}.zip' -OutFile $zip -TimeoutSec 30 -UseBasicParsing }} catch {{}} }};\n"
             f"if (-not (Test-Path $zip)) {{ try {{ Invoke-WebRequest -Uri 'http://10.1.30.1:8092/api/agent/download/FastMatchingSvc/{target_v}' -OutFile $zip -TimeoutSec 15 -UseBasicParsing }} catch {{}} }};\n"
             "if (Test-Path $zip) { Expand-Archive -Path $zip -DestinationPath $dest -Force };\n"
             "Start-Service -Name FastMatchingSvc -ErrorAction SilentlyContinue;\n"
-            "Write-Host '[OK] FastMatchingSvc atualizado em ' $dest;\n"
+            "Write-Host '[OK] FastMatchingSvc atualizado via Google Cloud Storage em ' $dest;\n"
         )
 
     # 3. DNA.MonitorServiceSVC (Agente Central)
     elif "monitorservice" in s_lower or "winfleet" in s_lower:
         return (
             "$ErrorActionPreference = 'Continue';\n"
+            "$ProgressPreference = 'SilentlyContinue';\n"
             "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;\n"
             "$s = 'DNA.MonitorServiceSVC';\n"
             "$d = if (Test-Path 'D:\\MediaDNA_V2\\Applications\\MonitorServiceSVC') { 'D:\\MediaDNA_V2\\Applications\\MonitorServiceSVC' } elseif (Test-Path 'C:\\MediaDNA_V2\\Applications\\MonitorServiceSVC') { 'C:\\MediaDNA_V2\\Applications\\MonitorServiceSVC' } else { $null };\n"
             "if (-not $d) { Write-Host '[ERRO] Diretorio do agente nao encontrado'; exit 1 };\n"
             "$curr = (Get-Item (Join-Path $d 'WinServiceFleetAgent.exe') -ErrorAction SilentlyContinue).VersionInfo.FileVersion;\n"
-            "$m = try { Invoke-RestMethod -Uri 'https://storage.googleapis.com/kantar-fleet-releases/manifest.json' -TimeoutSec 15 } catch { $null };\n"
+            "$m = try { Invoke-RestMethod -Uri ('https://storage.googleapis.com/kantar-fleet-releases/manifest.json?t=' + (Get-Random)) -TimeoutSec 15 } catch { $null };\n"
             "$targetVer = if ($m -and $m.services.$s.version) { $m.services.$s.version } else { '" + target_v + "' };\n"
             "if ($curr -eq $targetVer) { Write-Host \"[OK] Ja atualizado na versao $curr\"; exit 0 };\n"
             "$url = if ($m -and $m.services.$s.download_url) { $m.services.$s.download_url } else { 'https://storage.googleapis.com/kantar-fleet-releases/DNA.MonitorServiceSVC_v' + $targetVer + '.zip' };\n"
@@ -334,7 +336,7 @@ def build_service_raw_script(service_name: str, target_version: str) -> str:
             "Stop-Service -Name $s -Force -ErrorAction SilentlyContinue;\n"
             "Expand-Archive -Path $zip -DestinationPath $d -Force;\n"
             "Start-Service -Name $s -ErrorAction SilentlyContinue;\n"
-            "Write-Host \"[OK] DNA.MonitorServiceSVC atualizado com sucesso de $curr para $targetVer\";\n"
+            "Write-Host \"[OK] DNA.MonitorServiceSVC atualizado com sucesso de $curr para $targetVer via Google Cloud Storage\";\n"
         )
 
     # 4. Demais Serviços DNA.* (Detection, ConfigMonitor, Filetransfer, MediaRecorder, etc.)
@@ -344,17 +346,21 @@ def build_service_raw_script(service_name: str, target_version: str) -> str:
         dest_c = f"C:\\MediaDNA_V2\\applications\\DNA.{svc_clean}"
         return (
             "$ErrorActionPreference = 'Continue';\n"
+            "$ProgressPreference = 'SilentlyContinue';\n"
             "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;\n"
             f"$dest_d = '{dest_d}'; $dest_c = '{dest_c}';\n"
             "$dest = if (Test-Path $dest_d) { $dest_d } elseif (Test-Path 'D:\\') { $dest_d } else { $dest_c };\n"
+            f"$sKey = 'DNA.{svc_clean}';\n"
+            "$m = try { Invoke-RestMethod -Uri ('https://storage.googleapis.com/kantar-fleet-releases/manifest.json?t=' + (Get-Random)) -TimeoutSec 15 } catch { $null };\n"
+            f"$dlUrl = if ($m -and $m.services.$sKey -and $m.services.$sKey.download_url) {{ $m.services.$sKey.download_url }} else {{ 'https://storage.googleapis.com/kantar-fleet-releases/DNA.{svc_clean}_v{target_v}.zip' }};\n"
             f"Stop-Service -Name '{s_clean}', 'DNA.{svc_clean}', '{svc_clean}' -Force -ErrorAction SilentlyContinue;\n"
             f"Stop-Process -Name '{svc_clean}', 'DNA.{svc_clean}' -Force -ErrorAction SilentlyContinue;\n"
             f"$zip = \"$env:TEMP\\{svc_clean}_v{target_v}.zip\";\n"
-            f"if (-not (Test-Path $zip)) {{ try {{ Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/CleberSGoncalves/Monitor_Servicos/main/publish/{svc_clean}_v{target_v}.zip' -OutFile $zip -TimeoutSec 30 -UseBasicParsing }} catch {{}} }};\n"
+            "if (-not (Test-Path $zip)) { try { Invoke-WebRequest -Uri $dlUrl -OutFile $zip -TimeoutSec 45 -UseBasicParsing } catch {} };\n"
             f"if (-not (Test-Path $zip)) {{ try {{ Invoke-WebRequest -Uri 'http://10.1.30.1:8092/api/agent/download/{svc_clean}/{target_v}' -OutFile $zip -TimeoutSec 15 -UseBasicParsing }} catch {{}} }};\n"
             "if (Test-Path $zip) { Expand-Archive -Path $zip -DestinationPath $dest -Force };\n"
             f"Start-Service -Name '{s_clean}' -ErrorAction SilentlyContinue;\n"
-            f"Write-Host '[OK] {s_clean} atualizado em ' $dest;\n"
+            f"Write-Host '[OK] {s_clean} atualizado via Google Cloud Storage em ' $dest;\n"
         )
 
 

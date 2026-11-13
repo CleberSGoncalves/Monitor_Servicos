@@ -175,6 +175,15 @@ def sanitize_and_recalculate_cache(force_refresh_time: bool = False, save_to_dis
             services = clean_services
             save_to_disk = True
 
+        # Mescla em tempo real os heartbeats e versões reportados diretamente no Google Cloud Firestore
+        try:
+            from gcp_sync import merge_firestore_hosts_into_cache
+            merged_gcp = merge_firestore_hosts_into_cache(services, channels)
+            if merged_gcp > 0:
+                save_to_disk = True
+        except Exception:
+            pass
+
         # Aplica a matriz de governança de versões oficiais homologadas
         try:
             from version_governance import apply_governance_to_services
@@ -598,7 +607,7 @@ def sync_fleet_data():
         token = get_graph_token()
 
         if not token:
-
+            sanitize_and_recalculate_cache(force_refresh_time=True, save_to_disk=True)
             return
 
 
@@ -613,11 +622,13 @@ def sync_fleet_data():
 
         # Se qualquer uma das listas vier vazia ou incompleta por throttling 429,
 
-        # aborta imediatamente sem recomputar estatísticas em lista vazia!
+        # mescla a telemetria em tempo real do Google Cloud Firestore sem apagar o cache!
 
         if len(raw_services) < 50 and len(raw_channels) < 20:
 
-            print(f"[SharePointSync Preservação] Dados parciais/throttled recebidos (Serviços: {len(raw_services)}, Canais: {len(raw_channels)}). Mantendo 100% do cache e métricas anteriores.", flush=True)
+            print(f"[SharePointSync Preservação] Dados parciais/throttled recebidos (Serviços: {len(raw_services)}, Canais: {len(raw_channels)}). Sincronizando telemetria ao vivo via Google Cloud Firestore.", flush=True)
+
+            sanitize_and_recalculate_cache(force_refresh_time=True, save_to_disk=True)
 
             return
 

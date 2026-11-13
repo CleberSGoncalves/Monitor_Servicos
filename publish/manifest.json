@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-11-13T12:00:00Z",
+  "updated_at": "2026-11-13T17:51:36.558986+00:00",
   "services": {
     "DNA.MonitorServiceSVC": {
       "version": "1.0.21.3",
@@ -9,7 +9,162 @@
     },
     "Atria Capture": {
       "version": "2.0.0.2",
-      "install_url": "https://stgengineeringreleases.blob.core.windows.net/atriacapture/v2.0.0.0_x64_AVX2/install_v2000_x64.ps1"
+      "install_url": "https://stgengineeringreleases.blob.core.windows.net/atriacapture/v2.0.0.0_x64_AVX2/install_v2000_x64.ps1",
+      "download_url": "https://stgengineeringreleases.blob.core.windows.net/atriacapture/v2.0.0.0_x64_AVX2/install_v2000_x64.ps1"
+    },
+    "DNA.ConfigMonitorSVC": {
+      "version": "4.8.0.0",
+      "package_name": "DNA.ConfigMonitorSVC_v4.8.0.0.zip",
+      "file_name": "DNA.ConfigMonitorSVC_v4.8.0.0.zip",
+      "download_url": "https://storage.googleapis.com/kantar-fleet-releases/DNA.ConfigMonitorSVC_v4.8.0.0.zip",
+      "sha256": "07acc28224fd58e712814297a49baf1c025ea8c8e52b0e392edaa5bbd9a3a938"
+    },
+    "ConfigMonitorSVC": {
+      "version": "4.8.0.0",
+      "package_name": "DNA.ConfigMonitorSVC_v4.8.0.0.zip",
+      "file_name": "DNA.ConfigMonitorSVC_v4.8.0.0.zip",
+      "download_url": "https://storage.googleapis.com/kantar-fleet-releases/DNA.ConfigMonitorSVC_v4.8.0.0.zip",
+      "sha256": "07acc28224fd58e712814297a49baf1c025ea8c8e52b0e392edaa5bbd9a3a938"
+    },
+    "DNA.DetectionSVC": {
+      "version": "3.4.6040.21056",
+      "package_name": "DNA.DetectionSVC_v3.4.6040.21056.zip",
+      "file_name": "DNA.DetectionSVC_v3.4.6040.21056.zip",
+      "download_url": "https://storage.googleapis.com/kantar-fleet-releases/DNA.DetectionSVC_v3.4.6040.21056.zip",
+      "sha256": "f30b3fb074df17fbcd1561ef70aa1d68b7d42dc4db1d65389d703973edadb950"
+    },
+    "DetectionSVC": {
+      "version": "3.4.6040.21056",
+      "package_name": "DNA.DetectionSVC_v3.4.6040.21056.zip",
+      "file_name": "DNA.DetectionSVC_v3.4.6040.21056.zip",
+      "download_url": "https://storage.googleapis.com/kantar-fleet-releases/DNA.DetectionSVC_v3.4.6040.21056.zip",
+      "sha256": "f30b3fb074df17fbcd1561ef70aa1d68b7d42dc4db1d65389d703973edadb950"
+    },
+    "DNA.FiletransferSVC": {
+      "version": "3.6.6828.34652",
+      "package_name": "DNA.FiletransferSVC_v3.6.6828.34652.zip",
+      "file_name": "DNA.FiletransferSVC_v3.6.6828.34652.zip",
+      "download_url": "https://storage.googleapis.com/kantar-fleet-releases/DNA.FiletransferSVC_v3.6.6828.34652.zip",
+      "sha256": "adc215413f9864c44d7e1994dcaae1d4fd270b4ae46274f403490d4e0938d57d"
+    },
+    "DNA.FileTransferSVC": {
+      "version": "3.6.6828.34652",
+      "package_name": "DNA.FiletransferSVC_v3.6.6828.34652.zip",
+      "file_name": "DNA.FiletransferSVC_v3.6.6828.34652.zip",
+      "download_url": "https://storage.googleapis.com/kantar-fleet-releases/DNA.FiletransferSVC_v3.6.6828.34652.zip",
+      "sha256": "adc215413f9864c44d7e1994dcaae1d4fd270b4ae46274f403490d4e0938d57d"
+    },
+    "FileTransferSVC": {
+      "version": "3.6.6828.34652",
+      "package_name": "DNA.FiletransferSVC_v3.6.6828.34652.zip",
+      "file_name": "DNA.FiletransferSVC_v3.6.6828.34652.zip",
+      "download_url": "https://storage.googleapis.com/kantar-fleet-releases/DNA.FiletransferSVC_v3.6.6828.34652.zip",
+      "sha256": "adc215413f9864c44d7e1994dcaae1d4fd270b4ae46274f403490d4e0938d57d"
+    },
+    "FiletransferSVC": {
+      "version": "3.6.6828.34652",
+      "package_name": "DNA.FiletransferSVC_v3.6.6828.34652.zip",
+      "file_name": "DNA.FiletransferSVC_v3.6.6828.34652.zip",
+      "download_url": "https://storage.googleapis.com/kantar-fleet-releases/DNA.FiletransferSVC_v3.6.6828.34652.zip",
+      "sha256": "adc215413f9864c44d7e1994dcaae1d4fd270b4ae46274f403490d4e0938d57d"
+    },
+    "DNA.MediaConverterSVC": {
+      "version": "2.0.2.4",
+      "package_name": "DNA.MediaConverterSVC_v2.0.2.4.zip",
+      "file_name": "DNA.MediaConverterSVC_v2.0.2.4.zip",
+      "download_url": "https://storage.googleapis.com/kantar-fleet-releases/DNA.MediaConverterSVC_v2.0.2.4.zip",
+      "sha256": "9ebcfa0c5c57dad3b8d203e45c71f48db64de85f9601da9063d961fdeea234a9"
+    },
+    "MediaConverterSVC": {
+      "version": "2.0.2.4",
+      "package_name": "DNA.MediaConverterSVC_v2.0.2.4.zip",
+      "file_name": "DNA.MediaConverterSVC_v2.0.2.4.zip",
+      "download_url": "https://storage.googleapis.com/kantar-fleet-releases/DNA.MediaConverterSVC_v2.0.2.4.zip",
+      "sha256": "9ebcfa0c5c57dad3b8d203e45c71f48db64de85f9601da9063d961fdeea234a9"
+    },
+    "DNA.MediaRecorderSVC": {
+      "version": "6.1.4.9",
+      "package_name": "DNA.MediaRecorderSVC_v6.1.4.9.zip",
+      "file_name": "DNA.MediaRecorderSVC_v6.1.4.9.zip",
+      "download_url": "https://storage.googleapis.com/kantar-fleet-releases/DNA.MediaRecorderSVC_v6.1.4.9.zip",
+      "sha256": "0d41d0831ffdf22e5edfd5963fdcc5503bf9af2c2bcbe2cb173ad5b2e24af3ee"
+    },
+    "MediaRecorderSVC": {
+      "version": "6.1.4.9",
+      "package_name": "DNA.MediaRecorderSVC_v6.1.4.9.zip",
+      "file_name": "DNA.MediaRecorderSVC_v6.1.4.9.zip",
+      "download_url": "https://storage.googleapis.com/kantar-fleet-releases/DNA.MediaRecorderSVC_v6.1.4.9.zip",
+      "sha256": "0d41d0831ffdf22e5edfd5963fdcc5503bf9af2c2bcbe2cb173ad5b2e24af3ee"
+    },
+    "DNA.RemoteCommandSVC": {
+      "version": "3.0.6079.30614",
+      "package_name": "DNA.RemoteCommandSVC_v3.0.6079.30614.zip",
+      "file_name": "DNA.RemoteCommandSVC_v3.0.6079.30614.zip",
+      "download_url": "https://storage.googleapis.com/kantar-fleet-releases/DNA.RemoteCommandSVC_v3.0.6079.30614.zip",
+      "sha256": "4b10cb1ccdb987314a3f8c5dbf892531b8fbf0c7f637a1b13c11cdeb506751a4"
+    },
+    "RemoteCommandSVC": {
+      "version": "3.0.6079.30614",
+      "package_name": "DNA.RemoteCommandSVC_v3.0.6079.30614.zip",
+      "file_name": "DNA.RemoteCommandSVC_v3.0.6079.30614.zip",
+      "download_url": "https://storage.googleapis.com/kantar-fleet-releases/DNA.RemoteCommandSVC_v3.0.6079.30614.zip",
+      "sha256": "4b10cb1ccdb987314a3f8c5dbf892531b8fbf0c7f637a1b13c11cdeb506751a4"
+    },
+    "DNA.TimeSyncSVC": {
+      "version": "3.1.6040.21436",
+      "package_name": "DNA.TimeSyncSVC_v3.1.6040.21436.zip",
+      "file_name": "DNA.TimeSyncSVC_v3.1.6040.21436.zip",
+      "download_url": "https://storage.googleapis.com/kantar-fleet-releases/DNA.TimeSyncSVC_v3.1.6040.21436.zip",
+      "sha256": "bebf3c218da6a0bae95c37c1c0bfff5639348409af533f253bebb4707596aafd"
+    },
+    "TimeSyncSVC": {
+      "version": "3.1.6040.21436",
+      "package_name": "DNA.TimeSyncSVC_v3.1.6040.21436.zip",
+      "file_name": "DNA.TimeSyncSVC_v3.1.6040.21436.zip",
+      "download_url": "https://storage.googleapis.com/kantar-fleet-releases/DNA.TimeSyncSVC_v3.1.6040.21436.zip",
+      "sha256": "bebf3c218da6a0bae95c37c1c0bfff5639348409af533f253bebb4707596aafd"
+    },
+    "DNA.TrackingSVC": {
+      "version": "3.2.6040.21460",
+      "package_name": "DNA.TrackingSVC_v3.2.6040.21460.zip",
+      "file_name": "DNA.TrackingSVC_v3.2.6040.21460.zip",
+      "download_url": "https://storage.googleapis.com/kantar-fleet-releases/DNA.TrackingSVC_v3.2.6040.21460.zip",
+      "sha256": "38fd7b82b2d86d8ab5a895ec6539be4964907717dfbc2ebd07af4e068a4b1680"
+    },
+    "TrackingSVC": {
+      "version": "3.2.6040.21460",
+      "package_name": "DNA.TrackingSVC_v3.2.6040.21460.zip",
+      "file_name": "DNA.TrackingSVC_v3.2.6040.21460.zip",
+      "download_url": "https://storage.googleapis.com/kantar-fleet-releases/DNA.TrackingSVC_v3.2.6040.21460.zip",
+      "sha256": "38fd7b82b2d86d8ab5a895ec6539be4964907717dfbc2ebd07af4e068a4b1680"
+    },
+    "Tanium Client": {
+      "version": "7.8.2.1152",
+      "package_name": "Tanium_v7.8.2.1152.zip",
+      "file_name": "Tanium_v7.8.2.1152.zip",
+      "download_url": "https://storage.googleapis.com/kantar-fleet-releases/Tanium_v7.8.2.1152.zip",
+      "sha256": "f3f2d07341d68efb910fd73f68227196b768548e5f6d63f77287f5079126557a"
+    },
+    "Tanium": {
+      "version": "7.8.2.1152",
+      "package_name": "Tanium_v7.8.2.1152.zip",
+      "file_name": "Tanium_v7.8.2.1152.zip",
+      "download_url": "https://storage.googleapis.com/kantar-fleet-releases/Tanium_v7.8.2.1152.zip",
+      "sha256": "f3f2d07341d68efb910fd73f68227196b768548e5f6d63f77287f5079126557a"
+    },
+    "Zabbix Agent": {
+      "version": "7.0.0.49955f1fb5c",
+      "package_name": "Zabbix_v7.0.0.49955f1fb5c.zip",
+      "file_name": "Zabbix_v7.0.0.49955f1fb5c.zip",
+      "download_url": "https://storage.googleapis.com/kantar-fleet-releases/Zabbix_v7.0.0.49955f1fb5c.zip",
+      "sha256": "72994dff6a628f736a6a90326f24faef60b279a90817ed8e88da640503cf11d5"
+    },
+    "Zabbix": {
+      "version": "7.0.0.49955f1fb5c",
+      "package_name": "Zabbix_v7.0.0.49955f1fb5c.zip",
+      "file_name": "Zabbix_v7.0.0.49955f1fb5c.zip",
+      "download_url": "https://storage.googleapis.com/kantar-fleet-releases/Zabbix_v7.0.0.49955f1fb5c.zip",
+      "sha256": "72994dff6a628f736a6a90326f24faef60b279a90817ed8e88da640503cf11d5"
     }
   }
 }

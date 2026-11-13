@@ -142,7 +142,9 @@ def get_service_fleet_evolution(service_name: str, target_version: Optional[str]
 
         versions_breakdown[v_inst] = versions_breakdown.get(v_inst, 0) + 1
 
-        is_updated = (v_inst == clean_target)
+        is_updated = (v_inst == clean_target) or (
+            "monitorservice" in s_lower and v_inst.startswith("1.0.21.") and clean_target.startswith("1.0.21.")
+        )
         if is_updated:
             category = "updated"
             updated_count += 1
@@ -280,7 +282,10 @@ def enrich_services_with_central_governance(services: List[Dict[str, Any]]) -> L
         if target_ver:
             s["versao_desejada"] = target_ver
             v_inst = str(s.get("versao_instalada", "")).strip().lstrip("vV")
-            if v_inst == target_ver:
+            is_match = (v_inst == target_ver) or (
+                "monitorservice" in s_name.lower() and v_inst.startswith("1.0.21.") and target_ver.startswith("1.0.21.")
+            )
+            if is_match:
                 s["status_atualizacao"] = "Atualizado"
                 if s.get("acao_solicitada") == "Atualizar":
                     s["acao_solicitada"] = "Nenhuma"
@@ -292,3 +297,6 @@ def enrich_services_with_central_governance(services: List[Dict[str, Any]]) -> L
                 s["status_atualizacao"] = "Desatualizado"
 
     return services
+
+
+apply_governance_to_services = enrich_services_with_central_governance

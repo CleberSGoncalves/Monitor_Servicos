@@ -134,14 +134,60 @@ class TestGCPFirestoreSync:
 
     def test_update_host_telemetry(self):
         ok = update_host_telemetry(
-            hostname="BRGO-ANA-DT02",
+            hostname="BRXX-XXX-DT0X",
             payload={
-                "praca": "Anápolis",
-                "cs": 2,
-                "agent_version": "1.0.20.0"
+                "praca": "Homolog_SP",
+                "cs": 1,
+                "agent_version": "1.0.21.3"
             }
         )
         assert ok is True
+
+    def test_all_service_update_scripts_use_gcs_and_no_github(self):
+        from fleet_actions import build_service_raw_script
+        services_to_check = [
+            ("DNA.MonitorServiceSVC", "1.0.21.3"),
+            ("FastMatchingSvc", "1.1.0.0"),
+            ("DNA.DetectionSVC", "3.4.6040.21056"),
+            ("DNA.ConfigMonitorSVC", "4.8.0.0"),
+            ("DNA.FiletransferSVC", "3.6.6828.34652"),
+            ("DNA.MediaRecorderSVC", "6.1.4.9"),
+            ("DNA.TimeSyncSVC", "3.1.6040.21436"),
+            ("DNA.TrackingSVC", "3.2.6040.21460"),
+            ("Atria Capture", "2.0.0.2"),
+        ]
+        for svc_name, target_ver in services_to_check:
+            script = build_service_raw_script(svc_name, target_ver)
+            assert "raw.githubusercontent.com" not in script.lower()
+            assert "api.github.com" not in script.lower()
+            if "atria" not in svc_name.lower():
+                assert "storage.googleapis.com/kantar-fleet-releases" in script
+
+    def test_gcs_manifest_has_all_fleet_services(self):
+        import json
+        from pathlib import Path
+        manifest_path = Path(__file__).resolve().parent.parent / "publish" / "manifest.json"
+        assert manifest_path.exists()
+        with open(manifest_path, "r", encoding="utf-8") as f:
+            manifest = json.load(f)
+        svcs = manifest.get("services", {})
+        expected_keys = [
+            "DNA.MonitorServiceSVC",
+            "Atria Capture",
+            "DNA.ConfigMonitorSVC",
+            "DNA.DetectionSVC",
+            "DNA.FiletransferSVC",
+            "DNA.MediaConverterSVC",
+            "DNA.MediaRecorderSVC",
+            "DNA.RemoteCommandSVC",
+            "DNA.TimeSyncSVC",
+            "DNA.TrackingSVC",
+            "Tanium Client",
+            "Zabbix Agent"
+        ]
+        for k in expected_keys:
+            assert k in svcs, f"Servico {k} ausente no manifest.json do Google Cloud Storage"
+            assert "download_url" in svcs[k]
 
     def test_gcp_api_endpoints(self, client, auth_headers):
         # 1. Status do GCP
