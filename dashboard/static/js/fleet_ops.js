@@ -561,7 +561,7 @@ async function loadFleetUpdateEvolution(forceRefresh = false) {
 
         const cardGov = document.getElementById("cardGovAlignedCount");
         if (cardGov) {
-            const alignedCount = (data.hosts_detail || []).filter(h => h.versao_desejada === data.target_version).length;
+            const alignedCount = (data.hosts_detail || []).filter(h => h.versao_desejada === data.target_version || h.category === "updated").length;
             cardGov.innerText = `${alignedCount} / ${data.total_hosts}`;
         }
 
@@ -695,10 +695,10 @@ function renderFleetEvolutionTable() {
             govBadge = `<span style="color: #f87171; font-weight: 600;">Desatualizado</span>`;
         }
 
-        // Ação de Atualização Direta (1 clique no SharePoint)
-        const needsUpdate = (!isUp || h.status_atualizacao === "Desatualizado" || h.versao_instalada !== (h.versao_desejada || targetVer));
+        // Ação de Atualização Direta (1 clique via Google Cloud)
+        const needsUpdate = (!isUp || h.status_atualizacao === "Desatualizado");
         const actionBtn = needsUpdate
-            ? `<button class="btn-sm btn-primary" onclick="dispatchSingleHostUpdate('${h.hostname}', '${currentGovernanceService}', '${h.versao_desejada || targetVer}')" style="padding: 3px 8px; font-size: 11px; font-weight: 700; background: #0284c7; border: 1px solid #38bdf8; border-radius: 4px; color: #fff; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" title="Disparar ordem no SharePoint: Versao_Desejada=${h.versao_desejada || targetVer} & Acao_Solicitada=Atualizar"><i class="fas fa-bolt"></i> Atualizar</button>`
+            ? `<button class="btn-sm btn-primary" onclick="dispatchSingleHostUpdate('${h.hostname}', '${currentGovernanceService}', '${h.versao_desejada || targetVer}')" style="padding: 3px 8px; font-size: 11px; font-weight: 700; background: #0284c7; border: 1px solid #38bdf8; border-radius: 4px; color: #fff; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" title="Disparar atualização direta via Google Cloud Firestore: v${h.versao_desejada || targetVer}"><i class="fas fa-bolt"></i> Atualizar</button>`
             : `<span style="color: #34d399; font-weight: 600; font-size: 11px; display: inline-flex; align-items: center; gap: 3px;"><i class="fas fa-check-circle"></i> Em Dia</span>`;
 
         return `
@@ -735,7 +735,7 @@ function renderFleetEvolutionTable() {
 }
 
 async function dispatchSingleHostUpdate(hostname, serviceName, targetVersion) {
-    if (!confirm(`Confirma disparar atualização de ${serviceName} para a versão ${targetVersion} no host [${hostname}] via SharePoint?`)) {
+    if (!confirm(`Confirma disparar atualização de ${serviceName} para a versão ${targetVersion} no host [${hostname}] via Google Cloud?`)) {
         return;
     }
     try {
@@ -754,25 +754,19 @@ async function dispatchSingleHostUpdate(hostname, serviceName, targetVersion) {
         const data = await resp.json();
         if (resp.ok && data.success) {
             if (typeof showToast === "function") {
-                if (data.is_queued) {
-                    showToast(data.message || "Ordem registrada na fila local (Azure em cooldown)", "warning");
-                } else {
-                    showToast(`Atualização disparada para ${hostname} (v${targetVersion})!`, "success");
-                }
+                showToast(`Atualização disparada no Google Cloud para ${hostname} (v${targetVersion})!`, "success");
             }
             await loadFleetUpdateEvolution(true);
             await loadFleetGovernanceSummary(false);
             if (typeof loadServicesTable === "function") loadServicesTable();
-            // Abre o modal de acompanhamento ao vivo imediatamente!
             if (typeof openFleetUpdateProgressModal === "function") {
                 openFleetUpdateProgressModal(hostname, serviceName, targetVersion);
             }
         } else {
-            const errMsg = data.error || (data.failed_hosts && data.failed_hosts[0]?.error) || "Falha ao disparar ordem no SharePoint";
+            const errMsg = data.error || (data.failed_hosts && data.failed_hosts[0]?.error) || "Falha ao disparar ordem de atualização";
             if (typeof showToast === "function") {
                 showToast(errMsg, "error");
             }
-            // Abre o modal de progresso mesmo em caso de erro para o operador ver o diagnóstico e copiar o comando de contingência
             if (typeof openFleetUpdateProgressModal === "function") {
                 openFleetUpdateProgressModal(hostname, serviceName, targetVersion);
             }
@@ -792,7 +786,7 @@ async function dispatchBatchPendingUpdate() {
     const count = cachedFleetEvolutionData.pending_online_hosts.length;
     const svc = currentGovernanceService;
     const ver = cachedFleetEvolutionData.target_version;
-    if (!confirm(`Confirma disparar atualização no SharePoint para TODOS os ${count} hosts pendentes de ${svc} na versão ${ver}?`)) {
+    if (!confirm(`Confirma disparar atualização via Google Cloud para TODOS os ${count} hosts pendentes de ${svc} na versão ${ver}?`)) {
         return;
     }
     try {
@@ -811,18 +805,18 @@ async function dispatchBatchPendingUpdate() {
         const data = await resp.json();
         if (resp.ok && data.success) {
             if (typeof showToast === "function") {
-                showToast(`Atualização despachada no SharePoint para ${data.dispatched_count} hosts!`, "success");
+                showToast(`Atualização despachada no Google Cloud para ${data.dispatched_count} hosts!`, "success");
             }
             await loadFleetUpdateEvolution(true);
             await loadFleetGovernanceSummary(false);
             if (typeof loadServicesTable === "function") loadServicesTable();
         } else {
             if (typeof showToast === "function") {
-                showToast(data.error || "Falha ao despachar lote no SharePoint", "error");
+                showToast(data.error || "Falha ao despachar lote", "error");
             }
         }
     } catch (err) {
-        console.error("Erro ao disparar lote no SharePoint:", err);
+        console.error("Erro ao disparar lote:", err);
         if (typeof showToast === "function") showToast(err.message, "error");
     }
 }
@@ -863,7 +857,7 @@ function copyPendingHostsToClipboard() {
 }
 
 function copyGvCommandToClipboard() {
-    const cmd = `powershell.exe -ExecutionPolicy Bypass -NoProfile -Command "$d = if (Test-Path 'D:\MediaDNA_V2\Applications\MonitorServiceSVC') { 'D:\MediaDNA_V2\Applications\MonitorServiceSVC' } elseif (Test-Path 'C:\MediaDNA_V2\Applications\MonitorServiceSVC') { 'C:\MediaDNA_V2\Applications\MonitorServiceSVC' } else { $null }; if ($d) { $b = Join-Path $d 'bootstrap_update.ps1'; if (Test-Path $b) { Start-Process powershell.exe -ArgumentList '-ExecutionPolicy', 'Bypass', '-NoProfile', '-WindowStyle', 'Hidden', '-Command', ('Start-Sleep -Seconds 10; & \"' + $b + '\" -Force') -WindowStyle Hidden; Write-Host '[OK] Disparado'; exit 0 } }"`;
+    const cmd = `powershell -ExecutionPolicy Bypass -NoProfile -Command "& { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $ProgressPreference = 'SilentlyContinue'; $s = 'DNA.MonitorServiceSVC'; $d = if (Test-Path 'D:\\MediaDNA_V2\\Applications\\MonitorServiceSVC') { 'D:\\MediaDNA_V2\\Applications\\MonitorServiceSVC' } elseif (Test-Path 'C:\\MediaDNA_V2\\Applications\\MonitorServiceSVC') { 'C:\\MediaDNA_V2\\Applications\\MonitorServiceSVC' } else { $null }; if (-not $d) { Write-Host '[ERRO] Diretorio nao encontrado'; exit 1 }; $curr = (Get-Item (Join-Path $d 'WinServiceFleetAgent.exe') -ErrorAction SilentlyContinue).VersionInfo.FileVersion; $m = try { Invoke-RestMethod -Uri ('https://storage.googleapis.com/kantar-fleet-releases/manifest.json?t=' + (Get-Random)) -TimeoutSec 15 } catch { $null }; $targetVer = if ($m -and $m.services.$s.version) { $m.services.$s.version } else { '1.0.21.3' }; if ($curr -eq $targetVer) { Write-Host \\"[OK] Ja atualizado na versao $curr\\"; exit 0 }; $url = if ($m -and $m.services.$s.download_url) { $m.services.$s.download_url } else { 'https://storage.googleapis.com/kantar-fleet-releases/DNA.MonitorServiceSVC_v' + $targetVer + '.zip' }; $zip = \\"$env:TEMP\\$s\`_$targetVer.zip\\"; Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing; Stop-Service -Name $s -Force -ErrorAction SilentlyContinue; Expand-Archive -Path $zip -DestinationPath $d -Force; Start-Service -Name $s -ErrorAction SilentlyContinue; Write-Host \\"[OK] DNA.MonitorServiceSVC atualizado com sucesso de $curr para $targetVer via Google Cloud Storage\\"; }"`;
     
     navigator.clipboard.writeText(cmd).then(() => {
         if (typeof showToast === "function") {

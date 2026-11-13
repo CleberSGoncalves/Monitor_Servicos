@@ -11329,25 +11329,25 @@
           </div>
 
           <div class="kpi-card" style="background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.35); border-radius: 10px; padding: 14px;">
-            <div style="font-size: 11px; color: #60a5fa; font-weight: 700; text-transform: uppercase;">🛡️ Governança SharePoint</div>
+            <div style="font-size: 11px; color: #60a5fa; font-weight: 700; text-transform: uppercase;">☁️ Governança Google Cloud</div>
             <div id="cardGovAlignedCount" style="font-size: 26px; font-weight: 900; color: #3b82f6; margin: 4px 0;">--</div>
             <div style="font-size: 11px; color: #93c5fd;">Versao_Desejada alinhada</div>
           </div>
         </div>
 
-        <!-- BOX DE AÇÕES RÁPIDAS PARA CONCLUIR PENDENTES NO GV -->
+        <!-- BOX DE AÇÕES RÁPIDAS PARA CONCLUIR PENDENTES NO GOOGLE CLOUD / GV -->
         <div style="background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 10px; padding: 14px 18px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
           <div>
             <div style="font-size: 13px; font-weight: 700; color: #38bdf8; display: flex; align-items: center; gap: 6px;">
-              <span>⚡</span> Ação Rápida: Disparo nos Hosts Restantes via SharePoint / GV / Tanium
+              <span>⚡</span> Ação Rápida: Disparo nos Hosts Restantes via Google Cloud / GV / Tanium
             </div>
             <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">
-              Dispare a atualização direta para a Versão Desejada no SharePoint ou copie a lista para o GV / Tanium.
+              Dispare a atualização direta em milissegundos via Google Cloud Firestore ou copie a lista para o GV / Tanium.
             </div>
           </div>
           <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-            <button class="btn-primary" onclick="dispatchBatchPendingUpdate()" style="padding: 7px 14px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; background: linear-gradient(135deg, #059669, #10b981); border-color: #34d399; font-weight: 700;" title="Define Versao_Desejada e Acao_Solicitada=Atualizar no SharePoint para todos os pendentes">
-              <span>⚡</span> Disparar Atualização SharePoint (<span id="btnBatchUpdateCount">0</span>)
+            <button class="btn-primary" onclick="dispatchBatchPendingUpdate()" style="padding: 7px 14px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; background: linear-gradient(135deg, #059669, #10b981); border-color: #34d399; font-weight: 700;" title="Enfileira atualização direta no Google Cloud Firestore para todos os pendentes">
+              <span>⚡</span> Disparar Atualização Google Cloud (<span id="btnBatchUpdateCount">0</span>)
             </button>
             <button class="btn-primary" onclick="copyPendingHostsToClipboard()" style="padding: 7px 14px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; background: rgba(56, 189, 248, 0.2); border-color: rgba(56, 189, 248, 0.4); color: #38bdf8;">
               <span>📋</span> Copiar Hosts GV (<span id="btnCopyCount">0</span>)

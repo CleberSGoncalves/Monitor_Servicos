@@ -168,7 +168,7 @@ def find_service_item_id(token: str, host: str, service_name: str) -> Optional[s
     return None
 
 
-def get_fleet_update_evolution(target_version: str = "1.0.20.0") -> Dict[str, Any]:
+def get_fleet_update_evolution(target_version: str = "1.0.21.3") -> Dict[str, Any]:
     """
     Computa a esteira de evolução e adoção de atualizações de versão do agente DNA.MonitorServiceSVC
     em tempo real a partir do cache da frota em memória (0ms, zero chamadas externas).
@@ -201,7 +201,7 @@ def get_fleet_update_evolution(target_version: str = "1.0.20.0") -> Dict[str, An
         hostname = s.get("hostname", "N/A")
         praca = s.get("praca", "N/A")
         cs = s.get("cs", 1)
-        v_inst = s.get("versao_instalada", "Desconhecido")
+        v_inst = str(s.get("versao_instalada", "Desconhecido")).strip()
         v_des = s.get("versao_desejada", "N/A")
         st_svc = s.get("status_servico", "Desconhecido")
         st_at = s.get("status_atualizacao", "Desconhecido")
@@ -214,7 +214,9 @@ def get_fleet_update_evolution(target_version: str = "1.0.20.0") -> Dict[str, An
 
         versions_breakdown[v_inst] = versions_breakdown.get(v_inst, 0) + 1
 
-        is_updated = (v_inst == target_version)
+        is_updated = (v_inst == target_version) or (
+            v_inst.startswith("1.0.21.") and target_version.startswith("1.0.21.")
+        )
         if is_updated:
             category = "updated"
             updated_count += 1

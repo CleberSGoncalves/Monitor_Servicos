@@ -145,6 +145,7 @@ def get_service_fleet_evolution(service_name: str, target_version: Optional[str]
         is_updated = (v_inst == clean_target) or (
             "monitorservice" in s_lower and v_inst.startswith("1.0.21.") and clean_target.startswith("1.0.21.")
         )
+        effective_desired = v_inst if is_updated else clean_target
         if is_updated:
             category = "updated"
             updated_count += 1
@@ -164,7 +165,7 @@ def get_service_fleet_evolution(service_name: str, target_version: Optional[str]
             "praca": praca,
             "cs": cs,
             "versao_instalada": v_inst,
-            "versao_desejada": clean_target,
+            "versao_desejada": effective_desired,
             "status_servico": st_svc,
             "status_atualizacao": "Atualizado" if is_updated else "Desatualizado",
             "acao_solicitada": act,

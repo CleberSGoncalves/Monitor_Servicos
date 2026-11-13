@@ -690,7 +690,7 @@ async def get_fleet_action_status_endpoint(
 @app.get("/api/fleet/canary-status")
 async def get_fleet_canary_status_endpoint(
     service_name: str = "DNA.MonitorServiceSVC",
-    target_version: str = "1.0.20.0",
+    target_version: str = "1.0.21.3",
     user: dict = Depends(get_current_user)
 ):
     try:
@@ -706,12 +706,14 @@ async def get_fleet_canary_status_endpoint(
 
 @app.get("/api/fleet/update-evolution")
 async def get_fleet_update_evolution_endpoint(
-    target_version: str = "1.0.20.0",
+    target_version: str = "1.0.21.3",
     user: dict = Depends(get_current_user)
 ):
     """Retorna os dados consolidados de evolução de atualizações da frota em tempo real."""
     try:
+        from sharepoint_sync import sanitize_and_recalculate_cache
         from fleet_actions import get_fleet_update_evolution
+        sanitize_and_recalculate_cache()
         return get_fleet_update_evolution(target_version=target_version)
     except Exception as e:
         logger.error(f"Erro ao obter evolucao de updates da frota: {e}")
@@ -722,7 +724,9 @@ async def get_fleet_update_evolution_endpoint(
 async def get_governance_summary_endpoint(user: dict = Depends(get_current_user)):
     """Retorna o sumário de governança oficial de versões para todos os serviços da frota."""
     try:
+        from sharepoint_sync import sanitize_and_recalculate_cache
         from version_governance import get_all_services_governance_summary
+        sanitize_and_recalculate_cache()
         return get_all_services_governance_summary()
     except Exception as e:
         logger.error(f"Erro ao obter sumário de governança: {e}")
@@ -737,7 +741,9 @@ async def get_governance_service_endpoint(
 ):
     """Retorna a evolução e adoção detalhada de um serviço específico."""
     try:
+        from sharepoint_sync import sanitize_and_recalculate_cache
         from version_governance import get_service_fleet_evolution
+        sanitize_and_recalculate_cache()
         return get_service_fleet_evolution(service_name, target_version)
     except Exception as e:
         logger.error(f"Erro ao obter evolução do serviço {service_name}: {e}")
