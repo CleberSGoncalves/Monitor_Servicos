@@ -150,6 +150,11 @@ class FleetActionRequest(BaseModel):
     channel_id: Optional[str] = None
     target_version: Optional[str] = None
 
+class ForceExecuteRequest(BaseModel):
+    host: str
+    service_name: str
+    target_version: Optional[str] = None
+
 class ThresholdUpdateRequest(BaseModel):
     key: str
     value: float
@@ -499,18 +504,23 @@ async def get_pending_actions_by_host(hostname: str):
     data = get_cached_data()
     services = data.get("services", [])
     h_clean = hostname.strip().lower()
+    from version_governance import get_desired_versions
+    desired_map = get_desired_versions()
+
     res = []
     for s in services:
         h = str(s.get("hostname", "")).strip().lower()
         if h == h_clean:
             acao = str(s.get("acao_solicitada", "")).strip()
             if acao and acao.lower() != "nenhuma":
+                s_name = s.get("nome_servico", "")
+                governed_ver = desired_map.get(s_name) or s.get("versao_desejada", "")
                 res.append({
                     "Id": int(s.get("id", 0)) if str(s.get("id")).isdigit() else 0,
                     "Title": s.get("pais", "") or s.get("title", ""),
-                    "NomeServico": s.get("nome_servico", ""),
+                    "NomeServico": s_name,
                     "VersaoInstalada": s.get("versao_instalada", ""),
-                    "VersaoDesejada": s.get("versao_desejada", ""),
+                    "VersaoDesejada": governed_ver,
                     "AcaoSolicitada": acao,
                     "StatusAtualizacao": s.get("status_atualizacao", ""),
                     "AutoRestart": s.get("autorestart", "Não"),
@@ -634,6 +644,22 @@ async def trigger_action(req: FleetActionRequest, user: dict = Depends(get_curre
     )
     if not res.get("success"):
         raise HTTPException(status_code=400, detail=res.get("error", "Erro ao executar ação"))
+    return res
+
+
+@app.post("/api/fleet/action/force-execute")
+async def force_execute_action_endpoint(req: ForceExecuteRequest, user: dict = Depends(get_current_user)):
+    if user.get("role") == "n1":
+        raise HTTPException(status_code=403, detail="Perfil N1 possui acesso apenas de visualização. Ações operacionais reservadas para N2 e Administrador.")
+    from fleet_actions import force_execute_service_update
+    res = force_execute_service_update(
+        host=req.host,
+        service_name=req.service_name,
+        target_version=req.target_version,
+        requested_by=user.get("full_name", user.get("username", "Operador NOC"))
+    )
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("error", "Erro ao executar ação direta"))
     return res
 
 

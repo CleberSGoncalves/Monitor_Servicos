@@ -1115,6 +1115,12 @@ function renderFleetUpdateProgressData(data) {
     const cmdInput = document.getElementById("upProgManualCmdInput");
     if (cmdInput && data.manual_command) cmdInput.value = data.manual_command;
 
+    // Caixa de Ação Direta pelo Dashboard
+    const directBox = document.getElementById("upProgDirectActionBox");
+    if (directBox) {
+        directBox.style.display = (data.is_updated) ? "none" : "flex";
+    }
+
     // Renderiza Stepper Visual
     const container = document.getElementById("upProgStepperContainer");
     if (!container) return;
@@ -1183,6 +1189,47 @@ function copyUpProgManualCmd() {
     });
 }
 
+async function executeDirectUpdateFromDashboard() {
+    if (!currentUpdateProgressHost || !currentUpdateProgressService) {
+        if (typeof showToast === "function") showToast("Host ou serviço não selecionado", "error");
+        return;
+    }
+    const btn = document.getElementById("btnDirectExecuteModal");
+    const icon = document.getElementById("btnDirectExecuteIcon");
+    if (btn) btn.disabled = true;
+    if (icon) icon.className = "fas fa-spinner fa-spin";
+
+    try {
+        const resp = await fetch("/api/fleet/action/force-execute", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${getFleetAuthToken()}`
+            },
+            body: JSON.stringify({
+                host: currentUpdateProgressHost,
+                service_name: currentUpdateProgressService,
+                target_version: currentUpdateProgressTargetVer || "2.0.0.2"
+            })
+        });
+        const data = await resp.json();
+        if (resp.ok && data.success) {
+            if (typeof showToast === "function") showToast(data.message || "Atualização disparada com sucesso diretamente pelo Dashboard!", "success");
+            await refreshFleetUpdateProgressLive();
+        } else {
+            const err = data.detail || data.error || "Erro ao disparar atualização direta";
+            if (typeof showToast === "function") showToast(err, "error");
+        }
+    } catch (e) {
+        console.error("Erro na execução direta:", e);
+        if (typeof showToast === "function") showToast("Falha de rede ao disparar comando", "error");
+    } finally {
+        if (btn) btn.disabled = false;
+        if (icon) icon.className = "fas fa-play";
+    }
+}
+
+window.executeDirectUpdateFromDashboard = executeDirectUpdateFromDashboard;
 window.openFleetUpdateProgressModal = openFleetUpdateProgressModal;
 window.closeFleetUpdateProgressModal = closeFleetUpdateProgressModal;
 window.refreshFleetUpdateProgressLive = refreshFleetUpdateProgressLive;

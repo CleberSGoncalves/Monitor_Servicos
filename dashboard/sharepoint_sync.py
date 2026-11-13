@@ -175,6 +175,14 @@ def sanitize_and_recalculate_cache(force_refresh_time: bool = False, save_to_dis
             services = clean_services
             save_to_disk = True
 
+        # Aplica a matriz de governança de versões oficiais homologadas
+        try:
+            from version_governance import apply_governance_to_services
+            services = apply_governance_to_services(services)
+            _cached_data["services"] = services
+        except Exception:
+            pass
+
 
 
         active_recordings_by_praca = {}

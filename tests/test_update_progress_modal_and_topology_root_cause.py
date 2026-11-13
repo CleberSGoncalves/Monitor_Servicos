@@ -18,7 +18,12 @@ from dashboard.geo_topology import (
     get_markets_map_data,
     get_topology_full_payload
 )
-from dashboard.fleet_actions import get_host_service_action_status, build_service_contingency_command
+from dashboard.fleet_actions import (
+    get_host_service_action_status,
+    build_service_contingency_command,
+    build_service_raw_script,
+    force_execute_service_update
+)
 
 
 class TestRFTopologyRootCause:
@@ -155,10 +160,10 @@ class TestUpdateProgressModalBackend:
         o diretório D:\\MediaDNA_V2\\applications\\DTVCapture64 e NÃO C:\\Atria Capture.
         """
         cmd = build_service_contingency_command("Atria Capture", "2.0.0.2")
-        assert r"D:\MediaDNA_V2\applications\DTVCapture64" in cmd
-        assert r"C:\Atria Capture" not in cmd
-        assert "DTVCapture64" in cmd
-        assert "Stop-Process" in cmd
+        assert r"D:\MediaDNA_V2\applications\DTVCapture64".lower() in cmd.lower()
+        assert r"C:\Atria Capture".lower() not in cmd.lower()
+        assert "DTVCapture64".lower() in cmd.lower()
+        assert "Stop-Process".lower() in cmd.lower()
         assert "2.0.0.2" in cmd
 
     def test_contingency_script_handles_other_fleet_services(self):
@@ -175,3 +180,71 @@ class TestUpdateProgressModalBackend:
         agent_cmd = build_service_contingency_command("DNA.MonitorServiceSVC", "1.0.20.0")
         assert r"D:\MediaDNA_V2\Applications\MonitorServiceSVC" in agent_cmd
         assert "bootstrap_update.ps1" in agent_cmd
+
+    def test_build_service_raw_script_atria_installer_compliance(self):
+        """
+        Valida que build_service_raw_script gera PowerShell puro, sem command wrapper,
+        respeitando estritamente o diretório D:\\MediaDNA_V2\\Applications\\DTVCapture64
+        e utilizando a URL oficial do instalador de engenharia (sem GitHub / sem iex).
+        """
+        raw = build_service_raw_script("Atria Capture", "2.0.0.2")
+        assert "powershell -ExecutionPolicy" not in raw, "Raw script deve ser PowerShell nativo para o agente"
+        assert r"D:\MediaDNA_V2\Applications\DTVCapture64" in raw
+        assert "stgengineeringreleases.blob.core.windows.net" in raw
+        assert "install_v2000_x64.ps1" in raw
+        assert "raw.githubusercontent.com" not in raw
+        assert "invoke-expression" not in raw.lower()
+        assert "| iex" not in raw.lower()
+
+    def test_force_execute_service_update_enqueues_and_persists(self, monkeypatch):
+        """
+        Garante que a execução direta disparada pelo Dashboard enfileira o comando
+        na fila de comandos do agente (Fila_Comandos/{host}/pending/), assina com HMAC
+        e atualiza a governança local sem depender de Tanium ou GV.
+        """
+        enqueued_calls = []
+
+        def mock_enqueue(exec_id, host, title, shell_type, script, requested_by, timeout_s=120):
+            enqueued_calls.append({
+                "exec_id": exec_id,
+                "host": host,
+                "title": title,
+                "shell_type": shell_type,
+                "script": script,
+                "requested_by": requested_by,
+                "timeout_s": timeout_s
+            })
+            return True
+
+        monkeypatch.setattr("remote_queue.enqueue_command_on_sharepoint", mock_enqueue, raising=False)
+        monkeypatch.setattr("dashboard.remote_queue.enqueue_command_on_sharepoint", mock_enqueue, raising=False)
+
+        res = force_execute_service_update(
+            host="BRGO-ANA-DT02",
+            service_name="Atria Capture",
+            target_version="2.0.0.2",
+            requested_by="Operador Teste NOC"
+        )
+
+        assert res["success"] is True
+        assert res["host"] == "BRGO-ANA-DT02"
+        assert res["target_version"] == "2.0.0.2"
+        assert len(enqueued_calls) == 1
+        assert enqueued_calls[0]["host"] == "BRGO-ANA-DT02"
+        assert "Atria" in enqueued_calls[0]["title"]
+        assert enqueued_calls[0]["timeout_s"] == 600
+
+    def test_get_pending_actions_by_host_returns_governed_target_version(self):
+        """
+        Garante que a API de ações pendentes para o host (/api/fleet/pending-actions/{host})
+        retorne a versão desejada governada (2.0.0.2 para Atria Capture) e nunca uma versão
+        legada antiga, evitando falsa conclusão no agente C#.
+        """
+        from dashboard.app import get_pending_actions_by_host
+        import asyncio
+
+        actions = asyncio.run(get_pending_actions_by_host("BRGO-ANA-DT02"))
+        assert isinstance(actions, list)
+        atria_actions = [a for a in actions if "atria" in str(a.get("NomeServico", "")).lower()]
+        if atria_actions:
+            assert atria_actions[0]["VersaoDesejada"] == "2.0.0.2"

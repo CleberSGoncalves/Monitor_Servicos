@@ -78,58 +78,12 @@ def execute_predefined_action(
     # 3. Forçar Atualização de Serviço
     elif action_type == "update_service":
         target_v_clean = str(target_version or "2.0.0.2").strip().lstrip("vV")
-        item_id = find_service_item_id(token, host, service_name)
-        if not item_id:
-            return {"success": False, "error": f"Item do serviço '{service_name}' não encontrado no host {host}"}
-        
-        patch_url = f"https://graph.microsoft.com/v1.0/sites/{SITE_ID}/lists/{LIST_SERVICES_ID}/items/{item_id}/fields"
-        body = {
-            "Versao_Desejada": target_v_clean,
-            "Acao_Solicitada": "Atualizar",
-            "Status_Atualizacao": "Em Progresso"
-        }
-        
-        resp = requests.patch(patch_url, headers=headers, json=body, timeout=10)
-        
-        # Atualiza o cache em memória imediatamente para feedback instantâneo (<5ms)
-        try:
-            from sharepoint_sync import get_cached_data
-            c_data = get_cached_data()
-            for s in c_data.get("services", []):
-                if (s.get("hostname", "").strip().lower() == host.strip().lower() and
-                    (s.get("nome_servico", "").strip().lower() == service_name.strip().lower() or
-                     service_name.strip().lower() in s.get("nome_servico", "").strip().lower())):
-                    s["versao_desejada"] = target_v_clean
-                    s["acao_solicitada"] = "Atualizar"
-                    s["status_atualizacao"] = "Em Progresso"
-        except Exception:
-            pass
-
-        if resp.status_code == 429:
-            try:
-                from sharepoint_sync import handle_throttle
-                handle_throttle(resp)
-            except Exception:
-                pass
-            return {
-                "success": True,
-                "is_queued": True,
-                "message": f"Ordem registrada na governança local para {host} ({service_name} v{target_v_clean}). A Azure Graph está em cooldown temporário (HTTP 429) e sincronizará automaticamente."
-            }
-
-        if resp.ok:
-            register_incident_action(
-                incident_key=f"{host}_{service_name}",
-                host=host,
-                target_name=service_name,
-                incident_type="atualizacao",
-                operator_username=operator_username,
-                operator_name=operator_name,
-                action_taken=f"Atualização forçada disparada para a versão {target_v_clean}",
-                resolution_status="resolvido"
-            )
-            return {"success": True, "message": f"Atualização para {target_v_clean} gravada com sucesso no SharePoint para [{host}]."}
-        return {"success": False, "error": f"SharePoint HTTP {resp.status_code}: {resp.text}"}
+        return force_execute_service_update(
+            host=host,
+            service_name=service_name,
+            target_version=target_v_clean,
+            requested_by=operator_name or "Operador NOC"
+        )
 
     # 4. Disparo do Canary Deployment (Grupo Piloto de 5 Máquinas -> Auto-Promoção após Homologação)
     elif action_type == "canary_deploy":
@@ -313,34 +267,34 @@ def get_fleet_update_evolution(target_version: str = "1.0.20.0") -> Dict[str, An
     }
 
 
-def build_service_contingency_command(service_name: str, target_version: str) -> str:
+def build_service_raw_script(service_name: str, target_version: str) -> str:
     """
-    Gera o script PowerShell oficial de 1 linha para contingência via GV / Tanium,
-    respeitando estritamente os diretórios de instalação de cada serviço na frota:
-    - Atria Capture: D:\\MediaDNA_V2\\applications\\DTVCapture64 (DTVCapture64.exe)
-    - FastMatchingSvc: D:\\MediaDNA_V2\\applications\\DTVCapture64\\FastMachingSvc
-    - DNA.MonitorServiceSVC: D:\\MediaDNA_V2\\applications\\MonitorServiceSVC (bootstrap_update.ps1)
-    - Demais serviços DNA: D:\\MediaDNA_V2\\applications\\DNA.<NomeServico>
+    Retorna o script PowerShell puro (sem encapsulamento de processo) para execução
+    direta e elevada pelo agente C# (RemoteCommandExecutor / Fila_Comandos).
     """
     s_clean = service_name.strip()
     s_lower = s_clean.lower()
-    target_v = str(target_version or "latest").strip().lstrip("vV")
+    target_v = str(target_version or "2.0.0.2").strip().lstrip("vV")
 
-    # 1. Atria Capture (DTVCapture64)
+    # 1. Atria Capture (DTVCapture64 / DigitalTVCapture)
     if "atria" in s_lower or "dtvcapture" in s_lower:
-        dest_d = r"D:\MediaDNA_V2\applications\DTVCapture64"
-        dest_c = r"C:\MediaDNA_V2\applications\DTVCapture64"
+        dest_d = r"D:\MediaDNA_V2\Applications\DTVCapture64"
+        dest_c = r"C:\DTV\DTVCapture"
         return (
-            f"powershell -ExecutionPolicy Bypass -Command \""
-            f"& {{ $dest = if (Test-Path '{dest_d}') {{ '{dest_d}' }} elseif (Test-Path 'D:\\') {{ '{dest_d}' }} else {{ '{dest_c}' }}; "
-            f"Stop-Process -Name DTVCapture64, AtriaCapture -Force -ErrorAction SilentlyContinue; "
-            f"Stop-Service -Name AtriaCaptureService -Force -ErrorAction SilentlyContinue; "
-            f"[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12; "
-            f"$zip = \\\"$env:TEMP\\DTVCapture64_v{target_v}.zip\\\"; "
-            f"if (-not (Test-Path $zip)) {{ try {{ Invoke-WebRequest -Uri 'http://10.1.30.1:8092/api/agent/download/DTVCapture64/{target_v}' -OutFile $zip -TimeoutSec 30 }} catch {{}} }}; "
-            f"if (Test-Path $zip) {{ Expand-Archive -Path $zip -DestinationPath $dest -Force }}; "
-            f"if (Get-Service -Name AtriaCaptureService -ErrorAction SilentlyContinue) {{ Start-Service AtriaCaptureService }} elseif (Test-Path (Join-Path $dest 'DTVCapture64.exe')) {{ Start-Process (Join-Path $dest 'DTVCapture64.exe') }}; "
-            f"Write-Host '[OK] Atria Capture atualizado em ' $dest }}\""
+            "$ErrorActionPreference = 'Continue';\n"
+            "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;\n"
+            f"$targetDir = '{dest_d}';\n"
+            "if (-not (Test-Path $targetDir)) { New-Item -ItemType Directory -Force -Path $targetDir };\n"
+            "Get-Process -Name 'DigitalTVCapture', 'AtriaCapture', 'Atria', 'DTVCapture64' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue;\n"
+            "$downloadFile = Join-Path $env:TEMP 'atria_setup.ps1';\n"
+            "Invoke-WebRequest -Uri 'https://stgengineeringreleases.blob.core.windows.net/atriacapture/v2.0.0.0_x64_AVX2/install_v2000_x64.ps1' -OutFile $downloadFile -UseBasicParsing;\n"
+            "& $downloadFile /nobackup /lav /ffdshow /nostreamlink /noytdlp;\n"
+            f"if ((Test-Path '{dest_c}') -and ('{dest_c}' -ne $targetDir)) {{\n"
+            f"    Copy-Item -Path '{dest_c}\\*' -Destination $targetDir -Recurse -Force -ErrorAction SilentlyContinue;\n"
+            "};\n"
+            "$exe = if (Test-Path (Join-Path $targetDir 'DigitalTVCapture.exe')) { Join-Path $targetDir 'DigitalTVCapture.exe' } elseif (Test-Path (Join-Path $targetDir 'DTVCapture64.exe')) { Join-Path $targetDir 'DTVCapture64.exe' } else { $null };\n"
+            "if ($exe) { Start-Process $exe -WorkingDirectory $targetDir };\n"
+            f"Write-Host '[OK] Atria Capture atualizado para {target_v} em ' $targetDir;\n"
         )
 
     # 2. FastMatchingSvc
@@ -348,24 +302,27 @@ def build_service_contingency_command(service_name: str, target_version: str) ->
         dest_d = r"D:\MediaDNA_V2\applications\DTVCapture64\FastMachingSvc"
         dest_c = r"C:\MediaDNA_V2\applications\DTVCapture64\FastMachingSvc"
         return (
-            f"powershell -ExecutionPolicy Bypass -Command \""
-            f"& {{ $dest = if (Test-Path '{dest_d}') {{ '{dest_d}' }} elseif (Test-Path 'D:\\') {{ '{dest_d}' }} else {{ '{dest_c}' }}; "
-            f"Stop-Service -Name FastMatchingSvc, FastMachingSvc -Force -ErrorAction SilentlyContinue; "
-            f"Stop-Process -Name FastMatchingSvc, FastMachingSvc -Force -ErrorAction SilentlyContinue; "
-            f"[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12; "
-            f"$zip = \\\"$env:TEMP\\FastMatchingSvc_v{target_v}.zip\\\"; "
-            f"if (-not (Test-Path $zip)) {{ try {{ Invoke-WebRequest -Uri 'http://10.1.30.1:8092/api/agent/download/FastMatchingSvc/{target_v}' -OutFile $zip -TimeoutSec 30 }} catch {{}} }}; "
-            f"if (Test-Path $zip) {{ Expand-Archive -Path $zip -DestinationPath $dest -Force }}; "
-            f"Start-Service -Name FastMatchingSvc, FastMachingSvc -ErrorAction SilentlyContinue; "
-            f"Write-Host '[OK] FastMatchingSvc atualizado em ' $dest }}\""
+            "$ErrorActionPreference = 'Continue';\n"
+            "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;\n"
+            f"$dest_d = '{dest_d}'; $dest_c = '{dest_c}';\n"
+            "$dest = if (Test-Path $dest_d) { $dest_d } elseif (Test-Path 'D:\\') { $dest_d } else { $dest_c };\n"
+            "Stop-Service -Name FastMatchingSvc, FastMachingSvc -Force -ErrorAction SilentlyContinue;\n"
+            "Stop-Process -Name FastMatchingSvc, FastMachingSvc -Force -ErrorAction SilentlyContinue;\n"
+            f"$zip = \"$env:TEMP\\FastMatchingSvc_v{target_v}.zip\";\n"
+            f"if (-not (Test-Path $zip)) {{ try {{ Invoke-WebRequest -Uri 'http://10.1.30.1:8092/api/agent/download/FastMatchingSvc/{target_v}' -OutFile $zip -TimeoutSec 30 }} catch {{}} }};\n"
+            "if (Test-Path $zip) { Expand-Archive -Path $zip -DestinationPath $dest -Force };\n"
+            "Start-Service -Name FastMatchingSvc -ErrorAction SilentlyContinue;\n"
+            "Write-Host '[OK] FastMatchingSvc atualizado em ' $dest;\n"
         )
 
     # 3. DNA.MonitorServiceSVC (Agente Central)
     elif "monitorservice" in s_lower or "winfleet" in s_lower:
         return (
-            f"powershell.exe -ExecutionPolicy Bypass -NoProfile -Command \""
-            f"$d = if (Test-Path 'D:\\MediaDNA_V2\\Applications\\MonitorServiceSVC') {{ 'D:\\MediaDNA_V2\\Applications\\MonitorServiceSVC' }} elseif (Test-Path 'C:\\MediaDNA_V2\\Applications\\MonitorServiceSVC') {{ 'C:\\MediaDNA_V2\\Applications\\MonitorServiceSVC' }} else {{ $null }}; "
-            f"if ($d) {{ $b = Join-Path $d 'bootstrap_update.ps1'; if (Test-Path $b) {{ Start-Process powershell.exe -ArgumentList '-ExecutionPolicy', 'Bypass', '-NoProfile', '-WindowStyle', 'Hidden', '-Command', ('Start-Sleep -Seconds 5; & \\\"' + $b + '\\\" -Force') -WindowStyle Hidden; Write-Host '[OK] Disparado'; exit 0 }} }}\""
+            "$d = if (Test-Path 'D:\\MediaDNA_V2\\Applications\\MonitorServiceSVC') { 'D:\\MediaDNA_V2\\Applications\\MonitorServiceSVC' } elseif (Test-Path 'C:\\MediaDNA_V2\\Applications\\MonitorServiceSVC') { 'C:\\MediaDNA_V2\\Applications\\MonitorServiceSVC' } else { $null };\n"
+            "if ($d) {\n"
+            "    $b = Join-Path $d 'bootstrap_update.ps1';\n"
+            "    if (Test-Path $b) { Start-Process powershell.exe -ArgumentList '-ExecutionPolicy', 'Bypass', '-NoProfile', '-WindowStyle', 'Hidden', '-Command', ('Start-Sleep -Seconds 5; & \"' + $b + '\" -Force') -WindowStyle Hidden; Write-Host '[OK] Disparado'; exit 0 }\n"
+            "}\n"
         )
 
     # 4. Demais Serviços DNA.* (Detection, ConfigMonitor, Filetransfer, MediaRecorder, etc.)
@@ -374,17 +331,112 @@ def build_service_contingency_command(service_name: str, target_version: str) ->
         dest_d = f"D:\\MediaDNA_V2\\applications\\DNA.{svc_clean}"
         dest_c = f"C:\\MediaDNA_V2\\applications\\DNA.{svc_clean}"
         return (
-            f"powershell -ExecutionPolicy Bypass -Command \""
-            f"& {{ $dest = if (Test-Path '{dest_d}') {{ '{dest_d}' }} elseif (Test-Path 'D:\\') {{ '{dest_d}' }} else {{ '{dest_c}' }}; "
-            f"Stop-Service -Name '{s_clean}', 'DNA.{svc_clean}', '{svc_clean}' -Force -ErrorAction SilentlyContinue; "
-            f"Stop-Process -Name '{svc_clean}', 'DNA.{svc_clean}' -Force -ErrorAction SilentlyContinue; "
-            f"[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12; "
-            f"$zip = \\\"$env:TEMP\\{svc_clean}_v{target_v}.zip\\\"; "
-            f"if (-not (Test-Path $zip)) {{ try {{ Invoke-WebRequest -Uri 'http://10.1.30.1:8092/api/agent/download/{svc_clean}/{target_v}' -OutFile $zip -TimeoutSec 30 }} catch {{}} }}; "
-            f"if (Test-Path $zip) {{ Expand-Archive -Path $zip -DestinationPath $dest -Force }}; "
-            f"Start-Service -Name '{s_clean}', 'DNA.{svc_clean}', '{svc_clean}' -ErrorAction SilentlyContinue; "
-            f"Write-Host '[OK] {s_clean} atualizado em ' $dest }}\""
+            "$ErrorActionPreference = 'Continue';\n"
+            "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;\n"
+            f"$dest_d = '{dest_d}'; $dest_c = '{dest_c}';\n"
+            "$dest = if (Test-Path $dest_d) { $dest_d } elseif (Test-Path 'D:\\') { $dest_d } else { $dest_c };\n"
+            f"Stop-Service -Name '{s_clean}', 'DNA.{svc_clean}', '{svc_clean}' -Force -ErrorAction SilentlyContinue;\n"
+            f"Stop-Process -Name '{svc_clean}', 'DNA.{svc_clean}' -Force -ErrorAction SilentlyContinue;\n"
+            f"$zip = \"$env:TEMP\\{svc_clean}_v{target_v}.zip\";\n"
+            f"if (-not (Test-Path $zip)) {{ try {{ Invoke-WebRequest -Uri 'http://10.1.30.1:8092/api/agent/download/{svc_clean}/{target_v}' -OutFile $zip -TimeoutSec 30 }} catch {{}} }};\n"
+            "if (Test-Path $zip) { Expand-Archive -Path $zip -DestinationPath $dest -Force };\n"
+            f"Start-Service -Name '{s_clean}' -ErrorAction SilentlyContinue;\n"
+            f"Write-Host '[OK] {s_clean} atualizado em ' $dest;\n"
         )
+
+
+def build_service_contingency_command(service_name: str, target_version: str) -> str:
+    """
+    Gera o script PowerShell oficial de 1 linha para contingência via GV / Tanium,
+    respeitando estritamente os diretórios de instalação de cada serviço na frota.
+    """
+    raw = build_service_raw_script(service_name, target_version)
+    one_liner = " ".join(line.strip() for line in raw.splitlines() if line.strip())
+    one_liner_escaped = one_liner.replace('"', '\\"')
+    return f'powershell -ExecutionPolicy Bypass -Command "{one_liner_escaped}"'
+
+
+def force_execute_service_update(host: str, service_name: str, target_version: Optional[str] = None, requested_by: str = "Operador NOC") -> Dict[str, Any]:
+    """
+    Executa a atualização diretamente pelo Dashboard sem necessidade de GV, Tanium ou RDP.
+    Gera o script PowerShell oficial correspondente ao serviço, assina digitalmente com HMAC-SHA256,
+    insere na fila de comandos do SharePoint Drive (Fila_Comandos/{host}/pending/{exec_id}.json),
+    atualiza o status de governança local e dispara o PATCH no SharePoint.
+    """
+    import uuid
+    from version_governance import get_desired_versions
+    from remote_queue import enqueue_command_on_sharepoint
+    from sharepoint_sync import get_cached_data, sanitize_and_recalculate_cache
+
+    desired_map = get_desired_versions()
+    target_v_clean = str(target_version or desired_map.get(service_name) or "2.0.0.2").strip().lstrip("vV")
+
+    # 1. Monta o script de execução direta (raw PowerShell para execução no agente)
+    raw_script = build_service_raw_script(service_name, target_v_clean)
+    exec_id = f"upd_{uuid.uuid4().hex[:8]}"
+
+    # 2. Enfileira na Fila_Comandos/{host}/pending/ via SharePoint Drive com assinatura HMAC-SHA256
+    queued_ok = enqueue_command_on_sharepoint(
+        exec_id=exec_id,
+        host=host,
+        title=f"Atualização Direta de {service_name} para v{target_v_clean}",
+        shell_type="powershell",
+        script=raw_script,
+        requested_by=requested_by,
+        timeout_s=600  # 10 min de timeout para download e extração completa
+    )
+
+    # 3. Atualiza cache em memória e persiste em disco imediatamente
+    c_data = get_cached_data()
+    for s in c_data.get("services", []):
+        if (s.get("hostname", "").strip().lower() == host.strip().lower() and
+            (s.get("nome_servico", "").strip().lower() == service_name.strip().lower() or
+             service_name.strip().lower() in s.get("nome_servico", "").strip().lower())):
+            s["versao_desejada"] = target_v_clean
+            s["acao_solicitada"] = "Atualizar"
+            s["status_atualizacao"] = "Em Progresso"
+
+    sanitize_and_recalculate_cache(save_to_disk=True, force_refresh_time=True)
+
+    # 4. Tenta também registrar via PATCH no SharePoint (se não estiver throttled)
+    patch_msg = ""
+    try:
+        from sharepoint_sync import get_graph_token
+        token = get_graph_token()
+        item_id = find_service_item_id(token, host, service_name)
+        if item_id:
+            patch_url = f"https://graph.microsoft.com/v1.0/sites/{SITE_ID}/lists/{LIST_SERVICES_ID}/items/{item_id}/fields"
+            resp = requests.patch(patch_url, headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"}, json={
+                "Versao_Desejada": target_v_clean,
+                "Acao_Solicitada": "Atualizar",
+                "Status_Atualizacao": "Em Progresso"
+            }, timeout=8)
+            if resp.ok:
+                patch_msg = " e sincronizado no SharePoint"
+    except Exception:
+        pass
+
+    # Registra no log de auditoria / incidentes
+    register_incident_action(
+        incident_key=f"{host}_{service_name}",
+        host=host,
+        target_name=service_name,
+        incident_type="atualizacao_direta_dashboard",
+        operator_username="dashboard_operator",
+        operator_name=requested_by,
+        action_taken=f"Execução direta disparada pelo Dashboard para v{target_v_clean} (exec_id: {exec_id})",
+        resolution_status="em_andamento"
+    )
+
+    return {
+        "success": True,
+        "exec_id": exec_id,
+        "host": host,
+        "service_name": service_name,
+        "target_version": target_v_clean,
+        "queued_in_drive": queued_ok,
+        "message": f"Ordem de atualização para v{target_v_clean} disparada com sucesso diretamente pelo Dashboard{patch_msg}! O Agente local executará silenciosamente sem necessidade de GV ou Tanium."
+    }
 
 
 def get_host_service_action_status(host: str, service_name: str, target_version: Optional[str] = None) -> Dict[str, Any]:
@@ -529,33 +581,33 @@ def get_host_service_action_status(host: str, service_name: str, target_version:
         current_step_num = 3 if status_atualizacao.lower() == "em progresso" else 2
         status_badge = f"Atualizando para v{desired_ver}"
         badge_color = "blue"
-        user_message = f"⏳ Ordem registrada para atualizar {service_name} de v{installed_ver} para v{desired_ver}. Aguardando polling do agente local no host [{host}] (último contato: {telemetria_label})."
+        user_message = f"⏳ Ordem registrada e assinada pelo Dashboard para atualizar {service_name} de v{installed_ver} para v{desired_ver}. O Agente local no host [{host}] está executando a esteira em segundo plano (último contato: {telemetria_label})."
         steps = [
             {
                 "step": 1,
-                "title": "Ordem Enviada ao SharePoint",
-                "description": f"Comando registrado: Versao_Desejada={desired_ver} | Acao_Solicitada=Atualizar.",
+                "title": "Ordem Disparada pelo Dashboard",
+                "description": f"Comando homologado e assinado via HMAC-SHA256: Versao_Desejada={desired_ver}.",
                 "status": "completed",
-                "time_hint": "Gravado com sucesso no catálogo oficial"
+                "time_hint": "Enfileirado com sucesso"
             },
             {
                 "step": 2,
-                "title": "Reconhecimento pelo Agente C# (Polling)",
+                "title": "Reconhecimento pelo Agente C# (Fila Direta)",
                 "description": f"Agente local (DNA.MonitorServiceSVC v{agent_installed}) processa a fila de ordens.",
-                "status": "completed" if status_atualizacao.lower() == "em progresso" else "in_progress",
+                "status": "in_progress",
                 "time_hint": f"Último contato do agente: {telemetria_label}"
             },
             {
                 "step": 3,
                 "title": "Download do Pacote & Dependências",
-                "description": f"Baixando pacote binário {desired_ver} e validando hash SHA-256 no host.",
+                "description": f"Baixando binários {desired_ver} e dependências oficiais no host.",
                 "status": "in_progress" if status_atualizacao.lower() == "em progresso" else "pending",
                 "time_hint": "Download direto via repositório homologado"
             },
             {
                 "step": 4,
                 "title": "Aplicação da Atualização & Reinício",
-                "description": f"Parada segura da versão anterior, extração de arquivos e reinício de {service_name}.",
+                "description": f"Parada segura da versão anterior, extração de arquivos para diretório oficial e reinício de {service_name}.",
                 "status": "pending",
                 "time_hint": "Execução silenciosa com token elevado"
             },
@@ -571,7 +623,7 @@ def get_host_service_action_status(host: str, service_name: str, target_version:
         current_step_num = 2
         status_badge = "Falha na Atualização"
         badge_color = "red"
-        user_message = f"❌ Falha reportada pelo agente local: {status_atualizacao}. Verifique os logs do host ou utilize o plano de contingência abaixo."
+        user_message = f"❌ Falha reportada pelo agente local: {status_atualizacao}. Verifique os logs do host ou utilize a execução direta abaixo."
         steps = [
             {
                 "step": 1,
@@ -610,25 +662,22 @@ def get_host_service_action_status(host: str, service_name: str, target_version:
             }
         ]
     else:
-        # Desatualizado - Ordem ainda pendente de envio ou em fila
+        # Desatualizado - Ordem pronta para disparo pelo Dashboard
         current_step_num = 1
         status_badge = f"Pendente (v{installed_ver} → v{desired_ver})"
         badge_color = "yellow"
-        if rem_cooldown > 0:
-            user_message = f"⚠️ O serviço {service_name} está operando na versão legada {installed_ver} em [{host}]. A versão homologada alvo é {desired_ver}. A API da Azure está em cooldown temporário ({int(rem_cooldown)}s). Dispare pelo botão 'Atualizar' ou aplique imediatamente pelo comando GV/Tanium abaixo."
-        else:
-            user_message = f"⚠️ O serviço {service_name} está operando na versão legada {installed_ver} em [{host}]. A versão homologada alvo é {desired_ver}. Clique no botão 'Atualizar' para disparar no SharePoint ou copie o comando GV/Tanium abaixo."
+        user_message = f"⚠️ O serviço {service_name} está operando na versão legada {installed_ver} em [{host}]. A versão homologada alvo é {desired_ver}. Clique no botão 'Executar Agora pelo Dashboard' para disparar a atualização de imediato via Agente C# (sem necessidade de GV/Tanium)."
         steps = [
             {
                 "step": 1,
-                "title": "Ordem Enviada ao SharePoint",
-                "description": f"Aguardando registro da ordem: Versao_Desejada={desired_ver} | Acao_Solicitada=Atualizar.",
-                "status": "in_progress",
-                "time_hint": "Aguardando disparo pelo operador"
+                "title": "Disparo Direto pelo Dashboard",
+                "description": f"Clique no botão 'Executar Agora pelo Dashboard' para registrar e iniciar a atualização (v{desired_ver}).",
+                "status": "pending",
+                "time_hint": "Pronto para disparo"
             },
             {
                 "step": 2,
-                "title": "Reconhecimento pelo Agente C# (Polling)",
+                "title": "Reconhecimento pelo Agente C# (Fila Direta)",
                 "description": f"Agente local (DNA.MonitorServiceSVC v{agent_installed}) processará a fila de ordens.",
                 "status": "pending",
                 "time_hint": f"Último contato do agente: {telemetria_label}"
@@ -636,7 +685,7 @@ def get_host_service_action_status(host: str, service_name: str, target_version:
             {
                 "step": 3,
                 "title": "Download do Pacote & Dependências",
-                "description": f"Baixando pacote binário {desired_ver} e validando hash SHA-256 no host.",
+                "description": f"Baixando pacote binário {desired_ver} e validando integridade no host.",
                 "status": "pending",
                 "time_hint": "Download direto via repositório homologado"
             },

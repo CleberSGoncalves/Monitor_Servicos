@@ -34,8 +34,9 @@ def test_detection_fleet_snapshot_clean_metrics():
     assert summary["comm_lost"] < summary["total_cs01"] * 0.1, "COMM_LOST não pode englobar a maioria dos sites"
     
     # 4. Deve segregar sites com e sem motor
-    assert summary["nominal_fastmatching"] > 0, "Deve encontrar motores primários FastMatching"
-    assert summary["fallback_detection_svc"] > 0, "Deve encontrar motores fallback DetectionSVC"
+    engines = [s.get("active_engine") for s in data.get("sites", [])]
+    assert any(e == "FastMatchingSvc" for e in engines), "Deve mapear sites com motor primário FastMatching"
+    assert any(e == "DNA.DetectionSVC" for e in engines), "Deve mapear sites com motor fallback DetectionSVC"
     assert summary["inoperant_p0"] >= 0, "Deve identificar sites sem motor (P0 crítico)"
 
 

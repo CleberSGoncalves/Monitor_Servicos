@@ -282,8 +282,12 @@ def enrich_services_with_central_governance(services: List[Dict[str, Any]]) -> L
             v_inst = str(s.get("versao_instalada", "")).strip().lstrip("vV")
             if v_inst == target_ver:
                 s["status_atualizacao"] = "Atualizado"
+                if s.get("acao_solicitada") == "Atualizar":
+                    s["acao_solicitada"] = "Nenhuma"
             elif v_inst in ("Não Instalado", "Desconhecido", "0.0.0.0", ""):
                 s["status_atualizacao"] = "Não Instalado"
+            elif s.get("acao_solicitada") == "Atualizar" or str(s.get("status_atualizacao", "")).lower() in ("em progresso", "atualizando"):
+                s["status_atualizacao"] = "Em Progresso"
             else:
                 s["status_atualizacao"] = "Desatualizado"
 
