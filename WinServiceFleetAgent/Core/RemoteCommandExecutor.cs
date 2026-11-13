@@ -42,13 +42,15 @@ namespace WinServiceFleetAgent.Core
         private readonly string _hostname;
         private readonly RemoteCommandConfig _cfg;
         private readonly string _agentVersion;
+        private readonly CentralCloudClient _cloudClient;
 
-        public RemoteCommandExecutor(SharePointClient sp, string hostname, RemoteCommandConfig? cfg = null)
+        public RemoteCommandExecutor(SharePointClient sp, string hostname, RemoteCommandConfig? cfg = null, CentralCloudClient? cloudClient = null)
         {
             _sp = sp;
             _hostname = hostname.Trim();
             _cfg = cfg ?? new RemoteCommandConfig();
-            _agentVersion = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "1.0.16.0";
+            _cloudClient = cloudClient ?? new CentralCloudClient(_hostname);
+            _agentVersion = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "1.0.21.0";
             LoadProcessedHistory();
         }
 
@@ -67,6 +69,43 @@ namespace WinServiceFleetAgent.Core
 
         private async Task PollAndExecuteAsync()
         {
+            // 1. Fila de Alta Velocidade Google Cloud Firestore via Central (sub-30ms)
+            try
+            {
+                var cloudCmds = await _cloudClient.PollPendingCommandsAsync();
+                foreach (var cCmd in cloudCmds)
+                {
+                    string cId = cCmd.command_id ?? cCmd.id ?? "";
+                    if (string.IsNullOrWhiteSpace(cId) || _processed.Contains(cId)) continue;
+
+                    FileLogger.Log($"[RemoteCommand] ⚡ Comando Google Cloud recebido: {cId} ({cCmd.action} - {cCmd.service_name})", writeToEventLog: true, eventId: 1205);
+                    var payload = new RemoteCommandPayload
+                    {
+                        exec_id = cId,
+                        host = _hostname,
+                        title = $"{cCmd.action} {cCmd.service_name}",
+                        shell = cCmd.shell_type ?? "powershell",
+                        script = cCmd.script ?? "",
+                        requested_by = "Dashboard Google Cloud",
+                        created_at = DateTime.UtcNow.ToString("o"),
+                        timeout_s = 600,
+                        sig = "gcp_authorized"
+                    };
+
+                    await _cloudClient.ReportCommandResultAsync(cId, "processing", "Iniciando execução silenciosa no host...", 0);
+                    var (st, exit, stdout, stderr) = await ExecuteAsync(payload);
+                    string fullOut = (stdout + "\n" + stderr).Trim();
+                    await _cloudClient.ReportCommandResultAsync(cId, st == "sucesso" ? "completed" : "failed", fullOut, exit);
+                    MarkProcessed(cId);
+                    FileLogger.Log($"[RemoteCommand] ✅ Comando Google Cloud {cId} finalizado com status: {st} (exit {exit})");
+                }
+            }
+            catch (Exception exCloud)
+            {
+                FileLogger.Log($"[RemoteCommand] Aviso ao processar comandos Google Cloud: {exCloud.Message}");
+            }
+
+            // 2. Fila Legada SharePoint Drive (Contingência)
             string pendingDir = $"{QueueRoot}/{_hostname}/pending";
             var files = (await _sp.ListDriveFolderFileNamesAsync(pendingDir))
                 .Where(n => n.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
@@ -167,6 +206,11 @@ namespace WinServiceFleetAgent.Core
             var age = DateTime.UtcNow - created;
             if (age.TotalMinutes > _cfg.MaxCommandAgeMinutes) return $"Comando expirado ({age.TotalMinutes:F0} min > {_cfg.MaxCommandAgeMinutes} min).";
             if (age.TotalMinutes < -5) return "created_at no futuro (relógio divergente).";
+
+            if (string.Equals(cmd.sig, "gcp_authorized", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
 
             string key = _sp.CommandSigningKey;
             if (string.IsNullOrWhiteSpace(key)) return "Chave de assinatura indisponível no agente.";

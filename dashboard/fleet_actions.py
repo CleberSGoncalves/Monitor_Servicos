@@ -318,11 +318,20 @@ def build_service_raw_script(service_name: str, target_version: str) -> str:
     # 3. DNA.MonitorServiceSVC (Agente Central)
     elif "monitorservice" in s_lower or "winfleet" in s_lower:
         return (
+            "$ErrorActionPreference = 'Continue';\n"
+            "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;\n"
+            "$s = 'DNA.MonitorServiceSVC';\n"
             "$d = if (Test-Path 'D:\\MediaDNA_V2\\Applications\\MonitorServiceSVC') { 'D:\\MediaDNA_V2\\Applications\\MonitorServiceSVC' } elseif (Test-Path 'C:\\MediaDNA_V2\\Applications\\MonitorServiceSVC') { 'C:\\MediaDNA_V2\\Applications\\MonitorServiceSVC' } else { $null };\n"
-            "if ($d) {\n"
-            "    $b = Join-Path $d 'bootstrap_update.ps1';\n"
-            "    if (Test-Path $b) { Start-Process powershell.exe -ArgumentList '-ExecutionPolicy', 'Bypass', '-NoProfile', '-WindowStyle', 'Hidden', '-Command', ('Start-Sleep -Seconds 5; & \"' + $b + '\" -Force') -WindowStyle Hidden; Write-Host '[OK] Disparado'; exit 0 }\n"
-            "}\n"
+            "if (-not $d) { Write-Host '[ERRO] Diretorio do agente nao encontrado'; exit 1 };\n"
+            "$curr = (Get-Item (Join-Path $d 'WinServiceFleetAgent.exe') -ErrorAction SilentlyContinue).VersionInfo.FileVersion;\n"
+            "try { $verInfo = Invoke-RestMethod -Uri 'http://10.1.30.1:8092/api/agent/version/DNA.MonitorServiceSVC' -TimeoutSec 10; $targetVer = $verInfo.latest_version } catch { $targetVer = '" + target_v + "' };\n"
+            "if ($curr -eq $targetVer) { Write-Host \"[OK] Ja atualizado na versao $curr\"; exit 0 };\n"
+            "$zip = \"$env:TEMP\\DNA.MonitorServiceSVC_latest.zip\";\n"
+            "Invoke-WebRequest -Uri 'http://10.1.30.1:8092/api/agent/download/DNA.MonitorServiceSVC/latest' -OutFile $zip;\n"
+            "Stop-Service -Name $s -Force -ErrorAction SilentlyContinue;\n"
+            "Expand-Archive -Path $zip -DestinationPath $d -Force;\n"
+            "Start-Service -Name $s -ErrorAction SilentlyContinue;\n"
+            "Write-Host \"[OK] DNA.MonitorServiceSVC atualizado com sucesso de $curr para $targetVer\";\n"
         )
 
     # 4. Demais Serviços DNA.* (Detection, ConfigMonitor, Filetransfer, MediaRecorder, etc.)

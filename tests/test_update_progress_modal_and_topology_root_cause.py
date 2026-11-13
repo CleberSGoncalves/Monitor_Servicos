@@ -177,9 +177,10 @@ class TestUpdateProgressModalBackend:
         det_cmd = build_service_contingency_command("DNA.DetectionSVC", "3.4.6040.21056")
         assert r"D:\MediaDNA_V2\applications\DNA.DetectionSVC" in det_cmd
 
-        agent_cmd = build_service_contingency_command("DNA.MonitorServiceSVC", "1.0.20.0")
+        agent_cmd = build_service_contingency_command("DNA.MonitorServiceSVC", "1.0.21.0")
         assert r"D:\MediaDNA_V2\Applications\MonitorServiceSVC" in agent_cmd
-        assert "bootstrap_update.ps1" in agent_cmd
+        assert "DNA.MonitorServiceSVC" in agent_cmd
+        assert "latest" in agent_cmd
 
     def test_build_service_raw_script_atria_installer_compliance(self):
         """

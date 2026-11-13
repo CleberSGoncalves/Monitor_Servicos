@@ -1088,14 +1088,55 @@ async def download_planilha_atria_xlsx_endpoint():
     return JSONResponse(status_code=404, content={"error": "Planilha CS_Brasil_ATRIA.xlsx não encontrada"})
 
 
+@app.get("/api/agent/version/{service_name}")
+async def get_agent_governed_version_endpoint(service_name: str):
+    """
+    Retorna a versão homologada mais recente para o serviço solicitado,
+    permitindo que comandos Tanium/GV sejam 100% genéricos sem hardcode de versão.
+    """
+    from version_governance import get_desired_versions
+    desired = get_desired_versions()
+    s_clean = service_name.strip()
+    
+    ver = desired.get(s_clean)
+    if not ver:
+        for k, v in desired.items():
+            if s_clean.lower() == k.lower() or s_clean.lower() == k.replace("DNA.", "").lower():
+                ver = v
+                s_clean = k
+                break
+                
+    if not ver:
+        ver = "1.0.21.0" if "monitorservice" in s_clean.lower() else "1.0.0.0"
+        
+    return {
+        "service": s_clean,
+        "latest_version": ver,
+        "download_url": f"/api/agent/download/{s_clean}/latest",
+        "package_name": f"{s_clean}_v{ver}.zip"
+    }
+
+
 @app.get("/api/agent/download/{service_name}/{version}")
 async def download_agent_package_endpoint(service_name: str, version: str):
     """
     Endpoint de contingência para download direto de pacotes de binários homologados.
     Procura arquivos .zip correspondentes em publish/, releases/ ou raiz.
+    Suporta version='latest' resolvendo dinamicamente para a governança central.
     """
+    from version_governance import get_desired_versions
     s_clean = service_name.strip()
     v_clean = version.strip().lstrip("vV")
+    
+    if v_clean.lower() == "latest":
+        desired = get_desired_versions()
+        ver_cand = desired.get(s_clean)
+        if not ver_cand:
+            for k, v in desired.items():
+                if s_clean.lower() == k.lower() or s_clean.lower() == k.replace("DNA.", "").lower():
+                    ver_cand = v
+                    break
+        v_clean = str(ver_cand or "1.0.21.0").lstrip("vV")
     
     candidates = [
         ROOT_DIR / "publish" / f"{s_clean}_v{v_clean}.zip",
@@ -1105,6 +1146,7 @@ async def download_agent_package_endpoint(service_name: str, version: str):
         ROOT_DIR / "publish" / f"DTVCapture64_v{v_clean}.zip",
         ROOT_DIR / "publish" / "DTVCapture64.zip",
         ROOT_DIR / "publish" / f"DNA.MonitorServiceSVC_v{v_clean}.zip",
+        ROOT_DIR / "publish" / "DNA.MonitorServiceSVC.zip",
         ROOT_DIR.parent / "publish" / f"{s_clean}_v{v_clean}.zip",
     ]
     
@@ -1119,7 +1161,7 @@ async def download_agent_package_endpoint(service_name: str, version: str):
     return JSONResponse(
         status_code=404,
         content={
-            "error": f"Pacote para {service_name} v{version} não encontrado no repositório local.",
+            "error": f"Pacote para {service_name} v{v_clean} não encontrado no repositório local.",
             "hint": "O pacote pode ser obtido via biblioteca oficial SharePoint: Repositorio_Automacoes/Releases_Servicos_CS"
         }
     )

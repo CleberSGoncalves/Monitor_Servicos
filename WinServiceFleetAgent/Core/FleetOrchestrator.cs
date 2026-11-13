@@ -17,6 +17,7 @@ namespace WinServiceFleetAgent.Core
         private readonly List<ServiceDefinition> _services;
         private readonly SharePointClient _spClient;
         private readonly ChannelOrchestrator _channelOrchestrator;
+        private readonly CentralCloudClient _cloudClient;
         private readonly string _hostname;
         private readonly AutoUpdateConfig _autoUpdateConfig;
         private readonly RemoteCommandExecutor _remoteCommands;
@@ -68,7 +69,8 @@ namespace WinServiceFleetAgent.Core
             _autoUpdateConfig = autoUpdateConfig ?? new AutoUpdateConfig();
 
             _spClient = new SharePointClient(siteUrl, listName, clientId, clientSecret);
-            _remoteCommands = new RemoteCommandExecutor(_spClient, _hostname, remoteCommandConfig);
+            _cloudClient = new CentralCloudClient(_hostname);
+            _remoteCommands = new RemoteCommandExecutor(_spClient, _hostname, remoteCommandConfig, _cloudClient);
             _channelOrchestrator = new ChannelOrchestrator(
                 _spClient,
                 multiplexesXmlPath,
@@ -309,6 +311,34 @@ namespace WinServiceFleetAgent.Core
             {
                 FileLogger.Log($"[FleetOrchestrator] 🛡️ Todos os {serviceStatuses.Count} serviços com estado inalterado nos últimos 30 min. Bypass total de rede (0 requisições Graph API).");
                 batchAutoRestartMap = cleanAutoRestartMap;
+            }
+
+            // Envio direto da telemetria para o Google Cloud Firestore via Central (< 30ms)
+            try
+            {
+                var allBatchItems = new List<ServiceBatchItem>();
+                foreach (var s in serviceStatuses)
+                {
+                    allBatchItems.Add(new ServiceBatchItem
+                    {
+                        Title = paisTitle,
+                        Hostname = _hostname,
+                        Praca = metadata.Praca,
+                        CS = metadata.CS,
+                        NomeServico = s.Def.ServiceName,
+                        VersaoInstalada = s.InstalledVer,
+                        VersaoDesejada = s.DesiredVer,
+                        StatusServico = s.Status,
+                        UrlComunicacao = metadata.UrlComunicacao,
+                        ExeName = s.Def.ExeName
+                    });
+                }
+                string currentAgentVer = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "1.0.21.0";
+                await _cloudClient.SendTelemetryAsync(metadata.Praca, metadata.CS, allBatchItems, null, metrics, currentAgentVer);
+            }
+            catch (Exception exCloud)
+            {
+                FileLogger.Log($"[FleetOrchestrator] Aviso ao enviar telemetria direta para Central: {exCloud.Message}");
             }
 
             // Avaliação de AutoRestart para serviços detectados como Parado
