@@ -2061,7 +2061,7 @@ namespace WinServiceFleetAgent.Core
                             continue;
                         }
 
-                        if (!string.IsNullOrEmpty(targetId))
+                        if (!string.IsNullOrEmpty(targetId) && int.TryParse(targetId, out _))
                         {
                             string patchUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{targetListId}/items/{targetId}/fields";
 

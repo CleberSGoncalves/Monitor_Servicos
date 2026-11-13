@@ -301,19 +301,7 @@ namespace WinServiceFleetAgent.Core
                 }
             }
 
-            Dictionary<string, string> batchAutoRestartMap;
-            if (dirtyBatchItems.Count > 0)
-            {
-                FileLogger.Log($"[FleetOrchestrator] 📦 {dirtyBatchItems.Count} serviços requerem sincronização (estado modificado ou >30 min). Enviando em lote único via Microsoft Graph $batch...");
-                batchAutoRestartMap = await _spClient.SyncServicesBatchAsync(dirtyBatchItems, metrics);
-            }
-            else
-            {
-                FileLogger.Log($"[FleetOrchestrator] 🛡️ Todos os {serviceStatuses.Count} serviços com estado inalterado nos últimos 30 min. Bypass total de rede (0 requisições Graph API).");
-                batchAutoRestartMap = cleanAutoRestartMap;
-            }
-
-            // Envio direto da telemetria para o Google Cloud Firestore via Central (< 30ms)
+            // Envio prioritário de alta velocidade direto para o Google Cloud Firestore (< 30ms)
             try
             {
                 var allBatchItems = new List<ServiceBatchItem>();
@@ -333,12 +321,30 @@ namespace WinServiceFleetAgent.Core
                         ExeName = s.Def.ExeName
                     });
                 }
-                string currentAgentVer = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "1.0.21.0";
+                string currentAgentVer = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "1.0.21.1";
                 await _cloudClient.SendTelemetryAsync(metadata.Praca, metadata.CS, allBatchItems, null, metrics, currentAgentVer);
             }
             catch (Exception exCloud)
             {
-                FileLogger.Log($"[FleetOrchestrator] Aviso ao enviar telemetria direta para Central: {exCloud.Message}");
+                FileLogger.Log($"[FleetOrchestrator] Aviso ao enviar telemetria para o Google Cloud: {exCloud.Message}");
+            }
+
+            Dictionary<string, string> batchAutoRestartMap = cleanAutoRestartMap;
+            if (dirtyBatchItems.Count > 0)
+            {
+                try
+                {
+                    batchAutoRestartMap = await _spClient.SyncServicesBatchAsync(dirtyBatchItems, metrics);
+                }
+                catch (Exception exSp)
+                {
+                    FileLogger.Log($"[FleetOrchestrator] Sincronização secundária Graph API postergada (Google Cloud ativo): {exSp.Message}");
+                    batchAutoRestartMap = cleanAutoRestartMap;
+                }
+            }
+            else
+            {
+                FileLogger.Log($"[FleetOrchestrator] 🛡️ Todos os {serviceStatuses.Count} serviços com estado inalterado nos últimos 30 min. Bypass total de rede.");
             }
 
             // Avaliação de AutoRestart para serviços detectados como Parado

@@ -2,10 +2,10 @@
   "updated_at": "2026-11-13T12:00:00Z",
   "services": {
     "DNA.MonitorServiceSVC": {
-      "version": "1.0.21.0",
-      "package_name": "DNA.MonitorServiceSVC_v1.0.21.0.zip",
-      "download_url": "https://storage.googleapis.com/kantar-fleet-releases/DNA.MonitorServiceSVC_v1.0.21.0.zip",
-      "sha256": "2ed366a18565df2310cfeabd60c718935c9c356d213352a7b8df87a417fdd2a7"
+      "version": "1.0.21.1",
+      "package_name": "DNA.MonitorServiceSVC_v1.0.21.1.zip",
+      "download_url": "https://storage.googleapis.com/kantar-fleet-releases/DNA.MonitorServiceSVC_v1.0.21.1.zip",
+      "sha256": "10dc66e9f69dd8181496365457c7ab7e656d564626a615721be4ed7b71372e16"
     },
     "Atria Capture": {
       "version": "2.0.0.2",
