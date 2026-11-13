@@ -80,11 +80,19 @@ namespace WinServiceFleetAgent.Core
                 else
                 {
                     FileLogger.Log($"[GoogleReleaseDownloader] Aviso: Manifesto não retornado pelo Google Cloud Storage (HTTP {(int)resp.StatusCode}).");
+                    lock (_manifestLock)
+                    {
+                        _manifestExpiry = DateTime.UtcNow.AddMinutes(5);
+                    }
                 }
             }
             catch (Exception ex)
             {
                 FileLogger.LogError("[GoogleReleaseDownloader] Erro ao consultar manifesto no Google Cloud Storage", ex);
+                lock (_manifestLock)
+                {
+                    _manifestExpiry = DateTime.UtcNow.AddMinutes(5);
+                }
             }
 
             return null;

@@ -61,7 +61,7 @@ def make_bucket_public():
     )
     print(f"Permissão pública de download configurada (Status: {r.status_code}).")
 
-def upload_file(local_path: Path, dest_name: str, content_type: str = "application/zip"):
+def upload_file(local_path: Path, dest_name: str, content_type: str = "application/zip", cache_control: str = "public, max-age=3600"):
     token = get_gcs_token()
     headers = {
         "Authorization": f"Bearer {token}",
@@ -74,7 +74,11 @@ def upload_file(local_path: Path, dest_name: str, content_type: str = "applicati
     r = requests.post(upload_url, headers=headers, data=data)
     if r.status_code in [200, 201]:
         print(f"✅ {dest_name} enviado com sucesso!")
-        # Set public read ACL on object
+        # Set public read ACL on object and cache control
+        patch_url = f"https://storage.googleapis.com/storage/v1/b/{BUCKET_NAME}/o/{dest_name}"
+        patch_headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        requests.patch(patch_url, headers=patch_headers, json={"cacheControl": cache_control})
+
         acl_r = requests.post(
             f"https://storage.googleapis.com/storage/v1/b/{BUCKET_NAME}/o/{dest_name}/acl",
             headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},

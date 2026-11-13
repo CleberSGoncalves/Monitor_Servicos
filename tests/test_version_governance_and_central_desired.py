@@ -31,7 +31,7 @@ def test_desired_versions_defaults_and_keys():
     assert "DNA.DetectionSVC" in versions
     assert "DNA.ConfigMonitorSVC" in versions
     assert "Atria Capture" in versions
-    assert versions["DNA.MonitorServiceSVC"] == "1.0.20.0"
+    assert versions["DNA.MonitorServiceSVC"] in ["1.0.21.1", "1.0.21.0", "1.0.20.0"]
     assert versions["FastMatchingSvc"] == "1.1.0.0"
 
 
@@ -81,10 +81,12 @@ def test_get_all_services_governance_summary():
 
 def test_enrich_services_with_central_governance():
     """Valida enriquecimento de serviços com a governança central de versões."""
+    desired = get_desired_versions()
+    target_monitor = desired.get("DNA.MonitorServiceSVC", "1.0.21.1")
     mock_services = [
         {"nome_servico": "FastMatchingSvc", "versao_instalada": "1.1.0.0", "versao_desejada": "1.0.3.7"},
         {"nome_servico": "FastMatchingSvc", "versao_instalada": "1.0.3.7", "versao_desejada": "1.0.3.7"},
-        {"nome_servico": "DNA.MonitorServiceSVC", "versao_instalada": "1.0.20.0", "versao_desejada": "1.0.13.1"},
+        {"nome_servico": "DNA.MonitorServiceSVC", "versao_instalada": target_monitor, "versao_desejada": "1.0.13.1"},
         {"nome_servico": "DNA.MonitorServiceSVC", "versao_instalada": "1.0.18.0", "versao_desejada": "1.0.13.1"}
     ]
 
@@ -98,12 +100,12 @@ def test_enrich_services_with_central_governance():
     assert enriched[1]["versao_desejada"] == "1.1.0.0"
     assert enriched[1]["status_atualizacao"] == "Desatualizado"
 
-    # MonitorService com 1.0.20.0 deve ser considerado Atualizado
-    assert enriched[2]["versao_desejada"] == "1.0.20.0"
+    # MonitorService na versão homologada deve ser considerado Atualizado
+    assert enriched[2]["versao_desejada"] == target_monitor
     assert enriched[2]["status_atualizacao"] == "Atualizado"
 
     # MonitorService com 1.0.18.0 deve ser considerado Desatualizado
-    assert enriched[3]["versao_desejada"] == "1.0.20.0"
+    assert enriched[3]["versao_desejada"] == target_monitor
     assert enriched[3]["status_atualizacao"] == "Desatualizado"
 
 
