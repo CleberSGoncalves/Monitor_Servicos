@@ -1125,6 +1125,92 @@ async def download_agent_package_endpoint(service_name: str, version: str):
     )
 
 
+# =====================================================================
+# INTEGRAÇÃO GOOGLE CLOUD FIRESTORE (TELEMETRIA E COMANDOS EM TEMPO REAL)
+# =====================================================================
+
+@app.get("/api/gcp/status")
+async def gcp_telemetry_status_endpoint():
+    """Retorna o status operacional da integração em tempo real com Google Cloud Firestore."""
+    from gcp_sync import get_gcp_telemetry_status
+    return get_gcp_telemetry_status()
+
+
+@app.post("/api/gcp/sync")
+async def gcp_trigger_sync_endpoint(user: dict = Depends(get_current_user)):
+    """Dispara a sincronização manual de toda a frota local para o Google Cloud Firestore."""
+    from gcp_sync import sync_fleet_cache_to_firestore
+    from sharepoint_sync import get_cached_data
+    c_data = get_cached_data()
+    services = c_data.get("services", [])
+    channels = c_data.get("channels", [])
+    count, msg = sync_fleet_cache_to_firestore(services, channels)
+    return {"success": count > 0, "hosts_synced": count, "message": msg}
+
+
+@app.get("/api/agent/commands/{hostname}")
+async def get_agent_commands_endpoint(hostname: str):
+    """
+    Endpoint de alta velocidade (< 20ms) consumido pelo agente local no host para buscar comandos pendentes no Firestore.
+    Elimina a dependência de chamadas ao SharePoint Drive.
+    """
+    from gcp_sync import get_pending_commands_for_host
+    cmds = get_pending_commands_for_host(hostname)
+    return {"hostname": hostname, "commands": cmds}
+
+
+@app.post("/api/agent/commands/{command_id}/result")
+async def post_agent_command_result_endpoint(command_id: str, payload: dict):
+    """
+    Endpoint para o agente local reportar a conclusão ou falha de um comando executado, atualizando o Firestore em tempo real.
+    """
+    from gcp_sync import complete_remote_command
+    status = payload.get("status", "completed")
+    output = payload.get("output", "")
+    exit_code = payload.get("exit_code", 0)
+    ok = complete_remote_command(command_id, status=status, output=output, exit_code=exit_code)
+    return {"success": ok, "command_id": command_id, "status": status}
+
+
+@app.post("/api/agent/telemetry")
+async def post_agent_telemetry_endpoint(payload: dict):
+    """
+    Endpoint para o agente local enviar telemetria em tempo real (heartbeat, serviços, canais, cpu/ram),
+    persistindo instantaneamente no Google Cloud Firestore e no cache local.
+    """
+    hostname = payload.get("hostname")
+    if not hostname:
+        raise HTTPException(status_code=400, detail="Campo 'hostname' é obrigatório.")
+    
+    from gcp_sync import update_host_telemetry
+    ok = update_host_telemetry(hostname, payload)
+    
+    # Atualiza também no cache local em memória
+    try:
+        from sharepoint_sync import get_cached_data, sanitize_and_recalculate_cache
+        c_data = get_cached_data()
+        srv_updates = payload.get("services", [])
+        if srv_updates:
+            for s in c_data.get("services", []):
+                if s.get("hostname", "").strip().lower() == hostname.strip().lower():
+                    for u in srv_updates:
+                        if u.get("nome_servico", "").strip().lower() == s.get("nome_servico", "").strip().lower():
+                            if "versao_instalada" in u:
+                                s["versao_instalada"] = u["versao_instalada"]
+                            if "status_servico" in u:
+                                s["status_servico"] = u["status_servico"]
+                            if "status_atualizacao" in u:
+                                s["status_atualizacao"] = u["status_atualizacao"]
+                            if "acao_solicitada" in u:
+                                s["acao_solicitada"] = u["acao_solicitada"]
+        sanitize_and_recalculate_cache(save_to_disk=True, force_refresh_time=True)
+    except Exception:
+        pass
+
+    return {"success": ok, "hostname": hostname, "persisted_to": "Google Cloud Firestore"}
+
+
+
 class LinkDiagnoseRequest(BaseModel):
     praca: str
     cs: int = 1

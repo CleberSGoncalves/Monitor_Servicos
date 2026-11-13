@@ -386,7 +386,28 @@ def force_execute_service_update(host: str, service_name: str, target_version: O
         timeout_s=600  # 10 min de timeout para download e extração completa
     )
 
-    # 2.1 Também registra a execução em remote_commands SQLite local (auditoria NOC + retentativa assíncrona)
+    # 2.1 Enfileira em tempo real no Google Cloud Firestore (São Paulo) - imune ao Rate Limit (HTTP 429)
+    gcp_dispatched = False
+    try:
+        from gcp_sync import dispatch_remote_command_to_firestore, is_firestore_available
+        if is_firestore_available():
+            gcp_dispatched = dispatch_remote_command_to_firestore(
+                command_id=exec_id,
+                hostname=host,
+                service_name=service_name,
+                action="Atualizar",
+                target_version=target_v_clean,
+                shell_type="powershell",
+                script=raw_script,
+                requested_by=requested_by
+            )
+    except Exception as e_gcp:
+        logger.warning(f"[force_execute_service_update] Aviso ao registrar no Firestore: {e_gcp}")
+
+    if gcp_dispatched:
+        queued_ok = True
+
+    # 2.2 Também registra a execução em remote_commands SQLite local (auditoria NOC + retentativa assíncrona)
     try:
         from remote_commands import dispatch_remote_command
         dispatch_remote_command(
@@ -632,6 +653,31 @@ def get_host_service_action_status(host: str, service_name: str, target_version:
             step3_status = "pending"
             step3_hint = "Download direto via repositório homologado"
             step3_desc = f"Baixando binários {desired_ver} e dependências oficiais no host."
+
+        # Consulta status em tempo real via Google Cloud Firestore
+        try:
+            from gcp_sync import get_latest_command_for_host, is_firestore_available
+            if is_firestore_available():
+                gcp_cmd = get_latest_command_for_host(host, service_name)
+                if gcp_cmd:
+                    c_st = str(gcp_cmd.get("status", "")).lower()
+                    if c_st == "completed":
+                        current_step_num = 5
+                        status_badge = f"Concluído via Google Cloud (v{desired_ver})"
+                        badge_color = "green"
+                        out_snip = gcp_cmd.get("output", "")[:220].strip()
+                        user_message = f"🚀 Comando de atualização finalizado com sucesso no host [{host}] via Google Cloud Firestore! Saída: {out_snip or 'Sucesso sem erros.'}"
+                        step2_status = "completed"
+                        step3_status = "completed"
+                    elif c_st == "processing":
+                        current_step_num = 4
+                        status_badge = f"Aplicando Atualização no Host"
+                        badge_color = "blue"
+                        user_message = f"⚡ Agente local executando silenciosamente a aplicação de {service_name} v{desired_ver} em [{host}] (Google Cloud em tempo real)."
+                        step2_status = "completed"
+                        step3_status = "completed"
+        except Exception:
+            pass
 
         steps = [
             {

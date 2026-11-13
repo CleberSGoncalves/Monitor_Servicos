@@ -12,6 +12,11 @@ publish/github_token.txt
 .gemini_api_key
 */.gemini_api_key
 dashboard/data/.gemini_api_key
+*google_credentials*.json
+*bamboo*.json
+dashboard/data/*.json
+!dashboard/data/desired_versions.json
+!dashboard/data/ldap_config.json
 *.db
 dashboard/data/*.db
 
