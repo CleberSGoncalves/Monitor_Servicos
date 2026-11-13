@@ -64,6 +64,15 @@ namespace WinServiceFleetAgent.Core
                 using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
                 string url = $"{GoogleCloudManifestUrl}?t={DateTime.UtcNow.Ticks}";
                 var resp = await client.GetAsync(url);
+                if (!resp.IsSuccessStatusCode)
+                {
+                    string? gcpToken = await GoogleCloudAuth.GetAccessTokenAsync();
+                    if (!string.IsNullOrEmpty(gcpToken))
+                    {
+                        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", gcpToken);
+                        resp = await client.GetAsync(url);
+                    }
+                }
                 if (resp.IsSuccessStatusCode)
                 {
                     string json = await resp.Content.ReadAsStringAsync();
@@ -225,6 +234,16 @@ namespace WinServiceFleetAgent.Core
                 {
                     FileLogger.Log($"[GoogleReleaseDownloader] 📥 Baixando pacote '{fileName}' do Google Cloud Storage...");
                     var resp = await client.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead);
+                    if (!resp.IsSuccessStatusCode)
+                    {
+                        string? gcpToken = await GoogleCloudAuth.GetAccessTokenAsync();
+                        if (!string.IsNullOrEmpty(gcpToken))
+                        {
+                            using var reqMsg = new HttpRequestMessage(HttpMethod.Get, downloadUrl);
+                            reqMsg.Headers.Authorization = new AuthenticationHeaderValue("Bearer", gcpToken);
+                            resp = await client.SendAsync(reqMsg, HttpCompletionOption.ResponseHeadersRead);
+                        }
+                    }
                     if (!resp.IsSuccessStatusCode)
                     {
                         continue;

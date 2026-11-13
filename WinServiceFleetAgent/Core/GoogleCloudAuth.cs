@@ -88,7 +88,7 @@ namespace WinServiceFleetAgent.Core
                 var claimObj = new
                 {
                     iss = email,
-                    scope = "https://www.googleapis.com/auth/datastore",
+                    scope = "https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/devstorage.read_only",
                     aud = "https://oauth2.googleapis.com/token",
                     exp = now + 3600,
                     iat = now

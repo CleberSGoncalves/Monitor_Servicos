@@ -667,7 +667,7 @@ namespace WinServiceFleetAgent.Core
                     }
                 }
 
-                FileLogger.Log($"[ChannelOrchestrator] Encontrados {channelsList.Count} canais em execução. Sincronizando com o SharePoint...");
+                FileLogger.Log($"[ChannelOrchestrator] Encontrados {channelsList.Count} canais em execução. Sincronizando com o Google Cloud Firestore...");
 
                 if (_cloudClient != null)
                 {
@@ -680,8 +680,6 @@ namespace WinServiceFleetAgent.Core
                         FileLogger.Log($"[ChannelOrchestrator] Aviso ao enviar telemetria de canais para o Google Cloud: {exCloud.Message}");
                     }
                 }
-
-                await _spClient.SyncChannelsInventoryAsync(channelsList, parsedHostId, metadata.CS);
             }
             catch (Exception ex)
             {

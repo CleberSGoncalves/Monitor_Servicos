@@ -350,15 +350,6 @@ namespace WinServiceFleetAgent.Core
                         string msg = $"🎉 [AgentAutoUpdater] Atualização automática concluída com sucesso! Versão anterior: '{prevVer}', Nova versão: '{newVer}'.";
                         FileLogger.Log(msg, writeToEventLog: true, eventId: 1005);
 
-                        await spClient.UpdateActionStatusByServiceAsync(
-                            hostname: hostname,
-                            nomeServico: serviceName,
-                            statusAtualizacao: "Atualizado",
-                            acaoSolicitada: "Nenhuma",
-                            versaoInstalada: newVer,
-                            versaoDesejada: newVer
-                        );
-
                         File.Delete(successMarker);
                     }
                     catch (Exception exSucc)
@@ -381,23 +372,6 @@ namespace WinServiceFleetAgent.Core
 
                         string alertMsg = $"⚠️ [AgentAutoUpdater] ALERTA DE RESILIÊNCIA: O serviço foi revertido (ROLLBACK) para a versão '{restoredVer}' após falha na atualização para '{targetVer}'. Motivo: {error}";
                         FileLogger.LogWarning(alertMsg, writeToEventLog: true, eventId: 2005);
-
-                        await spClient.UpdateActionStatusByServiceAsync(
-                            hostname: hostname,
-                            nomeServico: serviceName,
-                            statusAtualizacao: "Erro na Atualização (Rollback Executado)",
-                            acaoSolicitada: "Nenhuma",
-                            versaoInstalada: restoredVer,
-                            versaoDesejada: targetVer
-                        );
-
-                        // Upload do log do updater para o SharePoint
-                        string updaterLogPath = Path.Combine(logsDir, "updater.log");
-                        if (File.Exists(updaterLogPath))
-                        {
-                            string logContent = await File.ReadAllTextAsync(updaterLogPath);
-                            await spClient.UploadLogAttachmentAsync(hostname, serviceName, logContent, force: true);
-                        }
 
                         // Renomeia o marcador para não reprocessar
                         string reportedMarker = Path.Combine(logsDir, $"rollback_reported_{DateTime.Now:yyyyMMdd_HHmmss}.json");

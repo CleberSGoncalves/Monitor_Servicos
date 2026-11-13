@@ -97,10 +97,7 @@ namespace WinServiceFleetAgent.Core
             // Passo 0.2: Fila de Comandos Remotos REAIS do Dashboard (não bloqueia o ciclo; 1 GET leve quando vazia)
             _remoteCommands.PollInBackground();
 
-            // Passo 0.5: Verificação Autônoma Periódica de Auto-Atualização do Agente
-            // GOVERNANÇA CANÁRIO (v1.0.16.0): o agente só se auto-atualiza para versões AUTORIZADAS
-            // pela esteira da aba Frota (Versao_Desejada no SharePoint). Publicar release no GitHub
-            // NÃO dispara mais rollout em massa — a frota só avança após homologação nos 5 pilotos.
+            // Passo 0.5: Verificação Autônoma Periódica de Auto-Atualização do Agente via Google Cloud Storage (manifest.json)
             if (_autoUpdateConfig.Enabled && (DateTime.UtcNow - _lastAutoUpdateCheck).TotalMinutes >= _autoUpdateConfig.CheckIntervalMinutes)
             {
                 _lastAutoUpdateCheck = DateTime.UtcNow;
@@ -109,18 +106,9 @@ namespace WinServiceFleetAgent.Core
                 string currentAgentVer = VersionInspector.GetExecutableVersion(currentAgentExe);
 
                 var checkResult = await AgentAutoUpdater.CheckForUpdateAsync(_autoUpdateConfig, _githubToken, currentAgentVer, currentAgentExe);
-                string? authorizedVer = await _spClient.GetDesiredVersionAsync(_hostname, "DNA.MonitorServiceSVC");
-                if (checkResult.IsUpdateAvailable &&
-                    (string.IsNullOrWhiteSpace(authorizedVer) || !SharePointClient.IsInstalledUpToDate(authorizedVer.TrimStart('v', 'V'), checkResult.LatestVersion.TrimStart('v', 'V'))))
-                {
-                    FileLogger.Log($"[FleetOrchestrator] 🛡️ Release '{checkResult.LatestVersion}' disponível no GitHub, mas NÃO autorizada para este host (Versao_Desejada='{authorizedVer ?? "vazia"}'). Aguardando esteira canário da aba Frota.");
-                    checkResult.IsUpdateAvailable = false;
-                }
                 if (checkResult.IsUpdateAvailable)
                 {
-                    FileLogger.Log($"[FleetOrchestrator] 🚀 Nova versão detectada para o agente: '{checkResult.LatestVersion}' (Instalada: '{currentAgentVer}'). Iniciando auto-atualização autônoma...", writeToEventLog: true, eventId: 1100);
-
-                    await _spClient.UpdateActionStatusByServiceAsync(_hostname, "DNA.MonitorServiceSVC", "Em Progresso", versaoDesejada: checkResult.LatestVersion);
+                    FileLogger.Log($"[FleetOrchestrator] 🚀 Nova versão homologada no Google Cloud para o agente: '{checkResult.LatestVersion}' (Instalada: '{currentAgentVer}'). Iniciando auto-atualização autônoma...", writeToEventLog: true, eventId: 1100);
 
                     var stageResult = await AgentAutoUpdater.DownloadAndStageUpdateAsync(_autoUpdateConfig, checkResult, _tempStagingDir, _githubToken);
                     if (stageResult.Success)
@@ -144,7 +132,6 @@ namespace WinServiceFleetAgent.Core
                     else
                     {
                         FileLogger.LogError($"[FleetOrchestrator] ❌ Falha no staging da auto-atualização autônoma: {stageResult.ErrorMessage}", writeToEventLog: true, eventId: 3100);
-                        await _spClient.UpdateActionStatusByServiceAsync(_hostname, "DNA.MonitorServiceSVC", "Erro na Atualização");
                     }
                 }
             }
@@ -331,22 +318,6 @@ namespace WinServiceFleetAgent.Core
             }
 
             Dictionary<string, string> batchAutoRestartMap = cleanAutoRestartMap;
-            if (dirtyBatchItems.Count > 0)
-            {
-                try
-                {
-                    batchAutoRestartMap = await _spClient.SyncServicesBatchAsync(dirtyBatchItems, metrics);
-                }
-                catch (Exception exSp)
-                {
-                    FileLogger.Log($"[FleetOrchestrator] Sincronização secundária Graph API postergada (Google Cloud ativo): {exSp.Message}");
-                    batchAutoRestartMap = cleanAutoRestartMap;
-                }
-            }
-            else
-            {
-                FileLogger.Log($"[FleetOrchestrator] 🛡️ Todos os {serviceStatuses.Count} serviços com estado inalterado nos últimos 30 min. Bypass total de rede.");
-            }
 
             // Avaliação de AutoRestart para serviços detectados como Parado
             foreach (var srvInfo in serviceStatuses)
@@ -357,7 +328,7 @@ namespace WinServiceFleetAgent.Core
 
                 if (statusServico.Equals("Parado", StringComparison.OrdinalIgnoreCase))
                 {
-                    string autoRestartSetting = "Não";
+                    string autoRestartSetting = srv.ServiceName.Equals("FastMatchingSvc", StringComparison.OrdinalIgnoreCase) ? "Não" : "Sim";
                     if (batchAutoRestartMap.TryGetValue(srv.ServiceName, out var ar)) autoRestartSetting = ar;
                     else if (cleanAutoRestartMap.TryGetValue(srv.ServiceName, out var car)) autoRestartSetting = car;
 
@@ -377,12 +348,10 @@ namespace WinServiceFleetAgent.Core
                         if (restartList.Count >= 3)
                         {
                             FileLogger.Log($"[FleetOrchestrator] 🚨 CRASH-LOOP DETECTADO para '{srv.ServiceName}'. O serviço reiniciou {restartList.Count} vezes nos últimos 15 min. AutoRestart pausado para proteger o host!", writeToEventLog: true, eventId: 3001);
-                            await _spClient.UpdateServiceStatusAsync(_hostname, srv.ServiceName, "Crash-Loop Detectado");
-                            await _spClient.UpdateActionStatusByServiceAsync(_hostname, srv.ServiceName, "Crash-Loop / Requer Intervenção");
                         }
                         else
                         {
-                            FileLogger.Log($"[FleetOrchestrator] ⚠️ {(isStandaloneApp ? "Aplicação" : "Serviço")} '{srv.ServiceName}' detectado como PARADO. AutoRestart='Sim' no SharePoint. Executando auto-recuperação (Tentativa {restartList.Count + 1}/3)...");
+                            FileLogger.Log($"[FleetOrchestrator] ⚠️ {(isStandaloneApp ? "Aplicação" : "Serviço")} '{srv.ServiceName}' detectado como PARADO. AutoRestart='Sim'. Executando auto-recuperação (Tentativa {restartList.Count + 1}/3)...");
                             try
                             {
                                 bool restarted = false;
@@ -401,7 +370,6 @@ namespace WinServiceFleetAgent.Core
                                 {
                                     restartList.Add(DateTime.UtcNow);
                                     FileLogger.Log($"[FleetOrchestrator] 🩹 AutoRestart ativado: '{srv.ServiceName}' reiniciado com sucesso!");
-                                    await _spClient.UpdateServiceStatusAsync(_hostname, srv.ServiceName, "Em Execução");
                                 }
                             }
                             catch (Exception ex)
@@ -412,7 +380,7 @@ namespace WinServiceFleetAgent.Core
                     }
                     else
                     {
-                        FileLogger.Log($"[FleetOrchestrator] ℹ️ '{srv.ServiceName}' está PARADO, mas AutoRestart está configurado como '{autoRestartSetting}' no SharePoint. Nenhuma tentativa de inicialização necessária.");
+                        FileLogger.Log($"[FleetOrchestrator] ℹ️ '{srv.ServiceName}' está PARADO, mas AutoRestart está configurado como '{autoRestartSetting}'. Nenhuma tentativa de inicialização necessária.");
                     }
                 }
             }
@@ -425,158 +393,6 @@ namespace WinServiceFleetAgent.Core
             catch (Exception exCh)
             {
                 FileLogger.LogError("[FleetOrchestrator] Erro no ciclo de monitoramento de canais DTV", exCh);
-            }
-
-            // Passo 3: Execução de Ações Pendentes de URL (Acao_Solicitada_Url = "Atualizar")
-            var pendingUrlActions = await _spClient.GetPendingUrlActionsAsync(_hostname);
-            if (pendingUrlActions != null && pendingUrlActions.Count > 0)
-            {
-                foreach (var urlAction in pendingUrlActions)
-                {
-                    FileLogger.Log($"[FleetOrchestrator] Executando Ação de URL em '{urlAction.NomeServico}' -> Nova URL Desejável: '{urlAction.UrlComunicacaoDesejavel}'...");
-                    try
-                    {
-                        await _spClient.UpdateUrlActionStatusAsync(_hostname, urlAction.NomeServico, "Em Progresso", urlAction.UrlComunicacaoDesejavel, isPending: true);
-
-                        bool isZabbixUrl = urlAction.NomeServico.Contains("Zabbix", StringComparison.OrdinalIgnoreCase);
-                        bool updated = false;
-
-                        if (isZabbixUrl)
-                        {
-                            updated = ConfigUrlUpdater.UpdateZabbixServerUrl(@"C:\Zabbix\config\zabbix_agentd.conf", urlAction.UrlComunicacaoDesejavel);
-                            if (updated)
-                            {
-                                WinController.RestartService("Zabbix Agent");
-                            }
-                        }
-                        else
-                        {
-                            updated = ConfigUrlUpdater.UpdateWcfMainUrl(_configMonitorConfigPath, urlAction.UrlComunicacaoDesejavel);
-                            if (updated)
-                            {
-                                WinController.RestartService("DNA.ConfigMonitorSVC");
-                            }
-                        }
-
-                        if (updated)
-                        {
-                            await _spClient.UpdateUrlActionStatusAsync(_hostname, urlAction.NomeServico, "Atualizado", urlAction.UrlComunicacaoDesejavel, isPending: false);
-                            FileLogger.Log($"[FleetOrchestrator] ✅ Ação de URL concluída com sucesso para '{urlAction.NomeServico}'!");
-                        }
-                        else
-                        {
-                            await _spClient.UpdateUrlActionStatusAsync(_hostname, urlAction.NomeServico, "Erro na Atualização", metadata.UrlComunicacao, isPending: false);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        FileLogger.LogError($"Erro ao atualizar URL de comunicação em '{urlAction.NomeServico}'", ex);
-                        await _spClient.UpdateUrlActionStatusAsync(_hostname, urlAction.NomeServico, "Erro na Atualização", metadata.UrlComunicacao, isPending: false);
-                    }
-                }
-            }
-
-            // Passo 4: Execução de Ações Pendentes de Serviços (Acao_Solicitada = "Reiniciar" / "Parar" / "Instalar" / "Desinstalar" / "Atualizar")
-            var pendingActions = await _spClient.GetPendingActionsAsync(_hostname);
-            if (pendingActions == null || pendingActions.Count == 0)
-            {
-                FileLogger.Log("[FleetOrchestrator] Nenhuma ação de serviço pendente no SharePoint para este host.");
-                return;
-            }
-
-            foreach (var action in pendingActions)
-            {
-                var srvConfig = _services.FirstOrDefault(s => s.ServiceName.Equals(action.NomeServico, StringComparison.OrdinalIgnoreCase));
-                if (srvConfig == null)
-                {
-                    FileLogger.Log($"[FleetOrchestrator] Serviço '{action.NomeServico}' não encontrado nas configurações locais.");
-                    continue;
-                }
-
-                // Lógica de Hora_Agendada
-                if (!string.IsNullOrWhiteSpace(action.HoraAgendada) && !action.HoraAgendada.Equals("Nenhuma", StringComparison.OrdinalIgnoreCase))
-                {
-                    if (TimeSpan.TryParse(action.HoraAgendada, out var scheduledTime))
-                    {
-                        var nowTime = DateTime.Now.TimeOfDay;
-                        double diffMinutes = (nowTime - scheduledTime).TotalMinutes;
-
-                        if (diffMinutes < -10 || diffMinutes > 15)
-                        {
-                            FileLogger.Log($"[FleetOrchestrator] Ação '{action.AcaoSolicitada}' em '{action.NomeServico}' está agendada para as {action.HoraAgendada}. Horário atual: {nowTime:hh\\:mm}. Aguardando janela.");
-                            continue;
-                        }
-                    }
-                }
-
-                FileLogger.Log($"[FleetOrchestrator] Executando Ação '{action.AcaoSolicitada}' para [{_hostname}_{action.NomeServico}]...");
-                var actionStopwatch = System.Diagnostics.Stopwatch.StartNew();
-
-                try
-                {
-                    if (action.AcaoSolicitada.Equals("Reiniciar", StringComparison.OrdinalIgnoreCase))
-                    {
-                        await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Em Progresso");
-                        bool ok = WinController.RestartService(srvConfig.ServiceName);
-                        actionStopwatch.Stop();
-                        double sec = actionStopwatch.Elapsed.TotalSeconds;
-
-                        if (ok)
-                        {
-                            string stamp = $"Reiniciado [{DateTime.Now:HH:mm} | {sec:F1}s]";
-                            await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, stamp, acaoSolicitada: "Nenhuma");
-                            SaveAuditTrailRecord(_hostname, action.NomeServico, "Reiniciar", "Sucesso", sec);
-                            FileLogger.Log($"[FleetOrchestrator] ✅ Serviço '{srvConfig.ServiceName}' reiniciado com sucesso em {sec:F1}s!");
-                        }
-                        else
-                        {
-                            SaveAuditTrailRecord(_hostname, action.NomeServico, "Reiniciar", "Falha", sec);
-                            await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Erro na Atualização");
-                        }
-                    }
-                    else if (action.AcaoSolicitada.Equals("Parar", StringComparison.OrdinalIgnoreCase))
-                    {
-                        await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Em Progresso");
-                        bool stopped = WinController.StopService(srvConfig.ServiceName);
-                        actionStopwatch.Stop();
-                        double sec = actionStopwatch.Elapsed.TotalSeconds;
-
-                        if (stopped)
-                        {
-                            string stamp = $"Parado [{DateTime.Now:HH:mm} | {sec:F1}s]";
-                            await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, stamp, acaoSolicitada: "Nenhuma");
-                            SaveAuditTrailRecord(_hostname, action.NomeServico, "Parar", "Sucesso", sec);
-                            FileLogger.Log($"[FleetOrchestrator] ✅ Serviço '{srvConfig.ServiceName}' parado com sucesso em {sec:F1}s!");
-                        }
-                        else
-                        {
-                            SaveAuditTrailRecord(_hostname, action.NomeServico, "Parar", "Falha", sec);
-                            await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Erro na Atualização");
-                        }
-                    }
-                    else if (action.AcaoSolicitada.Equals("Instalar", StringComparison.OrdinalIgnoreCase))
-                    {
-                        await ProcessInstallAsync(srvConfig, action);
-                    }
-                    else if (action.AcaoSolicitada.Equals("Desinstalar", StringComparison.OrdinalIgnoreCase))
-                    {
-                        await ProcessUninstallAsync(srvConfig, action);
-                    }
-                    else if (action.AcaoSolicitada.Equals("Atualizar", StringComparison.OrdinalIgnoreCase) ||
-                             action.AcaoSolicitada.StartsWith("Forca", StringComparison.OrdinalIgnoreCase) ||
-                             action.AcaoSolicitada.StartsWith("Força", StringComparison.OrdinalIgnoreCase))
-                    {
-                        bool force = action.AcaoSolicitada.StartsWith("Forca", StringComparison.OrdinalIgnoreCase) ||
-                                     action.AcaoSolicitada.StartsWith("Força", StringComparison.OrdinalIgnoreCase);
-
-                        await ProcessUpdateAsync(srvConfig, action, forceUpdate: force);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    FileLogger.LogError($"Erro ao processar ação em [{_hostname}_{action.NomeServico}]", ex);
-                    await _spClient.UpdateActionStatusByServiceAsync(_hostname, action.NomeServico, "Erro na Atualização");
-                }
             }
         }
 

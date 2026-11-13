@@ -319,7 +319,7 @@ def build_service_raw_script(service_name: str, target_version: str) -> str:
             "Write-Host '[OK] FastMatchingSvc atualizado via Google Cloud Storage em ' $dest;\n"
         )
 
-    # 3. DNA.MonitorServiceSVC (Agente Central)
+    # 3. DNA.MonitorServiceSVC (Agente Central — Atualização Isolada via Task Scheduler / Background Job para não matar o próprio processo)
     elif "monitorservice" in s_lower or "winfleet" in s_lower:
         return (
             "$ErrorActionPreference = 'Continue';\n"
@@ -334,11 +334,18 @@ def build_service_raw_script(service_name: str, target_version: str) -> str:
             "if ($curr -eq $targetVer) { Write-Host \"[OK] Ja atualizado na versao $curr\"; exit 0 };\n"
             "$url = if ($m -and $m.services.$s.download_url) { $m.services.$s.download_url } else { 'https://storage.googleapis.com/kantar-fleet-releases/DNA.MonitorServiceSVC_v' + $targetVer + '.zip' };\n"
             "$zip = \"$env:TEMP\\$s`_$targetVer.zip\";\n"
+            "$stg = \"$env:TEMP\\$s`_stg_$targetVer\";\n"
+            "if (Test-Path $stg) { Remove-Item $stg -Recurse -Force -ErrorAction SilentlyContinue };\n"
+            "New-Item -ItemType Directory -Path $stg -Force | Out-Null;\n"
             "Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing;\n"
-            "Stop-Service -Name $s -Force -ErrorAction SilentlyContinue;\n"
-            "Expand-Archive -Path $zip -DestinationPath $d -Force;\n"
-            "Start-Service -Name $s -ErrorAction SilentlyContinue;\n"
-            "Write-Host \"[OK] DNA.MonitorServiceSVC atualizado com sucesso de $curr para $targetVer via Google Cloud Storage\";\n"
+            "Expand-Archive -Path $zip -DestinationPath $stg -Force;\n"
+            "$bat = \"$stg\\apply_self_update.bat\";\n"
+            "\"@echo off`r`ntimeout /t 4 /nobreak >nul`r`nnet stop $s >nul 2>&1`r`ntimeout /t 2 /nobreak >nul`r`ntaskkill /f /im WinServiceFleetAgent.exe >nul 2>&1`r`ntimeout /t 2 /nobreak >nul`r`nrobocopy `\"$stg`\" `\"$d`\" /E /R:3 /W:1 /NP >nul`r`nnet start $s`r`nexit /b 0\" | Set-Content -Path $bat -Encoding ASCII;\n"
+            "schtasks /delete /tn 'DNA_MonitorService_SelfUpdate' /f >$null 2>&1;\n"
+            "schtasks /create /tn 'DNA_MonitorService_SelfUpdate' /tr \"cmd.exe /c `\"$bat`\"\" /sc once /st 00:00 /ru SYSTEM /f /rl HIGHEST >$null 2>&1;\n"
+            "schtasks /run /tn 'DNA_MonitorService_SelfUpdate' >$null 2>&1;\n"
+            "Start-Process -FilePath 'cmd.exe' -ArgumentList \"/c `\"$bat`\"\" -WindowStyle Hidden;\n"
+            "Write-Host \"[OK] DNA.MonitorServiceSVC agendado para atualizacao atomica de $curr para $targetVer via Google Cloud Storage\";\n"
         )
 
     # 4. Demais Serviços DNA.* (Detection, ConfigMonitor, Filetransfer, MediaRecorder, etc.)
