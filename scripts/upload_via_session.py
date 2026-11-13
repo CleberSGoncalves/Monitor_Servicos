@@ -8,7 +8,7 @@ from config import CLIENT_ID, CLIENT_SECRET, TENANT_ID
 
 DRIVE_ID = "b!R5fko7abk0yZMN2ibI0QUFX-yDT-LPxOjOApWP13XuB7rzp8hYGATLhyYvhIJ0iG"
 FOLDER = "Releases_Servicos_CS"
-TARGET_VERSION = "1.0.20.0"
+TARGET_VERSION = "1.0.21.0"
 ZIP_PATH = Path(f"publish/DNA.MonitorServiceSVC_v{TARGET_VERSION}.zip")
 BOOTSTRAP_PATH = Path("WinServiceFleetAgent/Scripts/bootstrap_update.ps1")
 
