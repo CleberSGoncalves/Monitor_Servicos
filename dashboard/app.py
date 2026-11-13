@@ -690,12 +690,13 @@ async def get_fleet_action_status_endpoint(
 @app.get("/api/fleet/canary-status")
 async def get_fleet_canary_status_endpoint(
     service_name: str = "DNA.MonitorServiceSVC",
-    target_version: str = "1.0.21.3",
+    target_version: str = "1.0.21.2",
     user: dict = Depends(get_current_user)
 ):
     try:
+        from sharepoint_sync import sanitize_and_recalculate_cache, get_graph_rate_limit_health
         from remote_queue import get_service_canary_status
-        from sharepoint_sync import get_graph_rate_limit_health
+        sanitize_and_recalculate_cache()
         data = get_service_canary_status(service_name=service_name, target_version=target_version)
         data["graph_rate_limit"] = get_graph_rate_limit_health()
         return data
@@ -706,7 +707,7 @@ async def get_fleet_canary_status_endpoint(
 
 @app.get("/api/fleet/update-evolution")
 async def get_fleet_update_evolution_endpoint(
-    target_version: str = "1.0.21.3",
+    target_version: str = "1.0.21.2",
     user: dict = Depends(get_current_user)
 ):
     """Retorna os dados consolidados de evolução de atualizações da frota em tempo real."""

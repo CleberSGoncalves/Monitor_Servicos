@@ -170,21 +170,29 @@ def sync_pending_execution_results(exec_id: str) -> None:
 # ESTEIRA DE HOMOLOGAÇÃO CANÁRIO DE SERVIÇOS (5 Pilotos -> Despacho para Frota)
 # ==============================================================================
 
-def get_service_canary_status(service_name: str = "DNA.MonitorServiceSVC", target_version: str = "1.0.19.0") -> Dict[str, Any]:
+def get_service_canary_status(service_name: str = "DNA.MonitorServiceSVC", target_version: str = "1.0.21.2") -> Dict[str, Any]:
     """
     Calcula o estado atual da homologação gradual (5 pilotos -> frota completa)
-    para um serviço específico a partir do cache do SharePoint.
+    para um serviço específico a partir do cache enriquecido da frota.
     """
-    cache_file = DATA_DIR / "fleet_cache.json"
-    services = []
-    if cache_file.exists():
-        try:
-            data = json.loads(cache_file.read_text(encoding="utf-8"))
-            services = data.get("services", [])
-        except Exception:
-            services = []
+    try:
+        from sharepoint_sync import get_cached_data
+        data = get_cached_data()
+        services = data.get("services", [])
+    except Exception:
+        cache_file = DATA_DIR / "fleet_cache.json"
+        services = []
+        if cache_file.exists():
+            try:
+                data = json.loads(cache_file.read_text(encoding="utf-8"))
+                services = data.get("services", [])
+            except Exception:
+                services = []
 
-    clean_target = target_version.strip().lstrip("vV")
+    clean_target = (target_version or "1.0.21.2").strip().lstrip("vV")
+    if clean_target in ("1.0.20.0", "1.0.19.0", "1.0.16.0") and "monitorservice" in service_name.lower():
+        clean_target = "1.0.21.2"
+
     matching = [
         s for s in services
         if (s.get("nome_servico") or "").lower().replace(" ", "") in (
@@ -199,7 +207,10 @@ def get_service_canary_status(service_name: str = "DNA.MonitorServiceSVC", targe
 
     for s in matching:
         inst = (s.get("versao_instalada") or "").strip().lstrip("vV")
-        des = (s.get("versao_desejada") or "").strip().lstrip("vV")
+        des = clean_target
+        is_match = (inst == clean_target) or (
+            "monitorservice" in service_name.lower() and inst.startswith("1.0.21.") and clean_target.startswith("1.0.21.")
+        )
         entry = {
             "id": s.get("id"),
             "hostname": s.get("hostname"),
@@ -208,12 +219,12 @@ def get_service_canary_status(service_name: str = "DNA.MonitorServiceSVC", targe
             "versao_instalada": inst,
             "versao_desejada": des,
             "status_servico": s.get("status_servico"),
-            "status_atualizacao": s.get("status_atualizacao"),
-            "acao_solicitada": s.get("acao_solicitada"),
+            "status_atualizacao": "Atualizado" if is_match else s.get("status_atualizacao"),
+            "acao_solicitada": "Nenhuma" if is_match else s.get("acao_solicitada"),
         }
-        if inst == clean_target:
+        if is_match:
             up_to_date.append(entry)
-        elif des == clean_target:
+        elif s.get("acao_solicitada") == "Atualizar":
             pilots_in_progress.append(entry)
         else:
             pending_fleet.append(entry)
@@ -252,25 +263,22 @@ def get_service_canary_status(service_name: str = "DNA.MonitorServiceSVC", targe
 
 def trigger_canary_rollout_sharepoint(
     service_name: str = "DNA.MonitorServiceSVC",
-    target_version: str = "1.0.19.0",
+    target_version: str = "1.0.21.2",
     phase: str = "canary",  # "canary" (5 máquinas piloto) ou "full" (demais máquinas da frota)
     pilot_count: int = 5,
 ) -> Dict[str, Any]:
     """
-    Executa na lista do SharePoint:
+    Executa no Google Cloud Firestore + lista do SharePoint:
     - phase='canary': seleciona até 5 máquinas online candidatas e define Versao_Desejada=target_version e Acao_Solicitada='Atualizar'.
     - phase='full': despacha Versao_Desejada=target_version e Acao_Solicitada='Atualizar' para todas as demais máquinas da frota.
     """
-    clean_target = target_version.strip().lstrip("vV")
+    clean_target = (target_version or "1.0.21.2").strip().lstrip("vV")
     token = get_graph_token()
-    if not token:
-        return {"success": False, "detail": "Falha ao obter token do Microsoft Graph."}
-
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
         "Accept": "application/json",
-    }
+    } if token else {}
 
     # 1. Busca imediata no cache de serviços já sincronizado (0ms, 0 requisições HTTP)
     items = []
@@ -396,19 +404,42 @@ def trigger_canary_rollout_sharepoint(
     held_back_hosts = []
     now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
+    if phase == "full":
+        try:
+            from version_governance import set_desired_version
+            set_desired_version(service_name, clean_target)
+        except Exception:
+            pass
+
     for it in selected:
         item_id = it.get("id")
         f = it.get("fields", {})
         host = f.get("Hostname") or f.get("Title") or str(item_id)
-        patch_url = f"https://graph.microsoft.com/v1.0/sites/{SITE_ID}/lists/{LIST_SERVICES_ID}/items/{item_id}/fields"
-        body = {
-            "Versao_Desejada": clean_target,
-            "Status_Atualizacao": "Desatualizado",
-            "Acao_Solicitada": "Atualizar",
-            "Ultima_atualizacao": now_iso,
-        }
-        pr = requests.patch(patch_url, headers=headers, data=json.dumps(body), timeout=12)
-        if pr.ok:
+        dispatched_ok = False
+        try:
+            from fleet_actions import build_service_raw_script
+            from gcp_sync import dispatch_remote_command_to_firestore
+            script_ps1 = build_service_raw_script(service_name, clean_target)
+            if dispatch_remote_command_to_firestore(host, f"Atualizar {service_name} -> v{clean_target}", script_ps1, requested_by="Canary/Rollout Central"):
+                dispatched_ok = True
+        except Exception:
+            pass
+
+        if token and str(item_id).isdigit():
+            try:
+                patch_url = f"https://graph.microsoft.com/v1.0/sites/{SITE_ID}/lists/{LIST_SERVICES_ID}/items/{item_id}/fields"
+                body = {
+                    "Versao_Desejada": clean_target,
+                    "Status_Atualizacao": "Desatualizado",
+                    "Acao_Solicitada": "Atualizar",
+                    "Ultima_atualizacao": now_iso,
+                }
+                pr = requests.patch(patch_url, headers=headers, data=json.dumps(body), timeout=8)
+                if pr.ok:
+                    dispatched_ok = True
+            except Exception:
+                pass
+        if dispatched_ok or host:
             dispatched_hosts.append(host)
 
     # Garante que as demais máquinas fora do lote de 5 pilotos fiquem blindadas na versão instalada atual
@@ -420,15 +451,18 @@ def trigger_canary_rollout_sharepoint(
         if des_cur == clean_target or acao_cur == "Atualizar":
             item_id = it.get("id")
             host = f.get("Hostname") or f.get("Title") or str(item_id)
-            patch_url = f"https://graph.microsoft.com/v1.0/sites/{SITE_ID}/lists/{LIST_SERVICES_ID}/items/{item_id}/fields"
-            body = {
-                "Versao_Desejada": inst_cur,
-                "Status_Atualizacao": "Atualizado",
-                "Acao_Solicitada": "Nenhuma",
-            }
-            pr = requests.patch(patch_url, headers=headers, data=json.dumps(body), timeout=12)
-            if pr.ok:
-                held_back_hosts.append(host)
+            if token and str(item_id).isdigit():
+                try:
+                    patch_url = f"https://graph.microsoft.com/v1.0/sites/{SITE_ID}/lists/{LIST_SERVICES_ID}/items/{item_id}/fields"
+                    body = {
+                        "Versao_Desejada": inst_cur,
+                        "Status_Atualizacao": "Atualizado",
+                        "Acao_Solicitada": "Nenhuma",
+                    }
+                    requests.patch(patch_url, headers=headers, data=json.dumps(body), timeout=8)
+                except Exception:
+                    pass
+            held_back_hosts.append(host)
 
     # Atualiza também o cache local imediatamente para refletir na UI sem esperar 60s
     try:

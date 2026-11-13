@@ -87,7 +87,7 @@ def execute_predefined_action(
 
     # 4. Disparo do Canary Deployment (Grupo Piloto de 5 Máquinas -> Auto-Promoção após Homologação)
     elif action_type == "canary_deploy":
-        target_ver = (target_version or "1.0.20.0").strip().lstrip("vV")
+        target_ver = (target_version or "1.0.21.2").strip().lstrip("vV")
         srv_target = service_name or "DNA.MonitorServiceSVC"
         from remote_queue import trigger_canary_rollout_sharepoint
         res = trigger_canary_rollout_sharepoint(
@@ -99,7 +99,7 @@ def execute_predefined_action(
         # Inicia também o monitor background que acompanha as 5 piloto e promove para as demais automaticamente quando homologarem
         import re
         safe_srv = srv_target if re.match(r"^[A-Za-z0-9._-]+$", srv_target) else "DNA.MonitorServiceSVC"
-        safe_ver = target_ver if re.match(r"^[0-9.]+$", target_ver) else "1.0.20.0"
+        safe_ver = target_ver if re.match(r"^[0-9.]+$", target_ver) else "1.0.21.2"
         script_path = PARENT_DIR / "Deploy_Canary_Pipeline.ps1"
         if script_path.exists():
             subprocess.Popen(
@@ -125,7 +125,7 @@ def execute_predefined_action(
 
     # 5. Promoção para Toda a Frota
     elif action_type == "promote_fleet":
-        target_ver = (target_version or "1.0.20.0").strip().lstrip("vV")
+        target_ver = (target_version or "1.0.21.2").strip().lstrip("vV")
         srv_target = service_name or "DNA.MonitorServiceSVC"
         from remote_queue import trigger_canary_rollout_sharepoint
         res = trigger_canary_rollout_sharepoint(
@@ -168,7 +168,7 @@ def find_service_item_id(token: str, host: str, service_name: str) -> Optional[s
     return None
 
 
-def get_fleet_update_evolution(target_version: str = "1.0.21.3") -> Dict[str, Any]:
+def get_fleet_update_evolution(target_version: str = "1.0.21.2") -> Dict[str, Any]:
     """
     Computa a esteira de evolução e adoção de atualizações de versão do agente DNA.MonitorServiceSVC
     em tempo real a partir do cache da frota em memória (0ms, zero chamadas externas).
@@ -554,7 +554,7 @@ def get_host_service_action_status(host: str, service_name: str, target_version:
     last_up_str = str(target_srv.get("ultima_atualizacao", "")).strip()
 
     # Dados do agente local C#
-    agent_installed = str(agent_srv.get("versao_instalada", "1.0.20.0")).strip() if agent_srv else "1.0.20.0"
+    agent_installed = str(agent_srv.get("versao_instalada", "1.0.21.2")).strip() if agent_srv else "1.0.21.2"
     agent_up_str = str(agent_srv.get("ultima_atualizacao", "")).strip() if agent_srv else last_up_str
     
     # Cálculo de idade da telemetria
