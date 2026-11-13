@@ -1111,9 +1111,37 @@ function renderFleetUpdateProgressData(data) {
     const msgText = document.getElementById("upProgMessageText");
     if (msgText) msgText.innerHTML = data.message;
 
+    // Estilo dinâmico da caixa de mensagem
+    const msgBox = document.getElementById("upProgMessageBox");
+    if (msgBox) {
+        if (data.badge_color === "yellow" || data.contingency_recommended) {
+            msgBox.style.background = "rgba(245, 158, 11, 0.12)";
+            msgBox.style.border = "1px solid rgba(245, 158, 11, 0.4)";
+        } else if (data.badge_color === "red") {
+            msgBox.style.background = "rgba(239, 68, 68, 0.12)";
+            msgBox.style.border = "1px solid rgba(239, 68, 68, 0.4)";
+        } else if (data.badge_color === "green") {
+            msgBox.style.background = "rgba(16, 185, 129, 0.12)";
+            msgBox.style.border = "1px solid rgba(16, 185, 129, 0.4)";
+        } else {
+            msgBox.style.background = "rgba(2, 132, 199, 0.1)";
+            msgBox.style.border = "1px solid rgba(2, 132, 199, 0.3)";
+        }
+    }
+
     // Comando manual
     const cmdInput = document.getElementById("upProgManualCmdInput");
     if (cmdInput && data.manual_command) cmdInput.value = data.manual_command;
+
+    // Se a contingência for recomendada (agente sem heartbeat > 15 min), expande automaticamente o accordion
+    if (data.contingency_recommended || data.is_stale_heartbeat) {
+        const box = document.getElementById("upProgManualBox");
+        const icon = document.getElementById("upProgManualToggleIcon");
+        if (box && box.style.display !== "block") {
+            box.style.display = "block";
+            if (icon) icon.innerText = "▲";
+        }
+    }
 
     // Caixa de Ação Direta pelo Dashboard
     const directBox = document.getElementById("upProgDirectActionBox");
@@ -1142,6 +1170,11 @@ function renderFleetUpdateProgressData(data) {
             borderStyle = 'border-left: 3px solid #38bdf8;';
             bgStyle = 'background: rgba(56, 189, 248, 0.12); box-shadow: 0 0 10px rgba(56, 189, 248, 0.15);';
             titleColor = '#fff';
+        } else if (s.status === "warning") {
+            iconHtml = '<span style="color: #f59e0b; font-size: 13px;">⚠️</span>';
+            borderStyle = 'border-left: 3px solid #f59e0b;';
+            bgStyle = 'background: rgba(245, 158, 11, 0.12); box-shadow: 0 0 10px rgba(245, 158, 11, 0.2);';
+            titleColor = '#fbbf24';
         } else if (s.status === "failed") {
             iconHtml = '<span style="color: #ef4444; font-size: 13px;">❌</span>';
             borderStyle = 'border-left: 3px solid #ef4444;';

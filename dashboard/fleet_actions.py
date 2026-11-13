@@ -591,11 +591,48 @@ def get_host_service_action_status(host: str, service_name: str, target_version:
             }
         ]
     elif is_in_progress:
-        is_executing = status_atualizacao.lower() == "em progresso"
-        current_step_num = 3 if is_executing else 2
-        status_badge = f"Atualizando para v{desired_ver}"
-        badge_color = "blue"
-        user_message = f"⏳ Ordem registrada e assinada pelo Dashboard para atualizar {service_name} de v{installed_ver} para v{desired_ver}. O Agente local no host [{host}] está executando a esteira em segundo plano (último contato: {telemetria_label})."
+        is_stale_heartbeat = age_seconds > 900  # Mais de 15 minutos sem telemetria do agente local
+        is_executing = (status_atualizacao.lower() == "em progresso") and not is_stale_heartbeat
+
+        if is_stale_heartbeat:
+            current_step_num = 2
+            status_badge = f"Aguardando Heartbeat ({telemetria_label})"
+            badge_color = "yellow"
+            user_message = (
+                f"⚠️ <strong>Atenção:</strong> O Agente local no host [{host}] não envia telemetria {telemetria_label}. "
+                f"A ordem de atualização para v{desired_ver} está devidamente assinada e registrada na fila, "
+                f"porém o agente ainda não a executou por falta de contato recente (possível bloqueio por Throttling Azure, serviço parado ou reboot). "
+                f"<strong>Recomendação:</strong> Se a esteira não avançar, copie e execute o comando do <em>Plano de Contingência</em> abaixo via Tanium ou GV para aplicação imediata."
+            )
+            step2_status = "warning"
+            step2_hint = f"⚠️ Sem telemetria {telemetria_label}"
+            step2_desc = f"Ordem aguardando contato do agente local no host (último contato: {telemetria_label})."
+            step3_status = "pending"
+            step3_hint = "Aguardando polling do agente"
+            step3_desc = f"Download e aplicação de {desired_ver} iniciarão assim que o agente se comunicar."
+        elif is_executing:
+            current_step_num = 3
+            status_badge = f"Atualizando para v{desired_ver}"
+            badge_color = "blue"
+            user_message = f"⏳ Ordem registrada e assinada pelo Dashboard para atualizar {service_name} de v{installed_ver} para v{desired_ver}. O Agente local no host [{host}] está executando a esteira em segundo plano (último contato: {telemetria_label})."
+            step2_status = "completed"
+            step2_hint = f"Reconhecido pelo agente ({telemetria_label})"
+            step2_desc = f"Agente local (DNA.MonitorServiceSVC v{agent_installed}) processa a fila de ordens."
+            step3_status = "in_progress"
+            step3_hint = "Download direto via repositório homologado"
+            step3_desc = f"Baixando binários {desired_ver} e dependências oficiais no host."
+        else:
+            current_step_num = 2
+            status_badge = f"Atualizando para v{desired_ver}"
+            badge_color = "blue"
+            user_message = f"⏳ Ordem registrada e assinada pelo Dashboard para atualizar {service_name} para v{desired_ver}. Aguardando polling do agente local no host [{host}] (último contato: {telemetria_label})."
+            step2_status = "in_progress"
+            step2_hint = f"Aguardando polling ({telemetria_label})"
+            step2_desc = f"Agente local (DNA.MonitorServiceSVC v{agent_installed}) processa a fila de ordens."
+            step3_status = "pending"
+            step3_hint = "Download direto via repositório homologado"
+            step3_desc = f"Baixando binários {desired_ver} e dependências oficiais no host."
+
         steps = [
             {
                 "step": 1,
@@ -607,16 +644,16 @@ def get_host_service_action_status(host: str, service_name: str, target_version:
             {
                 "step": 2,
                 "title": "Reconhecimento pelo Agente C# (Fila Direta)",
-                "description": f"Agente local (DNA.MonitorServiceSVC v{agent_installed}) processa a fila de ordens.",
-                "status": "completed" if is_executing else "in_progress",
-                "time_hint": f"Reconhecido pelo agente ({telemetria_label})" if is_executing else f"Aguardando polling ({telemetria_label})"
+                "description": step2_desc,
+                "status": step2_status,
+                "time_hint": step2_hint
             },
             {
                 "step": 3,
                 "title": "Download do Pacote & Dependências",
-                "description": f"Baixando binários {desired_ver} e dependências oficiais no host.",
-                "status": "in_progress" if is_executing else "pending",
-                "time_hint": "Download direto via repositório homologado"
+                "description": step3_desc,
+                "status": step3_status,
+                "time_hint": step3_hint
             },
             {
                 "step": 4,
@@ -742,6 +779,9 @@ def get_host_service_action_status(host: str, service_name: str, target_version:
         "current_step": current_step_num,
         "status_badge": status_badge,
         "badge_color": badge_color,
+        "is_stale_heartbeat": (is_in_progress and age_seconds > 900),
+        "contingency_recommended": (is_in_progress and age_seconds > 900),
+        "age_seconds": age_seconds,
         "message": user_message,
         "steps": steps,
         "manual_command": manual_ps

@@ -16975,11 +16975,11 @@
   
 
   <!-- Modal: Acompanhamento de Atualização em Tempo Real (Host CS) -->
-  <div class="modal-overlay" id="fleetUpdateProgressModal" style="display: none; align-items: center; justify-content: center; z-index: 10002;">
-    <div class="modal" style="max-width: 680px; width: 94%; border: 1px solid #0284c7; background: #0b1329; border-radius: 10px; box-shadow: 0 25px 40px -10px rgba(0, 0, 0, 0.85); padding: 22px;">
+  <div class="modal-overlay" id="fleetUpdateProgressModal" style="display: none; align-items: center; justify-content: center; z-index: 10002; padding: 16px; overflow-y: auto;">
+    <div class="modal" style="max-width: 680px; width: 95%; max-height: 88vh; display: flex; flex-direction: column; border: 1px solid #0284c7; background: #0b1329; border-radius: 10px; box-shadow: 0 25px 40px -10px rgba(0, 0, 0, 0.85); padding: 18px 22px; overflow: hidden; box-sizing: border-box;">
       
-      <!-- Header -->
-      <div class="modal-header" style="border-bottom: 1px solid #1e293b; padding-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+      <!-- Header (Fixed at top) -->
+      <div class="modal-header" style="flex-shrink: 0; border-bottom: 1px solid #1e293b; padding-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
         <div style="display: flex; align-items: center; gap: 10px;">
           <span style="font-size: 24px;">🚀</span>
           <div>
@@ -16993,85 +16993,90 @@
         <button type="button" class="btn-secondary" style="padding: 4px 10px; font-weight: 700;" onclick="closeFleetUpdateProgressModal()">✕</button>
       </div>
 
-      <!-- Host & Target Service Pill Bar -->
-      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 16px 0 12px 0;">
-        <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid #1e293b; border-radius: 6px; padding: 8px 10px;">
-          <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 700;">Praça / CS</div>
-          <div id="upProgPraca" style="font-size: 13px; font-weight: 700; color: #fff; margin-top: 2px;">Anápolis CS 2</div>
-        </div>
-        <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid #1e293b; border-radius: 6px; padding: 8px 10px;">
-          <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 700;">Servidor Host</div>
-          <div id="upProgHost" style="font-size: 12px; font-family: monospace; font-weight: 700; color: #38bdf8; margin-top: 2px;">BRGO-ANA-DT02</div>
-        </div>
-        <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid #1e293b; border-radius: 6px; padding: 8px 10px;">
-          <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 700;">Serviço Alvo</div>
-          <div id="upProgService" style="font-size: 12px; font-weight: 700; color: #c084fc; margin-top: 2px;">Atria Capture</div>
-        </div>
-        <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid #1e293b; border-radius: 6px; padding: 8px 10px;">
-          <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 700;">Versão: De ➔ Para</div>
-          <div style="font-size: 12px; font-family: monospace; font-weight: 700; margin-top: 2px;">
-            <span id="upProgInstalled" style="color: #facc15;">v1.4.4.4</span> ➔ <span id="upProgDesired" style="color: #34d399;">v2.0.0.2</span>
+      <!-- Scrollable Body with Sleek Scrollbar -->
+      <div id="upProgScrollableBody" style="flex: 1; overflow-y: auto; overflow-x: hidden; padding-right: 6px; margin: 12px 0; display: flex; flex-direction: column; gap: 12px;">
+
+        <!-- Host & Target Service Pill Bar -->
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;">
+          <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid #1e293b; border-radius: 6px; padding: 8px 10px;">
+            <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 700;">Praça / CS</div>
+            <div id="upProgPraca" style="font-size: 13px; font-weight: 700; color: #fff; margin-top: 2px;">Anápolis CS 2</div>
+          </div>
+          <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid #1e293b; border-radius: 6px; padding: 8px 10px;">
+            <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 700;">Servidor Host</div>
+            <div id="upProgHost" style="font-size: 12px; font-family: monospace; font-weight: 700; color: #38bdf8; margin-top: 2px;">BRGO-ANA-DT02</div>
+          </div>
+          <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid #1e293b; border-radius: 6px; padding: 8px 10px;">
+            <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 700;">Serviço Alvo</div>
+            <div id="upProgService" style="font-size: 12px; font-weight: 700; color: #c084fc; margin-top: 2px;">Atria Capture</div>
+          </div>
+          <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid #1e293b; border-radius: 6px; padding: 8px 10px;">
+            <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 700;">Versão: De ➔ Para</div>
+            <div style="font-size: 12px; font-family: monospace; font-weight: 700; margin-top: 2px;">
+              <span id="upProgInstalled" style="color: #facc15;">v1.4.4.4</span> ➔ <span id="upProgDesired" style="color: #34d399;">v2.0.0.2</span>
+            </div>
           </div>
         </div>
-      </div>
 
-      <!-- Live Stepper Flow -->
-      <div style="background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 8px; padding: 14px; margin-bottom: 14px;">
-        <div style="font-size: 11px; font-weight: 700; color: #38bdf8; text-transform: uppercase; margin-bottom: 12px; display: flex; justify-content: space-between;">
-          <span><span>⚡</span> Esteira de Execução &amp; Homologação</span>
-          <span id="upProgTimer" style="font-family: monospace; color: #94a3b8; font-weight: normal;">Tempo decorrido: 00:00</span>
-        </div>
-        <div id="upProgStepperContainer" style="display: flex; flex-direction: column; gap: 10px;">
-          <!-- Steps injected dynamically -->
-        </div>
-      </div>
-
-      <!-- Live Context / Explanation Box -->
-      <div id="upProgMessageBox" style="background: rgba(2, 132, 199, 0.1); border: 1px solid rgba(2, 132, 199, 0.3); border-radius: 6px; padding: 10px 12px; margin-bottom: 14px; display: flex; align-items: flex-start; gap: 10px;">
-        <i class="fas fa-info-circle" style="color: #38bdf8; font-size: 16px; margin-top: 2px;"></i>
-        <div style="flex: 1;">
-          <div id="upProgMessageTitle" style="font-size: 12px; font-weight: 700; color: #fff;">Status da Atualização</div>
-          <div id="upProgMessageText" style="font-size: 11.5px; color: #cbd5e1; margin-top: 2px; line-height: 1.4;">
-            Carregando telemetria...
+        <!-- Live Stepper Flow -->
+        <div style="background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 8px; padding: 12px;">
+          <div style="font-size: 11px; font-weight: 700; color: #38bdf8; text-transform: uppercase; margin-bottom: 10px; display: flex; justify-content: space-between;">
+            <span><span>⚡</span> Esteira de Execução &amp; Homologação</span>
+            <span id="upProgTimer" style="font-family: monospace; color: #94a3b8; font-weight: normal;">Tempo decorrido: 00:00</span>
+          </div>
+          <div id="upProgStepperContainer" style="display: flex; flex-direction: column; gap: 8px;">
+            <!-- Steps injected dynamically -->
           </div>
         </div>
-      </div>
 
-      <!-- Direct Dashboard Execution Action Box -->
-      <div id="upProgDirectActionBox" style="background: linear-gradient(135deg, rgba(2, 132, 199, 0.25), rgba(15, 23, 42, 0.6)); border: 1px solid #0284c7; border-radius: 8px; padding: 12px 14px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 15px rgba(2, 132, 199, 0.15);">
-        <div>
-          <div style="font-size: 12px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 6px;">
-            <i class="fas fa-bolt" style="color: #38bdf8;"></i> Execução Direta pelo Dashboard
-            <span class="badge badge-green" style="font-size: 10px;">Zero Tanium / Zero GV</span>
-          </div>
-          <div style="font-size: 11px; color: #cbd5e1; margin-top: 3px;">
-            Dispare a atualização agora sem precisar do Tanium, GV ou logar na máquina. O comando é assinado digitalmente e executado pelo Agente local.
+        <!-- Live Context / Explanation Box -->
+        <div id="upProgMessageBox" style="background: rgba(2, 132, 199, 0.1); border: 1px solid rgba(2, 132, 199, 0.3); border-radius: 6px; padding: 10px 12px; display: flex; align-items: flex-start; gap: 10px;">
+          <i class="fas fa-info-circle" style="color: #38bdf8; font-size: 16px; margin-top: 2px;"></i>
+          <div style="flex: 1;">
+            <div id="upProgMessageTitle" style="font-size: 12px; font-weight: 700; color: #fff;">Status da Atualização</div>
+            <div id="upProgMessageText" style="font-size: 11.5px; color: #cbd5e1; margin-top: 2px; line-height: 1.4;">
+              Carregando telemetria...
+            </div>
           </div>
         </div>
-        <button type="button" id="btnDirectExecuteModal" class="btn-primary" style="padding: 8px 16px; font-size: 12px; background: #0284c7; border: 1px solid #38bdf8; font-weight: 700; white-space: nowrap; cursor: pointer; display: flex; align-items: center; gap: 6px;" onclick="executeDirectUpdateFromDashboard()">
-          <i class="fas fa-play" id="btnDirectExecuteIcon"></i> Executar Agora pelo Dashboard
-        </button>
-      </div>
 
-      <!-- Contingency Box (Accordion) -->
-      <div style="margin-bottom: 16px; border: 1px solid #1e293b; border-radius: 6px; background: rgba(15, 23, 42, 0.5); padding: 8px 12px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;" onclick="toggleUpProgManualBox()">
-          <span style="font-size: 11px; color: #94a3b8; font-weight: 700;">
-            <i class="fas fa-terminal" style="color: #38bdf8;"></i> Plano de Contingência Manual (GV / Tanium)
-          </span>
-          <span id="upProgManualToggleIcon" style="font-size: 10px; color: #94a3b8;">▼</span>
+        <!-- Direct Dashboard Execution Action Box -->
+        <div id="upProgDirectActionBox" style="background: linear-gradient(135deg, rgba(2, 132, 199, 0.25), rgba(15, 23, 42, 0.6)); border: 1px solid #0284c7; border-radius: 8px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 15px rgba(2, 132, 199, 0.15);">
+          <div>
+            <div style="font-size: 12px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 6px;">
+              <i class="fas fa-bolt" style="color: #38bdf8;"></i> Execução Direta pelo Dashboard
+              <span class="badge badge-green" style="font-size: 10px;">Zero Tanium / Zero GV</span>
+            </div>
+            <div style="font-size: 11px; color: #cbd5e1; margin-top: 2px;">
+              Dispare a atualização agora sem precisar do Tanium, GV ou logar na máquina. O comando é assinado digitalmente e executado pelo Agente local.
+            </div>
+          </div>
+          <button type="button" id="btnDirectExecuteModal" class="btn-primary" style="padding: 7px 14px; font-size: 12px; background: #0284c7; border: 1px solid #38bdf8; font-weight: 700; white-space: nowrap; cursor: pointer; display: flex; align-items: center; gap: 6px;" onclick="executeDirectUpdateFromDashboard()">
+            <i class="fas fa-play" id="btnDirectExecuteIcon"></i> Executar Novamente
+          </button>
         </div>
-        <div id="upProgManualBox" style="display: none; margin-top: 8px; border-top: 1px solid #1e293b; padding-top: 8px;">
-          <div style="font-size: 10.5px; color: #94a3b8; margin-bottom: 6px;">Caso o agente do host demore a responder ou esteja sem heartbeat, execute via Tanium / GV:</div>
-          <div style="display: flex; gap: 6px;">
-            <input type="text" id="upProgManualCmdInput" readonly style="flex: 1; font-family: monospace; font-size: 10px; background: #030712; color: #38bdf8; border: 1px solid #1e293b; padding: 6px 8px; border-radius: 4px;" value="">
-            <button type="button" class="btn-secondary" style="padding: 4px 10px; font-size: 11px; white-space: nowrap;" onclick="copyUpProgManualCmd()">📋 Copiar</button>
+
+        <!-- Contingency Box (Accordion) -->
+        <div style="border: 1px solid #1e293b; border-radius: 6px; background: rgba(15, 23, 42, 0.5); padding: 8px 12px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;" onclick="toggleUpProgManualBox()">
+            <span style="font-size: 11px; color: #94a3b8; font-weight: 700;">
+              <i class="fas fa-terminal" style="color: #38bdf8;"></i> Plano de Contingência Manual (GV / Tanium)
+            </span>
+            <span id="upProgManualToggleIcon" style="font-size: 10px; color: #94a3b8;">▼</span>
+          </div>
+          <div id="upProgManualBox" style="display: none; margin-top: 8px; border-top: 1px solid #1e293b; padding-top: 8px;">
+            <div style="font-size: 10.5px; color: #94a3b8; margin-bottom: 6px;">Caso o agente do host demore a responder ou esteja sem heartbeat, execute via Tanium / GV:</div>
+            <div style="display: flex; gap: 6px;">
+              <input type="text" id="upProgManualCmdInput" readonly style="flex: 1; font-family: monospace; font-size: 10px; background: #030712; color: #38bdf8; border: 1px solid #1e293b; padding: 6px 8px; border-radius: 4px;" value="">
+              <button type="button" class="btn-secondary" style="padding: 4px 10px; font-size: 11px; white-space: nowrap;" onclick="copyUpProgManualCmd()">📋 Copiar</button>
+            </div>
           </div>
         </div>
+
       </div>
 
-      <!-- Footer Buttons -->
-      <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #1e293b; padding-top: 12px;">
+      <!-- Footer Buttons (Fixed at bottom) -->
+      <div style="flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #1e293b; padding-top: 12px;">
         <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; color: #94a3b8; cursor: pointer;">
           <input type="checkbox" id="upProgAutoRefresh" checked style="accent-color: #0284c7;">
           Auto-atualizar a cada 4 segundos

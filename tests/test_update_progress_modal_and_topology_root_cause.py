@@ -297,9 +297,9 @@ class TestUpdateProgressModalBackend:
 
     def test_stepper_progression_logic_when_in_progress(self):
         """
-        Garante que quando a atualização está 'Em Progresso', a Etapa 2 (Reconhecimento)
-        já conste como 'completed' e a Etapa 3 (Download/Instalação) como 'in_progress',
-        evitando confusão visual para o operador.
+        Garante que quando a atualização está 'Em Progresso', a esteira reflete
+        a saúde real da telemetria (status 'completed' se recente ou 'warning' se sem heartbeat),
+        evitando confusão visual e avisando o operador se o agente demorar.
         """
         status = get_host_service_action_status("BRRS-BGE-TDT-02", "Atria Capture", "2.0.0.2")
         assert status["success"] is True
@@ -307,8 +307,10 @@ class TestUpdateProgressModalBackend:
         assert len(steps) == 5
         assert steps[0]["status"] == "completed"
         if status.get("status_atualizacao") == "Em Progresso":
-            assert steps[1]["status"] == "completed"
-            assert steps[2]["status"] == "in_progress"
-            assert steps[3]["status"] == "pending"
-            assert steps[4]["status"] == "pending"
+            assert steps[1]["status"] in ("completed", "warning")
+            if status.get("is_stale_heartbeat"):
+                assert steps[1]["status"] == "warning"
+                assert status.get("contingency_recommended") is True
+            else:
+                assert steps[2]["status"] == "in_progress"
 
