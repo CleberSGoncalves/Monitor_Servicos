@@ -35,16 +35,55 @@ DEFAULT_DESIRED_VERSIONS: Dict[str, str] = {
 }
 
 
+def _parse_ver_tuple(v: str) -> tuple:
+    """Converte string de versão (ex: '1.0.21.2') em tupla numérica para comparação semântica segura."""
+    if not v:
+        return (0,)
+    clean = str(v).strip().lstrip("vV").split("+")[0].split("-")[0]
+    parts = []
+    for p in clean.split("."):
+        if p.isdigit():
+            parts.append(int(p))
+        else:
+            return (0,)
+    return tuple(parts) if parts else (0,)
+
+
+def _is_version_up_to_date(installed: str, target: str, service_name: str = "") -> bool:
+    """Retorna True se a versão instalada for igual ou superior à versão alvo homologada."""
+    v_inst = str(installed or "").strip().lstrip("vV")
+    v_targ = str(target or "").strip().lstrip("vV")
+    if not v_inst or v_inst in ("Desconhecido", "Não Instalado", "0.0.0.0", "N/A"):
+        return False
+    if v_inst == v_targ:
+        return True
+    if "monitorservice" in str(service_name).lower() and v_inst.startswith("1.0.21.") and v_targ.startswith("1.0.21."):
+        return True
+    t_inst = _parse_ver_tuple(v_inst)
+    t_targ = _parse_ver_tuple(v_targ)
+    if len(t_inst) >= 3 and len(t_targ) >= 3 and t_inst >= t_targ:
+        return True
+    return False
+
+
 def get_desired_versions() -> Dict[str, str]:
-    """Retorna o mapeamento de serviço -> versão homologada desejada."""
+    """Retorna o mapeamento de serviço -> versão homologada desejada, auto-promovendo versões legadas em disco."""
     if DESIRED_VERSIONS_FILE.exists():
         try:
             with open(DESIRED_VERSIONS_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 if isinstance(data, dict):
-                    # Garante que chaves padrão estejam presentes
                     merged = DEFAULT_DESIRED_VERSIONS.copy()
-                    merged.update(data)
+                    needs_resave = False
+                    for k, disk_val in data.items():
+                        default_val = DEFAULT_DESIRED_VERSIONS.get(k)
+                        if default_val and _parse_ver_tuple(default_val) > _parse_ver_tuple(str(disk_val)):
+                            merged[k] = default_val
+                            needs_resave = True
+                        else:
+                            merged[k] = disk_val
+                    if needs_resave:
+                        save_desired_versions(merged)
                     return merged
         except Exception as ex:
             logger.warning(f"Erro ao ler {DESIRED_VERSIONS_FILE}: {ex}. Usando defaults.")
@@ -100,8 +139,11 @@ def get_service_fleet_evolution(service_name: str, target_version: Optional[str]
     from sharepoint_sync import get_cached_data
 
     desired_map = get_desired_versions()
+    default_for_svc = desired_map.get(service_name, "1.0.21.2" if "monitorservice" in service_name.lower() else "latest")
     if not target_version:
-        target_version = desired_map.get(service_name, "latest")
+        target_version = default_for_svc
+    elif "monitorservice" in service_name.lower() and _parse_ver_tuple(str(target_version)) < _parse_ver_tuple(default_for_svc):
+        target_version = default_for_svc
 
     clean_target = str(target_version).strip().lstrip("vV")
     data = get_cached_data()
@@ -142,11 +184,10 @@ def get_service_fleet_evolution(service_name: str, target_version: Optional[str]
 
         versions_breakdown[v_inst] = versions_breakdown.get(v_inst, 0) + 1
 
-        is_updated = (v_inst == clean_target) or (
-            "monitorservice" in s_lower and v_inst.startswith("1.0.21.") and clean_target.startswith("1.0.21.")
-        )
-        effective_desired = v_inst if is_updated else clean_target
+        is_updated = _is_version_up_to_date(v_inst, clean_target, service_name)
+        effective_desired = clean_target
         if is_updated:
+            act = "Nenhuma"
             category = "updated"
             updated_count += 1
             if is_today:
@@ -283,13 +324,10 @@ def enrich_services_with_central_governance(services: List[Dict[str, Any]]) -> L
         if target_ver:
             s["versao_desejada"] = target_ver
             v_inst = str(s.get("versao_instalada", "")).strip().lstrip("vV")
-            is_match = (v_inst == target_ver) or (
-                "monitorservice" in s_name.lower() and v_inst.startswith("1.0.21.") and target_ver.startswith("1.0.21.")
-            )
+            is_match = _is_version_up_to_date(v_inst, target_ver, s_name)
             if is_match:
                 s["status_atualizacao"] = "Atualizado"
-                if s.get("acao_solicitada") == "Atualizar":
-                    s["acao_solicitada"] = "Nenhuma"
+                s["acao_solicitada"] = "Nenhuma"
             elif v_inst in ("Não Instalado", "Desconhecido", "0.0.0.0", ""):
                 s["status_atualizacao"] = "Não Instalado"
             elif s.get("acao_solicitada") == "Atualizar" or str(s.get("status_atualizacao", "")).lower() in ("em progresso", "atualizando"):

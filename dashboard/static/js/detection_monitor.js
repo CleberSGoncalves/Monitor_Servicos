@@ -589,7 +589,7 @@ async function executeDetectionAction(actionType, hostname) {
 // SISTEMA DE AUTO-HEALING INTELIGENTE DA FROTA
 // ==============================================================================
 async function triggerFleetAutoHealing() {
-    if (!confirm("⚡ Deseja executar o Auto-Healing em lote na frota?\n\nO sistema identificará agentes desatualizados (< 1.0.16.0) e nós em delay/parados, despachando a atualização e reciclagem de serviços essenciais via Microsoft Graph.")) {
+    if (!confirm("⚡ Deseja executar o Auto-Healing em lote na frota?\n\nO sistema identificará agentes desatualizados (< 1.0.21.2) e nós em delay/parados, despachando a atualização e reciclagem de serviços essenciais via Google Cloud.")) {
         return;
     }
     const btn = document.getElementById("btnAutoHealingFleet");
@@ -610,7 +610,7 @@ async function triggerFleetAutoHealing() {
         });
         const res = await resp.json();
         if (resp.ok && res.status === "success") {
-            alert(`✅ Auto-Healing executado com sucesso!\n\n• Hosts auditados: ${res.audit.total_hosts}\n• Agentes atualizados (v1.0.16.0): ${res.audit.hosts_updated_v18}\n• Auto-updates despachados agora: ${res.executed_updates_count}\n• Ações em lote aplicadas: ${res.actions_dispatched.length}`);
+            alert(`✅ Auto-Healing executado com sucesso!\n\n• Hosts auditados: ${res.audit.total_hosts}\n• Agentes atualizados (v1.0.21.2): ${res.audit.hosts_updated_v18}\n• Auto-updates despachados agora: ${res.executed_updates_count}\n• Ações em lote aplicadas: ${res.actions_dispatched.length}`);
             await loadDetectionFleetData();
         } else {
             alert(`⚠️ Resposta do Auto-Healing: ${res.detail || res.message || "Execução concluída com avisos."}`);
@@ -1194,7 +1194,7 @@ function renderSpotAuditCards(stats = {}, hostTelemetry = null, t = {}, hostname
             card4Badge.style.background = "rgba(168, 85, 247, 0.15)";
             card4Badge.style.color = "#d8b4fe";
             card4Badge.style.border = "1px solid rgba(168, 85, 247, 0.35)";
-            card4Badge.textContent = `Agente v${ag.version || "1.0.20.0"} (${ag.cpu || '<50%'} CPU)`;
+            card4Badge.textContent = `Agente v${ag.version || "1.0.21.2"} (${ag.cpu || '<50%'} CPU)`;
         }
 
         // Banner Informativo
@@ -2094,7 +2094,7 @@ function renderFastMatchingFleetTable(filterStatus = currentFmFleetFilter, searc
         const hostUptime = (s.uptime && s.uptime !== "N/A") ? s.uptime : (t.cs_host_telemetry?.agent?.uptime || "");
         const hostRam = (s.ram_uso && s.ram_uso !== "N/A") ? s.ram_uso : (t.cs_host_telemetry?.agent?.ram || "");
         const hostDisk = (s.disco_d_livre && s.disco_d_livre !== "N/A") ? s.disco_d_livre : (t.cs_host_telemetry?.agent?.disk_d_free || "");
-        const hostAgentVer = s.agent_comm?.agent_version || t.cs_host_telemetry?.agent?.version || "1.0.20.0";
+        const hostAgentVer = s.agent_comm?.agent_version || t.cs_host_telemetry?.agent?.version || "1.0.21.2";
 
         const procColor = item.procMs < 1500 ? "#86efac" : (item.procMs < 3000 ? "#fde047" : "#fca5a5");
         let delayedBadge = `<span style="color: #86efac; font-weight: 700;">🟢 0 atrasos</span>`;

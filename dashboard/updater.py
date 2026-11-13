@@ -83,7 +83,7 @@ def get_local_version_info() -> Dict[str, Any]:
 
     return {
         "version": DEFAULT_VERSION,
-        "agent_version": "1.0.16.0",
+        "agent_version": "1.0.21.2",
         "commit_sha": git_sha or "local",
         "updated_at": datetime.now().isoformat()
     }
@@ -91,7 +91,7 @@ def get_local_version_info() -> Dict[str, Any]:
 
 def save_local_version_info(commit_sha: str, version: Optional[str] = None):
     disk_ver = DEFAULT_VERSION
-    agent_ver = "1.0.16.0"
+    agent_ver = "1.0.21.2"
     if VERSION_FILE.exists():
         try:
             existing = json.loads(VERSION_FILE.read_text(encoding="utf-8"))
@@ -223,10 +223,12 @@ def apply_update() -> Dict[str, Any]:
         # Itens e arquivos protegidos que jamais podem ser sobrescritos
         PROTECTED_NAMES = {
             ".env",
-            "data",
             "fleet.db",
             "service.pid",
             "dashboard.log",
+            "watchdog.log",
+            "ldap_config.json",
+            "auto_healing_history.json",
             "logs",
             ".git",
             "github_token.txt"

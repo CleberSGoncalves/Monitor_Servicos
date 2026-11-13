@@ -385,12 +385,15 @@ def force_execute_service_update(host: str, service_name: str, target_version: O
     atualiza o status de governança local e dispara o PATCH no SharePoint.
     """
     import uuid
-    from version_governance import get_desired_versions
+    from version_governance import get_desired_versions, _parse_ver_tuple
     from remote_queue import enqueue_command_on_sharepoint
     from sharepoint_sync import get_cached_data, sanitize_and_recalculate_cache
 
     desired_map = get_desired_versions()
-    target_v_clean = str(target_version or desired_map.get(service_name) or "2.0.0.2").strip().lstrip("vV")
+    gov_default = desired_map.get(service_name) or ("1.0.21.2" if "monitorservice" in service_name.lower() else "2.0.0.2")
+    target_v_clean = str(target_version or gov_default).strip().lstrip("vV")
+    if "monitorservice" in service_name.lower() and _parse_ver_tuple(target_v_clean) < _parse_ver_tuple(gov_default):
+        target_v_clean = gov_default
 
     # 1. Monta o script de execução direta (raw PowerShell para execução no agente)
     raw_script = build_service_raw_script(service_name, target_v_clean)
@@ -500,9 +503,10 @@ def get_host_service_action_status(host: str, service_name: str, target_version:
     permitindo acompanhamento granular via modal (SharePoint ↔ Agente C# ↔ Serviço).
     """
     from datetime import datetime, timezone
-    from sharepoint_sync import get_cached_data, get_global_cooldown_remain
-    from version_governance import get_desired_versions
+    from sharepoint_sync import get_cached_data, get_global_cooldown_remain, sanitize_and_recalculate_cache
+    from version_governance import get_desired_versions, _parse_ver_tuple, _is_version_up_to_date
 
+    sanitize_and_recalculate_cache()
     c_data = get_cached_data()
     services = c_data.get("services", [])
     desired_versions_map = get_desired_versions()
@@ -543,10 +547,13 @@ def get_host_service_action_status(host: str, service_name: str, target_version:
     installed_ver = str(target_srv.get("versao_instalada", "0.0.0.0")).strip().lstrip("vV")
 
     # A versão desejada alvo da homologação deve ser SEMPRE a versão solicitada pelo operador ou cadastrada na governança central
+    gov_default = str(desired_versions_map.get(service_name) or ("1.0.21.2" if "monitorservice" in service_name.lower() else "2.0.0.2")).strip().lstrip("vV")
     if target_version:
         desired_ver = str(target_version).strip().lstrip("vV")
+        if "monitorservice" in service_name.lower() and _parse_ver_tuple(desired_ver) < _parse_ver_tuple(gov_default):
+            desired_ver = gov_default
     else:
-        desired_ver = str(desired_versions_map.get(service_name) or "2.0.0.2").strip().lstrip("vV")
+        desired_ver = gov_default
 
     acao_solicitada = str(target_srv.get("acao_solicitada", "Nenhuma")).strip()
     status_atualizacao = str(target_srv.get("status_atualizacao", "Atualizado")).strip()
@@ -584,9 +591,9 @@ def get_host_service_action_status(host: str, service_name: str, target_version:
         except Exception:
             telemetria_label = "Horário registrado"
 
-    is_updated = (installed_ver == desired_ver) and (installed_ver not in ("0.0.0.0", "", "N/A", "Desconhecido"))
+    is_updated = _is_version_up_to_date(installed_ver, desired_ver, service_name)
     is_failed = "erro" in status_atualizacao.lower() or "falha" in status_atualizacao.lower()
-    is_in_progress = (acao_solicitada.lower() == "atualizar") or (status_atualizacao.lower() in ("em progresso", "fila local (azure cooldown)"))
+    is_in_progress = (not is_updated) and ((acao_solicitada.lower() == "atualizar") or (status_atualizacao.lower() in ("em progresso", "fila local (azure cooldown)")))
     rem_cooldown = get_global_cooldown_remain()
 
     # Determinação dos Steps e Diagnóstico

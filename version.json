@@ -1,6 +1,6 @@
 {
-  "version": "3.9.71",
-  "agent_version": "1.0.19.0",
+  "version": "3.9.75",
+  "agent_version": "1.0.21.2",
   "commit_sha": "auto",
   "updated_at": "2026-11-04T19:30:00.000000",
   "description": "v3.9.71 - Otimização de latência da Central de Monitoração com GZipMiddleware (redução de 94.7% no tráfego de rede), correção de DOM da aba Link WAN (restauração do networkLinkTableBody e eliminação de IDs duplicados), remoção de I/O de disco bloqueante no recálculo de métricas e blindagem do parser de worklog.",

@@ -596,13 +596,23 @@ def fetch_all_items(token: str, list_id: str) -> list:
 
 
 
-def sync_fleet_data():
+def sync_fleet_data(force_sharepoint: bool = False):
 
-    """Sincroniza as duas listas do SharePoint e computa métricas consolidadas."""
+    """Sincroniza a frota prioritariamente via Google Cloud Firestore (evitando HTTP 429 no SharePoint) e computa métricas consolidadas."""
 
     global _cached_data
 
     try:
+        # Prioriza Google Cloud Firestore sempre que o cache base já estiver carregado,
+        # eliminando a paginação de 15.000 itens no SharePoint que causava HTTP 429 global no tenant.
+        if not force_sharepoint and len(_cached_data.get("services", [])) > 100:
+            try:
+                from gcp_sync import is_firestore_available
+                if is_firestore_available():
+                    sanitize_and_recalculate_cache(force_refresh_time=True, save_to_disk=True)
+                    return
+            except Exception:
+                pass
 
         token = get_graph_token()
 
@@ -1627,23 +1637,8 @@ def sync_fleet_data():
 
             _cached_data["stats"]["services_running"] = sum(1 for s in _cached_data["services"] if s.get("status_servico") == "Em Execução")
 
-
-
-        try:
-
-            # So grava em disco se houver canais e servicos validos para nunca corromper o cache persistente com listas vazias
-
-            if _cached_data.get("channels") and len(_cached_data.get("channels", [])) > 20 and _cached_data.get("services"):
-
-                with open(CACHE_FILE, "w", encoding="utf-8") as f:
-
-                    json.dump(_cached_data, f, ensure_ascii=False)
-
-        except Exception as e_save:
-
-            print(f"[SharePointSync Disk Error] {e_save}", flush=True)
-
-
+        # Sempre aplica merge do Google Cloud Firestore + Governança Central de Versões antes de persistir em disco
+        sanitize_and_recalculate_cache(force_refresh_time=True, save_to_disk=True)
 
     except Exception as e:
 
@@ -1654,6 +1649,7 @@ def sync_fleet_data():
 
 
 _last_disk_mtime = 0.0
+_last_recalc_ts = 0.0
 
 
 
@@ -1663,7 +1659,7 @@ def get_cached_data() -> dict:
 
     """Retorna os dados da frota em cache com thread safety, higienização automática e recálculo resiliente."""
 
-    global _last_disk_mtime
+    global _last_disk_mtime, _last_recalc_ts
 
     with _cache_lock:
 
@@ -1691,12 +1687,12 @@ def get_cached_data() -> dict:
 
         
 
-        # Garante que as métricas reflitam a realidade mesmo com o SharePoint em cooldown/throttling
-
+        # Garante que as métricas e heartbeats do Google Cloud Firestore reflitam a realidade a cada 15s
+        now_t = time.time()
         st = _cached_data.get("stats", {})
 
-        if not st or st.get("channels_down", 0) > 100 or st.get("hosts_online", 0) < 100:
-
+        if not st or (now_t - _last_recalc_ts) > 15.0 or st.get("channels_down", 0) > 100 or st.get("hosts_online", 0) < 100:
+            _last_recalc_ts = now_t
             sanitize_and_recalculate_cache(force_refresh_time=False)
 
 
@@ -1707,29 +1703,22 @@ def get_cached_data() -> dict:
 
 
 
-def start_background_syncer(interval_seconds: int = 300):
+def start_background_syncer(interval_seconds: int = 30):
 
-    """Inicia thread em segundo plano com intervalo inteligente de 5 min e respeito a cooldown."""
+    """Inicia thread em segundo plano sincronizando do Google Cloud Firestore a cada 30s sem gerar HTTP 429."""
 
     def worker():
 
-        time.sleep(10)
+        time.sleep(5)
 
         while True:
 
-            rem = get_global_cooldown_remain()
+            try:
+                sanitize_and_recalculate_cache(force_refresh_time=True, save_to_disk=True)
+            except Exception as ex:
+                print(f"[GCPSyncer Error] {ex}", flush=True)
 
-            if rem > 0:
-
-                print(f"[SharePointSyncer] Cooldown ativo ({int(rem)}s restantes). Aguardando liberação do Graph API...", flush=True)
-
-                time.sleep(rem + 5)
-
-                continue
-
-            sync_fleet_data()
-
-            time.sleep(interval_seconds)
+            time.sleep(min(interval_seconds, 30))
 
 
 
