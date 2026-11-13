@@ -19,7 +19,7 @@ DESIRED_VERSIONS_FILE = DATA_DIR / "desired_versions.json"
 
 # Versões oficiais padrão homologadas pela engenharia
 DEFAULT_DESIRED_VERSIONS: Dict[str, str] = {
-    "DNA.MonitorServiceSVC": "1.0.21.1",
+    "DNA.MonitorServiceSVC": "1.0.21.2",
     "FastMatchingSvc": "1.1.0.0",
     "DNA.DetectionSVC": "3.4.6040.21056",
     "DNA.ConfigMonitorSVC": "4.8.0.0",

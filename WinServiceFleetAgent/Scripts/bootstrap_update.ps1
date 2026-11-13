@@ -415,11 +415,13 @@ try {
 
 # ------------------------------------------------------------------------------
 
-$pkgFileName = "DNA.MonitorServiceSVC_v1.0.21.1.zip"
+$pkgFileName = "DNA.MonitorServiceSVC_v1.0.21.2.zip"
 
-$expectedSha = "4a392b2bfae708c25e41f9fb26ed6d39e518600589eabba9e50c8dc4af6f4ea2"
+$expectedSha = "677fd2f68b873dc1d9da183ea1d6a7d005c695530a20cb23633288a4af6f655f"
 
 $validHashes = @(
+    "677fd2f68b873dc1d9da183ea1d6a7d005c695530a20cb23633288a4af6f655f", # v1.0.21.2
+    "ef217d9984fa6b7213027badaa4a9ff04366b7566bb15b6d7ca956ced46f9b89", # v1.0.21.2-rc1
     "4a392b2bfae708c25e41f9fb26ed6d39e518600589eabba9e50c8dc4af6f4ea2", # v1.0.21.1
     "7e987a2caf77cce395feeb1d515f5e7ec24301e7826f228e9ca8b26eb0b1a785", # v1.0.21.0
     "0afb9104a3b07e14e2940fc6756c35e0e290b2ef465b42284234947b9ed5f4f5", # v1.0.20.0

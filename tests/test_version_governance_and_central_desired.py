@@ -31,7 +31,7 @@ def test_desired_versions_defaults_and_keys():
     assert "DNA.DetectionSVC" in versions
     assert "DNA.ConfigMonitorSVC" in versions
     assert "Atria Capture" in versions
-    assert versions["DNA.MonitorServiceSVC"] in ["1.0.21.1", "1.0.21.0", "1.0.20.0"]
+    assert versions["DNA.MonitorServiceSVC"] in ["1.0.21.2", "1.0.21.1", "1.0.21.0", "1.0.20.0"]
     assert versions["FastMatchingSvc"] == "1.1.0.0"
 
 

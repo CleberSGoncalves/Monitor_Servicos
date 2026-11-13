@@ -146,6 +146,51 @@ namespace WinServiceFleetAgent.Core
             return gcpSuccess;
         }
 
+        /// <summary>
+        /// Envia telemetria em tempo real dos canais DTV diretamente para o Google Cloud Firestore.
+        /// Atualiza canais ativos, qualidade de sinal, força e status de gravação.
+        /// </summary>
+        public async Task<bool> SendChannelTelemetryAsync(List<ChannelStatusItem> channels, string praca, int cs)
+        {
+            if (channels == null || channels.Count == 0) return false;
+
+            try
+            {
+                string? token = await GoogleCloudAuth.GetAccessTokenAsync();
+                if (string.IsNullOrEmpty(token)) return false;
+
+                using var gcpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+                gcpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+                string url = $"https://firestore.googleapis.com/v1/projects/{GoogleCloudAuth.ProjectId}/databases/(default)/documents/fleet_hosts/{_hostname}?updateMask.fieldPaths=channels_count&updateMask.fieldPaths=channels_ok&updateMask.fieldPaths=channels_updated_at";
+
+                int channelsOk = channels.Count(c => c.QualidadeSinal >= 50);
+
+                var fields = new Dictionary<string, object>
+                {
+                    ["channels_count"] = new { integerValue = channels.Count.ToString() },
+                    ["channels_ok"] = new { integerValue = channelsOk.ToString() },
+                    ["channels_updated_at"] = new { stringValue = DateTime.UtcNow.ToString("o") }
+                };
+
+                var firestorePayload = new { fields = fields };
+                var content = new StringContent(JsonSerializer.Serialize(firestorePayload), Encoding.UTF8, "application/json");
+
+                var resp = await gcpClient.PatchAsync(url, content);
+                if (resp.IsSuccessStatusCode)
+                {
+                    FileLogger.Log($"[GoogleCloud] 📡 Telemetria de canais ({channels.Count} canais) enviada com SUCESSO para o Google Cloud Firestore ({_hostname})!");
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                FileLogger.Log($"[GoogleCloud] Aviso envio telemetria canais Firestore: {ex.Message}");
+            }
+
+            return false;
+        }
+
         public async Task<List<CloudCommandItem>> PollPendingCommandsAsync()
         {
             var commands = new List<CloudCommandItem>();

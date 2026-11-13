@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -286,6 +287,23 @@ namespace WinServiceFleetAgent.Core
             _listId = _cachedListId;
         }
 
+        private static DateTime _throttledUntilUtc = DateTime.MinValue;
+        public static bool IsThrottled => DateTime.UtcNow < _throttledUntilUtc;
+        public static int RemainingCooldownSeconds => Math.Max(0, (int)(_throttledUntilUtc - DateTime.UtcNow).TotalSeconds);
+
+        public static void SetThrottledCooldown(int seconds)
+        {
+            int s = Math.Clamp(seconds, 30, 600);
+            lock (_cacheLock)
+            {
+                var candidate = DateTime.UtcNow.AddSeconds(s);
+                if (candidate > _throttledUntilUtc)
+                {
+                    _throttledUntilUtc = candidate;
+                }
+            }
+        }
+
         private static List<JsonElement>? _cachedListItems = null;
         private static DateTime _cacheListExpiresAt = DateTime.MinValue;
         private static readonly object _cacheLock = new object();
@@ -532,6 +550,11 @@ namespace WinServiceFleetAgent.Core
 
         private async Task<HttpResponseMessage> ExecuteWithThrottlingRetryAsync(Func<Task<HttpResponseMessage>> action)
         {
+            if (DateTime.UtcNow < _throttledUntilUtc)
+            {
+                return new HttpResponseMessage((HttpStatusCode)429) { ReasonPhrase = "Too Many Requests (Local Cooldown Active)" };
+            }
+
             HttpResponseMessage response = null!;
             for (int attempt = 1; attempt <= 6; attempt++)
             {
@@ -547,25 +570,22 @@ namespace WinServiceFleetAgent.Core
                                    content.Contains("activityLimitReached", StringComparison.OrdinalIgnoreCase) ||
                                    content.Contains("throttledRequest", StringComparison.OrdinalIgnoreCase);
 
-                if (isThrottled && attempt < 6)
+                if (isThrottled)
                 {
-                    int delayMs = attempt * 3000 + Random.Shared.Next(1000, 2500);
-
-                    // Respeita header Retry-After oficial da Microsoft se retornado
+                    int retrySecs = 120;
                     if (response.Headers.RetryAfter != null && response.Headers.RetryAfter.Delta.HasValue)
                     {
-                        int retrySecs = (int)response.Headers.RetryAfter.Delta.Value.TotalSeconds;
-                        if (retrySecs > 0)
-                        {
-                            if (retrySecs > 120)
-                            {
-                                FileLogger.Log($"[SharePointClient] ⚠️ Throttling severo da Microsoft (HTTP {statusCode}, Retry-After: {retrySecs}s). Postergando requisição para o próximo ciclo.");
-                                break;
-                            }
-                            delayMs = (retrySecs * 1000) + Random.Shared.Next(500, 2000);
-                        }
+                        retrySecs = (int)response.Headers.RetryAfter.Delta.Value.TotalSeconds;
+                    }
+                    SetThrottledCooldown(retrySecs > 0 ? retrySecs : 120);
+
+                    if (retrySecs > 120 || retrySecs > 60 || attempt >= 2)
+                    {
+                        FileLogger.Log($"[SharePointClient] ⚠️ Throttling severo da Microsoft (HTTP {statusCode}, Retry-After: {retrySecs}s). Postergando requisição para o próximo ciclo.");
+                        break;
                     }
 
+                    int delayMs = (retrySecs * 1000) + Random.Shared.Next(500, 2000);
                     FileLogger.Log($"[SharePointClient] ⚠️ SharePoint Throttling/Serviço ocupado (HTTP {statusCode}, Tentativa {attempt}/6). Aguardando {delayMs}ms para retry...");
                     response.Dispose();
                     await Task.Delay(delayMs);
@@ -586,6 +606,12 @@ namespace WinServiceFleetAgent.Core
                 {
                     return _cachedListItems;
                 }
+            }
+
+            if (DateTime.UtcNow < _throttledUntilUtc)
+            {
+                FileLogger.Log($"[SharePointClient] ℹ️ Consulta de lista suprimida: Microsoft Graph em cooldown ({RemainingCooldownSeconds}s restantes). Preservando cache existente.");
+                return _cachedListItems;
             }
 
             var list = new List<JsonElement>();
@@ -1179,6 +1205,12 @@ namespace WinServiceFleetAgent.Core
 
                 if (batchRequests.Count == 0) return autoRestartMap;
 
+                if (DateTime.UtcNow < _throttledUntilUtc)
+                {
+                    FileLogger.Log($"[SharePointClient] ℹ️ Sincronização em lote ($batch) suprimida: Microsoft Graph em cooldown ({RemainingCooldownSeconds}s restantes). Telemetria Google Cloud ativa.");
+                    return autoRestartMap;
+                }
+
                 // Divide em lotes de até 20 requisições (limite oficial do Microsoft Graph)
                 var chunks = new List<List<object>>();
                 for (int i = 0; i < batchRequests.Count; i += 20)
@@ -1188,6 +1220,12 @@ namespace WinServiceFleetAgent.Core
 
                 foreach (var chunk in chunks)
                 {
+                    if (DateTime.UtcNow < _throttledUntilUtc)
+                    {
+                        FileLogger.Log($"[SharePointClient] ℹ️ Lotes adicionais ($batch) suprimidos: Microsoft Graph entrou em cooldown ({RemainingCooldownSeconds}s restantes).");
+                        break;
+                    }
+
                     var batchPayload = new { requests = chunk };
                     string batchJson = JsonSerializer.Serialize(batchPayload);
                     string batchUrl = "https://graph.microsoft.com/v1.0/$batch";
@@ -1250,6 +1288,10 @@ namespace WinServiceFleetAgent.Core
                                     }
                                     else
                                     {
+                                        if (status == 429)
+                                        {
+                                            SetThrottledCooldown(120);
+                                        }
                                         FileLogger.Log($"[SharePointClient] ⚠️ Sub-requisição batch ID {id} ({matchedItem.NomeServico}) retornou status {status}");
                                     }
                                 }
@@ -1879,6 +1921,12 @@ namespace WinServiceFleetAgent.Core
         {
             if (channels == null || channels.Count == 0) return;
 
+            if (DateTime.UtcNow < _throttledUntilUtc)
+            {
+                FileLogger.Log($"[ChannelMonitor] ℹ️ Sincronização de canais no SharePoint suprimida: Microsoft Graph em cooldown ({RemainingCooldownSeconds}s restantes). Telemetria Google Cloud ativa.");
+                return;
+            }
+
             using (var client = new HttpClient())
             {
                 await EnsureGraphContextAsync(client);
@@ -2061,6 +2109,12 @@ namespace WinServiceFleetAgent.Core
                             continue;
                         }
 
+                        if (DateTime.UtcNow < _throttledUntilUtc)
+                        {
+                            FileLogger.Log($"[ChannelMonitor] ℹ️ Sincronização de canais restantes suprimida: Microsoft Graph em cooldown ({RemainingCooldownSeconds}s restantes).");
+                            break;
+                        }
+
                         if (!string.IsNullOrEmpty(targetId) && int.TryParse(targetId, out _))
                         {
                             string patchUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{targetListId}/items/{targetId}/fields";
@@ -2080,6 +2134,12 @@ namespace WinServiceFleetAgent.Core
                                 {
                                     FileLogger.Log($"[ChannelMonitor] ⚠️ Coluna '{matchUnrec.Groups[1].Value}' não reconhecida na lista do SharePoint. Removendo do payload e retentando...");
                                     payloadFields.Remove(matchUnrec.Groups[1].Value);
+                                }
+                                else if (patchResp != null && ((int)patchResp.StatusCode == 429 || patchResp.StatusCode == HttpStatusCode.ServiceUnavailable || err.Contains("activityLimitReached", StringComparison.OrdinalIgnoreCase) || err.Contains("throttledRequest", StringComparison.OrdinalIgnoreCase)))
+                                {
+                                    FileLogger.Log($"[ChannelMonitor] ℹ️ Sincronização do canal '{ch.Title}' postergada: Microsoft Graph em cooldown de cota (HTTP 429). Ativando cooldown.");
+                                    SetThrottledCooldown(120);
+                                    break;
                                 }
                                 else
                                 {
@@ -2137,6 +2197,12 @@ namespace WinServiceFleetAgent.Core
                                 {
                                     FileLogger.Log($"[ChannelMonitor] ⚠️ Coluna '{matchUnrec.Groups[1].Value}' não reconhecida na lista do SharePoint. Removendo do payload e retentando...");
                                     payloadFields.Remove(matchUnrec.Groups[1].Value);
+                                }
+                                else if (postResp != null && ((int)postResp.StatusCode == 429 || postResp.StatusCode == HttpStatusCode.ServiceUnavailable || err.Contains("activityLimitReached", StringComparison.OrdinalIgnoreCase) || err.Contains("throttledRequest", StringComparison.OrdinalIgnoreCase)))
+                                {
+                                    FileLogger.Log($"[ChannelMonitor] ℹ️ Cadastro do canal '{ch.Title}' postergado: Microsoft Graph em cooldown de cota (HTTP 429).");
+                                    SetThrottledCooldown(120);
+                                    break;
                                 }
                                 else
                                 {

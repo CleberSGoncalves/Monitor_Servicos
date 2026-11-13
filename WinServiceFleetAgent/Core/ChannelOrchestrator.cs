@@ -13,6 +13,7 @@ namespace WinServiceFleetAgent.Core
     public class ChannelOrchestrator
     {
         private readonly SharePointClient _spClient;
+        private readonly CentralCloudClient? _cloudClient;
         private readonly string _multiplexesXmlPath;
         private readonly string _tunersStatusXmlPath;
         private readonly string _telemetriaApiUrl;
@@ -30,9 +31,11 @@ namespace WinServiceFleetAgent.Core
             string? tunersStatusXmlPath = null,
             string? telemetriaApiUrl = null,
             bool enabled = true,
-            string? configXmlPath = null)
+            string? configXmlPath = null,
+            CentralCloudClient? cloudClient = null)
         {
             _spClient = spClient;
+            _cloudClient = cloudClient;
             _multiplexesXmlPath = string.IsNullOrWhiteSpace(multiplexesXmlPath)
                 ? @"D:\MediaDNA_V2\Applications\DTVCapture64\Config\Multiplexes.xml"
                 : multiplexesXmlPath;
@@ -665,6 +668,19 @@ namespace WinServiceFleetAgent.Core
                 }
 
                 FileLogger.Log($"[ChannelOrchestrator] Encontrados {channelsList.Count} canais em execução. Sincronizando com o SharePoint...");
+
+                if (_cloudClient != null)
+                {
+                    try
+                    {
+                        await _cloudClient.SendChannelTelemetryAsync(channelsList, metadata.Praca, metadata.CS);
+                    }
+                    catch (Exception exCloud)
+                    {
+                        FileLogger.Log($"[ChannelOrchestrator] Aviso ao enviar telemetria de canais para o Google Cloud: {exCloud.Message}");
+                    }
+                }
+
                 await _spClient.SyncChannelsInventoryAsync(channelsList, parsedHostId, metadata.CS);
             }
             catch (Exception ex)

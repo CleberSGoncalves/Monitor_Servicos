@@ -148,9 +148,9 @@ namespace WinServiceFleetAgent.Core
             if (serviceKey.Equals("DNA.MonitorServiceSVC", StringComparison.OrdinalIgnoreCase) ||
                 serviceKey.Equals("MonitorServiceSVC", StringComparison.OrdinalIgnoreCase))
             {
-                FileLogger.Log($"[GoogleReleaseDownloader] 🛡️ Fallback homologado ativo para '{serviceKey}': v1.0.21.1");
-                _releaseCache[serviceKey] = ("1.0.21.1", DateTime.UtcNow.AddMinutes(30));
-                return "1.0.21.1";
+                FileLogger.Log($"[GoogleReleaseDownloader] 🛡️ Fallback homologado ativo para '{serviceKey}': v1.0.21.2");
+                _releaseCache[serviceKey] = ("1.0.21.2", DateTime.UtcNow.AddMinutes(30));
+                return "1.0.21.2";
             }
 
             _releaseCache[serviceKey] = ("", DateTime.UtcNow.AddMinutes(15));

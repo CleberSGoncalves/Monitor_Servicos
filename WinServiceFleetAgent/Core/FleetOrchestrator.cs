@@ -77,7 +77,8 @@ namespace WinServiceFleetAgent.Core
                 tunersStatusXmlPath,
                 telemetriaApiUrl,
                 channelMonitoringEnabled,
-                configXmlPath
+                configXmlPath,
+                _cloudClient
             );
         }
 
@@ -321,7 +322,7 @@ namespace WinServiceFleetAgent.Core
                         ExeName = s.Def.ExeName
                     });
                 }
-                string currentAgentVer = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "1.0.21.1";
+                string currentAgentVer = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "1.0.21.2";
                 await _cloudClient.SendTelemetryAsync(metadata.Praca, metadata.CS, allBatchItems, null, metrics, currentAgentVer);
             }
             catch (Exception exCloud)
