@@ -35,7 +35,7 @@ def test_bootstrap_script_resilience():
     assert "github.com" not in content.lower(), "Erro: Referência a github.com proibida por auditoria de segurança."
     assert "graph.microsoft.com" in content, "Erro: Endpoint Microsoft Graph ausente."
     assert "login.microsoftonline.com" in content, "Erro: Autenticação OAuth2 SPN Microsoft Online ausente."
-    assert ("DNA.MonitorServiceSVC_v1.0.21.2.zip" in content or "DNA.MonitorServiceSVC_v1.0.21.1.zip" in content or "DNA.MonitorServiceSVC_v1.0.21.0.zip" in content or "DNA.MonitorServiceSVC_v1.0.20.0.zip" in content or "DNA.MonitorServiceSVC_v1.0.19.0.zip" in content or "DNA.MonitorServiceSVC_v1.0.18.0.zip" in content), "Erro: Referência a pacote homologado ausente."
+    assert ("DNA.MonitorServiceSVC_v1.0.21.3.zip" in content or "DNA.MonitorServiceSVC_v1.0.21.2.zip" in content or "DNA.MonitorServiceSVC_v1.0.21.1.zip" in content or "DNA.MonitorServiceSVC_v1.0.21.0.zip" in content or "DNA.MonitorServiceSVC_v1.0.20.0.zip" in content or "DNA.MonitorServiceSVC_v1.0.19.0.zip" in content or "DNA.MonitorServiceSVC_v1.0.18.0.zip" in content), "Erro: Referência a pacote homologado ausente."
     print("  -> Conformidade estrita de segurança: ZERO GitHub e 100% Microsoft 365 SharePoint Online [OK]")
 
     # 4. Validação criptográfica SHA-256 estrita
@@ -85,7 +85,7 @@ def test_github_downloader_caching():
 
     # 2. Fallback de versão homologada
     assert 'serviceKey.Equals("DNA.MonitorServiceSVC"' in content, "Erro: Fallback específico para DNA.MonitorServiceSVC ausente."
-    assert ('"1.0.21.2"' in content or '"1.0.21.1"' in content or '"1.0.21.0"' in content or '"1.0.20.0"' in content or '"1.0.19.0"' in content or '"1.0.18.0"' in content), "Erro: Versão de contingência homologada ausente."
+    assert ('"1.0.21.3"' in content or '"1.0.21.2"' in content or '"1.0.21.1"' in content or '"1.0.21.0"' in content or '"1.0.20.0"' in content or '"1.0.19.0"' in content or '"1.0.18.0"' in content), "Erro: Versão de contingência homologada ausente."
     print("  -> Fallback resiliente para versão homologada garantido [OK]")
 
 

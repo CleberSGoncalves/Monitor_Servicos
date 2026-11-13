@@ -104,6 +104,9 @@ namespace WinServiceFleetAgent.Core
                 _siteHost = uri.Host;
                 _sitePath = uri.AbsolutePath;
             }
+
+            _siteId = _cachedSiteId;
+            _listId = _cachedListId;
         }
 
         private static string DecryptSecretIfNeeded(string rawSecret)
@@ -168,8 +171,8 @@ namespace WinServiceFleetAgent.Core
             return false;
         }
 
-        private static string _cachedSiteId = string.Empty;
-        private static string _cachedListId = string.Empty;
+        private static string _cachedSiteId = "adgbl.sharepoint.com,a3e49747-9bb6-4c93-9930-dda26c8d1050,34c8fe55-2cfe-4efc-8ce0-2958fd775ee0";
+        private static string _cachedListId = "2e2afc16-dfd6-4277-a16c-cd78bdd2e769";
         private static string _cachedChannelsListId = "b0ffcdd7-a0e7-4eb0-a5e8-e2142776b8eb";
         private static DateTime _lastAuthFailureTime = DateTime.MinValue;
 
@@ -1936,6 +1939,7 @@ namespace WinServiceFleetAgent.Core
                     return;
                 }
 
+                string targetSiteId = !string.IsNullOrEmpty(_siteId) ? _siteId : _cachedSiteId;
                 string targetListId = !string.IsNullOrEmpty(_cachedChannelsListId)
                     ? _cachedChannelsListId
                     : "b0ffcdd7-a0e7-4eb0-a5e8-e2142776b8eb";
@@ -1979,7 +1983,7 @@ namespace WinServiceFleetAgent.Core
                 // Apenas se ainda faltar algum ID e o cache estiver vazio é que faz o fetch completo no SharePoint
                 if (!allChannelsCached)
                 {
-                    string queryUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{targetListId}/items?$expand=fields&$top=200";
+                    string queryUrl = $"https://graph.microsoft.com/v1.0/sites/{targetSiteId}/lists/{targetListId}/items?$expand=fields&$top=200";
                     fetchCompletedSuccessfully = true;
 
                     while (!string.IsNullOrEmpty(queryUrl))
@@ -2117,7 +2121,7 @@ namespace WinServiceFleetAgent.Core
 
                         if (!string.IsNullOrEmpty(targetId) && int.TryParse(targetId, out _))
                         {
-                            string patchUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{targetListId}/items/{targetId}/fields";
+                            string patchUrl = $"https://graph.microsoft.com/v1.0/sites/{targetSiteId}/lists/{targetListId}/items/{targetId}/fields";
 
                             HttpResponseMessage? patchResp = null;
                             for (int retryAttempt = 0; retryAttempt < 3; retryAttempt++)
@@ -2169,7 +2173,7 @@ namespace WinServiceFleetAgent.Core
                                 {
                                     try
                                     {
-                                        string delUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{targetListId}/items/{dupId}";
+                                        string delUrl = $"https://graph.microsoft.com/v1.0/sites/{targetSiteId}/lists/{targetListId}/items/{dupId}";
                                         await client.DeleteAsync(delUrl);
                                         FileLogger.Log($"[ChannelMonitor] 🧹 Registro duplicado de canal (ID {dupId}) excluído com sucesso.");
                                     }
@@ -2180,7 +2184,7 @@ namespace WinServiceFleetAgent.Core
                         else if (fetchCompletedSuccessfully)
                         {
                             // Não existe: cria novo via POST (apenas se a lista foi baixada com 100% de sucesso)
-                            string postUrl = $"https://graph.microsoft.com/v1.0/sites/{_siteId}/lists/{targetListId}/items";
+                            string postUrl = $"https://graph.microsoft.com/v1.0/sites/{targetSiteId}/lists/{targetListId}/items";
                             HttpResponseMessage? postResp = null;
 
                             for (int retryAttempt = 0; retryAttempt < 3; retryAttempt++)
