@@ -4993,6 +4993,30 @@
 
 
 
+      <!-- Barra Superior Adaptativa de Seleção de Meio (Broadcast & RF) -->
+      <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: var(--radius-md); padding: 12px 18px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;" id="channelMediaPillsContainer">
+          <button type="button" class="btn-sm btn-secondary active-pill" id="pillMeioAll" onclick="setChannelsActiveMeio('all')" style="padding: 6px 14px; font-size: 11px; font-weight: 700; border-radius: 20px; background: rgba(56, 189, 248, 0.2); border: 1px solid #38bdf8; color: #fff; cursor: pointer;">
+            🌐 Todos os Canais (<span id="cntAllChannels">0</span>)
+          </button>
+          <button type="button" class="btn-sm btn-secondary" id="pillMeioDtv" onclick="setChannelsActiveMeio('dtv')" style="padding: 6px 14px; font-size: 11px; font-weight: 600; border-radius: 20px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); color: #cbd5e1; cursor: pointer;">
+            📺 Digital Terrestre DTV (<span id="cntDtvChannels">0</span>)
+          </button>
+          <button type="button" class="btn-sm btn-secondary" id="pillMeioRadio" onclick="setChannelsActiveMeio('radio')" style="padding: 6px 14px; font-size: 11px; font-weight: 600; border-radius: 20px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); color: #cbd5e1; cursor: pointer;">
+            📻 Rádios FM / AM (<span id="cntRadioChannels">0</span>)
+          </button>
+          <button type="button" class="btn-sm btn-secondary" id="pillMeioAnalog" onclick="setChannelsActiveMeio('analog')" style="padding: 6px 14px; font-size: 11px; font-weight: 600; border-radius: 20px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); color: #cbd5e1; cursor: pointer;">
+            📼 Analógico Terrestre (<span id="cntAnalogChannels">0</span>)
+          </button>
+          <button type="button" class="btn-sm btn-secondary" id="pillMeioPaytv" onclick="setChannelsActiveMeio('paytv')" style="padding: 6px 14px; font-size: 11px; font-weight: 600; border-radius: 20px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); color: #cbd5e1; cursor: pointer;">
+            🛰️ PayTV / Satélite (<span id="cntPaytvChannels">0</span>)
+          </button>
+        </div>
+        <div style="font-size: 11px; color: #94a3b8; display: flex; align-items: center; gap: 6px;">
+          <i class="fas fa-filter" style="color: #38bdf8;"></i> <span id="channelsMeioFilterInfo">Visualização Global</span>
+        </div>
+      </div>
+
       <div class="panel-card">
 
 
@@ -15689,6 +15713,125 @@
 
 
 
+
+  <!-- ============================================================================== -->
+  <!-- MODAL: ESTAÇÃO DE TRATATIVA INTELIGENTE & DIDÁTICA (WAR ROOM NOC N1/N2) -->
+  <!-- ============================================================================== -->
+  <div class="modal-overlay" id="incidentWarRoomModal" style="display: none; align-items: center; justify-content: center; z-index: 10050; background: rgba(5, 10, 20, 0.88); backdrop-filter: blur(8px);">
+    <div class="modal-content" style="max-width: 1080px; width: 94vw; max-height: 92vh; overflow-y: auto; background: #0b1329; border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 12px; box-shadow: 0 25px 60px rgba(0,0,0,0.7); padding: 22px; color: #f8fafc;">
+      
+      <!-- Cabeçalho Principal -->
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 14px; margin-bottom: 16px;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <div id="iwrSeverityBadge" style="padding: 4px 10px; border-radius: 6px; font-weight: 800; font-size: 11px; letter-spacing: 0.5px; text-transform: uppercase;">P0 CRÍTICO</div>
+          <div>
+            <div style="font-size: 18px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px;">
+              <span id="iwrTitleDisplay">Tratativa de Incidente</span>
+            </div>
+            <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;" id="iwrSubtitleDisplay">
+              Host: <span id="iwrHostName" style="color: #38bdf8; font-family: monospace;">--</span> | Praça: <span id="iwrPracaName">--</span> (CS <span id="iwrCsNum">1</span>) | Alvo: <span id="iwrTargetName" style="color: #cbd5e1;">--</span>
+            </div>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div id="iwrSlaTimer" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #fca5a5; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 6px; font-family: monospace;">
+            ⏱️ SLA: 14m 20s
+          </div>
+          <button type="button" class="btn-sm btn-secondary" onclick="closeIncidentWarRoomModal()" style="font-size: 12px; padding: 4px 10px; color: #94a3b8; border-color: rgba(255,255,255,0.15);">✕ Fechar</button>
+        </div>
+      </div>
+
+      <!-- Sinais Vitais Rápidos do Nó (Hardware & Processos) -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 16px;">
+        <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 8px 12px;">
+          <div style="font-size: 10px; text-transform: uppercase; color: #94a3b8; font-weight: 600;">CPU & Memória RAM</div>
+          <div style="font-size: 13px; font-weight: 700; color: #f8fafc; margin-top: 2px;" id="iwrVitalCpuRam">--</div>
+        </div>
+        <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 8px 12px;">
+          <div style="font-size: 10px; text-transform: uppercase; color: #94a3b8; font-weight: 600;">Disco D: (Gravações)</div>
+          <div style="font-size: 13px; font-weight: 700; color: #f8fafc; margin-top: 2px;" id="iwrVitalDisk">--</div>
+        </div>
+        <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 8px 12px;">
+          <div style="font-size: 10px; text-transform: uppercase; color: #94a3b8; font-weight: 600;">Motor de Gravação</div>
+          <div style="font-size: 13px; font-weight: 700; color: #f8fafc; margin-top: 2px;" id="iwrVitalRecorder">--</div>
+        </div>
+        <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 8px 12px;">
+          <div style="font-size: 10px; text-transform: uppercase; color: #94a3b8; font-weight: 600;">Motor de Detecção CS01</div>
+          <div style="font-size: 13px; font-weight: 700; color: #f8fafc; margin-top: 2px;" id="iwrVitalDetection">--</div>
+        </div>
+      </div>
+
+      <!-- Caixa Sucinta de Entendimento Operacional (Didática Direta com Toggle de Detalhes) -->
+      <div style="background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 12px 16px; margin-bottom: 18px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 14px;">💡</span>
+            <div style="font-size: 12px; font-weight: 600; color: #38bdf8;" id="iwrBriefSummary">Carregando diagnóstico operacional...</div>
+          </div>
+          <button type="button" class="btn-sm" id="btnToggleIwrExplanation" onclick="toggleIwrExplanation()" style="padding: 3px 10px; font-size: 11px; background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.3); color: #38bdf8; cursor: pointer; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px;">
+            <i class="fas fa-info-circle"></i> <span>Como Funciona</span>
+          </button>
+        </div>
+        
+        <!-- Bloco de Explicação Aprofundada (Colapsável para não poluir) -->
+        <div id="iwrDetailedExplanation" style="display: none; margin-top: 12px; padding-top: 12px; border-top: 1px dashed rgba(255,255,255,0.1); font-size: 12px; color: #cbd5e1; line-height: 1.6;">
+          <div id="iwrExplanationContent"></div>
+        </div>
+      </div>
+
+      <!-- Seção de Ações Rápidas em Cards Analíticos (Estilo Remote Commands) -->
+      <div style="margin-bottom: 20px;">
+        <div style="font-size: 12px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; display: flex; align-items: center; gap: 6px;">
+          <i class="fas fa-bolt" style="color: #f59e0b;"></i> Soluções Rápidas Homologadas (1 Clique Seguro)
+        </div>
+        <div id="iwrActionCardsContainer" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px;">
+          <!-- Cards dinâmicos inseridos via JavaScript -->
+        </div>
+      </div>
+
+      <!-- Banner de Raciocínio Profundo com IA (Gemini) -->
+      <div style="background: linear-gradient(135deg, rgba(88, 28, 135, 0.25), rgba(30, 58, 138, 0.25)); border: 1px solid rgba(147, 51, 234, 0.35); border-radius: 8px; padding: 14px 18px; margin-bottom: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+          <div>
+            <div style="font-size: 13px; font-weight: 700; color: #e9d5ff; display: flex; align-items: center; gap: 6px;">
+              <span>🧠</span> Análise Aprofundada de Causa Raiz & Cards Avançados N2
+            </div>
+            <div style="font-size: 11px; color: #c084fc; margin-top: 2px;">
+              O cérebro de IA examinará a integridade do nó, logs de processo e telemetria de sintonizadores para diagnósticos complexos.
+            </div>
+          </div>
+          <button type="button" class="btn-primary" id="btnIwrDeepAi" onclick="runIwrDeepAiReasoning()" style="padding: 6px 16px; font-size: 11px; font-weight: 700; background: linear-gradient(135deg, #7c3aed, #2563eb); border: 1px solid #c084fc; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+            <i class="fas fa-brain"></i> <span>Ativar Raciocínio Profundo com IA</span>
+          </button>
+        </div>
+
+        <!-- Container de Resposta da IA e Cards Avançados N2 (Oculto até disparo) -->
+        <div id="iwrDeepAiContainer" style="display: none; margin-top: 14px; padding-top: 14px; border-top: 1px solid rgba(147, 51, 234, 0.25);">
+          <div id="iwrDeepAiReport" style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(147, 51, 234, 0.3); border-radius: 6px; padding: 12px 14px; font-size: 12px; color: #e2e8f0; line-height: 1.6; margin-bottom: 12px;"></div>
+          <div style="font-size: 11px; font-weight: 700; color: #c084fc; text-transform: uppercase; margin-bottom: 8px;">
+            🛠️ Ações Avançadas Recomendadas pela IA (N2):
+          </div>
+          <div id="iwrDeepAiCards" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px;"></div>
+        </div>
+      </div>
+
+      <!-- Trilha de Ações e Registro Manual Opcional -->
+      <div style="border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+        <div style="font-size: 11px; color: #94a3b8;" id="iwrActionStatusFeedback">
+          Nenhuma ação disparada neste ciclo.
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button type="button" class="btn-sm btn-secondary" onclick="openLegacyWorklogFromWarRoom()" style="font-size: 11px; padding: 4px 10px;">
+            📝 Registrar Nota / Assumir
+          </button>
+          <button type="button" class="btn-sm btn-primary" onclick="closeIncidentWarRoomModal()" style="font-size: 11px; padding: 4px 14px; background: #0284c7;">
+            Concluir & Fechar
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
 
   <div class="modal-overlay" id="worklogModal">
 

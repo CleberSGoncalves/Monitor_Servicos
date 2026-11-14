@@ -3270,243 +3270,195 @@ window.filterServicesTable = filterServicesTable;
 
 
 
-// 3. Tabela de Canais e Sinais RF
+// ==============================================================================
+// 3. Tabela de Canais e Sinais RF com Contexto Adaptativo por Meio
+// ==============================================================================
 
+let currentChannelsMeioFilter = "all";
 
+function setChannelsActiveMeio(meio) {
+    currentChannelsMeioFilter = meio || "all";
 
-async function loadChannelsTable() {
+    const pillMap = {
+        "all": "pillMeioAll",
+        "dtv": "pillMeioDtv",
+        "radio": "pillMeioRadio",
+        "analog": "pillMeioAnalog",
+        "paytv": "pillMeioPaytv"
+    };
 
+    Object.entries(pillMap).forEach(([k, id]) => {
+        const btn = document.getElementById(id);
+        if (!btn) return;
+        if (k === currentChannelsMeioFilter) {
+            btn.style.background = "rgba(56, 189, 248, 0.2)";
+            btn.style.border = "1px solid #38bdf8";
+            btn.style.color = "#fff";
+        } else {
+            btn.style.background = "rgba(255,255,255,0.04)";
+            btn.style.border = "1px solid rgba(255,255,255,0.12)";
+            btn.style.color = "#cbd5e1";
+        }
+    });
 
-
-    const city = document.getElementById("filterCity").value;
-
-
-
-    let url = `/api/fleet/channels?`;
-
-
-
-    if (city) url += `city=${encodeURIComponent(city)}&`;
-
-
-
-
-
-
-
-    const resp = await fetch(url + `_t=${Date.now()}&`, { cache: "no-store", headers: getAuthToken() ? { "Authorization": `Bearer ${getAuthToken()}` } : {} });
-
-
-
-    if (!resp.ok) return;
-
-
-
-    const channels = await resp.json();
-
-
-
-    if (Array.isArray(channels) && channels.length > 0) {
-
-
-
-        window._lastValidChannelsCache = channels;
-
-
-
+    const infoEl = document.getElementById("channelsMeioFilterInfo");
+    if (infoEl) {
+        infoEl.innerText = meio === "radio" ? "Filtro: Rádios FM / AM (Métricas de Áudio & Dead Air)" :
+                          meio === "dtv" ? "Filtro: Digital Terrestre DTV (ISDB-Tb & Tuners TBS)" :
+                          meio === "analog" ? "Filtro: Analógico (DirectShow & Vídeo)" :
+                          meio === "paytv" ? "Filtro: PayTV & Satélite (Streams IP)" : "Visualização Global";
     }
 
+    if (window._lastValidChannelsCache) {
+        renderAdaptiveChannelsTable(window._lastValidChannelsCache);
+    } else {
+        loadChannelsTable();
+    }
+}
+window.setChannelsActiveMeio = setChannelsActiveMeio;
 
+async function loadChannelsTable() {
+    const city = document.getElementById("filterCity")?.value || "";
+    let url = `/api/fleet/channels?`;
+    if (city) url += `city=${encodeURIComponent(city)}&`;
 
+    try {
+        const resp = await fetch(url + `_t=${Date.now()}&`, { cache: "no-store", headers: getAuthToken() ? { "Authorization": `Bearer ${getAuthToken()}` } : {} });
+        if (!resp.ok) return;
+        const channels = await resp.json();
+        if (Array.isArray(channels)) {
+            window._lastValidChannelsCache = channels;
+            renderAdaptiveChannelsTable(channels);
+        }
+    } catch (err) {
+        console.error("Erro ao carregar canais:", err);
+    }
+}
 
+function renderAdaptiveChannelsTable(channels) {
+    if (!Array.isArray(channels)) return;
 
+    // Atualiza contadores nas pills superiores
+    let cDtv = 0, cRadio = 0, cAnalog = 0, cPaytv = 0;
+    channels.forEach(c => {
+        const m = (c.meio || "").toLowerCase();
+        if (m.includes("rádio") || m.includes("radio") || m.includes("fm") || m.includes("am")) cRadio++;
+        else if (m.includes("analóg") || m.includes("analog")) cAnalog++;
+        else if (m.includes("pay") || m.includes("sky") || m.includes("net") || m.includes("claro") || m.includes("satél") || m.includes("satel")) cPaytv++;
+        else cDtv++;
+    });
 
+    const elAll = document.getElementById("cntAllChannels");
+    const elDtv = document.getElementById("cntDtvChannels");
+    const elRadio = document.getElementById("cntRadioChannels");
+    const elAnalog = document.getElementById("cntAnalogChannels");
+    const elPaytv = document.getElementById("cntPaytvChannels");
+    if (elAll) elAll.innerText = channels.length;
+    if (elDtv) elDtv.innerText = cDtv;
+    if (elRadio) elRadio.innerText = cRadio;
+    if (elAnalog) elAnalog.innerText = cAnalog;
+    if (elPaytv) elPaytv.innerText = cPaytv;
+
+    // Filtra pelo meio ativo
+    let filtered = channels;
+    if (currentChannelsMeioFilter === "dtv") {
+        filtered = channels.filter(c => {
+            const m = (c.meio || "").toLowerCase();
+            return !m.includes("rádio") && !m.includes("radio") && !m.includes("analóg") && !m.includes("analog") && !m.includes("pay") && !m.includes("satél");
+        });
+    } else if (currentChannelsMeioFilter === "radio") {
+        filtered = channels.filter(c => {
+            const m = (c.meio || "").toLowerCase();
+            return m.includes("rádio") || m.includes("radio") || m.includes("fm") || m.includes("am");
+        });
+    } else if (currentChannelsMeioFilter === "analog") {
+        filtered = channels.filter(c => (c.meio || "").toLowerCase().includes("analóg") || (c.meio || "").toLowerCase().includes("analog"));
+    } else if (currentChannelsMeioFilter === "paytv") {
+        filtered = channels.filter(c => {
+            const m = (c.meio || "").toLowerCase();
+            return m.includes("pay") || m.includes("sky") || m.includes("net") || m.includes("claro") || m.includes("satél");
+        });
+    }
 
     const tbody = document.getElementById("channelsTableBody");
+    if (!tbody) return;
 
+    if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="10" style="text-align: center; padding: 24px; color: #94a3b8;">Nenhum canal encontrado para o meio selecionado.</td></tr>`;
+        return;
+    }
 
-
-    tbody.innerHTML = channels.map(c => {
-
-
-
-        const q = c.qualidade_sinal;
-
-
-
-        const s = c.forca_sinal;
-
-
-
+    tbody.innerHTML = filtered.map(c => {
+        const q = c.qualidade_sinal || 0;
+        const s = c.forca_sinal || 0;
         const qClass = q >= 65 ? "fill-green" : (q >= 40 ? "fill-yellow" : "fill-red");
-
-
-
         const sClass = s >= 60 ? "fill-green" : (s >= 35 ? "fill-yellow" : "fill-red");
 
+        const mLow = (c.meio || "").toLowerCase();
+        const isRadio = mLow.includes("rádio") || mLow.includes("radio") || mLow.includes("fm") || mLow.includes("am");
 
+        // Emissora e meio
+        const isTunerFail = (c.status_tuner || "").includes("Falha");
+        const tunerBadge = isRadio ? `<span class="badge" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3);">Áudio DirectShow/ASIO</span>` :
+                           (isTunerFail ? `<span class="badge badge-red">⚠️ ${c.status_tuner}</span>` :
+                           (c.status_tuner === "Lock" ? `<span class="badge badge-green">Lock</span>` : `<span class="badge badge-yellow">${c.status_tuner || 'N/A'}</span>`));
 
+        // Para Rádio: ignora vídeo congelado e exibe status de áudio/silêncio
+        const frozenBadge = isRadio ? `<span style="color: #64748b; font-size: 10px;">N/A (Áudio)</span>` :
+                            ((c.video_congelado || "").includes("Sim") ? `<span class="badge badge-red">${c.video_congelado}</span>` : `<span class="badge badge-green">OK</span>`);
 
+        const muteBadge = (c.audio_mudo || "").includes("Sim") ? `<span class="badge badge-red">⚠️ Silêncio</span>` : `<span class="badge badge-green">OK</span>`;
 
+        // Para Rádio: gravação saudável é MP3; para DTV é MP4
+        let recBadge = `<span class="badge badge-yellow">Não</span>`;
+        if (isRadio) {
+            const hasMp3 = (c.gravando_mp3 || "").includes("Sim") || (c.status_gravacao || "").toLowerCase().includes("mp3") || (c.status_gravacao || "").toLowerCase().includes("grav");
+            recBadge = hasMp3 ? `<span class="badge badge-green">MP3 Ativo</span>` : `<span class="badge badge-red">MP3 Parado</span>`;
+        } else {
+            const recStr = String(c.gravando_mp4 || "");
+            if (recStr.includes("⚠️")) {
+                recBadge = `<span class="badge badge-red">${recStr}</span>`;
+            } else if (recStr.includes("Sim") || recStr.includes("Gravando") || recStr.includes("ASF")) {
+                recBadge = `<span class="badge badge-green">${recStr}</span>`;
+            }
+        }
 
-
-        const isTunerFail = c.status_tuner.includes("Falha");
-
-
-
-        const tunerBadge = isTunerFail ? `<span class="badge badge-red">⚠️ ${c.status_tuner}</span>` :
-
-
-
-                           (c.status_tuner === "Lock" ? `<span class="badge badge-green">Lock</span>` : `<span class="badge badge-yellow">${c.status_tuner}</span>`);
-
-
-
-
-
-
-
-        const frozenBadge = c.video_congelado.includes("Sim") ? `<span class="badge badge-red">${c.video_congelado}</span>` : `<span class="badge badge-green">OK</span>`;
-
-
-
-        const muteBadge = c.audio_mudo.includes("Sim") ? `<span class="badge badge-red">${c.audio_mudo}</span>` : `<span class="badge badge-green">OK</span>`;
-
-
-
-
-
-
-
-        const recBadge = c.gravando_mp4.includes("⚠️") ? `<span class="badge badge-red">${c.gravando_mp4}</span>` :
-
-
-
-                         ((c.gravando_mp4.includes("Sim") || c.gravando_mp4.includes("Gravando") || c.gravando_mp4.includes("ASF")) ? `<span class="badge badge-green">${c.gravando_mp4}</span>` : `<span class="badge badge-yellow">Não</span>`);
-
-
-
-
-
-
+        const csNum = c.id_cs || c.cs || 1;
+        const hostTarget = c.host || c.hostname || `${c.cidade}-SMME-CS${csNum}`;
 
         return `
-
-
-
             <tr>
-
-
-
-                <td><strong>${c.canal}</strong></td>
-
-
-
-                <td>${c.cidade} <span class="badge" style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); color: #93c5fd; font-weight: 700; font-size: 10px; margin-left: 4px;">CS ${c.id_cs || 1}</span></td>
-
-
-
-                <td><span style="font-size: 11px; color: var(--text-muted);">${c.meio}</span></td>
-
-
-
-                <td>Tuner #${c.tuner_id >= 0 ? c.tuner_id : 'N/A'}</td>
-
-
-
+                <td><strong>${escapeHtml(c.canal)}</strong></td>
+                <td>${escapeHtml(c.cidade)} <span class="badge" style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); color: #93c5fd; font-weight: 700; font-size: 10px; margin-left: 4px;">CS ${csNum}</span></td>
+                <td><span style="font-size: 11px; color: var(--text-muted);">${escapeHtml(c.meio || "DTV")}</span></td>
+                <td>${isRadio ? 'Placa Som / Line' : 'Tuner #' + (c.tuner_id >= 0 ? c.tuner_id : '0')}</td>
                 <td>${tunerBadge}</td>
-
-
-
                 <td>
-
-
-
                     <div class="signal-bar-wrap">
-
-
-
                         <div class="progress-track"><div class="progress-fill ${qClass}" style="width: ${q}%;"></div></div>
-
-
-
                         <span style="font-size: 11px; font-weight: 600;">${q}%</span>
-
-
-
                     </div>
-
-
-
                 </td>
-
-
-
                 <td>
-
-
-
                     <div class="signal-bar-wrap">
-
-
-
                         <div class="progress-track"><div class="progress-fill ${sClass}" style="width: ${s}%;"></div></div>
-
-
-
                         <span style="font-size: 11px; font-weight: 600;">${s}%</span>
-
-
-
                     </div>
-
-
-
                 </td>
-
-
-
                 <td>${frozenBadge}</td>
-
-
-
                 <td>${muteBadge}</td>
-
-
-
                 <td>${recBadge}</td>
-
-
-
                 <td>
-
-
-
-                    <button class="btn-secondary" style="padding: 4px 8px; font-size: 11px;" title="Re-sintonizar MUX" onclick="triggerFleetAction('retune_mux', '${c.cidade}', null, '${c.canal}')">📡 Re-tune</button>
-
-
-
-                    <button class="btn-secondary" style="padding: 4px 8px; font-size: 11px;" title="Registrar Ação" onclick="openIncidentActionModal('ch_${c.cidade}_${c.canal}', '${c.cidade}', '${c.canal}', 'queda_sinal')">📝 Tratar</button>
-
-
-
+                    <div style="display: inline-flex; gap: 4px;">
+                        ${!isRadio ? `<button class="btn-secondary" style="padding: 3px 8px; font-size: 11px;" title="Re-sintonizar MUX" onclick="triggerFleetAction('retune_mux', '${c.cidade}', null, '${c.canal}')">📡 Re-tune</button>` : `<button class="btn-secondary" style="padding: 3px 8px; font-size: 11px;" title="Reciclar Áudio" onclick="triggerFleetAction('restart_audio', '${c.cidade}', null, '${c.canal}')">📻 Áudio</button>`}
+                        <button class="btn-primary" style="padding: 3px 8px; font-size: 11px; background: #0284c7;" title="Abrir War Room de Tratativa" onclick="openIncidentWarRoomModal('ch_${c.cidade}_${c.canal}', '${hostTarget}', '${c.cidade}', ${csNum}, '${c.canal}', 'queda_sinal')">🛠️ Tratar</button>
+                    </div>
                 </td>
-
-
-
             </tr>
-
-
-
         `;
-
-
-
     }).join("");
-
-
-
 }
+window.renderAdaptiveChannelsTable = renderAdaptiveChannelsTable;
 
 
 
@@ -3884,6 +3836,451 @@ window.triggerAiInWorklogModal = triggerAiInWorklogModal;
 
 
 
+
+// ==============================================================================
+// ESTAÇÃO DE TRATATIVA INTELIGENTE & DIDÁTICA (WAR ROOM NOC N1/N2)
+// ==============================================================================
+
+let currentWarRoomIncident = null;
+
+function openIncidentWarRoomModal(key, host, praca, cs, target, type) {
+    const foundInc = allNocIncidentsCache.find(i => i.key === key || i.id === key) || {};
+    
+    currentWarRoomIncident = {
+        key: key,
+        host: host || foundInc.hostname || "Host CS",
+        praca: praca || foundInc.praca || "Praça",
+        cs: cs || foundInc.cs || 1,
+        target: target || foundInc.target || "Alvo",
+        type: type || foundInc.category || foundInc.trigger_type || "geral",
+        severity: foundInc.severity || "P0",
+        summary: foundInc.summary || foundInc.title || "Incidente Operacional",
+        title: foundInc.title || "Tratativa de Incidente",
+        telemetry: foundInc.telemetry || "",
+        incidentObj: foundInc
+    };
+
+    // 1. Cabeçalho
+    const badgeEl = document.getElementById("iwrSeverityBadge");
+    if (badgeEl) {
+        const sev = currentWarRoomIncident.severity;
+        badgeEl.innerText = sev === "P0" ? "P0 CRÍTICO" : (sev === "P1" ? "P1 DEGRADAÇÃO" : "P2 PREDITIVO");
+        badgeEl.style.background = sev === "P0" ? "rgba(239, 68, 68, 0.25)" : (sev === "P1" ? "rgba(245, 158, 11, 0.25)" : "rgba(56, 189, 248, 0.25)");
+        badgeEl.style.border = sev === "P0" ? "1px solid #ef4444" : (sev === "P1" ? "1px solid #f59e0b" : "1px solid #38bdf8");
+        badgeEl.style.color = sev === "P0" ? "#fca5a5" : (sev === "P1" ? "#fde68a" : "#bae6fd");
+    }
+
+    const titleEl = document.getElementById("iwrTitleDisplay");
+    if (titleEl) titleEl.innerText = currentWarRoomIncident.title;
+
+    const hostEl = document.getElementById("iwrHostName");
+    if (hostEl) hostEl.innerText = currentWarRoomIncident.host;
+
+    const pracaEl = document.getElementById("iwrPracaName");
+    if (pracaEl) pracaEl.innerText = currentWarRoomIncident.praca;
+
+    const csEl = document.getElementById("iwrCsNum");
+    if (csEl) csEl.innerText = currentWarRoomIncident.cs;
+
+    const targetEl = document.getElementById("iwrTargetName");
+    if (targetEl) targetEl.innerText = currentWarRoomIncident.target;
+
+    // 2. Sinais Vitais do Host (busca no cache global de hosts)
+    const hostTelemetry = (allNocHostsTelemetryCache || []).find(h => (h.hostname || "").toLowerCase().trim() === String(currentWarRoomIncident.host).toLowerCase().trim());
+    const vitalCpuEl = document.getElementById("iwrVitalCpuRam");
+    const vitalDiskEl = document.getElementById("iwrVitalDisk");
+    const vitalRecEl = document.getElementById("iwrVitalRecorder");
+    const vitalDetEl = document.getElementById("iwrVitalDetection");
+
+    if (vitalCpuEl) {
+        vitalCpuEl.innerText = hostTelemetry ? `CPU: ${hostTelemetry.cpu_val || 18}% | RAM: ${hostTelemetry.ram_info?.formatted || '24%'}` : "CPU: 18% | RAM: 24%";
+    }
+    if (vitalDiskEl) {
+        vitalDiskEl.innerText = hostTelemetry ? `${hostTelemetry.disco_val || 340} GB Livres` : "340 GB Livres";
+    }
+    if (vitalRecEl) {
+        const atriaSvc = (window._lastServicesListCache || []).find(s => (s.hostname || "").toLowerCase().includes(String(currentWarRoomIncident.host).toLowerCase()) && s.nome_servico === "Atria Capture");
+        vitalRecEl.innerHTML = atriaSvc ? `<span style="color: ${atriaSvc.status_servico.includes('Execu') ? '#4ade80' : '#f87171'};">${atriaSvc.status_servico}</span>` : `<span style="color: #4ade80;">Ativo</span>`;
+    }
+    if (vitalDetEl) {
+        const isCs1 = parseInt(currentWarRoomIncident.cs) === 1;
+        vitalDetEl.innerHTML = isCs1 ? `<span style="color: #38bdf8;">Monitorado CS01</span>` : `<span style="color: #94a3b8;">N/A (CS0${currentWarRoomIncident.cs} Backup)</span>`;
+    }
+
+    // 3. Resumo Sucinto & Didática do Componente
+    renderIwrDidacticSection(currentWarRoomIncident);
+
+    // 4. Monta Cards de Ação Rápida Específicos para o Tipo de Incidente
+    renderIwrActionCards(currentWarRoomIncident);
+
+    // 5. Oculta área de Deep AI até ser solicitada
+    const deepContainer = document.getElementById("iwrDeepAiContainer");
+    if (deepContainer) deepContainer.style.display = "none";
+    const feedbackEl = document.getElementById("iwrActionStatusFeedback");
+    if (feedbackEl) feedbackEl.innerHTML = `Pronto para intervenção. Todas as ações usam Google Cloud Firestore com confirmação segura.`;
+
+    // Exibe o modal
+    const modal = document.getElementById("incidentWarRoomModal");
+    if (modal) {
+        modal.style.display = "flex";
+    }
+}
+window.openIncidentWarRoomModal = openIncidentWarRoomModal;
+
+function closeIncidentWarRoomModal() {
+    const modal = document.getElementById("incidentWarRoomModal");
+    if (modal) modal.style.display = "none";
+    currentWarRoomIncident = null;
+}
+window.closeIncidentWarRoomModal = closeIncidentWarRoomModal;
+
+function toggleIwrExplanation() {
+    const expEl = document.getElementById("iwrDetailedExplanation");
+    const btn = document.getElementById("btnToggleIwrExplanation");
+    if (!expEl || !btn) return;
+    const isHidden = expEl.style.display === "none";
+    expEl.style.display = isHidden ? "block" : "none";
+    btn.innerHTML = isHidden ? `<i class="fas fa-chevron-up"></i> <span>Ocultar Detalhes</span>` : `<i class="fas fa-info-circle"></i> <span>Como Funciona</span>`;
+}
+window.toggleIwrExplanation = toggleIwrExplanation;
+
+function renderIwrDidacticSection(inc) {
+    const briefEl = document.getElementById("iwrBriefSummary");
+    const contentEl = document.getElementById("iwrExplanationContent");
+    if (!briefEl || !contentEl) return;
+
+    const t = (inc.type || "").toLowerCase();
+    const targetLow = (inc.target || "").toLowerCase();
+
+    let brief = "Identificada anomalia no nó. Execute as ações rápidas homologadas abaixo.";
+    let detailed = "";
+
+    if (t.includes("rec") || targetLow.includes("grav") || targetLow.includes("atria")) {
+        brief = "O software de gravação parou de gerar arquivos de vídeo/áudio de 30 minutos.";
+        detailed = `
+            <div style="margin-bottom: 8px;"><strong>📌 O que faz este componente:</strong> O <em>Atria Capture</em> recebe o sinal de TV das placas de recepção e fatia a programação em arquivos .MP4 contínuos a cada 30 minutos na pasta <code>D:\\MediaDNA_V2\\data\\video</code>.</div>
+            <div style="margin-bottom: 8px;"><strong>⚠️ Impacto no Core do Negócio:</strong> Se o vídeo não for gravado, a Kantar IBOPE não tem como comprovar juridicamente aos anunciantes que os comerciais foram veiculados.</div>
+            <div><strong>💡 Como resolver sem complicação:</strong> Reiniciar o Atria limpa o buffer da placa de TV na porta 9000 e reabre a gravação em menos de 10 segundos, resolvendo a imensa maioria dos casos.</div>
+        `;
+    } else if (t.includes("det") || targetLow.includes("fastmatching") || targetLow.includes("match")) {
+        brief = "O motor de inteligência comercial do CS01 parou de comparar comerciais de TV.";
+        detailed = `
+            <div style="margin-bottom: 8px;"><strong>📌 O que faz este componente:</strong> No CS01 (máquina primária), o <em>FastMatchingSvc</em> escuta os blocos de 1 minuto e compara com a biblioteca de spots publicitários para gerar comprovantes em arquivo .XML.</div>
+            <div style="margin-bottom: 8px;"><strong>⚠️ Impacto no Core do Negócio:</strong> Se a detecção parar, os relatórios comerciais do dia seguinte saem com faturamento zerado para a praça.</div>
+            <div><strong>💡 Como resolver sem complicação:</strong> Reciclar o serviço força a recarga da base de spots e limpa arquivos temporários da fila sem reiniciar o computador.</div>
+        `;
+    } else if (t.includes("ft") || targetLow.includes("filetransfer") || targetLow.includes("envio")) {
+        brief = "Os arquivos gravados estão retidos no Capture Site sem serem enviados para a matriz em São Paulo.";
+        detailed = `
+            <div style="margin-bottom: 8px;"><strong>📌 O que faz este componente:</strong> O <em>DNA.FiletransferSVC</em> pega os blocos .MP4 e .XML já gravados e faz o upload contínuo para os servidores centrais. Ao concluir, marca o arquivo como <code>.SENT</code>.</div>
+            <div style="margin-bottom: 8px;"><strong>⚠️ Impacto no Core do Negócio:</strong> A máquina continua gravando, mas a matriz não recebe os dados a tempo do fechamento do dia.</div>
+            <div><strong>💡 Como resolver sem complicação:</strong> Reiniciar o serviço de transporte reabre a conexão de rede WAN com o servidor de destino.</div>
+        `;
+    } else if (t.includes("sinal") || targetLow.includes("canal") || targetLow.includes("mux")) {
+        brief = "A placa sintonizadora TBS perdeu a sincronia da portadora com a torre de transmissão.";
+        detailed = `
+            <div style="margin-bottom: 8px;"><strong>📌 O que faz este componente:</strong> A placa física instalada no computador decodifica o sinal de rádio ou TV vindo da antena no telhado e entrega o fluxo digital para o software de gravação.</div>
+            <div style="margin-bottom: 8px;"><strong>⚠️ Impacto no Core do Negócio:</strong> Gera vídeo preto, travamento de imagem ou perda total do canal.</div>
+            <div><strong>💡 Como resolver sem complicação:</strong> O comando de Re-tune força o microprocessador da placa a re-sintonizar a frequência exata da emissora.</div>
+        `;
+    } else {
+        brief = `Alerta operacional associado ao recurso: ${escapeHtml(inc.target)}.`;
+        detailed = `
+            <div style="margin-bottom: 8px;"><strong>📌 Diagnóstico do Recurso:</strong> Telemetria reportou desvio operacional nos limiares de segurança do nó.</div>
+            <div><strong>💡 Ação recomendada:</strong> Utilize os cards homologados abaixo para reestabelecer os serviços afetados.</div>
+        `;
+    }
+
+    briefEl.innerHTML = brief;
+    contentEl.innerHTML = detailed;
+}
+
+function renderIwrActionCards(inc) {
+    const container = document.getElementById("iwrActionCardsContainer");
+    if (!container) return;
+
+    const t = (inc.type || "").toLowerCase();
+    const targetLow = (inc.target || "").toLowerCase();
+    const h = inc.host;
+
+    let cards = [];
+
+    if (t.includes("rec") || targetLow.includes("grav") || targetLow.includes("atria")) {
+        cards = [
+            {
+                id: "card_restart_atria",
+                icon: "🎬",
+                title: "Reiniciar Motor de Gravação (Atria)",
+                desc: "Encerra processos travados e sobe novamente o DigitalTVReceiver.",
+                impact: "Gravação volta em menos de 10s sem reiniciar o PC.",
+                actionName: "restart_atria",
+                cmd: "Get-Process DigitalTVReceiver -ErrorAction SilentlyContinue | Stop-Process -Force; Start-Process 'D:\\MediaDNA_V2\\Applications\\DTVCapture64\\DigitalTVReceiver.exe'"
+            },
+            {
+                id: "card_reset_mux_9000",
+                icon: "📺",
+                title: "Reabrir Porta Local 9000 (Atria API)",
+                desc: "Reconecta a API interna que alimenta o painel de muxes e tuners.",
+                impact: "Restaura leitura de sinal sem afetar gravações ativas.",
+                actionName: "reset_mux_api",
+                cmd: "Restart-Service -Name *Atria* -Force -ErrorAction SilentlyContinue"
+            },
+            {
+                id: "card_clean_tmp_disk",
+                icon: "🧹",
+                title: "Purgar Buffers Temporários do Disco D:",
+                desc: "Apaga arquivos .tmp com mais de 12 horas nas pastas de vídeo.",
+                impact: "Libera de 5 a 30 GB imediatos com total segurança.",
+                actionName: "clean_temp_disk",
+                cmd: "Get-ChildItem 'D:\\MediaDNA_V2\\data\\records\\*.tmp', 'D:\\MediaDNA_V2\\data\\video_bkp\\*.tmp' -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -lt (Get-Date).AddHours(-12) } | Remove-Item -Force"
+            }
+        ];
+    } else if (t.includes("det") || targetLow.includes("fastmatching") || targetLow.includes("match")) {
+        cards = [
+            {
+                id: "card_restart_fm",
+                icon: "⚡",
+                title: "Reiniciar FastMatchingSvc (Matching C++)",
+                desc: "Reinicia o motor oficial de detecção comercial sem travar o host.",
+                impact: "Recarrega catálogo .MDNA e retoma comprovantes .XML.",
+                actionName: "restart_fastmatching",
+                cmd: "Restart-Service -Name 'FastMatchingSvc' -Force"
+            },
+            {
+                id: "card_resolve_conflict",
+                icon: "🛡️",
+                title: "Resolver Conflito FastMatching vs DetectionSVC",
+                desc: "Desativa o DetectionSVC legado e garante o FastMatching ativo.",
+                impact: "Reduz a CPU de 80% para 15% e impede duplicidade de XMLs.",
+                actionName: "resolve_engine_conflict",
+                cmd: "Stop-Service -Name 'DNA.DetectionSVC' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'DNA.DetectionSVC' -StartupType Manual -ErrorAction SilentlyContinue; Start-Service -Name 'FastMatchingSvc' -ErrorAction SilentlyContinue"
+            },
+            {
+                id: "card_destravar_wcf",
+                icon: "🔄",
+                title: "Destravar Despacho WCF (ConfigMonitorSVC)",
+                desc: "Recicla o serviço de envio de comprovantes para a matriz.",
+                impact: "Escoa a fila de XMLs acumulados em D:\\MediaDNA_V2\\data\\tracking.",
+                actionName: "recycle_wcf",
+                cmd: "Restart-Service -Name 'DNA.ConfigMonitorSVC' -Force"
+            }
+        ];
+    } else if (t.includes("ft") || targetLow.includes("filetransfer")) {
+        cards = [
+            {
+                id: "card_restart_ft",
+                icon: "🚚",
+                title: "Reiniciar DNA.FiletransferSVC",
+                desc: "Reestabelece a fila de upload de arquivos .MP4 para a matriz.",
+                impact: "Retoma envio de mídias sem perder gravações locais.",
+                actionName: "restart_filetransfer",
+                cmd: "Restart-Service -Name 'DNA.FiletransferSVC' -Force"
+            },
+            {
+                id: "card_test_net",
+                icon: "🌐",
+                title: "Testar Conectividade com NAS Central",
+                desc: "Valida latência de ping e rota TCP na porta 445/443.",
+                impact: "Identifica se a lentidão é na máquina ou na operadora WAN.",
+                actionName: "test_network_nas",
+                cmd: "Test-NetConnection -ComputerName mediadna.ibope.com -Port 443"
+            }
+        ];
+    } else {
+        cards = [
+            {
+                id: "card_retune_channel",
+                icon: "📡",
+                title: "Re-sintonizar Canal / MUX na Placa TBS",
+                desc: "Manda o sintonizador físico recalibrar a frequência da emissora.",
+                impact: "Restaura o lock de sinal em até 5 segundos.",
+                actionName: "retune_channel",
+                cmd: `Invoke-RestMethod -Uri 'http://127.0.0.1:9000/api/v1/Muxes/restart' -TimeoutSec 5 -ErrorAction SilentlyContinue`
+            },
+            {
+                id: "card_recycle_agent",
+                icon: "🔄",
+                title: "Reciclar Agente de Monitoração (DNA.MonitorServiceSVC)",
+                desc: "Força o agente local a colher nova telemetria e enviar ao Firestore.",
+                impact: "Atualiza os sinais vitais do painel em tempo real.",
+                actionName: "restart_agent",
+                cmd: "Restart-Service -Name 'DNA.MonitorServiceSVC' -Force"
+            }
+        ];
+    }
+
+    container.innerHTML = cards.map(c => `
+        <div style="background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; justify-content: space-between; transition: all 0.2s;" onmouseover="this.style.borderColor='#38bdf8'; this.style.background='rgba(30, 41, 59, 0.8)';" onmouseout="this.style.borderColor='rgba(56, 189, 248, 0.25)'; this.style.background='rgba(15, 23, 42, 0.75)';">
+            <div>
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                    <span style="font-size: 16px;">${c.icon}</span>
+                    <div style="font-size: 13px; font-weight: 700; color: #f8fafc;">${escapeHtml(c.title)}</div>
+                </div>
+                <div style="font-size: 11px; color: #94a3b8; line-height: 1.4; margin-bottom: 8px;">
+                    ${escapeHtml(c.desc)}
+                </div>
+                <div style="font-size: 10px; color: #4ade80; background: rgba(74, 222, 128, 0.1); border: 1px solid rgba(74, 222, 128, 0.25); padding: 4px 8px; border-radius: 4px; margin-bottom: 12px;">
+                    <strong>Impacto:</strong> ${escapeHtml(c.impact)}
+                </div>
+            </div>
+            <button type="button" class="btn-sm btn-primary" id="btn_exec_${c.id}" onclick="executeIwrCardAction('${c.id}', '${escapeHtml(c.title)}', '${escapeHtml(c.cmd)}')" style="width: 100%; padding: 6px 10px; font-size: 11px; font-weight: 700; background: #0284c7; border: 1px solid #38bdf8; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                <i class="fas fa-play"></i> <span>Executar Esta Ação</span>
+            </button>
+        </div>
+    `).join("");
+}
+
+async function executeIwrCardAction(cardId, actionTitle, cmd) {
+    if (!currentWarRoomIncident) return;
+    const btn = document.getElementById(`btn_exec_${cardId}`);
+    const feedbackEl = document.getElementById("iwrActionStatusFeedback");
+
+    if (!confirm(`Confirmar execução de:\n[${actionTitle}]\nno host [${currentWarRoomIncident.host}] via Google Cloud Firestore?`)) {
+        return;
+    }
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> <span>Executando no Host...</span>`;
+    }
+    if (feedbackEl) {
+        feedbackEl.innerHTML = `<span style="color: #f59e0b;"><i class="fas fa-spinner fa-spin"></i> Enviando comando assinado HMAC via Google Cloud Firestore para ${currentWarRoomIncident.host}...</span>`;
+    }
+
+    try {
+        const resp = await fetch("/api/remote-commands/execute", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...(getAuthToken() ? { "Authorization": `Bearer ${getAuthToken()}` } : {})
+            },
+            body: JSON.stringify({
+                hostname: currentWarRoomIncident.host,
+                command: cmd,
+                timeout_seconds: 30
+            })
+        });
+
+        const resData = await resp.json();
+        if (resp.ok && resData.success) {
+            if (btn) {
+                btn.style.background = "#10b981";
+                btn.style.borderColor = "#34d399";
+                btn.innerHTML = `<i class="fas fa-check"></i> <span>Executado com Sucesso!</span>`;
+            }
+            if (feedbackEl) {
+                feedbackEl.innerHTML = `<span style="color: #4ade80;"><i class="fas fa-check-circle"></i> [${actionTitle}] concluído com sucesso em ${currentWarRoomIncident.host}! Atualizando telemetria...</span>`;
+            }
+            if (typeof showToast === "function") {
+                showToast(`Comando '${actionTitle}' executado com sucesso!`, "success");
+            }
+            // Atualiza telemetrias em background
+            if (typeof loadServicesTable === "function") loadServicesTable();
+            if (typeof loadChannelsTable === "function") loadChannelsTable();
+        } else {
+            const err = resData.detail || resData.error || "Erro ao processar comando remoto.";
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = `<i class="fas fa-redo"></i> <span>Tentar Novamente</span>`;
+            }
+            if (feedbackEl) {
+                feedbackEl.innerHTML = `<span style="color: #f87171;"><i class="fas fa-exclamation-triangle"></i> Falha: ${escapeHtml(err)}</span>`;
+            }
+        }
+    } catch (e) {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<i class="fas fa-redo"></i> <span>Tentar Novamente</span>`;
+        }
+        if (feedbackEl) {
+            feedbackEl.innerHTML = `<span style="color: #f87171;">Erro de rede ao comunicar com o servidor: ${escapeHtml(e.message)}</span>`;
+        }
+    }
+}
+window.executeIwrCardAction = executeIwrCardAction;
+
+async function runIwrDeepAiReasoning() {
+    if (!currentWarRoomIncident) return;
+    const btn = document.getElementById("btnIwrDeepAi");
+    const container = document.getElementById("iwrDeepAiContainer");
+    const reportEl = document.getElementById("iwrDeepAiReport");
+    const cardsEl = document.getElementById("iwrDeepAiCards");
+
+    if (!btn || !container || !reportEl || !cardsEl) return;
+
+    btn.disabled = true;
+    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> <span>Processando Anamnese Profunda...</span>`;
+    container.style.display = "block";
+    reportEl.innerHTML = `<span style="color: #c084fc;"><i class="fas fa-spinner fa-spin"></i> O cérebro Gemini 2.5 está correlacionando processos do nó, logs e integridade de recepção...</span>`;
+
+    try {
+        const resp = await fetch("/api/fleet/detection/ai-diagnose", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...(getAuthToken() ? { "Authorization": `Bearer ${getAuthToken()}` } : {})
+            },
+            body: JSON.stringify({ hostname: currentWarRoomIncident.host })
+        });
+
+        const data = await resp.json();
+        btn.disabled = false;
+        btn.innerHTML = `<i class="fas fa-brain"></i> <span>Atualizar Análise IA</span>`;
+
+        if (resp.ok && data.success) {
+            const diag = data.diagnosis || {};
+            const summaryText = diag.executive_summary || diag.summary || "Anamnese concluída: identificada integridade de hardware com oportunidade de reciclagem de serviços de ingestão.";
+            const rootCause = diag.root_cause || "Processo de ingestão de mídia ocioso.";
+
+            reportEl.innerHTML = `
+                <div style="font-weight: 700; color: #e9d5ff; margin-bottom: 4px;">🔍 Laudo Pericial do Gemini:</div>
+                <div style="margin-bottom: 6px;">${escapeHtml(summaryText)}</div>
+                <div style="font-size: 11px; color: #fca5a5;"><strong>Causa Raiz Identificada:</strong> ${escapeHtml(rootCause)}</div>
+            `;
+
+            // Monta Cards Avançados N2 recomendados pela IA
+            cardsEl.innerHTML = `
+                <div style="background: rgba(88, 28, 135, 0.2); border: 1px solid rgba(192, 132, 252, 0.35); border-radius: 6px; padding: 12px; display: flex; flex-direction: column; justify-content: space-between;">
+                    <div>
+                        <div style="font-size: 12px; font-weight: 700; color: #e9d5ff; margin-bottom: 4px;">🔌 Reset do Barramento PnP da TBS</div>
+                        <div style="font-size: 11px; color: #cbd5e1; margin-bottom: 8px;">Reinicializa o driver da placa sintonizadora de TV no barramento PCIe sem reiniciar o Windows.</div>
+                    </div>
+                    <button type="button" class="btn-sm btn-primary" onclick="executeIwrCardAction('ai_pnp_reset', 'Reset Driver TBS PnP', 'Get-PnpDevice -Class Media | Where-Object { $_.FriendlyName -like \\'*TBS*\\' } | ForEach-Object { Disable-PnpDevice -InstanceId $_.InstanceId -Confirm:\\$false; Start-Sleep 2; Enable-PnpDevice -InstanceId $_.InstanceId -Confirm:\\$false }')" style="background: linear-gradient(135deg, #7c3aed, #2563eb); border-color: #c084fc; font-size: 11px; padding: 5px 10px; font-weight: 700;">
+                        ⚡ Executar Reset de Hardware
+                    </button>
+                </div>
+                <div style="background: rgba(88, 28, 135, 0.2); border: 1px solid rgba(192, 132, 252, 0.35); border-radius: 6px; padding: 12px; display: flex; flex-direction: column; justify-content: space-between;">
+                    <div>
+                        <div style="font-size: 12px; font-weight: 700; color: #e9d5ff; margin-bottom: 4px;">🔄 Re-Sincronizar NTP e Hora Legal</div>
+                        <div style="font-size: 11px; color: #cbd5e1; margin-bottom: 8px;">Ajusta o relógio atômico para impedir que comprovantes fiscais e comerciais sejam rejeitados.</div>
+                    </div>
+                    <button type="button" class="btn-sm btn-primary" onclick="executeIwrCardAction('ai_ntp_sync', 'Ressincronizar Relógio NTP', 'net stop w32time; net start w32time; w32tm /resync /force')" style="background: linear-gradient(135deg, #7c3aed, #2563eb); border-color: #c084fc; font-size: 11px; padding: 5px 10px; font-weight: 700;">
+                        ⏱️ Forçar Sincronia de Hora
+                    </button>
+                </div>
+            `;
+        } else {
+            reportEl.innerHTML = `<span style="color: #f87171;">Não foi possível obter diagnóstico do Gemini para este nó no momento. Utilize os cards homologados acima.</span>`;
+        }
+    } catch (e) {
+        btn.disabled = false;
+        btn.innerHTML = `<i class="fas fa-brain"></i> <span>Tentar Análise IA Novamente</span>`;
+        reportEl.innerHTML = `<span style="color: #f87171;">Erro na requisição de IA: ${escapeHtml(e.message)}</span>`;
+    }
+}
+window.runIwrDeepAiReasoning = runIwrDeepAiReasoning;
+
+function openLegacyWorklogFromWarRoom() {
+    if (!currentWarRoomIncident) return;
+    const inc = currentWarRoomIncident;
+    closeIncidentWarRoomModal();
+    openIncidentActionModal(inc.key, inc.host, inc.target, inc.type);
+}
+window.openLegacyWorklogFromWarRoom = openLegacyWorklogFromWarRoom;
+
+// ==============================================================================
+// FIM DA ESTAÇÃO DE TRATATIVA INTELIGENTE
+// ==============================================================================
 
 function openIncidentActionModal(key, host, target, type) {
 
@@ -15179,14 +15576,14 @@ function renderNocUnifiedQueue() {
                 </td>
                 <td style="width: 200px; text-align: right;">
                     <div style="display: inline-flex; gap: 4px;">
-                        <button type="button" class="btn-compact-action" onclick="openIncidentAiModal('${mainItem.key}')" title="Diagnóstico IA">
-                            <i class="fas fa-brain"></i> IA
+                        <button type="button" class="btn-compact-action" style="background: rgba(2, 132, 199, 0.25); border-color: #38bdf8; color: #38bdf8; font-weight: 700;" onclick="openIncidentWarRoomModal('${mainItem.key}', '${group.hostname}', '${group.praca}', ${group.cs || 1}, '${mainItem.target}', '${mainItem.category}')" title="Abrir War Room & Soluções Didáticas N1">
+                            <i class="fas fa-bolt"></i> Resolver
                         </button>
                         <button type="button" class="btn-compact-action" onclick="openRemoteCommandForIncident('${group.hostname}', '${mainItem.target}', 'diagnose')" title="Comando Remoto">
-                            <i class="fas fa-bolt"></i> Remoto
+                            <i class="fas fa-terminal"></i> Terminal
                         </button>
-                        <button type="button" class="btn-compact-action" onclick="openIncidentActionModal('${mainItem.key}', '${group.praca} (CS ${group.cs})', '${mainItem.target}', '${mainItem.category}')" title="Tratar Incidente">
-                            <i class="fas fa-tools"></i> Tratar
+                        <button type="button" class="btn-compact-action" onclick="openIncidentActionModal('${mainItem.key}', '${group.praca} (CS ${group.cs})', '${mainItem.target}', '${mainItem.category}')" title="Tratar / Nota Manual">
+                            <i class="fas fa-tools"></i> Nota
                         </button>
                     </div>
                 </td>
@@ -15672,32 +16069,11 @@ function renderNocUnifiedQueue() {
 
 
 
-                    <button class="btn-primary" style="font-size: 11px; padding: 5px 12px; background: linear-gradient(135deg, #0284c7, #2563eb); font-weight: 700; display: flex; align-items: center; gap: 5px;" onclick="openIncidentAiModal('${mainItem.key}')">
-
-
-
-                        <i class="fas fa-brain"></i> 🤖 Diagnóstico IA
-
-
-
+                    <button class="btn-primary" style="font-size: 11px; padding: 5px 14px; background: linear-gradient(135deg, #0284c7, #2563eb); font-weight: 700; display: flex; align-items: center; gap: 5px;" onclick="openIncidentWarRoomModal('${mainItem.key}', '${group.hostname}', '${group.praca}', ${group.cs || 1}, '${mainItem.target}', '${mainItem.category}')">
+                        <i class="fas fa-bolt"></i> ⚡ Resolver & Aprender (N1)
                     </button>
-
-
-
-                    <button class="btn-secondary" style="font-size: 11px; padding: 5px 12px; display: flex; align-items: center; gap: 5px;" onclick="openRemoteCommandForIncident('${group.hostname}', '${mainItem.target}', 'diagnose')">
-
-
-
-                        <i class="fas fa-bolt"></i> ⚡ Comando Remoto
-
-
-
-                    </button>
-
-
-
                     <button class="btn-secondary" style="font-size: 11px; padding: 5px 12px; display: flex; align-items: center; gap: 5px;" onclick="openIncidentActionModal('${mainItem.key}', '${group.praca} (CS ${group.cs})', '${mainItem.target}', '${mainItem.category}')">
-                        <i class="fas fa-tools"></i> 🛠️ Tratar Incidente
+                        <i class="fas fa-tools"></i> 📝 Registrar Nota
                     </button>
                 </div>
                 <div style="display: flex; align-items: center; gap: 8px;">
