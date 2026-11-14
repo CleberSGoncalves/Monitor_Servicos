@@ -203,6 +203,26 @@ namespace WinServiceFleetAgent.Core
                     }
                 }
 
+                if (!File.Exists(exeFullPath) && srv.ServiceName.Contains("FastMatching", StringComparison.OrdinalIgnoreCase))
+                {
+                    string[] fmPaths =
+                    {
+                        @"D:\MediaDNA_V2\applications\DTVCapture64\FastMachingSvc\FastMachingSvc.exe",
+                        @"D:\MediaDNA_V2\applications\DTVCapture64\FastMachingSvc\FastMatchingSvc.exe",
+                        @"D:\MediaDNA_V2\applications\DTVCapture64\FastMatchingSvc\FastMachingSvc.exe",
+                        @"C:\MediaDNA_V2\applications\DTVCapture64\FastMachingSvc\FastMachingSvc.exe",
+                        @"C:\MediaDNA_V2\applications\DTVCapture64\FastMatchingSvc\FastMatchingSvc.exe"
+                    };
+                    foreach (var p in fmPaths)
+                    {
+                        if (File.Exists(p))
+                        {
+                            exeFullPath = p;
+                            break;
+                        }
+                    }
+                }
+
                 if (!File.Exists(exeFullPath) && srv.ServiceName.Equals("DNA.MonitorServiceSVC", StringComparison.OrdinalIgnoreCase))
                 {
                     string localExe = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, srv.ExeName);
@@ -319,6 +339,10 @@ namespace WinServiceFleetAgent.Core
 
             Dictionary<string, string> batchAutoRestartMap = cleanAutoRestartMap;
 
+            bool isFastMatchingRunning = serviceStatuses.Any(s => s.Def.ServiceName.Contains("FastMatching", StringComparison.OrdinalIgnoreCase) && s.Status.Equals("Em Execução", StringComparison.OrdinalIgnoreCase));
+            bool isDetectionRunning = serviceStatuses.Any(s => s.Def.ServiceName.Contains("DetectionSVC", StringComparison.OrdinalIgnoreCase) && s.Status.Equals("Em Execução", StringComparison.OrdinalIgnoreCase));
+            bool isAtriaRunning = serviceStatuses.Any(s => s.Def.ServiceName.Contains("Atria", StringComparison.OrdinalIgnoreCase) && s.Status.Equals("Em Execução", StringComparison.OrdinalIgnoreCase));
+
             // Avaliação de AutoRestart para serviços detectados como Parado
             foreach (var srvInfo in serviceStatuses)
             {
@@ -331,6 +355,24 @@ namespace WinServiceFleetAgent.Core
                     string autoRestartSetting = srv.ServiceName.Equals("FastMatchingSvc", StringComparison.OrdinalIgnoreCase) ? "Não" : "Sim";
                     if (batchAutoRestartMap.TryGetValue(srv.ServiceName, out var ar)) autoRestartSetting = ar;
                     else if (cleanAutoRestartMap.TryGetValue(srv.ServiceName, out var car)) autoRestartSetting = car;
+
+                    // Exclusão mútua estrita: nunca iniciar DetectionSVC/TrackingSVC se FastMatching estiver ativo ou em CS02/CS03
+                    if ((srv.ServiceName.Contains("DetectionSVC", StringComparison.OrdinalIgnoreCase) ||
+                         srv.ServiceName.Contains("TrackingSVC", StringComparison.OrdinalIgnoreCase)) &&
+                        (isFastMatchingRunning || metadata.CS >= 2))
+                    {
+                        autoRestartSetting = "Não";
+                    }
+                    else if (srv.ServiceName.Contains("FastMatching", StringComparison.OrdinalIgnoreCase) &&
+                             (isDetectionRunning || metadata.CS >= 2))
+                    {
+                        autoRestartSetting = "Não";
+                    }
+                    else if (srv.ServiceName.Contains("MediaRecorder", StringComparison.OrdinalIgnoreCase) &&
+                             (isAtriaRunning || metadata.CS >= 2))
+                    {
+                        autoRestartSetting = "Não";
+                    }
 
                     bool isAutoRestartEnabled = autoRestartSetting.Equals("Sim", StringComparison.OrdinalIgnoreCase) ||
                                                 autoRestartSetting.Equals("True", StringComparison.OrdinalIgnoreCase);

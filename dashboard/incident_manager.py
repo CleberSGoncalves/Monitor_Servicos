@@ -264,19 +264,29 @@ def sync_live_fleet_to_incident_events() -> int:
 
         # 2. Serviços Essenciais Parados
         for h, svcs in hosts_svcs.items():
-            praca = svcs[0].get("praca") or "Geral"
-            cs = svcs[0].get("cs") or 1
+            mon = next((s for s in svcs if s.get("nome_servico") == "DNA.MonitorServiceSVC"), None)
+            cfg = next((s for s in svcs if s.get("nome_servico") == "DNA.ConfigMonitorSVC"), None)
+            ref_svc = mon or cfg or svcs[0]
+            praca = ref_svc.get("praca") or svcs[0].get("praca") or "Geral"
+            cs = ref_svc.get("cs") if ref_svc.get("cs") is not None else (svcs[0].get("cs") or 1)
             try:
                 cs_num = int(float(cs))
             except Exception:
                 cs_num = 1
 
-            # A. Motor de gravação
+            # Se o agente do host está parado/offline, não dispara incidentes individuais falsos de serviços
+            if mon and not any(x in (mon.get("status_servico") or "").lower() for x in ["execu", "running", "ok", "online"]):
+                continue
+
+            # A. Motor de gravação (apenas CS01 ou se Atria/MediaRecorder instalado)
             atria = next((s for s in svcs if s.get("nome_servico") == "Atria Capture"), None)
             mrec = next((s for s in svcs if s.get("nome_servico") == "DNA.MediaRecorderSVC"), None)
-            atria_run = atria and any(x in (atria.get("status_servico") or "").lower() for x in ["execu", "running", "ok"])
-            mrec_run = mrec and any(x in (mrec.get("status_servico") or "").lower() for x in ["execu", "running", "ok"])
-            if not atria_run and not mrec_run and (atria or mrec):
+            atria_st = (atria.get("status_servico") or "").lower() if atria else "desinstalado"
+            mrec_st = (mrec.get("status_servico") or "").lower() if mrec else "desinstalado"
+            atria_run = any(x in atria_st for x in ["execu", "running", "ok"])
+            mrec_run = any(x in mrec_st for x in ["execu", "running", "ok"])
+            both_uninstalled = ("desinstalado" in atria_st or "desativado" in atria_st) and ("desinstalado" in mrec_st or "desativado" in mrec_st)
+            if not atria_run and not mrec_run and not both_uninstalled and (atria or mrec):
                 code = f"INC-SRV-REC-{re.sub(r'[^a-zA-Z0-9]', '', h).upper()}"
                 active_codes.add(code)
                 cursor.execute("""
@@ -293,11 +303,16 @@ def sync_live_fleet_to_incident_events() -> int:
 
             # B. Detecção CS01
             if cs_num == 1:
-                fma = next((s for s in svcs if "fastmatching" in (s.get("nome_servico") or "").lower()), None)
+                fma = next((s for s in svcs if "fastmatching" in (s.get("nome_servico") or "").lower() or "fastmaching" in (s.get("nome_servico") or "").lower()), None)
                 det = next((s for s in svcs if s.get("nome_servico") == "DNA.DetectionSVC"), None)
-                fma_run = fma and any(x in (fma.get("status_servico") or "").lower() for x in ["execu", "running", "ok"])
-                det_run = det and any(x in (det.get("status_servico") or "").lower() for x in ["execu", "running", "ok"])
-                if not fma_run and not det_run and (fma or det):
+                fma_st = (fma.get("status_servico") or "").lower() if fma else "desinstalado"
+                det_st = (det.get("status_servico") or "").lower() if det else "desinstalado"
+                fma_run = any(x in fma_st for x in ["execu", "running", "ok"])
+                det_run = any(x in det_st for x in ["execu", "running", "ok"])
+                det_both_uninstalled = ("desinstalado" in fma_st or "desativado" in fma_st) and ("desinstalado" in det_st or "desativado" in det_st)
+                # Proteção contra colisão de hostname NetBIOS de 15 caracteres (CS01 vs CS02)
+                is_truncated_15 = len(h) == 15 and (h.endswith("-DT0") or h.endswith("-DT-") or h.endswith("-ATRIA-"))
+                if not fma_run and not det_run and not det_both_uninstalled and not is_truncated_15 and (fma or det):
                     code = f"INC-SRV-DET-{re.sub(r'[^a-zA-Z0-9]', '', h).upper()}"
                     active_codes.add(code)
                     cursor.execute("""
@@ -329,7 +344,7 @@ def sync_live_fleet_to_incident_events() -> int:
                         impact_summary = excluded.impact_summary
                 """, (code, praca, h, "DNA.FiletransferSVC", "Serviço DNA.FiletransferSVC parado. Mídias e comprovantes retidos sem envio à matriz.", f"Parada do serviço de transferência em {h}", f"Capture Site {praca}", now_str))
 
-        # 3. Auto-resolução de incidentes corrigidos
+        # 3. Auto-resolução de incidentes corrigidos (inclusive quando todos foram resolvidos e active_codes está vazio)
         if active_codes:
             placeholders = ",".join("?" for _ in active_codes)
             cursor.execute(f"""
@@ -338,6 +353,12 @@ def sync_live_fleet_to_incident_events() -> int:
                 WHERE status = 'aberto' AND (incident_code LIKE 'INC-CH-%' OR incident_code LIKE 'INC-SRV-%')
                   AND incident_code NOT IN ({placeholders})
             """, [now_str] + list(active_codes))
+        else:
+            cursor.execute("""
+                UPDATE incident_events
+                SET status = 'resolvido', resolved_at = ?
+                WHERE status = 'aberto' AND (incident_code LIKE 'INC-CH-%' OR incident_code LIKE 'INC-SRV-%')
+            """, [now_str])
 
         conn.commit()
         return len(active_codes)

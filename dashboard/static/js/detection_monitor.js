@@ -236,9 +236,19 @@ function renderDetectionTable() {
         }
 
         // Helper para renderizar pill de serviço individual
-        const renderSvcPill = (name, running, statusText, isUninstalled) => {
+        const renderSvcPill = (name, running, statusText, isUninstalled, isStandbyEngine = false) => {
             const stLow = String(statusText || "").toLowerCase();
+            const isDisabled = ["desativado", "disabled"].includes(stLow);
             const isUninst = isUninstalled || ["desinstalado", "não encontrado", "nao encontrado", "inexistente", "não instalado", "nao instalado"].includes(stLow);
+            if (isDisabled || isStandbyEngine) {
+                const subLabel = isDisabled ? "(Desativado)" : "(Inativo)";
+                return `
+                    <span title="${name}: ${statusText} (Motor Alternativo Desativado/Standby)" style="display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 4px; background: rgba(100, 116, 139, 0.12); border: 1px solid rgba(148, 163, 184, 0.25); color: #94a3b8; font-size: 10px; font-weight: 500;">
+                        <span style="width: 5px; height: 5px; border-radius: 50%; background: #64748b;"></span>
+                        ${name.replace(".exe", "").replace("DNA.", "")} <span style="font-size: 9px; opacity: 0.85;">${subLabel}</span>
+                    </span>
+                `;
+            }
             if (isUninst) {
                 return `
                     <span title="${name}: Desinstalado / Não Instalado" style="display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 4px; background: rgba(100, 116, 139, 0.12); border: 1px solid rgba(148, 163, 184, 0.25); color: #94a3b8; font-size: 10px; font-weight: 500;">

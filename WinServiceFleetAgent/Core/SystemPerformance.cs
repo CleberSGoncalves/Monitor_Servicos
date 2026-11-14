@@ -244,6 +244,10 @@ namespace WinServiceFleetAgent.Core
                 {
                     procs = Process.GetProcessesByName("DigitalTVCapture");
                 }
+                else if (procs.Length == 0 && procName.Contains("FastMatching", StringComparison.OrdinalIgnoreCase))
+                {
+                    procs = Process.GetProcessesByName("FastMachingSvc");
+                }
 
                 if (procs.Length == 0) return ("Inativo", "0%");
 

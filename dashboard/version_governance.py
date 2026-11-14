@@ -46,7 +46,7 @@ def add_decommissioned_host(hostname: str) -> List[str]:
 
 # Versões oficiais padrão homologadas pela engenharia
 DEFAULT_DESIRED_VERSIONS: Dict[str, str] = {
-    "DNA.MonitorServiceSVC": "1.0.21.3",
+    "DNA.MonitorServiceSVC": "1.0.21.4",
     "FastMatchingSvc": "1.1.0.0",
     "DNA.DetectionSVC": "3.4.6040.21056",
     "DNA.ConfigMonitorSVC": "4.8.0.0",
@@ -86,8 +86,12 @@ def _is_version_up_to_date(installed: str, target: str, service_name: str = "") 
         return True
     t_inst = _parse_ver_tuple(v_inst)
     t_targ = _parse_ver_tuple(v_targ)
-    if len(t_inst) >= 3 and len(t_targ) >= 3 and t_inst >= t_targ:
-        return True
+    if len(t_inst) >= 3 and len(t_targ) >= 3:
+        if t_inst >= t_targ:
+            return True
+        # Hotfixes na mesma família 1.0.21.x permanecem homologados durante propagação OTA
+        if "monitorservice" in str(service_name).lower() and t_inst[:3] == t_targ[:3] and t_inst >= (1, 0, 21, 0):
+            return True
     return False
 
 

@@ -1076,7 +1076,7 @@ def is_service_running(status: Optional[str]) -> bool:
     if not status:
         return False
     st = str(status).strip().lower()
-    if any(w in st for w in ["desinstalado", "inexistente", "não encontrado", "nao encontrado", "não instalado", "nao instalado", "parado", "stopped"]):
+    if any(w in st for w in ["desativado", "disabled", "inativo", "desinstalado", "inexistente", "não encontrado", "nao encontrado", "não instalado", "nao instalado", "parado", "stopped"]):
         return False
     return any(w in st for w in ["execu", "running", "online", "ativo"])
 
@@ -1127,6 +1127,8 @@ def get_service_status_normalized(status: Optional[str]) -> str:
     st_low = st.lower()
     if any(w in st_low for w in ["execu", "running"]):
         return "Em Execução"
+    if any(w in st_low for w in ["desativado", "disabled"]):
+        return "Desativado"
     if any(w in st_low for w in ["parado", "stopped"]):
         return "Parado"
     if any(w in st_low for w in ["inexistente", "não encontrado", "nao encontrado", "não instalado", "nao instalado", "desinstalado"]):
@@ -1246,22 +1248,39 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
 
 
 
-    # 2. Agrupamento de hosts físicos: identifica CS01 e consolida serviços do mesmo host
-
-
-
+    # 2. Pré-análise de CS por hostname: descarta máquinas que são 100% CS02 ou CS03 sem motor CS01 ativo
+    # (Ex: CS-BRSP-SOR-DT0 é Sorocaba CS02 com CS=2.0 em todos os serviços, e BRSP-RADIO-BKP1 é CS=3.0)
+    host_cs_sets: Dict[str, set] = {}
+    host_has_active_motor_or_ram: Dict[str, bool] = {}
     for s in raw_services:
+        h_temp = str(s.get("hostname") or "").strip()
+        if not h_temp or h_temp == "N/A":
+            continue
+        try:
+            c_temp = int(float(s.get("cs", 1) or 1))
+        except Exception:
+            c_temp = 1
+        host_cs_sets.setdefault(h_temp, set()).add(c_temp)
+        sn_temp = str(s.get("nome_servico") or "").lower()
+        if "fastmatching" in sn_temp or "detectionsvc" in sn_temp:
+            st_temp = str(s.get("status_servico") or "").lower()
+            ram_temp = parse_ram_to_mb(s.get("ram_uso"))
+            if any(w in st_temp for w in ["execu", "running"]) or (ram_temp is not None and ram_temp >= 10):
+                host_has_active_motor_or_ram[h_temp] = True
 
-
+    # Agrupamento de hosts físicos: identifica CS01 e consolida serviços do mesmo host
+    for s in raw_services:
 
         hostname = s.get("hostname")
 
-
-
         if not hostname or hostname == "N/A":
 
+            continue
 
-
+        # Se 100% dos serviços deste host têm CS in (2, 3) e nenhum motor de detecção ativo/em memória,
+        # trata-se fisicamente de um nó CS02/CS03 (mesmo que o NetBIOS de 15 chars tenha truncado o sufixo)
+        h_cs_all = host_cs_sets.get(hostname, {1})
+        if 1 not in h_cs_all and not host_has_active_motor_or_ram.get(hostname, False):
             continue
 
 
@@ -1731,7 +1750,7 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
         # Precedência: Se a telemetria do agente OU do FastMatching tem > 20 min, a evidência é insuficiente para P0
         is_telemetry_fresh_for_p0 = (agent_comm_hours <= 0.33) and not fm_is_stale and agent_running
 
-        # REGRA BLINDADA ANTI-FALSO CONFLITO:
+        # REGRA BLINDADA ANTI-FALSO CONFLITO E CURA DE COLISÃO NETBIOS 15-CHARS (CS01 vs CS02):
         # Serviços desinstalados ou inexistentes nunca podem ser considerados em execução
         fm_is_uninstalled = fm_status in ("Desinstalado", "Não Encontrado", "Inexistente", "Não Instalado")
         det_is_uninstalled = det_status in ("Desinstalado", "Não Encontrado", "Inexistente", "Não Instalado")
@@ -1742,6 +1761,41 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
             fm_running = False
         if det_is_uninstalled:
             det_running = False
+
+        fm_ram_mb = parse_ram_to_mb(fm_svc.get("ram_uso")) if fm_svc else None
+        det_ram_mb = parse_ram_to_mb(det_svc.get("ram_uso")) if det_svc else None
+        trk_ram_mb = parse_ram_to_mb(trk_svc.get("ram_uso")) if trk_svc else None
+
+        # Cura de colisão NetBIOS 15-chars (ex: Taubaté CS-BRSP-TTE-DT0 766 MB, Itabuna CS-BRBA-ITB-DT- 10 MB,
+        # Parintins CS-BRAM-PAR-DT- 119 MB, Uruguaiana BRRS-UGN-ATRIA- 10 MB) onde o nó CS02 sobrescreveu o status
+        # com 'Parado'/'Inexistente', mas o processo no CS01 possui WorkingSet RAM ativo medido:
+        if not fm_running and not det_running:
+            if det_ram_mb is not None and det_ram_mb >= 50:
+                det_running = True
+                det_status = "Em Execução"
+                det_is_uninstalled = False
+            elif fm_ram_mb is not None and fm_ram_mb >= 10:
+                fm_running = True
+                fm_status = "Em Execução"
+                fm_is_uninstalled = False
+
+        # Desambiguação de estado legado do SharePoint onde um motor ficou congelado como 'Em Execução' antes do 429:
+        if fm_running and det_running:
+            if fm_ram_mb is not None and det_ram_mb is not None:
+                if fm_ram_mb >= 150 and det_ram_mb < fm_ram_mb:
+                    det_running = False
+                    det_status = "Parado"
+                elif fm_ram_mb <= 45 and det_ram_mb >= 30:
+                    fm_running = False
+                    fm_status = "Desativado"
+
+        # Cura de colisão NetBIOS 15-chars para TrackingSVC quando CS02 sobrescreveu TrackingSVC como Inexistente (cs=2)
+        if det_running and not trk_running:
+            trk_cs_val = int(float(trk_svc.get("cs", 1) or 1)) if trk_svc else 1
+            if (trk_cs_val >= 2 and trk_is_uninstalled) or (trk_ram_mb is not None and trk_ram_mb >= 10):
+                trk_running = True
+                trk_status = "Em Execução"
+                trk_is_uninstalled = False
 
         # Conflito Real: só ocorre se AMBOS estiverem instalados, rodando e ativos
         if fm_running and det_running and not fm_is_uninstalled and not det_is_uninstalled:
@@ -1754,14 +1808,12 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
             active_engine = "FastMatchingSvc"
             active_engine_label = f"FastMatching (Ativo - Motor Moderno){cluster_motor_note}"
             engine_tier = "PRIMARY"
-            if not is_agent_stale:
-                nominal_fastmatching += 1
+            nominal_fastmatching += 1
         elif det_running and not det_is_uninstalled:
             active_engine = "DNA.DetectionSVC"
             active_engine_label = f"DetectionSVC (Ativo - Motor Fallback/Legado){cluster_motor_note}"
             engine_tier = "FALLBACK"
-            if not is_agent_stale:
-                fallback_detection_svc += 1
+            fallback_detection_svc += 1
         else:
             active_engine = "NENHUM"
             engine_tier = "NONE"

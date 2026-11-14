@@ -47,6 +47,22 @@ namespace WinServiceFleetAgent.Core
             _fallbackBaseUrl = (fallbackUrl ?? "http://localhost:8092").TrimEnd('/');
         }
 
+        private string ResolveCanonicalHostDocId(int cs)
+        {
+            if (cs >= 2 && _hostname.Length == 15)
+            {
+                if (_hostname.EndsWith("DT0", StringComparison.OrdinalIgnoreCase))
+                {
+                    return $"{_hostname}{cs}";
+                }
+                if (_hostname.EndsWith("-", StringComparison.OrdinalIgnoreCase))
+                {
+                    return $"{_hostname}0{cs}";
+                }
+            }
+            return _hostname;
+        }
+
         public async Task<bool> SendTelemetryAsync(
             string praca,
             int cs,
@@ -56,6 +72,45 @@ namespace WinServiceFleetAgent.Core
             string agentVersion)
         {
             bool gcpSuccess = false;
+            string docHost = ResolveCanonicalHostDocId(cs);
+
+            var srvTelemetryList = services.Select(s =>
+            {
+                string cleanSrv = s.NomeServico ?? "";
+                bool isMonitorService = cleanSrv.Equals("DNA.MonitorServiceSVC", StringComparison.OrdinalIgnoreCase);
+                bool isConfigMonitor = cleanSrv.Equals("DNA.ConfigMonitorSVC", StringComparison.OrdinalIgnoreCase);
+                bool isZabbix = cleanSrv.Contains("Zabbix", StringComparison.OrdinalIgnoreCase);
+                var (procRam, procCpu) = SystemPerformance.GetProcessTelemetry(!string.IsNullOrWhiteSpace(s.ExeName) ? s.ExeName : cleanSrv);
+
+                string ramOut = procRam;
+                string cpuOut = procCpu;
+                if (isMonitorService && metrics != null)
+                {
+                    cpuOut = metrics.CpuUso;
+                    ramOut = (procRam != "N/A" && procRam != "Inativo") ? $"{metrics.RamUso} ({procRam})" : metrics.RamUso;
+                }
+
+                string safeUrl = "Nenhuma";
+                if (isConfigMonitor) safeUrl = string.IsNullOrWhiteSpace(s.UrlComunicacao) ? "Nenhuma" : s.UrlComunicacao;
+                else if (isZabbix) safeUrl = ConfigUrlUpdater.GetZabbixServerUrl(@"C:\Zabbix\config\zabbix_agentd.conf");
+
+                return new
+                {
+                    title = s.Title ?? "Brasil",
+                    nome_servico = cleanSrv,
+                    versao_instalada = s.VersaoInstalada ?? "Não Instalado",
+                    versao_desejada = s.VersaoDesejada ?? "",
+                    status_servico = s.StatusServico ?? "Parado",
+                    cpu_uso = cpuOut,
+                    ram_uso = ramOut,
+                    disco_d_livre = isMonitorService && metrics != null ? metrics.DiscoDLivreGB : "N/A",
+                    uptime = isMonitorService && metrics != null ? metrics.UptimeDias : "N/A",
+                    status_wcf = isConfigMonitor && metrics != null ? metrics.StatusWcf : "N/A",
+                    url_comunicacao = safeUrl
+                };
+            }).ToList();
+
+            string servicesJson = JsonSerializer.Serialize(srvTelemetryList);
 
             // 1. Envio Direto para o Google Cloud Firestore via REST API (Porta 443 - Alta Confiabilidade)
             try
@@ -66,13 +121,14 @@ namespace WinServiceFleetAgent.Core
                     using var gcpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
                     gcpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
-                    string url = $"https://firestore.googleapis.com/v1/projects/{GoogleCloudAuth.ProjectId}/databases/(default)/documents/fleet_hosts/{_hostname}?updateMask.fieldPaths=last_heartbeat&updateMask.fieldPaths=status&updateMask.fieldPaths=agent_version&updateMask.fieldPaths=praca&updateMask.fieldPaths=cs&updateMask.fieldPaths=services_count&updateMask.fieldPaths=services_running&updateMask.fieldPaths=updated_at";
+                    string mask = "updateMask.fieldPaths=hostname&updateMask.fieldPaths=last_heartbeat&updateMask.fieldPaths=status&updateMask.fieldPaths=agent_version&updateMask.fieldPaths=praca&updateMask.fieldPaths=cs&updateMask.fieldPaths=services_count&updateMask.fieldPaths=services_running&updateMask.fieldPaths=updated_at&updateMask.fieldPaths=services_json&updateMask.fieldPaths=cpu_uso&updateMask.fieldPaths=ram_uso&updateMask.fieldPaths=disco_d_livre&updateMask.fieldPaths=uptime&updateMask.fieldPaths=status_wcf";
+                    string url = $"https://firestore.googleapis.com/v1/projects/{GoogleCloudAuth.ProjectId}/databases/(default)/documents/fleet_hosts/{docHost}?{mask}";
 
                     int runningCount = services.Count(s => s.StatusServico != null && s.StatusServico.Equals("Em Execução", StringComparison.OrdinalIgnoreCase));
 
                     var fields = new Dictionary<string, object>
                     {
-                        ["hostname"] = new { stringValue = _hostname },
+                        ["hostname"] = new { stringValue = docHost },
                         ["praca"] = new { stringValue = praca ?? "" },
                         ["cs"] = new { integerValue = cs.ToString() },
                         ["agent_version"] = new { stringValue = agentVersion },
@@ -80,7 +136,13 @@ namespace WinServiceFleetAgent.Core
                         ["last_heartbeat"] = new { stringValue = DateTime.UtcNow.ToString("o") },
                         ["updated_at"] = new { stringValue = DateTime.UtcNow.ToString("o") },
                         ["services_count"] = new { integerValue = services.Count.ToString() },
-                        ["services_running"] = new { integerValue = runningCount.ToString() }
+                        ["services_running"] = new { integerValue = runningCount.ToString() },
+                        ["services_json"] = new { stringValue = servicesJson },
+                        ["cpu_uso"] = new { stringValue = metrics?.CpuUso ?? "N/A" },
+                        ["ram_uso"] = new { stringValue = metrics?.RamUso ?? "N/A" },
+                        ["disco_d_livre"] = new { stringValue = metrics?.DiscoDLivreGB ?? "N/A" },
+                        ["uptime"] = new { stringValue = metrics?.UptimeDias ?? "N/A" },
+                        ["status_wcf"] = new { stringValue = metrics?.StatusWcf ?? "N/A" }
                     };
 
                     var firestorePayload = new { fields = fields };
@@ -89,7 +151,7 @@ namespace WinServiceFleetAgent.Core
                     var resp = await gcpClient.PatchAsync(url, content);
                     if (resp.IsSuccessStatusCode)
                     {
-                        FileLogger.Log($"[GoogleCloud] 🚀 Telemetria enviada com SUCESSO direto para o Google Cloud Firestore ({_hostname})!");
+                        FileLogger.Log($"[GoogleCloud] 🚀 Telemetria completa (serviços + métricas) enviada com SUCESSO para o Google Cloud Firestore ({docHost})!");
                         gcpSuccess = true;
                     }
                 }
@@ -102,25 +164,13 @@ namespace WinServiceFleetAgent.Core
             // 2. Envio Secundário para Central NOC (se acessível na mesma rede)
             try
             {
-                var srvList = services.Select(s => new
-                {
-                    title = s.Title,
-                    nome_servico = s.NomeServico,
-                    versao_instalada = s.VersaoInstalada,
-                    versao_desejada = s.VersaoDesejada,
-                    status_servico = s.StatusServico,
-                    status_atualizacao = "Atualizado",
-                    acao_solicitada = "Nenhuma",
-                    url_comunicacao = s.UrlComunicacao
-                }).ToList();
-
                 var payload = new
                 {
-                    hostname = _hostname,
+                    hostname = docHost,
                     praca = praca,
                     cs = cs,
                     agent_version = agentVersion,
-                    services = srvList,
+                    services = srvTelemetryList,
                     system = metrics != null ? new
                     {
                         cpu_usage = metrics.CpuUso,
@@ -153,6 +203,7 @@ namespace WinServiceFleetAgent.Core
         public async Task<bool> SendChannelTelemetryAsync(List<ChannelStatusItem> channels, string praca, int cs)
         {
             if (channels == null || channels.Count == 0) return false;
+            string docHost = ResolveCanonicalHostDocId(cs);
 
             try
             {
@@ -162,15 +213,40 @@ namespace WinServiceFleetAgent.Core
                 using var gcpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
                 gcpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
-                string url = $"https://firestore.googleapis.com/v1/projects/{GoogleCloudAuth.ProjectId}/databases/(default)/documents/fleet_hosts/{_hostname}?updateMask.fieldPaths=channels_count&updateMask.fieldPaths=channels_ok&updateMask.fieldPaths=channels_updated_at";
+                var chList = channels.Select(c => new
+                {
+                    canal = c.Title ?? c.Veiculo ?? "",
+                    veiculo = c.Veiculo ?? c.Title ?? "",
+                    cidade = praca ?? c.Cidade ?? "",
+                    cs = cs,
+                    meio = c.MeiodeTransmissao ?? "Digital Terrestre",
+                    frequencia = c.Frequencia ?? "N/A",
+                    tuner_id = c.TunerID,
+                    status_tuner = c.StatusTuner ?? "Working",
+                    qualidade_sinal = c.QualidadeSinal ?? 0,
+                    forca_sinal = c.ForcaSinal ?? 0,
+                    video_congelado = c.VideoCongelado ?? "Não",
+                    audio_mudo = c.AudioMudo ?? "Não",
+                    gravando_mp4 = c.GravandoMP4 ?? "Não",
+                    gravando_mp3 = c.GravandoMP3 ?? "Não",
+                    pasta_mp4 = c.PastaGravacaoMP4 ?? "",
+                    pasta_mp3 = c.PastaGravacaoMP3 ?? "",
+                    url_streaming = c.UrlStreaming ?? "",
+                    atualizacao = DateTime.UtcNow.ToString("o")
+                }).ToList();
 
-                int channelsOk = channels.Count(c => c.QualidadeSinal >= 50);
+                string channelsJson = JsonSerializer.Serialize(chList);
+
+                string url = $"https://firestore.googleapis.com/v1/projects/{GoogleCloudAuth.ProjectId}/databases/(default)/documents/fleet_hosts/{docHost}?updateMask.fieldPaths=channels_count&updateMask.fieldPaths=channels_ok&updateMask.fieldPaths=channels_updated_at&updateMask.fieldPaths=channels_json";
+
+                int channelsOk = channels.Count(c => c.QualidadeSinal >= 50 || (c.GravandoMP4 != null && c.GravandoMP4.Contains("Sim", StringComparison.OrdinalIgnoreCase)));
 
                 var fields = new Dictionary<string, object>
                 {
                     ["channels_count"] = new { integerValue = channels.Count.ToString() },
                     ["channels_ok"] = new { integerValue = channelsOk.ToString() },
-                    ["channels_updated_at"] = new { stringValue = DateTime.UtcNow.ToString("o") }
+                    ["channels_updated_at"] = new { stringValue = DateTime.UtcNow.ToString("o") },
+                    ["channels_json"] = new { stringValue = channelsJson }
                 };
 
                 var firestorePayload = new { fields = fields };
@@ -179,7 +255,7 @@ namespace WinServiceFleetAgent.Core
                 var resp = await gcpClient.PatchAsync(url, content);
                 if (resp.IsSuccessStatusCode)
                 {
-                    FileLogger.Log($"[GoogleCloud] 📡 Telemetria de canais ({channels.Count} canais) enviada com SUCESSO para o Google Cloud Firestore ({_hostname})!");
+                    FileLogger.Log($"[GoogleCloud] 📡 Telemetria completa de canais ({channels.Count} canais) enviada com SUCESSO para o Google Cloud Firestore ({docHost})!");
                     return true;
                 }
             }
