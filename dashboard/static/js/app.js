@@ -15517,7 +15517,7 @@ function renderNocUnifiedQueue() {
             const isChecked = nocSelectedIncidentKeys.has(mainItem.key);
 
             return `
-            <tr class="noc-compact-row ${rowClass}">
+            <tr class="noc-compact-row ${rowClass}" style="cursor: pointer;" onclick="if (!event.target.closest('button') && !event.target.closest('input')) openIncidentWarRoomModal('${escapeHtml(mainItem.key)}', '${escapeHtml(group.hostname)}', '${escapeHtml(group.praca)}', ${group.cs || 1}, '${escapeHtml(mainItem.target)}', '${escapeHtml(mainItem.category)}')">
                 <td style="text-align: center; width: 32px;">
                     <input type="checkbox" ${isChecked ? "checked" : ""} onchange="toggleSingleNocIncidentSelect('${mainItem.key}', this.checked)" style="cursor: pointer;">
                 </td>
@@ -15540,7 +15540,7 @@ function renderNocUnifiedQueue() {
                     ${streamCount > 1 ? `<span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #fde047; font-size: 9px; margin-left: 2px;">+${streamCount} canais</span>` : ''}
                 </td>
                 <td class="cell-summary" title="${escapeHtml(mainItem.title)} — ${escapeHtml(mainItem.summary || group.telemetry || '')}">
-                    <span class="summary-title">${escapeHtml(mainItem.title)}</span>
+                    <span class="summary-title" style="color: #38bdf8;">${escapeHtml(mainItem.title)}</span>
                     <span class="summary-detail">${escapeHtml(mainItem.summary || group.telemetry || '')}</span>
                 </td>
                 <td style="width: 95px;">
@@ -15574,18 +15574,10 @@ function renderNocUnifiedQueue() {
                         }
                     })()}
                 </td>
-                <td style="width: 200px; text-align: right;">
-                    <div style="display: inline-flex; gap: 4px;">
-                        <button type="button" class="btn-compact-action" style="background: rgba(2, 132, 199, 0.25); border-color: #38bdf8; color: #38bdf8; font-weight: 700;" onclick="openIncidentWarRoomModal('${mainItem.key}', '${group.hostname}', '${group.praca}', ${group.cs || 1}, '${mainItem.target}', '${mainItem.category}')" title="Abrir War Room & Soluções Didáticas N1">
-                            <i class="fas fa-bolt"></i> Resolver
-                        </button>
-                        <button type="button" class="btn-compact-action" onclick="openRemoteCommandForIncident('${group.hostname}', '${mainItem.target}', 'diagnose')" title="Comando Remoto">
-                            <i class="fas fa-terminal"></i> Terminal
-                        </button>
-                        <button type="button" class="btn-compact-action" onclick="openIncidentActionModal('${mainItem.key}', '${group.praca} (CS ${group.cs})', '${mainItem.target}', '${mainItem.category}')" title="Tratar / Nota Manual">
-                            <i class="fas fa-tools"></i> Nota
-                        </button>
-                    </div>
+                <td style="width: 160px; text-align: right;">
+                    <button type="button" class="btn-compact-action" style="background: rgba(2, 132, 199, 0.35); border-color: #38bdf8; color: #38bdf8; font-weight: 700; padding: 4px 10px; font-size: 11px;" onclick="openIncidentWarRoomModal('${escapeHtml(mainItem.key)}', '${escapeHtml(group.hostname)}', '${escapeHtml(group.praca)}', ${group.cs || 1}, '${escapeHtml(mainItem.target)}', '${escapeHtml(mainItem.category)}')" title="Abrir Estação de Comando & Soluções Didáticas N1">
+                        <i class="fas fa-bolt"></i> Resolver & Aprender
+                    </button>
                 </td>
             </tr>`;
         }).join("");
