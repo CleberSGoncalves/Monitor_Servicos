@@ -12865,12 +12865,22 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
         return low.includes("execu") || low.includes("running") || low.includes("ok");
     }
 
+    function normalizeNocStr(str) {
+        if (!str) return "";
+        return String(str)
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase()
+            .trim();
+    }
+
     Object.values(hostsMap).forEach(h => {
         if (h.is_offline) return;
         const hLow = (h.hostname || '').toLowerCase().trim();
         const hostSvcs = (servicesList || []).filter(s => (s.hostname || s.host || '').toLowerCase().trim() === hLow);
         if (hostSvcs.length === 0) return;
         const csNum = parseInt(h.cs || 1);
+        const normHPraca = normalizeNocStr(h.praca || '');
 
         // A. Motor de Gravação: Atria Capture vs DNA.MediaRecorderSVC
         const atria = hostSvcs.find(s => s.nome_servico === "Atria Capture");
@@ -12878,18 +12888,37 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
         const atriaRun = atria && anyStatusRunning(atria.status_servico || atria.status);
         const mrecRun = mrec && anyStatusRunning(mrec.status_servico || mrec.status);
 
-        // Se o host tem canais ativos gravando MP4/MP3 ou Atria em Sessão 0 com RAM ativa, a gravação NÃO está paralisada
+        // Se o host tem canais ativos gravando MP4/MP3 ou Atria com tuner conectado / gravando .ASF BKP, a gravação NÃO está paralisada
         const hostHasActiveRecording = (channelsList || []).some(c => {
-            const cHost = (c.host || c.hostname || '').toLowerCase().trim();
-            const cPraca = (c.cidade || c.praca || '').toLowerCase().trim();
+            const cHost = normalizeNocStr(c.host || c.hostname || '');
+            const cPraca = normalizeNocStr(c.cidade || c.praca || '');
             const cCs = parseInt(c.cs || c.id_cs || 1);
-            const matchesHost = (cHost && cHost === hLow) || (cPraca === (h.praca || '').toLowerCase().trim() && cCs === csNum);
-            return matchesHost && (c.gravando_mp4 === "Sim" || c.gravando_mp3 === "Sim" || c.gravando === true);
+            const matchesHost = (cHost && (cHost === hLow || cHost.includes(hLow) || hLow.includes(cHost))) || 
+                                (cPraca && normHPraca && cPraca === normHPraca && cCs === csNum);
+            if (!matchesHost) return false;
+
+            const mp4 = String(c.gravando_mp4 || '').toLowerCase();
+            const mp3 = String(c.gravando_mp3 || '').toLowerCase();
+            const tuner = String(c.status_tuner || '').toLowerCase();
+            const isRec = (mp4.includes("sim") || mp4.includes("gravando") || mp4.includes("asf") || mp4.includes("rest")) && !mp4.includes("travado") && !mp4.includes("erro");
+            const isRecAudio = (mp3.includes("sim") || mp3.includes("gravando")) && !mp3.includes("travado");
+            const isTunerWorking = tuner.includes("working") || tuner.includes("lock") || 
+                                   ((tuner.includes("connect") || tuner.includes("conect")) && !tuner.includes("disconnect") && !tuner.includes("desconect"));
+            const hasSignal = c.qualidade_sinal != null && parseFloat(c.qualidade_sinal) > 0;
+
+            return isRec || isRecAudio || isTunerWorking || hasSignal;
         });
 
         const atriaRamMb = atria ? parseRamMetric(atria.ram_uso || atria.ram)?.mb || 0 : 0;
+        const isCsAtriaOnly = csNum >= 2;
 
-        if (!atriaRun && !mrecRun && (atria || mrec) && !hostHasActiveRecording && atriaRamMb < 20) {
+        // Regra Férrea Anti-Alarme Falso:
+        // 1. Se qualquer canal do host está gravando ou com tuner conectado/lockado, a gravação NÃO está interrompida!
+        // 2. Se Atria está em execução ou com RAM ativa (>= 20 MB), a gravação está nominal.
+        // 3. Hosts CS2 e CS3 nunca rodam MediaRecorderSVC; portanto, a falta de MediaRecorder jamais é erro nesses hosts.
+        const recordingParalyzed = !hostHasActiveRecording && !atriaRun && atriaRamMb < 20 && (!isCsAtriaOnly ? !mrecRun : true) && (atria || (!isCsAtriaOnly && mrec));
+
+        if (recordingParalyzed) {
             incidents.push({
                 id: `p0_rec_${h.hostname}`,
                 key: `rec_engine_${h.hostname}`,
@@ -12904,8 +12933,8 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
                 cs: csNum,
                 hostname: h.hostname,
                 target: `Motor de Gravação (${h.praca})`,
-                title: `Interrupção de Gravação: Nem Atria nem MediaRecorder em Execução`,
-                summary: `Host ${h.hostname} sem software de captura ativo. Gravação de mídias paralisada.`,
+                title: `Interrupção de Gravação: Software de Captura Paralisado`,
+                summary: `Host ${h.hostname} sem software de captura ativo e sem sintonização de canais. Gravação paralisada.`,
                 telemetry: `Atria: ${atria?.status_servico || 'Inexistente'} | MediaRecorder: ${mrec?.status_servico || 'Inexistente'}`,
                 time_ago: "Tempo real",
                 how_to_steps: [
@@ -13311,44 +13340,25 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
 
 
         // Tempo decorrido real
-
-
-
         let timeAgo = "Recentemente";
-
-
-
         let diffMin = 1;
-
-
-
-        if (c.atualizacao) {
-
-
-
+        const rawChTs = c.ultima_atualizacao || c.data_hora || c.atualizacao;
+        if (rawChTs) {
             try {
-
-
-
-                diffMin = Math.max(1, Math.floor((Date.now() - new Date(c.atualizacao.replace("Z", "+00:00")).getTime()) / 60000));
-
-
-
+                diffMin = Math.max(1, Math.floor((Date.now() - new Date(rawChTs.replace("Z", "+00:00")).getTime()) / 60000));
                 timeAgo = diffMin < 60 ? `Há ${diffMin} min` : `Há ${Math.floor(diffMin/60)}h ${diffMin%60}m`;
-
-
-
             } catch(e) {}
-
-
-
         }
 
-
-
-
-
-
+        // Regra Férrea Anti-Alarme Falso Estagnado:
+        // Se a notificação tem mais de 24 horas (diffMin > 1440) mas o tuner está 'Connected with tuner. WORKING.' ou locked,
+        // a emissora está no ar e o registro antigo estagnado do SharePoint deve ser suprimido da fila de incidentes de tempo real do N1.
+        const tunerSt = String(c.status_tuner || '').toLowerCase();
+        const isTunerWorking = tunerSt.includes('working') || tunerSt.includes('lock') || 
+                               ((tunerSt.includes('connect') || tunerSt.includes('conect')) && !tunerSt.includes('disconnect') && !tunerSt.includes('desconect'));
+        if (diffMin > 1440 && isTunerWorking) {
+            return;
+        }
 
         // Métricas de Cronicidade da Telemetria SQLite (Anti-Alarme Fugaz)
 
@@ -14175,37 +14185,19 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
 
 
         } else if (engTier === "FALLBACK") {
+            // Operação em DNA.DetectionSVC (.NET) é a arquitetura nominal de produção padrão da maioria das praças.
+            // Regra Férrea N1: Só cria incidente se a detecção estiver REALMENTE PARALISADA (CRITICAL, travada ou sem throughput).
+            const isReallyBroken = site.health_status === "CRITICAL" || site.is_stalled || (site.pipeline_bottleneck && site.pipeline_bottleneck !== "NONE");
+            if (!isReallyBroken) {
+                return; // Operação saudável via DetectionSVC: não polui a fila de incidentes do N1
+            }
 
-
-
-            // Operação em Fallback Legado (.NET) é P2 informativo
-
-
-
-            sev = "P2";
-
-
-
-            sevLabel = "INFORMATIVO / AVISO (P2)";
-
-
-
-            catLabel = "Operando via DetectionSVC";
-
-
-
-            catIcon = "fa-shield-alt";
-
-
-
-            title = `Detecção via Motor Legado (DNA.DetectionSVC .NET)`;
-
-
-
-            telText = `FastMatching primário inativo | DetectionSVC: Ativo | Tracking: ${site.pipeline_services?.tracking_svc?.status || 'OK'} | ConfigMonitor: ${site.pipeline_services?.config_monitor?.status || 'OK'}`;
-
-
-
+            sev = "P1";
+            sevLabel = "ALERTA (P1)";
+            catLabel = "Detecção com Gargalo";
+            catIcon = "fa-exclamation-triangle";
+            title = `Detecção com Gargalo: ${site.praca} (${site.hostname})`;
+            telText = `Throughput: ${site.throughput_xml_hour || 0} XML/h | Gargalo: ${site.pipeline_bottleneck || 'Fila'} | Tracking: ${site.pipeline_services?.tracking_svc?.status || 'OK'}`;
         } else {
 
 

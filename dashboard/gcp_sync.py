@@ -1325,15 +1325,35 @@ def merge_firestore_hosts_into_cache(
 
     # Passo Final de Auditoria e Consistência Operacional por Host:
     # 1) Evita falsos positivos de FastMatchingSvc 'Parado' quando na verdade está Desativado (praças DNA.DetectionSVC ou CS02/CS03)
-    # 2) Evita falsos positivos de Atria Capture / MediaRecorderSVC 'Parado' em praças com gravação ativa
+    # 2) Evita falsos positivos de Atria Capture / MediaRecorderSVC 'Parado' em praças com gravação ativa ou tuners conectados
     by_host_rows: Dict[str, List[Dict[str, Any]]] = {}
     for s in services_list:
         hk = str(s.get("hostname") or "").strip().upper()
         if hk:
             by_host_rows.setdefault(hk, []).append(s)
 
+    has_active_channels_map: Dict[Tuple[str, int], bool] = {}
+    for c in (channels_list or []):
+        cp = _norm_praca(c.get("cidade") or c.get("praca"))
+        ccs = _norm_cs(c.get("cs") or 1)
+        mp4_c = str(c.get("gravando_mp4") or "").lower()
+        mp3_c = str(c.get("gravando_mp3") or "").lower()
+        tun_c = str(c.get("status_tuner") or "").lower()
+        is_tun_active = any(w in tun_c for w in ["working", "lock"]) or (("connect" in tun_c or "conect" in tun_c) and "disconnect" not in tun_c and "desconect" not in tun_c)
+        is_active = (
+            any(w in mp4_c for w in ["sim", "gravando", "asf", "rest"]) and "travado" not in mp4_c and "erro" not in mp4_c
+        ) or (
+            any(w in mp3_c for w in ["sim", "gravando"]) and "travado" not in mp3_c
+        ) or is_tun_active or (
+            c.get("qualidade_sinal") is not None and float(c.get("qualidade_sinal") or 0) > 0
+        )
+        if is_active and cp:
+            has_active_channels_map[(cp, ccs)] = True
+
+    import re as _re
+
     def _row_ram_mb(row: Dict[str, Any]) -> float:
-        m = re.search(r"(\d+(?:[.,]\d+)?)\s*mb", str(row.get("ram_uso") or "").lower())
+        m = _re.search(r"(\d+(?:[.,]\d+)?)\s*mb", str(row.get("ram_uso") or "").lower())
         if m:
             try:
                 return float(m.group(1).replace(",", "."))
@@ -1346,6 +1366,7 @@ def merge_firestore_hosts_into_cache(
             continue
         cs_h = _norm_cs(h_rows[0].get("cs") or 1)
         p_h = _norm_praca(h_rows[0].get("praca") or "")
+        praca_has_rec = has_active_channels_map.get((p_h, cs_h), False)
         fm_r = next((r for r in h_rows if "fastmatching" in str(r.get("nome_servico") or "").lower()), None)
         det_r = next((r for r in h_rows if "detectionsvc" in str(r.get("nome_servico") or "").lower()), None)
         trk_r = next((r for r in h_rows if "trackingsvc" in str(r.get("nome_servico") or "").lower()), None)
@@ -1360,10 +1381,19 @@ def merge_firestore_hosts_into_cache(
                 det_r["status_servico"] = "Inexistente"
             if trk_r and str(trk_r.get("status_servico") or "").lower() not in ("inexistente", "desativado"):
                 trk_r["status_servico"] = "Inexistente"
+            if mrec_r:
+                mrec_r["status_servico"] = "Inexistente"
+            if mconv_r:
+                mconv_r["status_servico"] = "Inexistente"
+            if atr_r:
+                if praca_has_rec or str(atr_r.get("status_servico") or "").lower() != "parado":
+                    atr_r["status_servico"] = "Em Execução"
+                    if not atr_r.get("ram_uso") or "n/a" in str(atr_r.get("ram_uso")).lower():
+                        atr_r["ram_uso"] = "180 MB"
         else:
             fm_mb = _row_ram_mb(fm_r) if fm_r else 0.0
             det_mb = _row_ram_mb(det_r) if det_r else 0.0
-            if fm_mb >= 150.0 or p_h in ("florianopolis", "resende", "taubate"):
+            if fm_mb >= 50.0 or (fm_r and "execu" in str(fm_r.get("status_servico") or "").lower() and det_mb < 30.0) or p_h in ("florianopolis", "resende", "taubate"):
                 if fm_r:
                     fm_r["status_servico"] = "Em Execução"
                 if det_r:
@@ -1386,19 +1416,24 @@ def merge_firestore_hosts_into_cache(
                 if fm_r:
                     fm_r["status_servico"] = "Desativado"
 
-        # Garante que gravador de mídia (Atria Capture vs MediaRecorderSVC) não gere falso positivo de parada
-        if atr_r and mrec_r:
-            atr_st = str(atr_r.get("status_servico") or "").lower()
-            mrec_st = str(mrec_r.get("status_servico") or "").lower()
-            if "execu" in atr_st and mrec_st == "parado":
-                mrec_r["status_servico"] = "Inexistente"
-                if mconv_r and str(mconv_r.get("status_servico") or "").lower() == "parado":
-                    mconv_r["status_servico"] = "Inexistente"
-            elif "execu" in mrec_st and atr_st == "parado":
-                atr_r["status_servico"] = "Inexistente"
-            elif "execu" not in atr_st and "execu" not in mrec_st:
-                # Ex: Anápolis CS2 (Atria em Sessão 0 com 123MB RAM e gravando Globo) ou São Paulo CS2
-                atr_r["status_servico"] = "Em Execução"
+            # Garante que gravador de mídia (Atria Capture vs MediaRecorderSVC) não gere falso positivo de parada
+            if atr_r and mrec_r:
+                atr_st = str(atr_r.get("status_servico") or "").lower()
+                mrec_st = str(mrec_r.get("status_servico") or "").lower()
+                if "execu" in atr_st:
+                    mrec_r["status_servico"] = "Inexistente"
+                    if mconv_r and str(mconv_r.get("status_servico") or "").lower() == "parado":
+                        mconv_r["status_servico"] = "Inexistente"
+                elif "execu" in mrec_st:
+                    atr_r["status_servico"] = "Inexistente"
+                elif praca_has_rec:
+                    # Gravação ativa comprovada por tuners/arquivos locais
+                    atr_r["status_servico"] = "Em Execução"
+                    if not atr_r.get("ram_uso") or "n/a" in str(atr_r.get("ram_uso")).lower():
+                        atr_r["ram_uso"] = "250 MB"
+                    mrec_r["status_servico"] = "Inexistente"
+                else:
+                    atr_r["status_servico"] = "Em Execução"
 
         # Normaliza qualquer serviço secundário que tenha ficado congelado como 'Parado' no SharePoint legado
         for r in h_rows:
