@@ -25,6 +25,21 @@ REGION_MAPPING = {
 }
 
 def detect_channel_region(praca: str) -> str:
+    import json
+    from pathlib import Path
+    _CITY_MAP_PATH = Path(__file__).resolve().parent / "data" / "city_region_map.json"
+    if _CITY_MAP_PATH.exists():
+        try:
+            city_map = json.loads(_CITY_MAP_PATH.read_text(encoding="utf-8"))
+            if praca in city_map:
+                return city_map[praca]
+            p_low = (praca or "").lower().strip()
+            for k, reg in city_map.items():
+                if k.lower() == p_low or k.lower() in p_low or p_low in k.lower():
+                    return reg
+        except Exception:
+            pass
+
     p = (praca or "").lower().strip()
     for key, reg in REGION_MAPPING.items():
         if key in p:
@@ -160,7 +175,7 @@ def get_channel_live_snapshots(channels: List[Dict[str, Any]], country: Optional
             status_color = "#f59e0b"
             tipo_falha = "rf_drop"
             falha_desc = "Desarmamento de Lock digital no demodulador ISDB-Tb / Atenuação de sinal."
-        elif has_outage or (tipo_sinal == "Digital Terrestre (ISDB-Tb)" and qualidade == 0):
+        elif has_outage or (tipo_sinal == "Digital Terrestre (ISDB-Tb)" and qualidade == 0 and ("lock" not in status_tuner.lower() and "working" not in status_tuner.lower())):
             visual_status = "QUEDA SINAL"
             status_color = "#ef4444"
             tipo_falha = "blackout"

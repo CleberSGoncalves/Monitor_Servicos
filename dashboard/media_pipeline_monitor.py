@@ -383,6 +383,7 @@ def get_link_monitoring_metrics(services: list = None, channels: list = None) ->
         if h not in hosts_dict:
             hosts_dict[h] = {
                 "hostname": h,
+                "raw_hostname": s.get("raw_hostname") or "",
                 "praca": p,
                 "cs": cs,
                 "ch_video": 0,
@@ -392,6 +393,8 @@ def get_link_monitoring_metrics(services: list = None, channels: list = None) ->
                 "wcf_ok": True,
                 "agent_seen": False,
             }
+        if s.get("raw_hostname") and not hosts_dict[h].get("raw_hostname"):
+            hosts_dict[h]["raw_hostname"] = s.get("raw_hostname")
         if svc_name == "DNA.MonitorServiceSVC":
             hosts_dict[h]["praca"] = p or hosts_dict[h]["praca"]
             hosts_dict[h]["cs"] = cs
@@ -458,16 +461,32 @@ def get_link_monitoring_metrics(services: list = None, channels: list = None) ->
             ch_a = 2
             ch_j = 3
 
-        # Determina UF e Região
+        # Determina UF e Região canônica oficial a partir do city_region_map
+        import json
+        from pathlib import Path
+        _CITY_MAP_PATH = Path(__file__).resolve().parent / "data" / "city_region_map.json"
+        _CITY_MAP = {}
+        if _CITY_MAP_PATH.exists():
+            try:
+                _CITY_MAP = json.loads(_CITY_MAP_PATH.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+
         uf = "SP"
-        if h.startswith("BR") and len(h) >= 4:
-            uf_cand = h[2:4].upper()
+        raw_h = (info.get("raw_hostname") or h).upper()
+        if raw_h.startswith("BR") and len(raw_h) >= 4:
+            uf_cand = raw_h[2:4].upper()
             if uf_cand in UF_REGION_MAP:
                 uf = uf_cand
-        elif "nacional" in praca.lower():
+        elif raw_h.startswith("CS-BR") and len(raw_h) >= 7:
+            uf_cand = raw_h[5:7].upper()
+            if uf_cand in UF_REGION_MAP:
+                uf = uf_cand
+        elif "nacional" in praca.lower() or "brasilia" in praca.lower() or "brasília" in praca.lower():
             uf = "DF"
 
-        regiao, default_carrier = UF_REGION_MAP.get(uf, ("Sudeste", "Vivo Fibra"))
+        default_regiao, default_carrier = UF_REGION_MAP.get(uf, ("Sudeste", "Vivo Fibra"))
+        regiao = _CITY_MAP.get(praca, default_regiao)
 
         # Cálculo de volume de dados por bloco de 30 minutos:
         # Vídeo MP4: ~19.2 MB / canal

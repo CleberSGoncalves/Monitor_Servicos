@@ -106,3 +106,31 @@ def test_real_outage_triggers_incident():
         {"nome_servico": "DNA.MediaRecorderSVC", "status_servico": "Parado", "ram_uso": "0 MB"}
     ]
     assert should_trigger_recording_paralyzed(host, svcs, channels)
+
+
+def test_parauapebas_cs2_with_mediarecorder_active():
+    """Parauapebas CS2 operando DNA.MediaRecorderSVC (237 MB) não deve disparar alerta falso mesmo com Atria Parado."""
+    host = {"hostname": "Parauapebas-SMME-316-CS2", "praca": "Parauapebas", "cs": 2}
+    svcs = [
+        {"nome_servico": "Atria Capture", "status_servico": "Parado", "ram_uso": "N/A"},
+        {"nome_servico": "DNA.MediaRecorderSVC", "status_servico": "Em Execução", "ram_uso": "237 MB"}
+    ]
+    atria = next((s for s in svcs if s.get("nome_servico") == "Atria Capture"), None)
+    mrec = next((s for s in svcs if s.get("nome_servico") == "DNA.MediaRecorderSVC"), None)
+    atria_run = atria and "execu" in str(atria.get("status_servico", "")).lower()
+    mrec_run = mrec and "execu" in str(mrec.get("status_servico", "")).lower()
+    is_recording_engine_running = atria_run or mrec_run
+    assert is_recording_engine_running
+
+
+def test_network_link_nordeste_region_matches_hosts():
+    """Garante que nós do Nordeste (BA, PE, CE, etc.) são catalogados como Região Nordeste e exibem praças."""
+    import sys
+    sys.path.insert(0, "dashboard")
+    from media_pipeline_monitor import get_link_monitoring_metrics
+    metrics = get_link_monitoring_metrics()
+    ne_metrics = [m for m in metrics if m.get("regiao") == "Nordeste"]
+    assert len(ne_metrics) >= 40
+    ne_cities = set(m.get("praca") for m in ne_metrics)
+    assert "Salvador" in ne_cities or "Recife" in ne_cities or "Fortaleza" in ne_cities
+

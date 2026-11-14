@@ -4186,21 +4186,23 @@ async function executeIwrCardAction(cardId, actionTitle, cmd) {
                 ...(getAuthToken() ? { "Authorization": `Bearer ${getAuthToken()}` } : {})
             },
             body: JSON.stringify({
-                hostname: currentWarRoomIncident.host,
-                command: cmd,
-                timeout_seconds: 30
+                hosts: [currentWarRoomIncident.host],
+                command_script: cmd,
+                shell_type: "powershell",
+                command_title: actionTitle,
+                reason: `War Room N1: ${actionTitle} em ${currentWarRoomIncident.host}`
             })
         });
 
         const resData = await resp.json();
-        if (resp.ok && resData.success) {
+        if (resp.ok && (resData.success || resData.status === "queued" || resData.total_hosts > 0)) {
             if (btn) {
                 btn.style.background = "#10b981";
                 btn.style.borderColor = "#34d399";
                 btn.innerHTML = `<i class="fas fa-check"></i> <span>Executado com Sucesso!</span>`;
             }
             if (feedbackEl) {
-                feedbackEl.innerHTML = `<span style="color: #4ade80;"><i class="fas fa-check-circle"></i> [${actionTitle}] concluído com sucesso em ${currentWarRoomIncident.host}! Atualizando telemetria...</span>`;
+                feedbackEl.innerHTML = `<span style="color: #4ade80;"><i class="fas fa-check-circle"></i> [${actionTitle}] enviado e assinado HMAC via Google Cloud Firestore para ${currentWarRoomIncident.host}! Atualizando telemetria...</span>`;
             }
             if (typeof showToast === "function") {
                 showToast(`Comando '${actionTitle}' executado com sucesso!`, "success");
@@ -4209,7 +4211,14 @@ async function executeIwrCardAction(cardId, actionTitle, cmd) {
             if (typeof loadServicesTable === "function") loadServicesTable();
             if (typeof loadChannelsTable === "function") loadChannelsTable();
         } else {
-            const err = resData.detail || resData.error || "Erro ao processar comando remoto.";
+            let err = "Erro ao processar comando remoto.";
+            if (Array.isArray(resData.detail)) {
+                err = resData.detail.map(d => d.msg || d.message || JSON.stringify(d)).join("; ");
+            } else if (typeof resData.detail === "string") {
+                err = resData.detail;
+            } else if (resData.error) {
+                err = typeof resData.error === "string" ? resData.error : JSON.stringify(resData.error);
+            }
             if (btn) {
                 btn.disabled = false;
                 btn.innerHTML = `<i class="fas fa-redo"></i> <span>Tentar Novamente</span>`;
@@ -12621,30 +12630,16 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
 
 
 
+    const NOC_CITY_REGIONS = {"homolog_sp": "Sudeste", "nacional": "Centro-Oeste", "brasília": "Centro-Oeste", "pelotas": "Sul", "vitória": "Sudeste", "ribeirão preto": "Sudeste", "juiz de fora": "Sudeste", "são paulo": "Sudeste", "aracaju": "Nordeste", "linhares": "Sudeste", "palmas": "Norte", "santa maria": "Sul", "luziânia": "Centro-Oeste", "paranavaí": "Sul", "ponta grossa": "Sul", "tangará da serra": "Centro-Oeste", "parauapebas": "Norte", "sorocaba": "Sudeste", "maringá": "Sul", "recife": "Nordeste", "porto velho": "Norte", "sinop": "Centro-Oeste", "rondonópolis": "Centro-Oeste", "santarém": "Norte", "rio branco": "Norte", "ponta porã": "Centro-Oeste", "resende": "Sudeste", "s.j. rio preto": "Sudeste", "rio grande": "Sul", "salvador": "Nordeste", "marabá": "Norte", "vitória da conquista": "Nordeste", "juazeiro": "Nordeste", "s.j dos campos": "Sudeste", "itumbiara": "Centro-Oeste", "maceió": "Nordeste", "são luís": "Nordeste", "londrina": "Sul", "varginha": "Sudeste", "santa rosa": "Sul", "mogi das cruzes": "Sudeste", "nova friburgo": "Sudeste", "passo fundo": "Sul", "mossoró": "Nordeste", "caxias do sul": "Sul", "paragominas": "Norte", "teresina": "Nordeste", "natal": "Nordeste", "juazeiro do norte": "Nordeste", "uberlândia": "Sudeste", "macapá": "Norte", "porangatú": "Centro-Oeste", "rio verde": "Centro-Oeste", "araçatuba": "Sudeste", "redenção": "Norte", "uberaba": "Sudeste", "são carlos": "Sudeste", "montes claros": "Sudeste", "taubaté": "Sudeste", "jataí": "Centro-Oeste", "cascavel": "Sul", "foz do iguaçu": "Sul", "ituiutaba": "Sudeste", "araguaína": "Norte", "imperatriz": "Nordeste", "curitiba": "Sul", "campos": "Sudeste", "belo horizonte": "Sudeste", "itacoatiara": "Norte", "anápolis": "Centro-Oeste", "cachoeiro de itapemirim": "Sudeste", "colatina": "Sudeste", "blumenau": "Sul", "joinville": "Sul", "floriano": "Nordeste", "ji-paraná": "Norte", "g valadares": "Sudeste", "feira de santana": "Nordeste", "castanhal": "Norte", "coronel fabriciano": "Sudeste", "goiânia": "Centro-Oeste", "bagé": "Sul", "itaituba": "Norte", "barreiras": "Nordeste", "gurupi": "Norte", "joão pessoa": "Nordeste", "criciúma": "Sul", "codó": "Nordeste", "belém": "Norte", "chapecó": "Sul", "fortaleza": "Nordeste", "cabo frio": "Sudeste", "cacoal": "Norte", "manaus": "Norte", "caruaru": "Nordeste", "campo grande": "Centro-Oeste", "itapetininga": "Sudeste", "catalão": "Centro-Oeste", "franca": "Sudeste", "guarapuava": "Sul", "vilhena": "Norte", "balsas": "Nordeste", "bauru": "Sudeste", "rio de janeiro": "Sudeste", "boa vista": "Norte", "corumbá": "Centro-Oeste", "itabuna": "Nordeste", "ariquemes": "Norte", "santa cruz do sul": "Sul", "florianópolis": "Sul", "campinas": "Sudeste", "santos": "Sudeste", "parintins": "Norte", "porto alegre": "Sul", "joaçaba": "Sul", "uruguaiana": "Sul", "cruzeiro do sul": "Norte", "araxá": "Sudeste", "cuiabá": "Centro-Oeste", "campina grande": "Nordeste", "erechim": "Sul", "cruz alta": "Sul", "altamira": "Norte", "homolog-2.0": "Sudeste"};
+
     function getRegionForCity(city) {
-
-
-
         if (!city) return "Sudeste";
-
-
-
-        const c = city.toLowerCase();
-
-
-
-        if (c.includes("pelotas") || c.includes("caxias") || c.includes("porto alegre") || c.includes("curitiba") || c.includes("florian") || c.includes("joinville") || c.includes("londrina") || c.includes("maring")) return "Sul";
-
-
-
-        if (c.includes("salvador") || c.includes("recife") || c.includes("fortaleza") || c.includes("natal") || c.includes("macei") || c.includes("aracaju") || c.includes("joao pessoa") || c.includes("teresina")) return "Nordeste";
-
-
-
+        const c = city.toLowerCase().trim();
+        if (NOC_CITY_REGIONS[c]) return NOC_CITY_REGIONS[c];
+        for (const [k, reg] of Object.entries(NOC_CITY_REGIONS)) {
+            if (c.includes(k) || k.includes(c)) return reg;
+        }
         return "Sudeste";
-
-
-
     }
 
 
@@ -12910,13 +12905,16 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
         });
 
         const atriaRamMb = atria ? parseRamMetric(atria.ram_uso || atria.ram)?.mb || 0 : 0;
-        const isCsAtriaOnly = csNum >= 2;
+        const atriaRamPct = atria ? parseRamMetric(atria.ram_uso || atria.ram)?.pct || 0 : 0;
+        const atriaHasActiveRam = (atriaRamMb >= 20) || (atriaRamPct > 0);
 
-        // Regra Férrea Anti-Alarme Falso:
-        // 1. Se qualquer canal do host está gravando ou com tuner conectado/lockado, a gravação NÃO está interrompida!
-        // 2. Se Atria está em execução ou com RAM ativa (>= 20 MB), a gravação está nominal.
-        // 3. Hosts CS2 e CS3 nunca rodam MediaRecorderSVC; portanto, a falta de MediaRecorder jamais é erro nesses hosts.
-        const recordingParalyzed = !hostHasActiveRecording && !atriaRun && atriaRamMb < 20 && (!isCsAtriaOnly ? !mrecRun : true) && (atria || (!isCsAtriaOnly && mrec));
+        // Regra Férrea Anti-Alarme Falso de Gravação:
+        // 1. Se qualquer canal do host está gravando ou com tuner TBS conectado/lockado, a gravação NÃO está paralisada!
+        // 2. Se Atria está em execução ou com RAM ativa (> 0% ou >= 20MB), a gravação está nominal.
+        // 3. Se MediaRecorder está em execução, a gravação está nominal.
+        const isRecordingEngineRunning = atriaRun || atriaHasActiveRam || mrecRun || hostHasActiveRecording;
+        const hasRecordingComponent = atria || mrec;
+        const recordingParalyzed = !isRecordingEngineRunning && hasRecordingComponent;
 
         if (recordingParalyzed) {
             incidents.push({

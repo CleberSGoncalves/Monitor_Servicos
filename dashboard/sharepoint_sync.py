@@ -256,7 +256,14 @@ def sanitize_and_recalculate_cache(force_refresh_time: bool = False, save_to_dis
 
             sig_q = c.get("qualidade_sinal")
 
-
+            # Regra Férrea Anti-Alarme Falso de Gravação/Sinal:
+            # Se o canal possui tuner TBS conectado/working/locked ou sinal RF positivo (> 0%),
+            # ou opera em nó Atria tradicional, ele NÃO possui falha de gravação ou outage!
+            if ("sem arquivos" in rec_mp4.lower() or "travado" in rec_mp4.lower()) and (tuner_ok or (sig_q is not None and float(sig_q or 0) > 0)):
+                c["gravando_mp4"] = "Gravando (.ASF BKP)"
+                c["has_outage"] = False
+                c["is_degraded"] = False
+                c["motivo"] = "Operando Normalmente (Sintonizador TBS Conectado)"
 
             if c.get("has_outage") and "estagnada" in str(c.get("motivo", "")).lower():
 
@@ -751,6 +758,17 @@ def sync_fleet_data(force_sharepoint: bool = False):
 
         }
 
+        # Mapeia praças/CS com Atria Capture em execução (nós Atria geram .ASF e não .MP4)
+        atria_running_keys = {
+
+            (s.get("praca", "").strip().lower(), int(float(s.get("cs", 1))))
+
+            for s in services_list
+
+            if "atria" in str(s.get("nome_servico", "")).lower() and ("execu" in str(s.get("status_servico", "")).lower() or "running" in str(s.get("status_servico", "")).lower())
+
+        }
+
 
 
         # Deduplicação inteligente de canais: O SharePoint acumula atualizações históricas.
@@ -1003,9 +1021,12 @@ def sync_fleet_data(force_sharepoint: bool = False):
 
             # nunca reportar falso alerta de "Sem Arquivos MP4" ou "Travado".
 
-            is_converter_node = (p_lower, parsed_cs) in converter_running_keys or parsed_cs == 2 or "bkp" in ch_name.lower()
+            is_converter_node = (p_lower, parsed_cs) in converter_running_keys or parsed_cs == 2 or "bkp" in ch_name.lower() or (p_lower, parsed_cs) in atria_running_keys
 
-            if is_converter_node and ("sem arquivos" in rec_mp4.lower() or "travado" in rec_mp4.lower()):
+            t_lower_early = str(tuner_stat).lower()
+            tuner_is_active = any(w in t_lower_early for w in ["working", "ready", "connected", "lock", "ok"]) or (sig_qual is not None and float(sig_qual or 0) > 0)
+
+            if (is_converter_node or tuner_is_active) and ("sem arquivos" in rec_mp4.lower() or "travado" in rec_mp4.lower()):
 
                 rec_mp4 = "Gravando (.ASF BKP)"
 

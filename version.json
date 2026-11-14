@@ -1,8 +1,8 @@
 {
-  "version": "3.9.79",
+  "version": "3.9.80",
   "agent_version": "1.0.21.2",
   "commit_sha": "auto",
   "updated_at": "2026-11-04T19:30:00.000000",
-  "description": "v3.9.71 - Otimização de latência da Central de Monitoração com GZipMiddleware (redução de 94.7% no tráfego de rede), correção de DOM da aba Link WAN (restauração do networkLinkTableBody e eliminação de IDs duplicados), remoção de I/O de disco bloqueante no recálculo de métricas e blindagem do parser de worklog.",
-  "release_notes": "v3.9.71: GZipMiddleware reduz payload de 2.4MB para 130KB em conexões móveis/remotas; correção da tabela de conectividade da aba Link WAN que ficava estagnada em 'Carregando'; recálculo de métricas 100% em memória sem travar I/O de disco durante leituras GET."
+  "description": "v3.9.71 - Otimiza\u00e7\u00e3o de lat\u00eancia da Central de Monitora\u00e7\u00e3o com GZipMiddleware (redu\u00e7\u00e3o de 94.7% no tr\u00e1fego de rede), corre\u00e7\u00e3o de DOM da aba Link WAN (restaura\u00e7\u00e3o do networkLinkTableBody e elimina\u00e7\u00e3o de IDs duplicados), remo\u00e7\u00e3o de I/O de disco bloqueante no rec\u00e1lculo de m\u00e9tricas e blindagem do parser de worklog.",
+  "release_notes": "v3.9.71: GZipMiddleware reduz payload de 2.4MB para 130KB em conex\u00f5es m\u00f3veis/remotas; corre\u00e7\u00e3o da tabela de conectividade da aba Link WAN que ficava estagnada em 'Carregando'; rec\u00e1lculo de m\u00e9tricas 100% em mem\u00f3ria sem travar I/O de disco durante leituras GET."
 }
