@@ -36,6 +36,10 @@ namespace WinServiceFleetAgent.Core
     public class CentralCloudClient
     {
         private static readonly HttpClient _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+        private static string _lastSvcStateSig = "";
+        private static DateTime _lastSvcSentUtc = DateTime.MinValue;
+        private static string _lastChStateSig = "";
+        private static DateTime _lastChSentUtc = DateTime.MinValue;
         private readonly string _primaryBaseUrl;
         private readonly string _fallbackBaseUrl;
         private readonly string _hostname;
@@ -111,54 +115,66 @@ namespace WinServiceFleetAgent.Core
             }).ToList();
 
             string servicesJson = JsonSerializer.Serialize(srvTelemetryList);
+            string currentSvcSig = string.Join("|", services.Select(s => $"{s.NomeServico}:{s.StatusServico}:{s.VersaoInstalada}"));
+            bool svcUnchanged = (currentSvcSig == _lastSvcStateSig) && (DateTime.UtcNow - _lastSvcSentUtc).TotalMinutes < 25.0;
 
-            // 1. Envio Direto para o Google Cloud Firestore via REST API (Porta 443 - Alta Confiabilidade)
-            try
+            if (svcUnchanged)
             {
-                string? token = await GoogleCloudAuth.GetAccessTokenAsync();
-                if (!string.IsNullOrEmpty(token))
+                FileLogger.Log($"[GoogleCloud] 🛡️ Smart Delta Free-Tier: Estado dos {services.Count} serviços inalterado (<25m). Escrita Firestore economizada ($0.00).");
+                gcpSuccess = true;
+            }
+            else
+            {
+                // 1. Envio Direto para o Google Cloud Firestore via REST API (Porta 443 - Alta Confiabilidade)
+                try
                 {
-                    using var gcpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
-                    gcpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-
-                    string mask = "updateMask.fieldPaths=hostname&updateMask.fieldPaths=last_heartbeat&updateMask.fieldPaths=status&updateMask.fieldPaths=agent_version&updateMask.fieldPaths=praca&updateMask.fieldPaths=cs&updateMask.fieldPaths=services_count&updateMask.fieldPaths=services_running&updateMask.fieldPaths=updated_at&updateMask.fieldPaths=services_json&updateMask.fieldPaths=cpu_uso&updateMask.fieldPaths=ram_uso&updateMask.fieldPaths=disco_d_livre&updateMask.fieldPaths=uptime&updateMask.fieldPaths=status_wcf";
-                    string url = $"https://firestore.googleapis.com/v1/projects/{GoogleCloudAuth.ProjectId}/databases/(default)/documents/fleet_hosts/{docHost}?{mask}";
-
-                    int runningCount = services.Count(s => s.StatusServico != null && s.StatusServico.Equals("Em Execução", StringComparison.OrdinalIgnoreCase));
-
-                    var fields = new Dictionary<string, object>
+                    string? token = await GoogleCloudAuth.GetAccessTokenAsync();
+                    if (!string.IsNullOrEmpty(token))
                     {
-                        ["hostname"] = new { stringValue = docHost },
-                        ["praca"] = new { stringValue = praca ?? "" },
-                        ["cs"] = new { integerValue = cs.ToString() },
-                        ["agent_version"] = new { stringValue = agentVersion },
-                        ["status"] = new { stringValue = "online" },
-                        ["last_heartbeat"] = new { stringValue = DateTime.UtcNow.ToString("o") },
-                        ["updated_at"] = new { stringValue = DateTime.UtcNow.ToString("o") },
-                        ["services_count"] = new { integerValue = services.Count.ToString() },
-                        ["services_running"] = new { integerValue = runningCount.ToString() },
-                        ["services_json"] = new { stringValue = servicesJson },
-                        ["cpu_uso"] = new { stringValue = metrics?.CpuUso ?? "N/A" },
-                        ["ram_uso"] = new { stringValue = metrics?.RamUso ?? "N/A" },
-                        ["disco_d_livre"] = new { stringValue = metrics?.DiscoDLivreGB ?? "N/A" },
-                        ["uptime"] = new { stringValue = metrics?.UptimeDias ?? "N/A" },
-                        ["status_wcf"] = new { stringValue = metrics?.StatusWcf ?? "N/A" }
-                    };
+                        using var gcpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+                        gcpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
-                    var firestorePayload = new { fields = fields };
-                    var content = new StringContent(JsonSerializer.Serialize(firestorePayload), Encoding.UTF8, "application/json");
+                        string mask = "updateMask.fieldPaths=hostname&updateMask.fieldPaths=last_heartbeat&updateMask.fieldPaths=status&updateMask.fieldPaths=agent_version&updateMask.fieldPaths=praca&updateMask.fieldPaths=cs&updateMask.fieldPaths=services_count&updateMask.fieldPaths=services_running&updateMask.fieldPaths=updated_at&updateMask.fieldPaths=services_json&updateMask.fieldPaths=cpu_uso&updateMask.fieldPaths=ram_uso&updateMask.fieldPaths=disco_d_livre&updateMask.fieldPaths=uptime&updateMask.fieldPaths=status_wcf";
+                        string url = $"https://firestore.googleapis.com/v1/projects/{GoogleCloudAuth.ProjectId}/databases/(default)/documents/fleet_hosts/{docHost}?{mask}";
 
-                    var resp = await gcpClient.PatchAsync(url, content);
-                    if (resp.IsSuccessStatusCode)
-                    {
-                        FileLogger.Log($"[GoogleCloud] 🚀 Telemetria completa (serviços + métricas) enviada com SUCESSO para o Google Cloud Firestore ({docHost})!");
-                        gcpSuccess = true;
+                        int runningCount = services.Count(s => s.StatusServico != null && s.StatusServico.Equals("Em Execução", StringComparison.OrdinalIgnoreCase));
+
+                        var fields = new Dictionary<string, object>
+                        {
+                            ["hostname"] = new { stringValue = docHost },
+                            ["praca"] = new { stringValue = praca ?? "" },
+                            ["cs"] = new { integerValue = cs.ToString() },
+                            ["agent_version"] = new { stringValue = agentVersion },
+                            ["status"] = new { stringValue = "online" },
+                            ["last_heartbeat"] = new { stringValue = DateTime.UtcNow.ToString("o") },
+                            ["updated_at"] = new { stringValue = DateTime.UtcNow.ToString("o") },
+                            ["services_count"] = new { integerValue = services.Count.ToString() },
+                            ["services_running"] = new { integerValue = runningCount.ToString() },
+                            ["services_json"] = new { stringValue = servicesJson },
+                            ["cpu_uso"] = new { stringValue = metrics?.CpuUso ?? "N/A" },
+                            ["ram_uso"] = new { stringValue = metrics?.RamUso ?? "N/A" },
+                            ["disco_d_livre"] = new { stringValue = metrics?.DiscoDLivreGB ?? "N/A" },
+                            ["uptime"] = new { stringValue = metrics?.UptimeDias ?? "N/A" },
+                            ["status_wcf"] = new { stringValue = metrics?.StatusWcf ?? "N/A" }
+                        };
+
+                        var firestorePayload = new { fields = fields };
+                        var content = new StringContent(JsonSerializer.Serialize(firestorePayload), Encoding.UTF8, "application/json");
+
+                        var resp = await gcpClient.PatchAsync(url, content);
+                        if (resp.IsSuccessStatusCode)
+                        {
+                            _lastSvcStateSig = currentSvcSig;
+                            _lastSvcSentUtc = DateTime.UtcNow;
+                            FileLogger.Log($"[GoogleCloud] 🚀 Telemetria completa (serviços + métricas) enviada com SUCESSO para o Google Cloud Firestore ({docHost})!");
+                            gcpSuccess = true;
+                        }
                     }
                 }
-            }
-            catch (Exception exGcp)
-            {
-                FileLogger.Log($"[GoogleCloud] Aviso telemetria Firestore: {exGcp.Message}");
+                catch (Exception exGcp)
+                {
+                    FileLogger.Log($"[GoogleCloud] Aviso telemetria Firestore: {exGcp.Message}");
+                }
             }
 
             // 2. Envio Secundário para Central NOC (se acessível na mesma rede)
@@ -204,6 +220,12 @@ namespace WinServiceFleetAgent.Core
         {
             if (channels == null || channels.Count == 0) return false;
             string docHost = ResolveCanonicalHostDocId(cs);
+            string currentChSig = string.Join("|", channels.Select(c => $"{c.Title}:{c.StatusTuner}:{c.GravandoMP4}:{c.GravandoMP3}:{c.VideoCongelado}"));
+            if (currentChSig == _lastChStateSig && (DateTime.UtcNow - _lastChSentUtc).TotalMinutes < 25.0)
+            {
+                FileLogger.Log($"[GoogleCloud] 🛡️ Smart Delta Free-Tier: Estado dos {channels.Count} canais inalterado (<25m). Escrita Firestore economizada ($0.00).");
+                return true;
+            }
 
             try
             {
@@ -255,6 +277,8 @@ namespace WinServiceFleetAgent.Core
                 var resp = await gcpClient.PatchAsync(url, content);
                 if (resp.IsSuccessStatusCode)
                 {
+                    _lastChStateSig = currentChSig;
+                    _lastChSentUtc = DateTime.UtcNow;
                     FileLogger.Log($"[GoogleCloud] 📡 Telemetria completa de canais ({channels.Count} canais) enviada com SUCESSO para o Google Cloud Firestore ({docHost})!");
                     return true;
                 }

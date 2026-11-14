@@ -1035,22 +1035,23 @@ async function loadGcpConsumptionUI(force = false) {
         const fs = data.firestore || {};
         const st = data.storage || {};
 
+        const isFreeTier = Number(cs.monthly_usd || 0) === 0;
         const elMonthlyUsd = document.getElementById("gcpKpiMonthlyUsd");
-        if (elMonthlyUsd) elMonthlyUsd.innerText = `$${Number(cs.monthly_usd || 0).toFixed(2)}`;
+        if (elMonthlyUsd) elMonthlyUsd.innerText = isFreeTier ? "$0.00 (Free Tier)" : `$${Number(cs.monthly_usd || 0).toFixed(2)}`;
         const elMonthlyBrl = document.getElementById("gcpKpiMonthlyBrl");
-        if (elMonthlyBrl) elMonthlyBrl.innerText = `R$ ${Number(cs.monthly_brl || 0).toFixed(2).replace(".", ",")}`;
+        if (elMonthlyBrl) elMonthlyBrl.innerText = isFreeTier ? "R$ 0,00 (Isento)" : `R$ ${Number(cs.monthly_brl || 0).toFixed(2).replace(".", ",")}`;
         const elDailyUsd = document.getElementById("gcpKpiDailyUsd");
-        if (elDailyUsd) elDailyUsd.innerText = `$${Number(cs.daily_usd || 0).toFixed(3)}/dia`;
+        if (elDailyUsd) elDailyUsd.innerText = `$${Number(cs.daily_usd || 0).toFixed(2)}/dia`;
 
         const elDailyWrites = document.getElementById("gcpKpiDailyWrites");
         if (elDailyWrites) elDailyWrites.innerText = fmtNum(fs.daily_writes);
         const elBillWrites = document.getElementById("gcpKpiBillableWrites");
-        if (elBillWrites) elBillWrites.innerText = fmtNum(fs.billable_daily_writes);
+        if (elBillWrites) elBillWrites.innerText = `${fmtNum(fs.billable_daily_writes)} (Isento)`;
 
         const elDailyReads = document.getElementById("gcpKpiDailyReads");
         if (elDailyReads) elDailyReads.innerText = fmtNum(fs.daily_reads);
         const elBillReads = document.getElementById("gcpKpiBillableReads");
-        if (elBillReads) elBillReads.innerText = fmtNum(fs.billable_daily_reads);
+        if (elBillReads) elBillReads.innerText = `${fmtNum(fs.billable_daily_reads)} (Isento)`;
 
         const elStorageMb = document.getElementById("gcpKpiStorageMb");
         if (elStorageMb) elStorageMb.innerText = `${st.total_size_mb || 0} MB`;
@@ -1058,15 +1059,15 @@ async function loadGcpConsumptionUI(force = false) {
         if (elStorageObj) elStorageObj.innerText = st.objects_count || 0;
 
         const elActHosts = document.getElementById("gcpDetailActiveHosts");
-        if (elActHosts) elActHosts.innerText = `${data.active_hosts} / ${data.total_hosts} máquinas`;
+        if (elActHosts) elActHosts.innerText = `${data.active_hosts} / ${data.total_hosts} máquinas (Smart Delta 30m)`;
         const elMonWrites = document.getElementById("gcpDetailMonthlyWrites");
-        if (elMonWrites) elMonWrites.innerText = `${fmtNum(fs.monthly_writes)} ops/mês`;
+        if (elMonWrites) elMonWrites.innerText = `${fmtNum(fs.monthly_writes)} ops/mês (Cota Grátis: 600.000)`;
         const elMonReads = document.getElementById("gcpDetailMonthlyReads");
-        if (elMonReads) elMonReads.innerText = `${fmtNum(fs.monthly_reads)} ops/mês`;
+        if (elMonReads) elMonReads.innerText = `${fmtNum(fs.monthly_reads)} ops/mês (Cota Grátis: 1.500.000)`;
         const elFsCost = document.getElementById("gcpDetailFirestoreCost");
-        if (elFsCost) elFsCost.innerText = `$${Number(fs.monthly_cost_usd || 0).toFixed(2)} / mês`;
+        if (elFsCost) elFsCost.innerText = isFreeTier ? "$0.00 / mês (100% Free Tier)" : `$${Number(fs.monthly_cost_usd || 0).toFixed(2)} / mês`;
         const elStCost = document.getElementById("gcpDetailStorageCost");
-        if (elStCost) elStCost.innerText = `$${Number(st.monthly_cost_usd || 0).toFixed(2)} / mês`;
+        if (elStCost) elStCost.innerText = Number(st.monthly_cost_usd || 0) === 0 ? "$0.00 / mês (Cota Grátis 5 GB)" : `$${Number(st.monthly_cost_usd || 0).toFixed(2)} / mês`;
         const elLat = document.getElementById("gcpDetailLatency");
         if (elLat) elLat.innerText = `~${cs.avg_latency_ms || 24}ms (São Paulo)`;
 

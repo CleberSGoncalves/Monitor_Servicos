@@ -11396,238 +11396,72 @@
         </div>
       </div>
 
-      <div class="panel-card">
-
-        <div class="panel-header">
-
-          <div class="panel-title"><span>🚀</span> Esteira de Homologação Canário (5 Pilotos → Frota) & Versionamento do Agente C#</div>
-
-          <span style="font-size: 12px; color: var(--text-muted);">Sincronia obrigatória entre features locais dos Capture Sites e versão do <code>DNA.MonitorServiceSVC</code></span>
-
-        </div>
-
-
-
-        <!-- Diretriz Arquitetural Zero-Overhead & Alinhamento de Versão -->
-
-        <div style="background: rgba(37, 99, 235, 0.08); border: 1px solid rgba(59, 130, 246, 0.3); padding: 14px 18px; border-radius: var(--radius-md); margin-bottom: 16px;">
-
-          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px;">
-
-            <strong style="color: #60a5fa; font-size: 13px;">📌 Diretriz de Engenharia: Proteção de Recursos do Capture Site & Evolução de Versão do Serviço C#</strong>
-
-            <span style="background: rgba(16, 185, 129, 0.18); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); padding: 3px 10px; border-radius: 999px; font-size: 11px; font-family: monospace; font-weight: 700;">Build C# Atual: v1.0.21.2</span>
-
-          </div>
-
-          <div style="font-size: 12px; color: #cbd5e1; line-height: 1.55;">
-
-            • <strong>Zero-Overhead na Ponta:</strong> Cálculos pesados de IA (Gemini Pro), topografia RF/Fresnel e correlação rodam 100% no Dashboard Central.<br>
-
-            • <strong>Acompanhamento Obrigatório de Versão no Agente C#:</strong> Toda funcionalidade que exige interação física com a máquina da cidade (telemetria em tempo real via Google Cloud Firestore, pacotes via Google Cloud Storage e abertura interativa do Atria) gera nova versão compilada do <code>DNA.MonitorServiceSVC</code> (<code>v1.0.21.2</code>), homologada primeiro em <strong>5 praças piloto</strong> antes do despacho automático para as demais.
-
-          </div>
-
-        </div>
-
-
-
-        <!-- Novidades da Release v1.0.16.0 do Serviço C# -->
-
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; margin-bottom: 16px;">
-
-          <div style="background: rgba(15, 23, 42, 0.65); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px; padding: 10px 12px;">
-
-            <div style="font-size: 12px; font-weight: 700; color: #38bdf8;">🖥️ Fix Interface Atria Capture (Sessão 0)</div>
-
-            <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">Elimina processos fantasmas sem janela no Gerenciador de Tarefas e abre a GUI na sessão ativa do usuário (Console/RDP/TeamViewer) com token elevado.</div>
-
-          </div>
-
-          <div style="background: rgba(15, 23, 42, 0.65); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px; padding: 10px 12px;">
-
-            <div style="font-size: 12px; font-weight: 700; color: #34d399;">⚡ Fila Real de Comandos & Tail de Logs</div>
-
-            <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">Canal assinado HMAC-SHA256 via SharePoint Drive (<code>Fila_Comandos</code>) com prioridade <code>BelowNormal</code> e leitura nativa de logs sem onerar a CPU.</div>
-
-          </div>
-
-          <div style="background: rgba(15, 23, 42, 0.65); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px; padding: 10px 12px;">
-
-            <div style="font-size: 12px; font-weight: 700; color: #fbbf24;">🛡️ Trava Canário (5 Pilotos → Frota)</div>
-
-            <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">O agente C# respeita estritamente a <code>Versao_Desejada</code> de cada host, garantindo que apenas as 5 máquinas piloto atualizem na Fase 1.</div>
-
-          </div>
-
-        </div>
-
-
-
-        <!-- Painel de Status Canário ao Vivo -->
-
-        <div id="canaryStatusSummaryGrid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 16px;"></div>
-
-
-
-        <!-- Módulo de Auto-Healing da Frota & Rastreamento de Agentes -->
-
-        <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: var(--radius-md); padding: 18px; margin-bottom: 16px;">
-
-          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;">
-
-            <div>
-
-              <div style="display: flex; align-items: center; gap: 8px;">
-
-                <span style="font-size: 16px;">🏥</span>
-
-                <strong style="color: #c084fc; font-size: 14px;">Central de Auto-Healing da Frota (Nós Desatualizados &amp; Offline)</strong>
-
-                <span class="badge" style="background: rgba(168, 85, 247, 0.2); color: #e9d5ff; font-size: 10px; border: 1px solid rgba(168, 85, 247, 0.4);">Rastreamento Proativo</span>
-
-              </div>
-
-              <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">Auditoria contínua de agentes em delay, versões defasadas e serviços críticos parados com auto-recuperação em 1 clique.</div>
-
+      <!-- PAINEL DIDÁTICO DE GOVERNANÇA RBAC & TRILHA DE AUDITORIA DE OPERAÇÕES (QUEM EXECUTOU, QUANDO E ONDE) -->
+      <div class="panel-card" style="margin-bottom: 20px; border: 1px solid rgba(168, 85, 247, 0.35); background: linear-gradient(180deg, rgba(15, 23, 42, 0.9) 0%, rgba(15, 23, 42, 0.98) 100%);">
+        <div class="panel-header" style="border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 12px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+          <div>
+            <div class="panel-title" style="display: flex; align-items: center; gap: 10px; font-size: 17px; font-weight: 700; color: #f8fafc; flex-wrap: wrap;">
+              <span>🔒</span>
+              <span>Governança de Segurança (RBAC) &amp; Trilha de Auditoria da Frota</span>
+              <span id="fleetRbacUserBadge" style="background: rgba(16, 185, 129, 0.18); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); font-size: 11px; padding: 3px 10px; border-radius: 20px; font-weight: 700;">Operador: Carregando...</span>
+              <span id="fleetRbacRoleBadge" style="background: rgba(56, 189, 248, 0.18); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); font-size: 11px; padding: 3px 10px; border-radius: 20px; font-weight: 700;">Perfil: --</span>
             </div>
-
-            <div style="display: flex; gap: 8px; align-items: center;">
-
-              <button class="btn-secondary" onclick="loadFleetAutoHealingStatus()" style="padding: 5px 12px; font-size: 11px;">🔄 Atualizar Telemetria</button>
-
-              <button class="btn-primary" id="btnRunAutoHealingBatch" onclick="triggerFleetAutoHealingBatch()" style="background: linear-gradient(135deg, #9333ea, #6366f1); border-color: #a855f7; font-size: 12px; font-weight: 700; padding: 6px 14px;">
-
-                <span>🚀</span> Executar Auto-Healing da Frota (Atualizar Agentes &amp; Recuperar Serviços)
-
-              </button>
-
+            <div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">
+              Proteção dos Capture Sites: toda atualização (individual ou em lote), remoção de máquina ou comando remoto exige permissão do perfil, confirmação explícita e fica registrada permanentemente com usuário, horário e justificativa.
             </div>
-
           </div>
-
-
-
-          <!-- Cards de Métricas em Tempo Real -->
-
-          <div id="fleetAutoHealingGrid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 14px;">
-
-            <!-- Preenchido dinamicamente por fleet_ops.js -->
-
-          </div>
-
-
-
-          <!-- Pills de Filtragem Rápida e Lista de Estações -->
-
-          <div style="border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 10px;">
-
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;">
-
-              <div style="font-size: 11px; color: #94a3b8; font-weight: 600; text-transform: uppercase;">
-
-                Filtro de Visualização de Hosts:
-
-              </div>
-
-              <div style="display: flex; gap: 4px; flex-wrap: wrap;">
-
-                <button class="btn-secondary" onclick="filterAutoHealingList('all')" style="padding: 2px 8px; font-size: 10px;">Todos</button>
-
-                <button class="btn-secondary" onclick="filterAutoHealingList('eligible')" style="padding: 2px 8px; font-size: 10px; color: #fbbf24;">🟠 Desatualizados</button>
-
-                <button class="btn-secondary" onclick="filterAutoHealingList('delay')" style="padding: 2px 8px; font-size: 10px; color: #38bdf8;">🟡 Delay (20m-2h)</button>
-
-                <button class="btn-secondary" onclick="filterAutoHealingList('offline_recent')" style="padding: 2px 8px; font-size: 10px; color: #fb923c;">🟠 Recente (2h-24h)</button>
-
-                <button class="btn-secondary" onclick="filterAutoHealingList('offline')" style="padding: 2px 8px; font-size: 10px; color: #f87171;">🔴 Crítico (>24h)</button>
-
-                <button class="btn-secondary" onclick="filterAutoHealingList('stopped_services')" style="padding: 2px 8px; font-size: 10px; color: #c084fc;">⚠️ Serviços Parados</button>
-
-                <button class="btn-secondary" onclick="filterAutoHealingList('up_to_date')" style="padding: 2px 8px; font-size: 10px; color: #34d399;">🟢 Atualizados</button>
-
-              </div>
-
-            </div>
-
-            <div id="fleetAutoHealingHostsList" style="display: flex; flex-wrap: wrap; gap: 6px; max-height: 220px; overflow-y: auto; padding: 6px; background: rgba(0,0,0,0.25); border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
-
-              <!-- Preenchido dinamicamente por fleet_ops.js -->
-
-            </div>
-
-          </div>
-
-        </div>
-
-
-
-
-
-        <div style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); padding: 18px; border-radius: var(--radius-md); margin-bottom: 16px;">
-
-          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 10px;">
-
-            <h4 style="margin: 0;">Controle de Homologação (5 Pilotos) e Despacho Global</h4>
-
-            <button class="btn-secondary" onclick="loadCanaryPipelineStatus()" style="padding: 5px 12px; font-size: 12px;">🔄 Atualizar Status</button>
-
-          </div>
-
-          <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 14px;">
-
-            Na <strong>Fase 1</strong>, o sistema seleciona 5 praças piloto online e define <code>Versao_Desejada = 1.0.21.2</code> + <code>Acao_Solicitada = Atualizar</code> via Google Cloud, mantendo o restante da frota blindado. Assim que as 5 praças confirmarem a atualização sem falhas, a <strong>Fase 2</strong> despacha automaticamente para as demais praças (ou você pode promover manualmente abaixo).
-
-          </p>
-
-
-
-          <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px;">
-
-            <label style="font-size: 13px; font-weight: 600;">Versão Alvo do Agente C#:</label>
-
-            <input type="text" id="canaryTargetVersion" value="1.0.21.2" onchange="loadCanaryPipelineStatus()" style="padding: 8px 14px; background: rgba(0,0,0,0.4); border: 1px solid var(--border-color); color: #34d399; font-weight: 700; border-radius: var(--radius-sm); font-family: monospace; width: 130px;">
-
-
-
-            <button class="btn-primary" id="btnTriggerCanary5" onclick="triggerCanaryFromDashboard()">
-
-              <span>🐤</span> 1. Homologar em 5 Praças Piloto (Canary)
-
+          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <select id="selectFleetAuditFilter" onchange="filterFleetAuditLog(this.value)" style="background: #0f172a; color: #cbd5e1; border: 1px solid rgba(148, 163, 184, 0.35); border-radius: 6px; padding: 5px 10px; font-size: 12px;">
+              <option value="all">Todas as Operações</option>
+              <option value="UPDATE_BATCH">Atualização em Lote</option>
+              <option value="UPDATE_SINGLE">Atualização Individual</option>
+              <option value="SET_VERSION">Alteração de Versão Homologada</option>
+              <option value="REMOVE_HOST">Remoção / Desinstalação de Máquina</option>
+              <option value="REMOTE_COMMAND">Comandos Remotos (PowerShell/CMD)</option>
+            </select>
+            <button class="btn-secondary" onclick="loadFleetAuditLog(true)" style="padding: 6px 12px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px;">
+              <i class="fas fa-sync-alt" id="iconReloadFleetAudit"></i>
+              <span>Atualizar Auditoria</span>
             </button>
-
-
-
-            <button class="btn-secondary" id="btnPromoteFullFleet" onclick="triggerPromoteFullFleetFromDashboard()">
-
-              <span>🚀</span> 2. Despachar para Demais Praças da Frota
-
-            </button>
-
           </div>
-
-
-
-          <div style="border-top: 1px solid rgba(148,163,184,0.15); padding-top: 10px;">
-
-            <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; margin-bottom: 6px; font-weight: 600;">Praças no Lote Canário / Atualizadas na Versão Alvo:</div>
-
-            <div id="canaryPilotsList" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
-
-          </div>
-
         </div>
 
-
-
-        <div>
-
-          <h4 style="margin-bottom: 8px; font-size: 13px; color: var(--text-muted);">Console de Deploy e Auditoria Canário:</h4>
-
-          <pre id="canaryLogOutput" style="background: #000; padding: 14px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); font-family: monospace; font-size: 12px; color: #34d399; min-height: 110px; white-space: pre-wrap;">Pronto para homologação da versão v1.0.21.2 em 5 praças piloto via Google Cloud. Selecione uma ação acima.</pre>
-
+        <!-- Guia Didático Rápido (3 Passos Claros de Operação) -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-bottom: 16px;">
+          <div style="background: rgba(30, 41, 59, 0.65); border: 1px solid rgba(56, 189, 248, 0.25); border-left: 4px solid #38bdf8; border-radius: 8px; padding: 10px 14px;">
+            <div style="font-size: 12px; font-weight: 800; color: #38bdf8;">1️⃣ Passo 1: Escolher o Serviço</div>
+            <div style="font-size: 11px; color: #cbd5e1; margin-top: 4px;">Clique em qualquer card da <strong>Matriz de Governança</strong> no topo para auditar a versão instalada em cada Capture Site ou definir uma nova versão homologada.</div>
+          </div>
+          <div style="background: rgba(30, 41, 59, 0.65); border: 1px solid rgba(16, 185, 129, 0.25); border-left: 4px solid #10b981; border-radius: 8px; padding: 10px 14px;">
+            <div style="font-size: 12px; font-weight: 800; color: #34d399;">2️⃣ Passo 2: Atualizar em Lote ou Individual</div>
+            <div style="font-size: 11px; color: #cbd5e1; margin-top: 4px;">Use o botão verde <strong>Disparar Atualização Google Cloud</strong> para atualizar todos os pendentes de uma vez, ou clique em <strong>Atualizar / Remover</strong> na linha de uma praça específica.</div>
+          </div>
+          <div style="background: rgba(30, 41, 59, 0.65); border: 1px solid rgba(168, 85, 247, 0.25); border-left: 4px solid #a855f7; border-radius: 8px; padding: 10px 14px;">
+            <div style="font-size: 12px; font-weight: 800; color: #c084fc;">3️⃣ Passo 3: Dupla Confirmação &amp; Auditoria</div>
+            <div style="font-size: 11px; color: #cbd5e1; margin-top: 4px;">Toda ação exige <strong>confirmação de segurança com justificativa</strong>, valida o seu nível de acesso (RBAC) e grava quem executou na tabela abaixo.</div>
+          </div>
         </div>
 
+        <!-- Tabela de Auditoria Imutável -->
+        <div style="max-height: 340px; overflow-y: auto; border: 1px solid rgba(148, 163, 184, 0.15); border-radius: 8px; background: rgba(15, 23, 42, 0.55);">
+          <table class="data-table" style="width: 100%; font-size: 12px; border-collapse: collapse;">
+            <thead>
+              <tr style="position: sticky; top: 0; background: #0f172a; z-index: 2;">
+                <th style="padding: 8px 12px; text-align: left;">Data / Hora</th>
+                <th style="padding: 8px 12px; text-align: left;">Operador</th>
+                <th style="padding: 8px 12px; text-align: center;">Perfil RBAC</th>
+                <th style="padding: 8px 12px; text-align: center;">Operação</th>
+                <th style="padding: 8px 12px; text-align: left;">Serviço / Comando</th>
+                <th style="padding: 8px 12px; text-align: left;">Capture Site(s) Alvo</th>
+                <th style="padding: 8px 12px; text-align: left;">Justificativa / Detalhes</th>
+                <th style="padding: 8px 12px; text-align: center;">Status</th>
+              </tr>
+            </thead>
+            <tbody id="fleetAuditLogTableBody">
+              <tr><td colspan="8" style="text-align: center; padding: 20px; color: #94a3b8;"><i class="fas fa-spinner fa-spin"></i> Carregando histórico de auditoria...</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
     </section>
@@ -12965,12 +12799,12 @@
         <div class="panel-card" style="padding: 20px; margin-bottom: 20px; border: 1px solid rgba(56, 189, 248, 0.35); background: linear-gradient(180deg, rgba(15, 23, 42, 0.9) 0%, rgba(15, 23, 42, 0.98) 100%);">
           <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 12px;">
             <div>
-              <div class="panel-title" style="font-size: 16px; font-weight: 700; color: #f8fafc; display: flex; align-items: center; gap: 8px;">
-                <span>☁️</span> Consumo Google Cloud (Firestore & Cloud Storage) e Estimativa de Gastos
-                <span style="background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); font-size: 11px; padding: 2px 10px; border-radius: 20px; font-weight: 700;">100% Zero-SharePoint (v1.0.21.3)</span>
+              <div class="panel-title" style="font-size: 16px; font-weight: 700; color: #f8fafc; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <span>☁️</span> Consumo Google Cloud (Firestore &amp; Cloud Storage) e Estimativa de Gastos
+                <span style="background: rgba(16, 185, 129, 0.22); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.45); font-size: 11px; padding: 2px 10px; border-radius: 20px; font-weight: 700;">🟢 $0.00 / Mês • 100% Dentro do Free Tier (Smart Delta Ativo)</span>
               </div>
               <div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">
-                Auditoria em tempo real do volume de leituras, escritas, pacotes de atualização e projeção financeira mensal na região <code>southamerica-east1 (São Paulo)</code>
+                Com <strong>Smart Delta Bypass (25–30 min sem alterações)</strong> e <strong>Cache Coalescing (180s)</strong>, a frota inteira opera abaixo das cotas gratuitas diárias da Google Cloud (<code>20.000 escritas/dia</code>, <code>50.000 leituras/dia</code> e <code>5 GB Storage</code>) — custo financeiro <strong>$0.00 (R$ 0,00)</strong>.
               </div>
             </div>
             <div style="display: flex; gap: 8px; align-items: center;">
@@ -13490,77 +13324,20 @@
 
 
             <div class="rc-terminal-header">
-
-
-
-
-
-
-
-              <div style="display: flex; align-items: center; gap: 10px;">
-
-
-
-
-
-
-
+              <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
                 <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #22c55e;"></span>
-
-
-
-
-
-
-
-                <span style="font-size: 12px; font-weight: 600; color: #94a3b8;">Terminal Remoto</span>
-
-
-
-
-
-
-
+                <span style="font-size: 12px; font-weight: 600; color: #94a3b8;">Terminal Remoto Auditado</span>
+                <span id="rcRbacOperatorBadge" style="background: rgba(16, 185, 129, 0.16); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35); font-size: 10px; padding: 2px 8px; border-radius: 12px; font-weight: 700;">🔒 RBAC &amp; Dupla Confirmação Ativa</span>
               </div>
-
-
-
-
-
-
-
-              <div class="rc-shell-switch">
-
-
-
-
-
-
-
-                <button class="shell-type-btn active" data-shell="powershell" onclick="setShellType('powershell')">PowerShell</button>
-
-
-
-
-
-
-
-                <button class="shell-type-btn" data-shell="cmd" onclick="setShellType('cmd')">CMD Prompt</button>
-
-
-
-
-
-
-
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <button type="button" class="btn-secondary" onclick="switchRemoteTab('rc-tab-queue')" style="padding: 3px 8px; font-size: 10px; color: #38bdf8; border-color: rgba(56, 189, 248, 0.35);" title="Ver histórico completo de quem executou cada comando">
+                  <i class="fas fa-user-shield"></i> Auditoria de Execuções
+                </button>
+                <div class="rc-shell-switch">
+                  <button class="shell-type-btn active" data-shell="powershell" onclick="setShellType('powershell')">PowerShell</button>
+                  <button class="shell-type-btn" data-shell="cmd" onclick="setShellType('cmd')">CMD Prompt</button>
+                </div>
               </div>
-
-
-
-
-
-
-
             </div>
 
 
@@ -18582,6 +18359,72 @@
           </button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- MODAL UNIFICADO DE CONFIRMAÇÃO DE SEGURANÇA, PERMISSIONAMENTO RBAC & AUDITORIA (FROTA E REMOTE COMMAND) -->
+  <div class="modal-overlay" id="modalSafetyConfirmation" style="display: none; align-items: center; justify-content: center; z-index: 10050; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(4px);">
+    <div class="modal-content" style="max-width: 580px; width: 95%; background: #0b1329; border: 1px solid #f59e0b; border-radius: 12px; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.9); padding: 22px;">
+      <div class="modal-header" style="border-bottom: 1px solid rgba(245, 158, 11, 0.3); padding-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 22px;">🛡️</span>
+          <div>
+            <h4 id="safetyModalTitle" style="margin: 0; font-size: 16px; font-weight: 800; color: #f8fafc;">Confirmação de Segurança &amp; Auditoria RBAC</h4>
+            <div style="font-size: 11px; color: #fbbf24; margin-top: 2px;">Proteção obrigatória contra alterações acidentais nos Capture Sites</div>
+          </div>
+        </div>
+        <button type="button" class="btn-secondary" onclick="closeFleetSafetyModal()" style="padding: 4px 10px;">✕</button>
+      </div>
+
+      <div style="margin-top: 14px; display: flex; flex-direction: column; gap: 12px;">
+        <!-- Identificação do Operador e Perfil RBAC -->
+        <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 8px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+          <div style="font-size: 12px; color: #cbd5e1;">
+            <i class="fas fa-user-shield" style="color: #38bdf8;"></i> Operador Responsável: <strong id="safetyModalOperator" style="color: #fff;">--</strong>
+          </div>
+          <span id="safetyModalRoleBadge" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); font-size: 11px; padding: 2px 10px; border-radius: 12px; font-weight: 700;">PERFIL: ADMIN</span>
+        </div>
+
+        <!-- Resumo da Ação e Alvos -->
+        <div style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.35); border-left: 4px solid #f59e0b; border-radius: 8px; padding: 12px 14px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
+            <span id="safetyModalActionBadge" style="font-size: 11px; font-weight: 800; color: #fbbf24; text-transform: uppercase;">OPERAÇÃO CRÍTICA</span>
+            <span id="safetyModalTargetCount" style="font-size: 11px; font-family: monospace; color: #f8fafc; background: rgba(0,0,0,0.4); padding: 2px 8px; border-radius: 4px;">1 máquina(s)</span>
+          </div>
+          <div id="safetyModalSummaryText" style="font-size: 13px; color: #f8fafc; font-weight: 600; line-height: 1.45;">--</div>
+          <div id="safetyModalTargetHosts" style="margin-top: 8px; font-family: monospace; font-size: 11px; color: #38bdf8; max-height: 75px; overflow-y: auto; background: rgba(0,0,0,0.35); padding: 6px 8px; border-radius: 4px;">--</div>
+          <div id="safetyModalImpactWarning" style="margin-top: 8px; font-size: 11px; color: #fca5a5; line-height: 1.4;"></div>
+        </div>
+
+        <!-- Motivo / Justificativa para o Log de Auditoria -->
+        <div>
+          <label style="font-size: 12px; font-weight: 700; color: #cbd5e1; display: block; margin-bottom: 6px;">
+            📝 Motivo / Justificativa da Execução (Registrado na Auditoria):
+          </label>
+          <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px;">
+            <button type="button" class="btn-secondary" style="padding: 3px 8px; font-size: 10px;" onclick="setSafetyReasonPreset('Atualização homologada de rotina')">Atualização homologada</button>
+            <button type="button" class="btn-secondary" style="padding: 3px 8px; font-size: 10px;" onclick="setSafetyReasonPreset('Correção de incidente operacional na praça')">Correção de incidente</button>
+            <button type="button" class="btn-secondary" style="padding: 3px 8px; font-size: 10px;" onclick="setSafetyReasonPreset('Diagnóstico e auditoria técnica N2/N3')">Diagnóstico técnico</button>
+            <button type="button" class="btn-secondary" style="padding: 3px 8px; font-size: 10px;" onclick="setSafetyReasonPreset('Desativação / substituição oficial de máquina')">Desativação de máquina</button>
+          </div>
+          <input type="text" id="safetyConfirmReasonInput" class="form-input" placeholder="Informe o motivo ou selecione uma opção acima..." value="Atualização homologada de rotina" style="width: 100%; font-size: 12px; background: rgba(0,0,0,0.45); color: #fff;">
+        </div>
+
+        <!-- Checkbox de Confirmação Consciente -->
+        <label style="display: flex; align-items: flex-start; gap: 10px; background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 8px; padding: 10px 12px; cursor: pointer; margin: 0;">
+          <input type="checkbox" id="safetyConfirmCheckbox" onchange="onSafetyConfirmCheckboxChange()" style="width: 18px; height: 18px; margin-top: 2px; accent-color: #10b981; cursor: pointer;">
+          <span style="font-size: 12px; color: #e2e8f0; line-height: 1.4;">
+            Confirmo que revisei os <strong>Capture Sites alvo</strong> e estou ciente de que esta execução ficará registrada em meu usuário na Trilha de Auditoria da Frota.
+          </span>
+        </label>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; border-top: 1px solid rgba(148, 163, 184, 0.15); padding-top: 14px;">
+        <button type="button" class="btn-secondary" onclick="closeFleetSafetyModal()" style="padding: 8px 16px;">Cancelar</button>
+        <button type="button" class="btn-primary" id="btnConfirmSafetyModalExec" onclick="confirmFleetSafetyModal()" disabled style="padding: 8px 18px; background: linear-gradient(135deg, #059669, #10b981); border: 1px solid #34d399; font-weight: 700; opacity: 0.5; cursor: not-allowed;">
+          <i class="fas fa-check-shield"></i> Confirmar &amp; Executar com Auditoria
+        </button>
+      </div>
     </div>
   </div>
 

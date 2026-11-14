@@ -347,10 +347,9 @@ window.filterAutoHealingList = filterAutoHealingList;
 window.triggerFleetAutoHealingBatch = triggerFleetAutoHealingBatch;
 
 function initFleetOps() {
-    loadCanaryPipelineStatus();
-    loadFleetAutoHealingStatus();
     loadFleetGovernanceSummary();
     loadFleetUpdateEvolution();
+    loadFleetAuditLog(false);
 }
 
 if (document.readyState === "complete" || document.readyState === "interactive") {
@@ -737,47 +736,305 @@ function renderFleetEvolutionTable() {
     }).join("");
 }
 
-async function dispatchSingleHostUpdate(hostname, serviceName, targetVersion) {
-    if (!confirm(`Confirma disparar atualização de ${serviceName} para a versão ${targetVersion} no host [${hostname}] via Google Cloud?`)) {
+// ==============================================================================
+// GOVERNANÇA RBAC, MODAL DE DUPLA CONFIRMAÇÃO E TRILHA DE AUDITORIA DA FROTA
+// ==============================================================================
+
+let cachedFleetAuditEntries = [];
+let currentFleetAuditFilter = "all";
+let currentFleetRbacUser = {
+    username: "operador",
+    name: "Operador NOC",
+    role: "admin",
+    can_update_single: true,
+    can_update_batch: true,
+    can_set_version: true,
+    can_remove_host: true,
+    can_remote_command: true
+};
+let pendingFleetSafetyAction = null;
+
+async function loadFleetAuditLog(forceRefresh = false) {
+    const icon = document.getElementById("iconReloadFleetAudit");
+    if (icon) icon.classList.add("fa-spin");
+
+    try {
+        const resp = await fetch(`/api/fleet/governance/audit-log?limit=120&_t=${Date.now()}`, {
+            headers: {
+                ...(getFleetAuthToken() ? { "Authorization": `Bearer ${getFleetAuthToken()}` } : {})
+            }
+        });
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (!data || !data.success) return;
+
+        cachedFleetAuditEntries = data.entries || [];
+        if (data.current_user) {
+            currentFleetRbacUser = data.current_user;
+            updateFleetRbacBadges();
+        }
+        renderFleetAuditLogTable();
+
+        if (forceRefresh && typeof showToast === "function") {
+            showToast("Trilha de auditoria e permissões atualizadas!", "success");
+        }
+    } catch (e) {
+        console.error("Erro ao carregar trilha de auditoria da frota:", e);
+    } finally {
+        if (icon) icon.classList.remove("fa-spin");
+    }
+}
+
+function updateFleetRbacBadges() {
+    const u = currentFleetRbacUser || {};
+    const roleUpper = String(u.role || "ADMIN").toUpperCase();
+    const userBadge = document.getElementById("fleetRbacUserBadge");
+    if (userBadge) {
+        userBadge.innerText = `👤 Operador: ${u.name || u.username || "Operador"} (@${u.username || "noc"})`;
+    }
+    const roleBadge = document.getElementById("fleetRbacRoleBadge");
+    if (roleBadge) {
+        const permDesc = u.can_update_batch ? "Permissão Total (Lote / Individual / Remoção)" : (u.can_update_single ? "Operação Individual & Comandos" : "Somente Leitura (Visualização)");
+        roleBadge.innerText = `🛡️ Perfil: ${roleUpper} • ${permDesc}`;
+    }
+    const rcBadge = document.getElementById("rcRbacOperatorBadge");
+    if (rcBadge) {
+        rcBadge.innerText = `🔒 Operador: @${u.username || "noc"} (${roleUpper}) • Dupla Confirmação Ativa`;
+    }
+}
+
+function filterFleetAuditLog(actionType) {
+    currentFleetAuditFilter = actionType || "all";
+    renderFleetAuditLogTable();
+}
+
+function renderFleetAuditLogTable() {
+    const tbody = document.getElementById("fleetAuditLogTableBody");
+    if (!tbody) return;
+
+    let list = cachedFleetAuditEntries || [];
+    if (currentFleetAuditFilter && currentFleetAuditFilter !== "all") {
+        list = list.filter(item => item.action_type === currentFleetAuditFilter);
+    }
+
+    if (list.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 20px; color: #94a3b8;">Nenhum registro de auditoria encontrado para o filtro selecionado.</td></tr>`;
         return;
     }
-    try {
-        const resp = await fetch("/api/fleet/governance/dispatch-update", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                ...(getFleetAuthToken() ? { "Authorization": `Bearer ${getFleetAuthToken()}` } : {})
-            },
-            body: JSON.stringify({
-                service_name: serviceName,
-                target_version: targetVersion,
-                hosts: [hostname]
-            })
-        });
-        const data = await resp.json();
-        if (resp.ok && data.success) {
-            if (typeof showToast === "function") {
-                showToast(`Atualização disparada no Google Cloud para ${hostname} (v${targetVersion})!`, "success");
-            }
-            await loadFleetUpdateEvolution(true);
-            await loadFleetGovernanceSummary(false);
-            if (typeof loadServicesTable === "function") loadServicesTable();
-            if (typeof openFleetUpdateProgressModal === "function") {
-                openFleetUpdateProgressModal(hostname, serviceName, targetVersion);
-            }
-        } else {
-            const errMsg = data.error || (data.failed_hosts && data.failed_hosts[0]?.error) || "Falha ao disparar ordem de atualização";
-            if (typeof showToast === "function") {
-                showToast(errMsg, "error");
-            }
-            if (typeof openFleetUpdateProgressModal === "function") {
-                openFleetUpdateProgressModal(hostname, serviceName, targetVersion);
+
+    const actionBadges = {
+        "UPDATE_BATCH": { label: "🚀 Atualização em Lote", bg: "rgba(16, 185, 129, 0.16)", color: "#34d399", border: "rgba(16, 185, 129, 0.4)" },
+        "UPDATE_SINGLE": { label: "⚡ Atualização Individual", bg: "rgba(56, 189, 248, 0.16)", color: "#38bdf8", border: "rgba(56, 189, 248, 0.4)" },
+        "SET_VERSION": { label: "⚙️ Versão Homologada", bg: "rgba(168, 85, 247, 0.16)", color: "#c084fc", border: "rgba(168, 85, 247, 0.4)" },
+        "REMOVE_HOST": { label: "🗑️ Remoção de Máquina", bg: "rgba(239, 68, 68, 0.16)", color: "#f87171", border: "rgba(239, 68, 68, 0.4)" },
+        "REMOTE_COMMAND": { label: "💻 Remote Command", bg: "rgba(245, 158, 11, 0.16)", color: "#fbbf24", border: "rgba(245, 158, 11, 0.4)" }
+    };
+
+    tbody.innerHTML = list.map(entry => {
+        const ab = actionBadges[entry.action_type] || { label: entry.action_type || "OPERAÇÃO", bg: "rgba(148,163,184,0.15)", color: "#cbd5e1", border: "rgba(148,163,184,0.3)" };
+        let timeStr = entry.timestamp || "";
+        if (entry.timestamp_iso && !timeStr.includes("/")) {
+            try {
+                const dt = new Date(entry.timestamp_iso);
+                if (!isNaN(dt.getTime())) {
+                    timeStr = `${dt.toLocaleDateString("pt-BR")} ${dt.toLocaleTimeString("pt-BR")}`;
+                }
+            } catch (e) {}
+        }
+
+        const hostsArr = Array.isArray(entry.target_hosts) ? entry.target_hosts : [];
+        const hostsText = entry.target || (hostsArr.length <= 3
+            ? hostsArr.join(", ")
+            : `${hostsArr.slice(0, 3).join(", ")} (+${hostsArr.length - 3} hosts)`);
+
+        const stUpper = (entry.status || "").toUpperCase();
+        const isSuccess = stUpper === "SUCCESS" || stUpper.includes("SUCESSO") || stUpper.includes("OK");
+        const statusHtml = isSuccess
+            ? `<span style="color: #34d399; font-weight: 700;"><i class="fas fa-check-circle"></i> ${entry.status || "Auditado"}</span>`
+            : `<span style="color: #f87171; font-weight: 700;"><i class="fas fa-times-circle"></i> ${entry.status || "Bloqueado"}</span>`;
+
+        const verInfo = entry.target_version ? ` <span style="color: #38bdf8; font-family: monospace;">(v${entry.target_version})</span>` : "";
+        const opName = entry.full_name || entry.operator_name || entry.username || "Operador";
+
+        return `
+            <tr style="border-bottom: 1px solid rgba(148, 163, 184, 0.1);">
+                <td style="padding: 8px 12px; font-family: monospace; font-size: 11px; color: #cbd5e1; white-space: nowrap;">${timeStr}</td>
+                <td style="padding: 8px 12px; font-weight: 700; color: #f8fafc;">
+                    ${opName} <span style="color: #64748b; font-weight: normal; font-size: 11px;">(@${entry.username || "noc"})</span>
+                </td>
+                <td style="padding: 8px 12px; text-align: center;">
+                    <span style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700;">${entry.role || "ADMIN"}</span>
+                </td>
+                <td style="padding: 8px 12px; text-align: center;">
+                    <span style="background: ${ab.bg}; color: ${ab.color}; border: 1px solid ${ab.border}; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; white-space: nowrap;">${ab.label}</span>
+                </td>
+                <td style="padding: 8px 12px; font-family: monospace; font-size: 11px; color: #e2e8f0;">${entry.service_name || entry.command_preview || "--"}${verInfo}</td>
+                <td style="padding: 8px 12px; font-family: monospace; font-size: 11px; color: #93c5fd;" title="${hostsText}">${hostsText || "--"}</td>
+                <td style="padding: 8px 12px; font-size: 11px; color: #cbd5e1;">
+                    <strong>${entry.reason || "Operação manual autenticada"}</strong>
+                    ${entry.details ? `<div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">${entry.details}</div>` : ""}
+                </td>
+                <td style="padding: 8px 12px; text-align: center; font-size: 11px; white-space: nowrap;">${statusHtml}</td>
+            </tr>
+        `;
+    }).join("");
+}
+
+function openFleetSafetyModal(config) {
+    // Verifica RBAC do usuário antes de abrir o modal
+    const u = currentFleetRbacUser || {};
+    const act = config.actionType || "UPDATE_SINGLE";
+    if (act === "UPDATE_BATCH" && u.can_update_batch === false) {
+        if (typeof showToast === "function") showToast(`Acesso Negado (RBAC): Seu perfil (${String(u.role || "").toUpperCase()}) não possui permissão para disparo em lote.`, "error");
+        return;
+    }
+    if (act === "REMOVE_HOST" && u.can_remove_host === false) {
+        if (typeof showToast === "function") showToast(`Acesso Negado (RBAC): Apenas ADMIN ou Engenharia N3 podem desinstalar e remover máquinas da frota.`, "error");
+        return;
+    }
+    if (act === "SET_VERSION" && u.can_set_version === false) {
+        if (typeof showToast === "function") showToast(`Acesso Negado (RBAC): Apenas ADMIN ou Engenharia N3 podem alterar a versão homologada oficial.`, "error");
+        return;
+    }
+    if (act === "UPDATE_SINGLE" && u.can_update_single === false) {
+        if (typeof showToast === "function") showToast(`Acesso Negado (RBAC): Perfil de visualização não pode disparar atualizações nos Capture Sites.`, "error");
+        return;
+    }
+
+    pendingFleetSafetyAction = config;
+    const modal = document.getElementById("modalSafetyConfirmation");
+    if (!modal) {
+        if (typeof config.onConfirm === "function") config.onConfirm("Operação confirmada pelo operador");
+        return;
+    }
+
+    const elTitle = document.getElementById("safetyModalTitle");
+    if (elTitle) elTitle.innerText = config.title || "Confirmação de Segurança & Auditoria RBAC";
+
+    const elOp = document.getElementById("safetyModalOperator");
+    if (elOp) elOp.innerText = `${u.name || u.username || "Operador NOC"} (@${u.username || "admin"})`;
+
+    const elRole = document.getElementById("safetyModalRoleBadge");
+    if (elRole) elRole.innerText = `PERFIL: ${String(u.role || "ADMIN").toUpperCase()}`;
+
+    const elBadge = document.getElementById("safetyModalActionBadge");
+    if (elBadge) elBadge.innerText = config.badgeText || act;
+
+    const hostsList = Array.isArray(config.hosts) ? config.hosts : [];
+    const elCount = document.getElementById("safetyModalTargetCount");
+    if (elCount) elCount.innerText = `${hostsList.length} Capture Site(s)`;
+
+    const elSum = document.getElementById("safetyModalSummaryText");
+    if (elSum) elSum.innerText = config.summaryText || "";
+
+    const elHosts = document.getElementById("safetyModalTargetHosts");
+    if (elHosts) elHosts.innerText = hostsList.join(", ") || "Frota Selecionada";
+
+    const elWarn = document.getElementById("safetyModalImpactWarning");
+    if (elWarn) elWarn.innerText = config.impactWarning || "";
+
+    const inpReason = document.getElementById("safetyConfirmReasonInput");
+    if (inpReason) inpReason.value = config.defaultReason || "Atualização homologada de rotina";
+
+    const chk = document.getElementById("safetyConfirmCheckbox");
+    if (chk) chk.checked = false;
+    onSafetyConfirmCheckboxChange();
+
+    modal.style.display = "flex";
+}
+
+function closeFleetSafetyModal() {
+    const modal = document.getElementById("modalSafetyConfirmation");
+    if (modal) modal.style.display = "none";
+    pendingFleetSafetyAction = null;
+}
+
+function setSafetyReasonPreset(text) {
+    const inp = document.getElementById("safetyConfirmReasonInput");
+    if (inp) inp.value = text;
+}
+
+function onSafetyConfirmCheckboxChange() {
+    const chk = document.getElementById("safetyConfirmCheckbox");
+    const btn = document.getElementById("btnConfirmSafetyModalExec");
+    if (!btn) return;
+    if (chk && chk.checked) {
+        btn.disabled = false;
+        btn.style.opacity = "1";
+        btn.style.cursor = "pointer";
+    } else {
+        btn.disabled = true;
+        btn.style.opacity = "0.5";
+        btn.style.cursor = "not-allowed";
+    }
+}
+
+async function confirmFleetSafetyModal() {
+    if (!pendingFleetSafetyAction) return;
+    const actionObj = pendingFleetSafetyAction;
+    const reason = (document.getElementById("safetyConfirmReasonInput")?.value || "Operação autorizada pelo operador").trim();
+    closeFleetSafetyModal();
+    if (typeof actionObj.onConfirm === "function") {
+        await actionObj.onConfirm(reason);
+    }
+}
+
+window.loadFleetAuditLog = loadFleetAuditLog;
+window.filterFleetAuditLog = filterFleetAuditLog;
+window.openFleetSafetyModal = openFleetSafetyModal;
+window.closeFleetSafetyModal = closeFleetSafetyModal;
+window.setSafetyReasonPreset = setSafetyReasonPreset;
+window.onSafetyConfirmCheckboxChange = onSafetyConfirmCheckboxChange;
+window.confirmFleetSafetyModal = confirmFleetSafetyModal;
+
+async function dispatchSingleHostUpdate(hostname, serviceName, targetVersion) {
+    openFleetSafetyModal({
+        actionType: "UPDATE_SINGLE",
+        title: `Confirmar Atualização Individual — ${hostname}`,
+        badgeText: "⚡ ATUALIZAÇÃO INDIVIDUAL DE CAPTURE SITE",
+        hosts: [hostname],
+        summaryText: `Disparar atualização do serviço ${serviceName} para a versão v${targetVersion} via Google Cloud Firestore.`,
+        impactWarning: "O agente no Capture Site fará o download silencioso do pacote no Google Cloud Storage, validará o hash SHA-256 e reiniciará apenas o serviço selecionado.",
+        defaultReason: `Atualização homologada de ${serviceName} para v${targetVersion}`,
+        onConfirm: async (reason) => {
+            try {
+                const resp = await fetch("/api/fleet/governance/dispatch-update", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        ...(getFleetAuthToken() ? { "Authorization": `Bearer ${getFleetAuthToken()}` } : {})
+                    },
+                    body: JSON.stringify({
+                        service_name: serviceName,
+                        target_version: targetVersion,
+                        hosts: [hostname],
+                        reason: reason
+                    })
+                });
+                const data = await resp.json();
+                if (resp.ok && data.success) {
+                    if (typeof showToast === "function") {
+                        showToast(`Atualização disparada no Google Cloud para ${hostname} (v${targetVersion})!`, "success");
+                    }
+                    await loadFleetUpdateEvolution(true);
+                    await loadFleetGovernanceSummary(false);
+                    await loadFleetAuditLog(false);
+                    if (typeof loadServicesTable === "function") loadServicesTable();
+                    if (typeof openFleetUpdateProgressModal === "function") {
+                        openFleetUpdateProgressModal(hostname, serviceName, targetVersion);
+                    }
+                } else {
+                    const errMsg = data.detail || data.error || (data.failed_hosts && data.failed_hosts[0]?.error) || "Falha ao disparar ordem de atualização";
+                    if (typeof showToast === "function") {
+                        showToast(errMsg, "error");
+                    }
+                }
+            } catch (err) {
+                console.error("Erro ao disparar atualização unitária:", err);
+                if (typeof showToast === "function") showToast(err.message, "error");
             }
         }
-    } catch (err) {
-        console.error("Erro ao disparar atualização unitária:", err);
-        if (typeof showToast === "function") showToast(err.message, "error");
-    }
+    });
 }
 window.dispatchSingleHostUpdate = dispatchSingleHostUpdate;
 
@@ -786,42 +1043,54 @@ async function dispatchBatchPendingUpdate() {
         if (typeof showToast === "function") showToast("Nenhum host pendente online no momento para este serviço!", "info");
         return;
     }
-    const count = cachedFleetEvolutionData.pending_online_hosts.length;
+    const pendingHosts = cachedFleetEvolutionData.pending_online_hosts;
+    const count = pendingHosts.length;
     const svc = currentGovernanceService;
     const ver = cachedFleetEvolutionData.target_version;
-    if (!confirm(`Confirma disparar atualização via Google Cloud para TODOS os ${count} hosts pendentes de ${svc} na versão ${ver}?`)) {
-        return;
-    }
-    try {
-        const resp = await fetch("/api/fleet/governance/dispatch-update", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                ...(getFleetAuthToken() ? { "Authorization": `Bearer ${getFleetAuthToken()}` } : {})
-            },
-            body: JSON.stringify({
-                service_name: svc,
-                target_version: ver,
-                hosts: cachedFleetEvolutionData.pending_online_hosts
-            })
-        });
-        const data = await resp.json();
-        if (resp.ok && data.success) {
-            if (typeof showToast === "function") {
-                showToast(`Atualização despachada no Google Cloud para ${data.dispatched_count} hosts!`, "success");
-            }
-            await loadFleetUpdateEvolution(true);
-            await loadFleetGovernanceSummary(false);
-            if (typeof loadServicesTable === "function") loadServicesTable();
-        } else {
-            if (typeof showToast === "function") {
-                showToast(data.error || "Falha ao despachar lote", "error");
+
+    openFleetSafetyModal({
+        actionType: "UPDATE_BATCH",
+        title: `Confirmar Atualização em Lote (${count} Capture Sites)`,
+        badgeText: "🚀 ATUALIZAÇÃO EM LOTE NA FROTA",
+        hosts: pendingHosts,
+        summaryText: `Disparar atualização em lote de ${svc} para a versão v${ver} em todos os ${count} Capture Sites pendentes online.`,
+        impactWarning: "⚠️ Atenção: Esta operação enviará a ordem de atualização simultaneamente para as máquinas listadas acima e ficará registrada em seu usuário.",
+        defaultReason: `Rollout em lote homologado de ${svc} v${ver}`,
+        onConfirm: async (reason) => {
+            try {
+                const resp = await fetch("/api/fleet/governance/dispatch-update", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        ...(getFleetAuthToken() ? { "Authorization": `Bearer ${getFleetAuthToken()}` } : {})
+                    },
+                    body: JSON.stringify({
+                        service_name: svc,
+                        target_version: ver,
+                        hosts: pendingHosts,
+                        reason: reason
+                    })
+                });
+                const data = await resp.json();
+                if (resp.ok && data.success) {
+                    if (typeof showToast === "function") {
+                        showToast(`Atualização despachada no Google Cloud para ${data.dispatched_count} hosts!`, "success");
+                    }
+                    await loadFleetUpdateEvolution(true);
+                    await loadFleetGovernanceSummary(false);
+                    await loadFleetAuditLog(false);
+                    if (typeof loadServicesTable === "function") loadServicesTable();
+                } else {
+                    if (typeof showToast === "function") {
+                        showToast(data.detail || data.error || "Falha ao despachar lote", "error");
+                    }
+                }
+            } catch (err) {
+                console.error("Erro ao disparar lote:", err);
+                if (typeof showToast === "function") showToast(err.message, "error");
             }
         }
-    } catch (err) {
-        console.error("Erro ao disparar lote:", err);
-        if (typeof showToast === "function") showToast(err.message, "error");
-    }
+    });
 }
 window.dispatchBatchPendingUpdate = dispatchBatchPendingUpdate;
 
@@ -846,7 +1115,6 @@ function copyPendingHostsToClipboard() {
             showToast(`Lista de ${count} hosts pendentes copiada para a área de transferência!`, "success");
         }
     }).catch(err => {
-        // Fallback para textarea invisível
         const ta = document.createElement("textarea");
         ta.value = textToCopy;
         document.body.appendChild(ta);
@@ -860,7 +1128,7 @@ function copyPendingHostsToClipboard() {
 }
 
 function copyGvCommandToClipboard() {
-    const cmd = `powershell -ExecutionPolicy Bypass -NoProfile -Command "& { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $ProgressPreference = 'SilentlyContinue'; $s = 'DNA.MonitorServiceSVC'; $d = if (Test-Path 'D:\\MediaDNA_V2\\Applications\\MonitorServiceSVC') { 'D:\\MediaDNA_V2\\Applications\\MonitorServiceSVC' } elseif (Test-Path 'C:\\MediaDNA_V2\\Applications\\MonitorServiceSVC') { 'C:\\MediaDNA_V2\\Applications\\MonitorServiceSVC' } else { $null }; if (-not $d) { Write-Host '[ERRO] Diretorio nao encontrado'; exit 1 }; $curr = (Get-Item (Join-Path $d 'WinServiceFleetAgent.exe') -ErrorAction SilentlyContinue).VersionInfo.FileVersion; $m = try { Invoke-RestMethod -Uri ('https://storage.googleapis.com/kantar-fleet-releases/manifest.json?t=' + (Get-Random)) -TimeoutSec 15 } catch { $null }; $targetVer = if ($m -and $m.services.$s.version) { $m.services.$s.version } else { '1.0.21.3' }; if ($curr -eq $targetVer) { Write-Host \\"[OK] Ja atualizado na versao $curr\\"; exit 0 }; $url = if ($m -and $m.services.$s.download_url) { $m.services.$s.download_url } else { 'https://storage.googleapis.com/kantar-fleet-releases/DNA.MonitorServiceSVC_v' + $targetVer + '.zip' }; $zip = \\"$env:TEMP\\$s\`_$targetVer.zip\\"; Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing; Stop-Service -Name $s -Force -ErrorAction SilentlyContinue; Expand-Archive -Path $zip -DestinationPath $d -Force; Start-Service -Name $s -ErrorAction SilentlyContinue; Write-Host \\"[OK] DNA.MonitorServiceSVC atualizado com sucesso de $curr para $targetVer via Google Cloud Storage\\"; }"`;
+    const cmd = `powershell -ExecutionPolicy Bypass -NoProfile -Command "& { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $ProgressPreference = 'SilentlyContinue'; $s = 'DNA.MonitorServiceSVC'; $d = if (Test-Path 'D:\\MediaDNA_V2\\Applications\\MonitorServiceSVC') { 'D:\\MediaDNA_V2\\Applications\\MonitorServiceSVC' } elseif (Test-Path 'C:\\MediaDNA_V2\\Applications\\MonitorServiceSVC') { 'C:\\MediaDNA_V2\\Applications\\MonitorServiceSVC' } else { $null }; if (-not $d) { Write-Host '[ERRO] Diretorio nao encontrado'; exit 1 }; $curr = (Get-Item (Join-Path $d 'WinServiceFleetAgent.exe') -ErrorAction SilentlyContinue).VersionInfo.FileVersion; $m = try { Invoke-RestMethod -Uri ('https://storage.googleapis.com/kantar-fleet-releases/manifest.json?t=' + (Get-Random)) -TimeoutSec 15 } catch { $null }; $targetVer = if ($m -and $m.services.$s.version) { $m.services.$s.version } else { '1.0.21.4' }; if ($curr -eq $targetVer) { Write-Host \\"[OK] Ja atualizado na versao $curr\\"; exit 0 }; $url = if ($m -and $m.services.$s.download_url) { $m.services.$s.download_url } else { 'https://storage.googleapis.com/kantar-fleet-releases/DNA.MonitorServiceSVC_v' + $targetVer + '.zip' }; $zip = \\"$env:TEMP\\$s\`_$targetVer.zip\\"; Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing; Stop-Service -Name $s -Force -ErrorAction SilentlyContinue; Expand-Archive -Path $zip -DestinationPath $d -Force; Start-Service -Name $s -ErrorAction SilentlyContinue; Write-Host \\"[OK] DNA.MonitorServiceSVC atualizado com sucesso de $curr para $targetVer via Google Cloud Storage\\"; }"`;
     
     navigator.clipboard.writeText(cmd).then(() => {
         if (typeof showToast === "function") {
@@ -938,72 +1206,93 @@ async function submitSetDesiredVersion(event) {
         return;
     }
 
-    try {
-        const resp = await fetch("/api/fleet/governance/set-version", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                ...(getFleetAuthToken() ? { "Authorization": `Bearer ${getFleetAuthToken()}` } : {})
-            },
-            body: JSON.stringify({
-                service_name: serviceName,
-                target_version: targetVersion,
-                auto_dispatch: autoDispatch
-            })
-        });
+    closeSetTargetVersionModal();
+    openFleetSafetyModal({
+        actionType: "SET_VERSION",
+        title: `Definir Nova Versão Homologada — ${serviceName}`,
+        badgeText: "⚙️ ALTERAÇÃO DE VERSÃO OFICIAL DA FROTA",
+        hosts: [autoDispatch ? "TODA_A_FROTA_ELEGIVEL" : "MATRIZ_DE_GOVERNANCA"],
+        summaryText: `Alterar versão oficial homologada de ${serviceName} para v${targetVersion} (${autoDispatch ? 'Com disparo automático via Google Cloud' : 'Apenas atualizar matriz'}).`,
+        impactWarning: "Esta ação atualiza a Matriz Oficial de Governança e o manifest.json no Google Cloud Storage.",
+        defaultReason: `Homologação oficial da release ${serviceName} v${targetVersion}`,
+        onConfirm: async (reason) => {
+            try {
+                const resp = await fetch("/api/fleet/governance/set-version", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        ...(getFleetAuthToken() ? { "Authorization": `Bearer ${getFleetAuthToken()}` } : {})
+                    },
+                    body: JSON.stringify({
+                        service_name: serviceName,
+                        target_version: targetVersion,
+                        auto_dispatch: autoDispatch,
+                        reason: reason
+                    })
+                });
 
-        const data = await resp.json();
-        if (!resp.ok || !data.success) {
-            if (typeof showToast === "function") showToast(data.error || "Erro ao salvar versão", "error");
-            return;
-        }
+                const data = await resp.json();
+                if (!resp.ok || !data.success) {
+                    if (typeof showToast === "function") showToast(data.detail || data.error || "Erro ao salvar versão", "error");
+                    return;
+                }
 
-        closeSetTargetVersionModal();
-        if (typeof showToast === "function") {
-            const dispMsg = data.dispatched_count > 0 ? ` e atualização disparada para ${data.dispatched_count} máquinas via Google Cloud!` : "!";
-            showToast(`Versão homologada de ${serviceName} alterada para v${targetVersion}${dispMsg}`, "success");
-        }
+                if (typeof showToast === "function") {
+                    const dispMsg = data.dispatched_count > 0 ? ` e atualização disparada para ${data.dispatched_count} máquinas via Google Cloud!` : "!";
+                    showToast(`Versão homologada de ${serviceName} alterada para v${targetVersion}${dispMsg}`, "success");
+                }
 
-        // Recarrega matriz e evolução do serviço
-        await loadFleetGovernanceSummary(false);
-        if (currentGovernanceService === serviceName) {
-            await loadFleetUpdateEvolution(false);
+                await loadFleetGovernanceSummary(false);
+                await loadFleetAuditLog(false);
+                if (currentGovernanceService === serviceName) {
+                    await loadFleetUpdateEvolution(false);
+                }
+            } catch (err) {
+                console.error("Erro ao enviar set-version:", err);
+                if (typeof showToast === "function") showToast("Falha de rede ao salvar versão homologada", "error");
+            }
         }
-    } catch (err) {
-        console.error("Erro ao enviar set-version:", err);
-        if (typeof showToast === "function") showToast("Falha de rede ao salvar versão homologada", "error");
-    }
+    });
 }
 
 async function removeHostFromFleet(hostname, praca) {
     const label = praca ? `${praca} (${hostname})` : hostname;
-    const msg = `⚠️ ATENÇÃO: Deseja realmente REMOVER a máquina [${label}]?\n\nEsta ação irá:\n1. Enviar comando via Google Cloud para parar e DESINSTALAR o serviço DNA.MonitorServiceSVC no computador remoto.\n2. Excluir a máquina da telemetria do Google Cloud Firestore e do Dashboard.\n\nConfirmar desinstalação e remoção?`;
-    if (!confirm(msg)) return;
-
-    try {
-        const resp = await fetch("/api/fleet/governance/remove-host", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                ...(getFleetAuthToken() ? { "Authorization": `Bearer ${getFleetAuthToken()}` } : {})
-            },
-            body: JSON.stringify({ hostname: hostname })
-        });
-        const data = await resp.json();
-        if (!resp.ok || !data.success) {
-            if (typeof showToast === "function") showToast(data.error || "Erro ao remover máquina", "error");
-            return;
+    openFleetSafetyModal({
+        actionType: "REMOVE_HOST",
+        title: `Remover e Desinstalar Máquina — ${label}`,
+        badgeText: "🗑️ REMOÇÃO E DESINSTALAÇÃO DE CAPTURE SITE",
+        hosts: [hostname],
+        summaryText: `Desinstalar o serviço DNA.MonitorServiceSVC na máquina remota [${label}] e removê-la da telemetria do Google Cloud Firestore e do Dashboard.`,
+        impactWarning: "🚨 ATENÇÃO CRÍTICA: O serviço de monitoramento será interrompido e removido do Windows na estação remota.",
+        defaultReason: `Desativação / remoção oficial da estação ${label}`,
+        onConfirm: async (reason) => {
+            try {
+                const resp = await fetch("/api/fleet/governance/remove-host", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        ...(getFleetAuthToken() ? { "Authorization": `Bearer ${getFleetAuthToken()}` } : {})
+                    },
+                    body: JSON.stringify({ hostname: hostname, reason: reason })
+                });
+                const data = await resp.json();
+                if (!resp.ok || !data.success) {
+                    if (typeof showToast === "function") showToast(data.detail || data.error || "Erro ao remover máquina", "error");
+                    return;
+                }
+                if (typeof showToast === "function") {
+                    showToast(data.message || `Máquina ${hostname} desinstalada e removida da telemetria!`, "success");
+                }
+                await loadFleetUpdateEvolution(false);
+                await loadFleetGovernanceSummary(false);
+                await loadFleetAuditLog(false);
+                if (typeof loadServicesTable === "function") loadServicesTable();
+            } catch (err) {
+                console.error("Erro ao remover host da frota:", err);
+                if (typeof showToast === "function") showToast("Falha ao remover máquina da frota", "error");
+            }
         }
-        if (typeof showToast === "function") {
-            showToast(data.message || `Máquina ${hostname} desinstalada e removida da telemetria!`, "success");
-        }
-        await loadFleetUpdateEvolution(false);
-        await loadFleetGovernanceSummary(false);
-        if (typeof loadServicesTable === "function") loadServicesTable();
-    } catch (err) {
-        console.error("Erro ao remover host da frota:", err);
-        if (typeof showToast === "function") showToast("Falha ao remover máquina da frota", "error");
-    }
+    });
 }
 window.removeHostFromFleet = removeHostFromFleet;
 

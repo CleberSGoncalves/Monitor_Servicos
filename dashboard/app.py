@@ -179,6 +179,7 @@ class RemoteCommandExecuteRequest(BaseModel):
     shell_type: Optional[str] = "powershell"
     command_script: str
     command_title: Optional[str] = "Comando Livre"
+    reason: Optional[str] = ""
 
 class AiCustomizeRequest(BaseModel):
     suggestion_id: str
@@ -198,14 +199,17 @@ class SetDesiredVersionRequest(BaseModel):
     service_name: str
     target_version: str
     auto_dispatch: bool = True
+    reason: Optional[str] = ""
 
 class DispatchServiceUpdateRequest(BaseModel):
     service_name: str
     hosts: Optional[List[str]] = None
     target_version: Optional[str] = None
+    reason: Optional[str] = ""
 
 class RemoveHostRequest(BaseModel):
     hostname: str
+    reason: Optional[str] = ""
 
 
 def get_current_user(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
@@ -755,6 +759,33 @@ async def get_governance_service_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/fleet/governance/audit-log")
+async def get_governance_audit_log_endpoint(
+    limit: int = 100,
+    action_filter: Optional[str] = None,
+    user: dict = Depends(get_current_user)
+):
+    """Retorna a trilha de auditoria imutável (Quem executou, Quando, Perfil RBAC, Alvo e Justificativa) para Frota e Remote Command."""
+    from version_governance import get_fleet_audit_log, check_fleet_rbac_permission
+    logs = get_fleet_audit_log(limit=limit, action_filter=action_filter)
+    role = str(user.get("role") or "n1").strip().lower()
+    return {
+        "success": True,
+        "current_user": {
+            "username": user.get("username", "operador"),
+            "full_name": user.get("full_name", "Operador NOC"),
+            "role": role.upper(),
+            "can_update_single": check_fleet_rbac_permission(user, "UPDATE_SINGLE")[0],
+            "can_update_batch": check_fleet_rbac_permission(user, "UPDATE_BATCH")[0],
+            "can_set_version": check_fleet_rbac_permission(user, "SET_VERSION")[0],
+            "can_remove_host": check_fleet_rbac_permission(user, "REMOVE_HOST")[0],
+            "can_remote_command": check_fleet_rbac_permission(user, "REMOTE_COMMAND")[0],
+        },
+        "total": len(logs),
+        "items": logs
+    }
+
+
 @app.post("/api/fleet/governance/set-version")
 async def set_governance_version_endpoint(
     req: SetDesiredVersionRequest,
@@ -762,9 +793,28 @@ async def set_governance_version_endpoint(
 ):
     """Atualiza a versão homologada desejada de um serviço no painel de governança central, sincroniza o manifest.json do GCS e dispara o rollout via Google Cloud se auto_dispatch=True."""
     try:
-        from version_governance import set_desired_version, get_service_fleet_evolution
+        from version_governance import (
+            set_desired_version,
+            get_service_fleet_evolution,
+            check_fleet_rbac_permission,
+            record_fleet_audit_event,
+        )
         from gcp_sync import update_gcs_manifest_version
         from sharepoint_sync import sanitize_and_recalculate_cache
+
+        allowed, rbac_msg = check_fleet_rbac_permission(user, "SET_VERSION")
+        if not allowed:
+            record_fleet_audit_event(
+                user=user,
+                action_type="SET_VERSION",
+                target=f"Global ({req.service_name})",
+                service_name=req.service_name,
+                target_version=req.target_version,
+                reason=req.reason or "",
+                status="Bloqueado RBAC",
+                details=rbac_msg,
+            )
+            raise HTTPException(status_code=403, detail=rbac_msg)
 
         res = set_desired_version(req.service_name, req.target_version)
         if not res.get("success"):
@@ -786,11 +836,22 @@ async def set_governance_version_endpoint(
                         service_name=req.service_name,
                         hosts=pending_hosts,
                         target_version=req.target_version,
+                        reason=req.reason or f"Rollout automático da nova versão homologada v{req.target_version}",
                     ),
                     user=user,
                 )
                 dispatched_count = disp_res.get("dispatched_count", 0)
         res["dispatched_count"] = dispatched_count
+        record_fleet_audit_event(
+            user=user,
+            action_type="SET_VERSION",
+            target=f"Frota Global ({req.service_name})",
+            service_name=req.service_name,
+            target_version=req.target_version,
+            reason=req.reason or f"Definição de versão homologada v{req.target_version}",
+            status="Sucesso",
+            details=f"Manifesto GCS sincronizado={gcs_ok} | Despachados={dispatched_count}",
+        )
         return res
     except HTTPException:
         raise
@@ -807,10 +868,36 @@ async def remove_host_from_fleet_endpoint(
     """Envia ordem remota de desinstalação do serviço no computador via Google Cloud e remove a máquina da telemetria."""
     try:
         from gcp_sync import decommission_host_completely
-        operator = user.get("full_name") or user.get("username") or "Operador NOC"
+        from version_governance import check_fleet_rbac_permission, record_fleet_audit_event
+
+        allowed, rbac_msg = check_fleet_rbac_permission(user, "REMOVE_HOST")
+        if not allowed:
+            record_fleet_audit_event(
+                user=user,
+                action_type="REMOVE_HOST",
+                target=req.hostname,
+                service_name="DNA.MonitorServiceSVC",
+                reason=req.reason or "",
+                status="Bloqueado RBAC",
+                details=rbac_msg,
+            )
+            raise HTTPException(status_code=403, detail=rbac_msg)
+
+        operator = f"{user.get('full_name') or user.get('username') or 'Operador NOC'} ({user.get('username', 'admin')})"
         res = decommission_host_completely(req.hostname, requested_by=operator)
         if not res.get("success"):
             raise HTTPException(status_code=400, detail=res.get("error", "Falha ao remover máquina"))
+
+        record_fleet_audit_event(
+            user=user,
+            action_type="REMOVE_HOST",
+            target=req.hostname,
+            service_name="DNA.MonitorServiceSVC",
+            reason=req.reason or "Desinstalação remota e remoção definitiva da telemetria",
+            command_preview="sc.exe stop DNA.MonitorServiceSVC && sc.exe delete DNA.MonitorServiceSVC",
+            status="Sucesso",
+            details=res.get("message", "Host removido com sucesso"),
+        )
         return res
     except HTTPException:
         raise
@@ -828,20 +915,40 @@ async def dispatch_governance_update_endpoint(
     try:
         from concurrent.futures import ThreadPoolExecutor
         import uuid
-        from version_governance import get_service_fleet_evolution
+        from version_governance import (
+            get_service_fleet_evolution,
+            check_fleet_rbac_permission,
+            record_fleet_audit_event,
+        )
         from fleet_actions import build_service_raw_script
         from gcp_sync import dispatch_remote_command_to_firestore, update_gcs_manifest_version
         from sharepoint_sync import get_cached_data, sanitize_and_recalculate_cache
 
         evol = get_service_fleet_evolution(req.service_name, req.target_version)
         hosts_to_update = req.hosts or evol.get("pending_online_hosts", [])
-        target_v = str(req.target_version or evol.get("target_version") or "1.0.21.3").strip().lstrip("vV")
+        target_v = str(req.target_version or evol.get("target_version") or "1.0.21.4").strip().lstrip("vV")
+
+        act_type = "UPDATE_BATCH" if len(hosts_to_update) > 1 else "UPDATE_SINGLE"
+        target_desc = f"Lote ({len(hosts_to_update)} máquinas)" if len(hosts_to_update) > 1 else (hosts_to_update[0] if hosts_to_update else "Nenhum host")
+        allowed, rbac_msg = check_fleet_rbac_permission(user, act_type)
+        if not allowed:
+            record_fleet_audit_event(
+                user=user,
+                action_type=act_type,
+                target=target_desc,
+                service_name=req.service_name,
+                target_version=target_v,
+                reason=req.reason or "",
+                status="Bloqueado RBAC",
+                details=rbac_msg,
+            )
+            raise HTTPException(status_code=403, detail=rbac_msg)
 
         # Garante que o manifest.json no GCS está alinhado com a versão alvo
         update_gcs_manifest_version(req.service_name, target_v)
 
         raw_script = build_service_raw_script(req.service_name, target_v)
-        operator = user.get("full_name") or user.get("username") or "Operador NOC"
+        operator = f"{user.get('full_name') or user.get('username') or 'Operador NOC'} ({user.get('username', 'admin')})"
 
         def _dispatch_one(h: str):
             cid = f"upd_{uuid.uuid4().hex[:8]}"
@@ -886,6 +993,18 @@ async def dispatch_governance_update_endpoint(
         error_msg = None
         if not is_overall_success and len(failed) > 0:
             error_msg = failed[0].get("error", "Falha de comunicação com o Google Cloud")
+
+        record_fleet_audit_event(
+            user=user,
+            action_type=act_type,
+            target=target_desc,
+            service_name=req.service_name,
+            target_version=target_v,
+            reason=req.reason or f"Atualização OTA de {req.service_name} para v{target_v}",
+            command_preview=f"Download e instalação OTA: {req.service_name}_v{target_v}.zip",
+            status="Sucesso" if is_overall_success else "Falha",
+            details=f"Despachados: {len(dispatched)}/{len(hosts_to_update)} | Hosts: {', '.join(dispatched[:8])}{'...' if len(dispatched) > 8 else ''}",
+        )
 
         return {
             "success": is_overall_success,
@@ -2429,9 +2548,24 @@ async def remove_catalog_command(cmd_id: int, user: dict = Depends(get_current_u
 @app.post("/api/remote-commands/execute")
 async def execute_remote_cmd(req: RemoteCommandExecuteRequest, user: dict = Depends(get_current_user)):
     try:
-        if user.get("role") == "n1":
-            raise HTTPException(status_code=403, detail="🔒 Perfil N1 possui acesso restrito para monitoramento. Execução de comandos remotos requer Perfil N2 ou Administrador.")
+        from version_governance import check_fleet_rbac_permission, record_fleet_audit_event
         cleaned_hosts = [h.strip() for h in req.hosts if h and h.strip()]
+        target_desc = f"{len(cleaned_hosts)} hosts ({', '.join(cleaned_hosts[:4])}{'...' if len(cleaned_hosts) > 4 else ''})" if len(cleaned_hosts) > 1 else (cleaned_hosts[0] if cleaned_hosts else "Sem alvo")
+
+        allowed, rbac_msg = check_fleet_rbac_permission(user, "REMOTE_COMMAND")
+        if not allowed:
+            record_fleet_audit_event(
+                user=user,
+                action_type="REMOTE_COMMAND",
+                target=target_desc,
+                service_name=req.command_title or "Remote Command",
+                reason=req.reason or "",
+                command_preview=req.command_script,
+                status="Bloqueado RBAC",
+                details=rbac_msg,
+            )
+            raise HTTPException(status_code=403, detail=rbac_msg)
+
         if not cleaned_hosts:
             raise HTTPException(status_code=400, detail="Selecione ao menos um host para execução")
         if not req.command_script.strip():
@@ -2444,6 +2578,16 @@ async def execute_remote_cmd(req: RemoteCommandExecuteRequest, user: dict = Depe
             command_script=req.command_script,
             command_title=req.command_title,
             requested_by=operator_tag
+        )
+        record_fleet_audit_event(
+            user=user,
+            action_type="REMOTE_COMMAND",
+            target=target_desc,
+            service_name=f"{req.command_title or 'Terminal'} ({(req.shell_type or 'powershell').upper()})",
+            reason=req.reason or "Execução remota via Orquestrador NOC",
+            command_preview=req.command_script,
+            status="Sucesso",
+            details=f"ID Execução: {res} | Alvos: {len(cleaned_hosts)}",
         )
         return {"success": True, "execution_id": res, "message": "Comando disparado com sucesso!"}
     except HTTPException:

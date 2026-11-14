@@ -607,7 +607,23 @@ window.executeTerminalCommand = function() {
         return;
     }
 
-    executeRemoteScript(script, shellType, title);
+    if (typeof openFleetSafetyModal === "function") {
+        openFleetSafetyModal({
+            actionType: "REMOTE_COMMAND",
+            title: `Confirmar Execução de Comando Remoto (${shellType.toUpperCase()})`,
+            badgeText: `💻 REMOTE COMMAND • ${shellType.toUpperCase()}`,
+            hosts: selectedRemoteHosts,
+            summaryText: `Executar comando "${title}" nas praças selecionadas: ${script.substring(0, 120)}${script.length > 120 ? "..." : ""}`,
+            impactWarning: "Esta execução é vinculada ao seu perfil RBAC e ficará registrada com seu usuário na Trilha de Auditoria e na Fila de Execuções.",
+            defaultReason: `Diagnóstico / operação remota: ${title}`,
+            onConfirm: async (reason) => {
+                executeRemoteScript(script, shellType, title, reason);
+            }
+        });
+        return;
+    }
+
+    executeRemoteScript(script, shellType, title, "Execução manual no terminal remoto");
 };
 
 // Validação de Sintaxe e Dry-Run no Terminal
@@ -677,7 +693,7 @@ window.validateTerminalSyntax = async function() {
     }
 };
 
-function executeRemoteScript(script, shellType, title) {
+function executeRemoteScript(script, shellType, title, reason = "Execução autenticada no terminal remoto") {
     if (selectedRemoteHosts.length === 0) {
         const select = document.getElementById("remote-host-select");
         if (select && select.value) {
@@ -731,7 +747,8 @@ function executeRemoteScript(script, shellType, title) {
             hosts: validHosts,
             shell_type: shellType,
             command_script: script,
-            command_title: title || script.split("\n")[0].substring(0, 40)
+            command_title: title || script.split("\n")[0].substring(0, 40),
+            reason: reason
         })
     })
     .then(async r => {
@@ -758,6 +775,9 @@ function executeRemoteScript(script, shellType, title) {
         // Atualiza o contador e a Fila em background (sem forçar troca de aba)
         if (typeof loadRemoteExecutionsQueue === "function") {
             loadRemoteExecutionsQueue();
+        }
+        if (typeof loadFleetAuditLog === "function") {
+            loadFleetAuditLog(false);
         }
     })
     .catch(err => {

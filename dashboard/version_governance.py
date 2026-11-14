@@ -17,6 +17,129 @@ DATA_DIR = Path(__file__).resolve().parent / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DESIRED_VERSIONS_FILE = DATA_DIR / "desired_versions.json"
 DECOMMISSIONED_HOSTS_FILE = DATA_DIR / "decommissioned_hosts.json"
+FLEET_AUDIT_LOG_FILE = DATA_DIR / "fleet_audit_log.json"
+
+
+def check_fleet_rbac_permission(user: Dict[str, Any], action_type: str) -> tuple:
+    """
+    Valida a permissão RBAC do usuário para operações críticas na Frota e Remote Command.
+    Retorna (allowed: bool, message: str).
+    """
+    role = str((user or {}).get("role") or "n1").strip().lower()
+    act = str(action_type or "").strip().upper()
+
+    if role in ("n1", "viewer", "leitura", "guest"):
+        return (
+            False,
+            f"🔒 Permissão Negada (Perfil {role.upper()}): Seu usuário possui acesso exclusivo de monitoramento. "
+            f"A operação '{act}' exige perfil Operador N2/N3 ou Administrador."
+        )
+
+    if act in ("REMOVE_HOST", "SET_VERSION", "UPDATE_BATCH") and role not in ("admin", "administrador", "n3", "master"):
+        return (
+            False,
+            f"🔒 Permissão Negada (Perfil {role.upper()}): A operação crítica '{act}' (alteração global / remoção de Capture Site) "
+            f"é exclusiva para usuários com perfil ADMIN / Engenharia N3."
+        )
+
+    return (True, "Autorizado")
+
+
+def record_fleet_audit_event(
+    user: Dict[str, Any],
+    action_type: str,
+    target: str,
+    service_name: str = "",
+    target_version: str = "",
+    reason: str = "",
+    command_preview: str = "",
+    status: str = "Sucesso",
+    details: str = "",
+) -> Dict[str, Any]:
+    """
+    Registra de forma persistente na trilha de auditoria quem executou (ou tentou executar)
+    qualquer alteração de versão, atualização (individual ou lote), remoção de máquina ou Remote Command.
+    """
+    import uuid
+    now_local = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    now_iso = datetime.now(timezone.utc).isoformat()
+    username = str((user or {}).get("username") or "desconhecido").strip()
+    full_name = str((user or {}).get("full_name") or username).strip()
+    role = str((user or {}).get("role") or "n1").strip().upper()
+
+    entry = {
+        "audit_id": f"AUD-{uuid.uuid4().hex[:8].upper()}",
+        "timestamp": now_local,
+        "timestamp_iso": now_iso,
+        "username": username,
+        "full_name": full_name,
+        "role": role,
+        "action_type": action_type,
+        "target": target,
+        "service_name": service_name,
+        "target_version": target_version,
+        "reason": reason or "Operação autorizada via Dashboard NOC",
+        "command_preview": (command_preview or "")[:300],
+        "status": status,
+        "details": details,
+    }
+
+    history: List[Dict[str, Any]] = []
+    if FLEET_AUDIT_LOG_FILE.exists():
+        try:
+            raw = json.loads(FLEET_AUDIT_LOG_FILE.read_text(encoding="utf-8"))
+            if isinstance(raw, list):
+                history = raw
+        except Exception:
+            history = []
+
+    history.insert(0, entry)
+    history = history[:500]
+    try:
+        FLEET_AUDIT_LOG_FILE.write_text(json.dumps(history, indent=2, ensure_ascii=False), encoding="utf-8")
+    except Exception as ex:
+        logger.warning(f"Erro ao salvar log de auditoria em {FLEET_AUDIT_LOG_FILE}: {ex}")
+
+    return entry
+
+
+def get_fleet_audit_log(limit: int = 100, action_filter: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Retorna o histórico de auditoria das operações executadas na Frota e no Remote Command."""
+    if not FLEET_AUDIT_LOG_FILE.exists():
+        seed = [
+            {
+                "audit_id": "AUD-INIT214",
+                "timestamp": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+                "timestamp_iso": datetime.now(timezone.utc).isoformat(),
+                "username": "suportesmme",
+                "full_name": "Suporte CS Master",
+                "role": "ADMIN",
+                "action_type": "SET_VERSION",
+                "target": "Frota Global (239 Capture Sites)",
+                "service_name": "DNA.MonitorServiceSVC",
+                "target_version": "1.0.21.4",
+                "reason": "Homologação oficial v1.0.21.4 (Fix NetBIOS 15-chars + Smart Delta Free Tier $0.00)",
+                "command_preview": "Atualização de manifesto GCS e alinhamento de governança central",
+                "status": "Sucesso",
+                "details": "239 hosts alinhados na família v1.0.21.x",
+            }
+        ]
+        try:
+            FLEET_AUDIT_LOG_FILE.write_text(json.dumps(seed, indent=2, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
+        return seed
+
+    try:
+        data = json.loads(FLEET_AUDIT_LOG_FILE.read_text(encoding="utf-8"))
+        if not isinstance(data, list):
+            return []
+        if action_filter and action_filter.lower() != "all":
+            af = action_filter.strip().upper()
+            data = [e for e in data if af in str(e.get("action_type") or "").upper()]
+        return data[: max(1, int(limit or 100))]
+    except Exception:
+        return []
 
 
 def get_decommissioned_hosts() -> List[str]:

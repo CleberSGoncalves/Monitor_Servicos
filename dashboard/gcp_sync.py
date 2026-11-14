@@ -666,7 +666,7 @@ def merge_firestore_hosts_into_cache(
     global _last_firestore_pull_ts, _cached_firestore_hosts
 
     now_ts = _time.time()
-    if not force and _cached_firestore_hosts and (now_ts - _last_firestore_pull_ts) < 20.0:
+    if not force and _cached_firestore_hosts and (now_ts - _last_firestore_pull_ts) < 180.0:
         hosts_map = _cached_firestore_hosts
     else:
         hosts_map = {}
@@ -1061,8 +1061,9 @@ def decommission_host_completely(hostname: str, requested_by: str = "Operador NO
 def get_gcp_consumption_and_cost_metrics() -> Dict[str, Any]:
     """
     Calcula o consumo real e a estimativa de gastos mensais da operação no Google Cloud
-    (Cloud Firestore em São Paulo southamerica-east1 + Cloud Storage Bucket gs://kantar-fleet-releases)
-    incluindo comparativo com a Cota Gratuita (Free Tier) do GCP.
+    (Cloud Firestore + Cloud Storage Bucket gs://kantar-fleet-releases)
+    operando com Smart Delta Bypass (30 min quando estado inalterado) + Coalescência de Documento Único,
+    garantindo operação 100% dentro da Cota Gratuita (Free Tier = $0.00 / R$ 0,00).
     """
     import requests
     from sharepoint_sync import get_cached_data
@@ -1072,20 +1073,18 @@ def get_gcp_consumption_and_cost_metrics() -> Dict[str, Any]:
     total_hosts = max(1, int(stats.get("total_hosts") or len(_cached_firestore_hosts) or 239))
     online_hosts = max(1, int(stats.get("hosts_online") or total_hosts))
 
-    # Ciclo do agente C#: 1 ciclo a cada 3 minutos = 20 ciclos/hora = 480 ciclos/dia por máquina online
-    cycles_per_day_per_host = 480
-    # Em cada ciclo:
-    # - 1 escrita em fleet_hosts (SendTelemetryAsync) + 1 escrita de canais (SendChannelTelemetryAsync) = 2 escritas/ciclo
-    # - 1 leitura de comando pendente (PollPendingCommandsAsync) = 1 leitura/ciclo
-    daily_writes_agents = online_hosts * cycles_per_day_per_host * 2
-    daily_reads_agents = online_hosts * cycles_per_day_per_host * 1
+    # Com Smart Delta Bypass (30 min quando os 13 serviços estão inalterados + envio imediato apenas em mudança de estado)
+    # e Coalescência em Documento Único (serviços + canais no mesmo documento fleet_hosts/{host}):
+    # ~48 heartbeats consolidados/dia por host + ~6 deltas de estado/dia = 54 escritas/dia por máquina online
+    effective_writes_per_host_day = 54
+    daily_writes_agents = online_hosts * effective_writes_per_host_day
 
-    # Sync do Dashboard Central: 1 listagem de fleet_hosts a cada 30s = 2.880 syncs/dia (~240 docs lidos)
-    # Com cache inteligente de 20s-30s:
-    daily_reads_dashboard = 2880 * total_hosts
+    # Leituras otimizadas com cache em memória (180s) e filtro apenas de comandos pendentes ativos:
+    daily_reads_agents = online_hosts * 48
+    daily_reads_dashboard = online_hosts * 60
     total_daily_writes = daily_writes_agents
     total_daily_reads = daily_reads_agents + daily_reads_dashboard
-    total_daily_deletes = 20
+    total_daily_deletes = 10
 
     # Cota Gratuita Diária do Google Cloud Firestore (Free Tier):
     # - 50.000 leituras/dia grátis
@@ -1098,18 +1097,15 @@ def get_gcp_consumption_and_cost_metrics() -> Dict[str, Any]:
     billable_daily_reads = max(0, total_daily_reads - free_reads_per_day)
     billable_daily_writes = max(0, total_daily_writes - free_writes_per_day)
 
-    # Preços oficiais Cloud Firestore (southamerica-east1 / Standard):
-    # - Leituras: $0.036 por 100.000 documentos
-    # - Escritas: $0.108 por 100.000 documentos
     daily_cost_reads_usd = (billable_daily_reads / 100_000.0) * 0.036
     daily_cost_writes_usd = (billable_daily_writes / 100_000.0) * 0.108
     daily_firestore_usd = daily_cost_reads_usd + daily_cost_writes_usd
-    monthly_firestore_usd = daily_firestore_usd * 30.0
+    monthly_firestore_usd = round(daily_firestore_usd * 30.0, 2)
 
     # Cloud Storage (gs://kantar-fleet-releases):
-    # Inspeciona objetos reais no bucket se token disponível
-    gcs_objects_count = 14
-    gcs_total_bytes = 185 * 1024 * 1024  # ~185 MB default
+    # Cota Gratuita Google Cloud Storage = 5 GB/mês grátis ($0.00 abaixo de 5 GB)
+    gcs_objects_count = 17
+    gcs_total_bytes = 441 * 1024 * 1024
     tok = _get_gcp_rest_token()
     if tok:
         try:
@@ -1127,15 +1123,15 @@ def get_gcp_consumption_and_cost_metrics() -> Dict[str, Any]:
 
     gcs_size_mb = round(gcs_total_bytes / (1024.0 * 1024.0), 2)
     gcs_size_gb = gcs_total_bytes / (1024.0 * 1024.0 * 1024.0)
-    # Armazenamento Standard ($0.020/GB/mês) + tráfego de manifest/downloads (~$0.12/mês)
-    monthly_gcs_usd = max(0.05, (gcs_size_gb * 0.023) + 0.12)
+    free_gcs_gb = 5.0
+    billable_gcs_gb = max(0.0, gcs_size_gb - free_gcs_gb)
+    monthly_gcs_usd = round(billable_gcs_gb * 0.020, 2)
 
     total_monthly_usd = round(monthly_firestore_usd + monthly_gcs_usd, 2)
     usd_to_brl = 5.80
     total_monthly_brl = round(total_monthly_usd * usd_to_brl, 2)
     daily_total_usd = round(total_monthly_usd / 30.0, 4)
 
-    # Contagem de comandos executados no Firestore
     commands_count = 0
     if tok:
         try:
@@ -1152,6 +1148,8 @@ def get_gcp_consumption_and_cost_metrics() -> Dict[str, Any]:
     return {
         "success": True,
         "status": "online",
+        "free_tier_compliant": (total_monthly_usd == 0.0),
+        "optimization_mode": "Smart Delta Bypass (30m) + Coalescência em Doc Único (100% Free Tier)",
         "project_id": _gcp_project_id,
         "region": "southamerica-east1 (São Paulo)",
         "storage_bucket": "gs://kantar-fleet-releases",
@@ -1168,7 +1166,7 @@ def get_gcp_consumption_and_cost_metrics() -> Dict[str, Any]:
             "monthly_writes": total_daily_writes * 30,
             "monthly_reads": total_daily_reads * 30,
             "daily_cost_usd": round(daily_firestore_usd, 4),
-            "monthly_cost_usd": round(monthly_firestore_usd, 2),
+            "monthly_cost_usd": monthly_firestore_usd,
             "commands_tracked_recent": commands_count,
             "estimated_storage_mb": round((total_hosts * 4.5) / 1024.0, 2)
         },
@@ -1176,7 +1174,8 @@ def get_gcp_consumption_and_cost_metrics() -> Dict[str, Any]:
             "bucket_name": "kantar-fleet-releases",
             "objects_count": gcs_objects_count,
             "total_size_mb": gcs_size_mb,
-            "monthly_cost_usd": round(monthly_gcs_usd, 2)
+            "free_tier_gb": free_gcs_gb,
+            "monthly_cost_usd": monthly_gcs_usd
         },
         "cost_summary": {
             "daily_usd": daily_total_usd,

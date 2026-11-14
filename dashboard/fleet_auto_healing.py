@@ -26,10 +26,11 @@ from config import (
     DATA_DIR
 )
 from sharepoint_sync import get_graph_token, get_cached_data, get_graph_rate_limit_health
+from version_governance import get_desired_versions, _is_version_up_to_date
 
 logger = logging.getLogger("fleet_auto_healing")
 
-TARGET_AGENT_VERSION = "1.0.21.2"
+TARGET_AGENT_VERSION = "1.0.21.4"
 AUTO_HEALING_LOG_FILE = DATA_DIR / "auto_healing_history.json"
 
 
@@ -123,12 +124,12 @@ def audit_and_diagnose_fleet() -> Dict[str, Any]:
     offline_count = 0
     stopped_services_count = 0
 
-    critical_svc_keywords = ["fastmatching", "detectionsvc", "trackingsvc", "configmonitorsvc", "atriacapture"]
+    target_ver = get_desired_versions().get("DNA.MonitorServiceSVC", TARGET_AGENT_VERSION)
 
     for h, data in hosts_map.items():
         ver = data["agent_version"]
 
-        if ver == TARGET_AGENT_VERSION:
+        if _is_version_up_to_date(ver, target_ver, "DNA.MonitorServiceSVC"):
             up_to_date_count += 1
         elif ver != "N/A" and data["comm_state"] in ("ONLINE", "DELAY"):
             data["eligible_auto_update"] = True
@@ -143,21 +144,32 @@ def audit_and_diagnose_fleet() -> Dict[str, Any]:
             offline_critical_count += 1
             offline_count += 1
 
-        # Verifica serviços críticos parados
-        # Precedência Universal de Telemetria: Só considera serviço parado se o host estiver estritamente ONLINE (diff_h <= 0.33 / <= 20 min)
+        # Verifica serviços críticos parados respeitando a arquitetura CS01/CS02 e exclusão mútua FastMatching vs DetectionSVC
         if data["comm_state"] == "ONLINE" and data["hours_offline"] <= 0.33:
-            for s_name, s_info in data["services"].items():
-                s_low = s_name.lower().replace(" ", "").replace(".", "")
-                if any(k in s_low for k in critical_svc_keywords):
-                    st_low = s_info["status"].lower()
-                    if "parado" in st_low or "stopped" in st_low:
-                        data["stopped_critical_services"].append(s_name)
-                        data["eligible_service_restart"] = True
-                        stopped_services_count += 1
+            try:
+                cs_num = int(float(data.get("cs") or 1))
+            except Exception:
+                cs_num = 1
+            svcs_dict = data["services"]
+            cfg_st = str((svcs_dict.get("DNA.ConfigMonitorSVC") or {}).get("status") or "").lower()
+            if "parado" in cfg_st or "stopped" in cfg_st:
+                data["stopped_critical_services"].append("DNA.ConfigMonitorSVC")
+                data["eligible_service_restart"] = True
+                stopped_services_count += 1
+
+            if cs_num == 1:
+                fm_st = str((svcs_dict.get("FastMatchingSvc") or {}).get("status") or "").lower()
+                det_st = str((svcs_dict.get("DNA.DetectionSVC") or {}).get("status") or "").lower()
+                fm_run = "execu" in fm_st or "running" in fm_st
+                det_run = "execu" in det_st or "running" in det_st
+                if not fm_run and not det_run and ("parado" in fm_st or "parado" in det_st):
+                    data["stopped_critical_services"].append("Motor de Detecção CS01")
+                    data["eligible_service_restart"] = True
+                    stopped_services_count += 1
 
     return {
         "timestamp": now_utc.isoformat(),
-        "target_version": TARGET_AGENT_VERSION,
+        "target_version": target_ver,
         "graph_rate_limit": get_graph_rate_limit_health(),
         "summary": {
             "total_hosts": len(hosts_map),
