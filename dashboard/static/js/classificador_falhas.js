@@ -863,3 +863,95 @@ async function triggerMineFailurePattern() {
     }
 }
 window.triggerMineFailurePattern = triggerMineFailurePattern;
+
+// ==============================================================================
+// 8. GERADOR DE NOTIFICAÇÃO TÉCNICA PARA EMISSORA / AFILIADA (ISENÇÃO DE SLA)
+// ==============================================================================
+function openBroadcasterNotificationModal(canal = "", praca = "", tipoFalha = "") {
+    const data = cachedClassifierData || {};
+    const ocorrencias = data.ocorrencias_rastreabilidade || [];
+    const oc = ocorrencias.find(o => (!canal || o.canal === canal) && (!praca || o.praca === praca)) || ocorrencias[0] || {
+        canal: canal || "Globo",
+        praca: praca || "Pelotas",
+        tipo_falha_nome: tipoFalha || "Ausência de Portadora RF (No Lock)",
+        horario: new Date().toLocaleTimeString(),
+        frequencia: "UHF Canal 33 (587.143 MHz)"
+    };
+
+    const textoNotificacao = `PREZADOS SRS. DA ENGENHARIA — ${String(oc.canal).toUpperCase()} (${String(oc.praca).toUpperCase()})
+
+Assunto: [COMUNICADO TÉCNICO] Identificação de Anomalia na Transmissão Broadcast
+Data/Hora da Ocorrência: ${new Date().toLocaleDateString()} às ${oc.horario || 'tempo real'}
+Praça / Localidade: ${oc.praca}
+Emissora / Canal: ${oc.canal}
+Frequência / Meio: ${oc.frequencia || 'Digital Terrestre ISDB-Tb'}
+
+Prezados engenheiros e técnicos,
+
+Identificamos por meio da nossa central de monitoramento de recepção no Capture Site da localidade que a transmissão do canal supracitado encontra-se com a seguinte inconformidade técnica de origem externa:
+
+• Evento Técnico Detectado: ${oc.tipo_falha_nome || 'Queda de Sinal / Falha na Torre Transmissora'}
+• Diagnóstico Físico: Perda contínua de lock de portadora nos sintonizadores locais e ausência de pacotes de transporte (TS).
+• Impacto: Interrupção temporária na medição de audiência e no checking comercial de veiculações publicitárias.
+
+Solicitamos gentilmente a verificação no parque de transmissão / retransmissora local para restabelecimento do sinal.
+
+Atenciosamente,
+Central de Engenharia de Operações & NOC Broadcast
+Kantar IBOPE Media`;
+
+    // Cria e exibe modal flutuante limpo
+    let modal = document.getElementById("modalBroadcasterNotification");
+    if (!modal) {
+        modal = document.createElement("div");
+        modal.id = "modalBroadcasterNotification";
+        modal.className = "modal-overlay";
+        modal.style.cssText = "display: flex; align-items: center; justify-content: center; z-index: 10060; background: rgba(5, 10, 20, 0.88); backdrop-filter: blur(8px); position: fixed; inset: 0;";
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 680px; width: 92vw; background: #0b1329; border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 12px; padding: 22px; color: #f8fafc; box-shadow: 0 25px 60px rgba(0,0,0,0.8);">
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 12px; margin-bottom: 14px;">
+                    <div style="font-size: 16px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px;">
+                        <span>📧</span> Notificação Formal para Engenharia da Emissora
+                    </div>
+                    <button type="button" class="btn-sm btn-secondary" onclick="document.getElementById('modalBroadcasterNotification').style.display='none'" style="font-size: 12px; padding: 3px 8px;">✕</button>
+                </div>
+                <div style="font-size: 11px; color: #94a3b8; margin-bottom: 10px;">
+                    Este comunicado documenta falhas de origem na emissora para comprovação pericial e isenção contratual de SLA da Kantar IBOPE Media.
+                </div>
+                <textarea id="txtBroadcasterNotificationContent" rows="12" style="width: 100%; background: #070d1e; border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 6px; color: #e2e8f0; font-family: monospace; font-size: 11px; padding: 12px; line-height: 1.5; resize: vertical; margin-bottom: 14px;" readonly></textarea>
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <span style="font-size: 10.5px; color: #4ade80;"><i class="fas fa-check-circle"></i> Texto pronto para envio por e-mail corporativo</span>
+                    <div style="display: flex; gap: 8px;">
+                        <button type="button" class="btn-primary" onclick="copyBroadcasterNotification()" style="font-size: 11px; padding: 6px 14px; background: #0284c7; font-weight: 700; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+                            <i class="fas fa-copy"></i> Copiar Texto
+                        </button>
+                        <button type="button" class="btn-secondary" onclick="document.getElementById('modalBroadcasterNotification').style.display='none'" style="font-size: 11px; padding: 6px 12px;">Fechar</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    }
+
+    const txt = document.getElementById("txtBroadcasterNotificationContent");
+    if (txt) txt.value = textoNotificacao;
+    modal.style.display = "flex";
+}
+window.openBroadcasterNotificationModal = openBroadcasterNotificationModal;
+
+function copyBroadcasterNotification() {
+    const txt = document.getElementById("txtBroadcasterNotificationContent");
+    if (!txt) return;
+    navigator.clipboard.writeText(txt.value).then(() => {
+        if (typeof showToast === "function") {
+            showToast("Notificação técnica copiada para a área de transferência!", "success");
+        } else {
+            alert("Notificação técnica copiada com sucesso!");
+        }
+    }).catch(() => {
+        txt.select();
+        document.execCommand("copy");
+        alert("Notificação técnica copiada com sucesso!");
+    });
+}
+window.copyBroadcasterNotification = copyBroadcasterNotification;
