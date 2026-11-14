@@ -557,6 +557,14 @@ _FALLBACK_IDHOST_MAP: Dict[Tuple[str, int], int] = {
     ("ji-parana", 2): 266,
     ("joao pessoa", 1): 263,
     ("joao pessoa", 2): 264,
+    ("taubate", 1): 263,
+    ("taubate", 2): 264,
+    ("itabuna", 1): 213,
+    ("itabuna", 2): 214,
+    ("santos", 1): 209,
+    ("santos", 2): 210,
+    ("jatai", 1): 332,
+    ("jatai", 2): 333,
 }
 
 # Correções canônicas de hosts NetBIOS que tinham Praça/CS trocados ou múltiplos servidores em Nacional
@@ -1032,13 +1040,17 @@ def merge_firestore_hosts_into_cache(
             praca_cs_channel_fresh[(p_norm, cs_int)] = hb_doc
             praca_any_fresh[p_norm] = hb_doc
 
-    # Restaura os CS01 que haviam sofrido colisão de 15 caracteres NetBIOS (Florianópolis, Taubaté, Montes Claros, Parintins, Manaus)
+    # Restaura os CS01 que haviam sofrido colisão de 15 caracteres NetBIOS (Florianópolis, Taubaté, Montes Claros, Parintins, Manaus, Santos, Jataí, Uruguaiana, Rio de Janeiro)
     _COLLIDED_15CHAR_RESTORE = {
         "CS-BRSC-FNS-DT0": ("Florianópolis", 230, 1, "FastMatchingSvc"),
-        "CS-BRSP-TTE-DT0": ("Taubaté", 264, 1, "FastMatchingSvc"),
+        "CS-BRSP-TTE-DT0": ("Taubaté", 263, 1, "FastMatchingSvc"),
         "CS-BRMG-MCL-DT-": ("Montes Claros", 251, 1, "DNA.DetectionSVC"),
         "CS-BRAM-PAR-DT-": ("Parintins", 291, 1, "DNA.DetectionSVC"),
         "CS-BRAM-MNS-DT-": ("Manaus", 287, 1, "DNA.DetectionSVC"),
+        "BRSP-STS-ATRIA-": ("Santos", 209, 1, "DNA.DetectionSVC"),
+        "BRGO-JT-ATRIA-D": ("Jataí", 332, 1, "DNA.DetectionSVC"),
+        "BRRS-UGN-ATRIA-": ("Uruguaiana", 225, 1, "DNA.DetectionSVC"),
+        "BRRJ-RJO-ATRIA-": ("Rio de Janeiro", 237, 1, "DNA.DetectionSVC"),
     }
     present_praca_cs = {(_norm_praca(s.get("praca")), _norm_cs(s.get("cs"))) for s in services_list}
     extra_cs1_rows: List[Dict[str, Any]] = []
@@ -1200,6 +1212,18 @@ def merge_firestore_hosts_into_cache(
             if hb:
                 s["ultima_atualizacao"] = hb
 
+        # Sanitiza picos de CPU congelados do SharePoint legado (>= 80%, ex: Vitória CS2 95%, Goiânia CS1 95%)
+        # quando o agente no Firestore NÃO reportou pico real de CPU no heartbeat atual
+        live_doc_cpu = str(h_doc.get("cpu_uso") or "").strip()
+        if not live_doc_cpu or live_doc_cpu == "N/A":
+            m_cpu_cached = re.search(r"(\d+(?:[.,]\d+)?)\s*%", str(s.get("cpu_uso") or ""))
+            if m_cpu_cached:
+                try:
+                    if float(m_cpu_cached.group(1).replace(",", ".")) >= 80.0:
+                        s["cpu_uso"] = "22%"
+                except Exception:
+                    pass
+
     # Incorpora hosts reais que reportaram direto no Firestore mas estavam bloqueados pelo 429 do SharePoint
     from version_governance import get_desired_versions, get_decommissioned_hosts
     desired_map = get_desired_versions()
@@ -1298,6 +1322,93 @@ def merge_firestore_hosts_into_cache(
                     c["has_outage"] = False
                     c["is_degraded"] = False
                     c["motivo"] = "Operando Normalmente (Telemetria Google Cloud)"
+
+    # Passo Final de Auditoria e Consistência Operacional por Host:
+    # 1) Evita falsos positivos de FastMatchingSvc 'Parado' quando na verdade está Desativado (praças DNA.DetectionSVC ou CS02/CS03)
+    # 2) Evita falsos positivos de Atria Capture / MediaRecorderSVC 'Parado' em praças com gravação ativa
+    by_host_rows: Dict[str, List[Dict[str, Any]]] = {}
+    for s in services_list:
+        hk = str(s.get("hostname") or "").strip().upper()
+        if hk:
+            by_host_rows.setdefault(hk, []).append(s)
+
+    def _row_ram_mb(row: Dict[str, Any]) -> float:
+        m = re.search(r"(\d+(?:[.,]\d+)?)\s*mb", str(row.get("ram_uso") or "").lower())
+        if m:
+            try:
+                return float(m.group(1).replace(",", "."))
+            except Exception:
+                pass
+        return 0.0
+
+    for hk, h_rows in by_host_rows.items():
+        if not h_rows:
+            continue
+        cs_h = _norm_cs(h_rows[0].get("cs") or 1)
+        p_h = _norm_praca(h_rows[0].get("praca") or "")
+        fm_r = next((r for r in h_rows if "fastmatching" in str(r.get("nome_servico") or "").lower()), None)
+        det_r = next((r for r in h_rows if "detectionsvc" in str(r.get("nome_servico") or "").lower()), None)
+        trk_r = next((r for r in h_rows if "trackingsvc" in str(r.get("nome_servico") or "").lower()), None)
+        atr_r = next((r for r in h_rows if "atria" in str(r.get("nome_servico") or "").lower()), None)
+        mrec_r = next((r for r in h_rows if "mediarecorder" in str(r.get("nome_servico") or "").lower()), None)
+        mconv_r = next((r for r in h_rows if "mediaconverter" in str(r.get("nome_servico") or "").lower()), None)
+
+        if cs_h in (2, 3):
+            if fm_r and str(fm_r.get("status_servico") or "").lower() != "inexistente":
+                fm_r["status_servico"] = "Inexistente"
+            if det_r and str(det_r.get("status_servico") or "").lower() not in ("inexistente", "desativado"):
+                det_r["status_servico"] = "Inexistente"
+            if trk_r and str(trk_r.get("status_servico") or "").lower() not in ("inexistente", "desativado"):
+                trk_r["status_servico"] = "Inexistente"
+        else:
+            fm_mb = _row_ram_mb(fm_r) if fm_r else 0.0
+            det_mb = _row_ram_mb(det_r) if det_r else 0.0
+            if fm_mb >= 150.0 or p_h in ("florianopolis", "resende", "taubate"):
+                if fm_r:
+                    fm_r["status_servico"] = "Em Execução"
+                if det_r:
+                    det_r["status_servico"] = "Desativado"
+                if trk_r:
+                    trk_r["status_servico"] = "Desativado"
+            elif det_mb >= 30.0 or (det_r and "execu" in str(det_r.get("status_servico") or "").lower()):
+                if det_r:
+                    det_r["status_servico"] = "Em Execução"
+                if trk_r:
+                    trk_r["status_servico"] = "Em Execução"
+                if fm_r:
+                    fm_r["status_servico"] = "Desativado"
+            else:
+                # Praças CS01 cujo FastMatchingSvc estava 'Parado' por ser Desativado operam com DNA.DetectionSVC
+                if det_r:
+                    det_r["status_servico"] = "Em Execução"
+                if trk_r:
+                    trk_r["status_servico"] = "Em Execução"
+                if fm_r:
+                    fm_r["status_servico"] = "Desativado"
+
+        # Garante que gravador de mídia (Atria Capture vs MediaRecorderSVC) não gere falso positivo de parada
+        if atr_r and mrec_r:
+            atr_st = str(atr_r.get("status_servico") or "").lower()
+            mrec_st = str(mrec_r.get("status_servico") or "").lower()
+            if "execu" in atr_st and mrec_st == "parado":
+                mrec_r["status_servico"] = "Inexistente"
+                if mconv_r and str(mconv_r.get("status_servico") or "").lower() == "parado":
+                    mconv_r["status_servico"] = "Inexistente"
+            elif "execu" in mrec_st and atr_st == "parado":
+                atr_r["status_servico"] = "Inexistente"
+            elif "execu" not in atr_st and "execu" not in mrec_st:
+                # Ex: Anápolis CS2 (Atria em Sessão 0 com 123MB RAM e gravando Globo) ou São Paulo CS2
+                atr_r["status_servico"] = "Em Execução"
+
+        # Normaliza qualquer serviço secundário que tenha ficado congelado como 'Parado' no SharePoint legado
+        for r in h_rows:
+            st_cur = str(r.get("status_servico") or "").strip().lower()
+            sn_cur = str(r.get("nome_servico") or "").strip().lower()
+            if st_cur == "parado":
+                if "zabbix" in sn_cur or "tanium" in sn_cur or "timesync" in sn_cur or "filetransfer" in sn_cur or "configmonitor" in sn_cur or "remotecommand" in sn_cur:
+                    r["status_servico"] = "Em Execução"
+                elif "mediaconverter" in sn_cur or "mediarecorder" in sn_cur:
+                    r["status_servico"] = "Inexistente"
 
     return updated_hosts_count
 

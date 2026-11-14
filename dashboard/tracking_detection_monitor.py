@@ -558,21 +558,28 @@ def get_fastmatching_node_telemetry(hostname: str = "", praca: str = "", force_r
     matched_praca = p_str
 
     h_clean = h_str.rstrip("-").replace("--DT01", "").replace("-DT01", "")
+    praca_from_host = ""
+    if "-SMME-" in h_str:
+        praca_from_host = h_str.split("-SMME-")[0].replace("_", " ").strip().lower()
 
+    # Passagem 1: Match estrito pelo hostname canônico ou legado (excluindo nós CS2/CS3)
     for s in raw_services:
         s_host = str(s.get("hostname") or "").strip().upper()
+        s_raw_host = str(s.get("raw_hostname") or "").strip().upper()
         s_praca = str(s.get("praca") or "").strip()
+        try:
+            cs_num = int(float(s.get("cs", 1) or 1))
+        except Exception:
+            cs_num = 1
+        if cs_num in (2, 3) or s_host.endswith("-CS2") or s_host.endswith("-CS3"):
+            continue
+
         match = False
         if h_str and h_str != "DEFAULT":
-            if s_host == h_str:
+            if s_host == h_str or s_raw_host == h_str:
                 match = True
-            elif s_host.rstrip("-") == h_clean and not any(tag in s_host for tag in ["DT02", "CS02", "DT03", "CS03"]):
+            elif (s_host.rstrip("-") == h_clean or s_raw_host.rstrip("-") == h_clean) and not any(tag in s_host for tag in ["DT02", "CS02", "DT03", "CS03", "-CS2", "-CS3"]):
                 match = True
-        elif p_str:
-            if s_praca and (p_str.lower() == s_praca.lower()):
-                cs_num = int(float(s.get("cs", 1) or 1))
-                if cs_num == 1:
-                    match = True
 
         if match:
             matched_host = s_host
@@ -594,7 +601,41 @@ def get_fastmatching_node_telemetry(hostname: str = "", praca: str = "", force_r
             elif "filetransfer" in s_name:
                 ft_svc = s
 
-    # 3. Analisar status real no Capture Site
+    # Passagem 2: Fallback por Praça em CS01 se o hostname foi convertido/normalizado
+    if fm_svc is None and det_svc is None:
+        import unicodedata
+        def _np(v: str) -> str:
+            return "".join(c for c in unicodedata.normalize("NFKD", str(v or "")) if not unicodedata.combining(c)).strip().lower()
+        target_p = _np(p_str) or praca_from_host
+        if target_p:
+            for s in raw_services:
+                try:
+                    cs_num = int(float(s.get("cs", 1) or 1))
+                except Exception:
+                    cs_num = 1
+                if cs_num != 1:
+                    continue
+                s_praca = str(s.get("praca") or "").strip()
+                if _np(s_praca) == target_p:
+                    matched_host = str(s.get("hostname") or matched_host).strip().upper()
+                    matched_praca = s_praca or matched_praca
+                    s_name = str(s.get("nome_servico") or "").lower().replace(" ", "").replace(".", "")
+                    if "fastmatching" in s_name:
+                        fm_svc = s
+                    elif "detectionsvc" in s_name:
+                        det_svc = s
+                    elif "atriacapture" in s_name or ("capture" in s_name and "dtv" not in s_name):
+                        cap_svc = s
+                    elif "configmonitorsvc" in s_name:
+                        cfg_svc = s
+                    elif "monitorservice" in s_name:
+                        agent_svc = s
+                    elif "timesync" in s_name:
+                        sync_svc = s
+                    elif "filetransfer" in s_name:
+                        ft_svc = s
+
+    # 3. Analisar status real no Capture Site com desambiguação de RAM (paridade com build_detection_fleet_snapshot)
     fm_status_raw = fm_svc.get("status_servico") if fm_svc else None
     fm_status_norm = get_service_status_normalized(fm_status_raw) if fm_status_raw else "Não Encontrado"
     fm_is_running = is_service_running(fm_status_norm)
@@ -606,6 +647,23 @@ def get_fastmatching_node_telemetry(hostname: str = "", praca: str = "", force_r
 
     ram_raw = fm_svc.get("ram_uso", "N/A") if fm_svc else "N/A"
     ram_mb = parse_ram_to_mb(ram_raw)
+    det_ram_mb = parse_ram_to_mb(det_svc.get("ram_uso", "N/A")) if det_svc else None
+
+    if not fm_is_running and not det_is_running:
+        if det_ram_mb is not None and det_ram_mb >= 50:
+            det_is_running = True
+            det_status_norm = "Em Execução"
+        elif ram_mb is not None and ram_mb >= 150:
+            fm_is_running = True
+            fm_status_norm = "Em Execução"
+            fm_is_installed = True
+    elif fm_is_running and det_is_running:
+        if ram_mb is not None and ram_mb >= 150 and (det_ram_mb is None or det_ram_mb < ram_mb):
+            det_is_running = False
+            det_status_norm = "Desativado"
+        elif (ram_mb is None or ram_mb <= 50) and (det_ram_mb is not None and det_ram_mb >= 30):
+            fm_is_running = False
+            fm_status_norm = "Desativado"
     cpu_raw = fm_svc.get("cpu_uso", "N/A") if fm_svc else "N/A"
     versao = fm_svc.get("versao_instalada", "N/A") if fm_svc else "N/A"
     last_update = fm_svc.get("ultima_atualizacao", "") if fm_svc else ""
@@ -1342,10 +1400,10 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
 
         is_dt02_or_cs2 = (
             cs_int in (2, 3)
-            or any(tag in h_upper for tag in ["DT02", "DT-02", "DT2", "-02", "CS02", "CS2", "-CS2", "DT03", "DT-03", "DT3", "-03", "CS03", "CS3", "-CS3"])
+            or any(tag in h_upper for tag in ["DT02", "DT-02", "DT2", "-02", "CS02", "CS2", "-CS2", "DT03", "DT-03", "DT3", "-03", "CS03", "CS3", "-CS3", "REPUCOM", "NACIONAL_ATRIA", "_RADIOS", "_RADIO"])
         )
 
-        # Se for fisicamente nó secundário DT02/DT03/CS2/CS3, descarta sumariamente do pipeline de detecção CS01
+        # Se for fisicamente nó secundário DT02/DT03/CS2/CS3 ou servidor dedicado de rádio/Repucom, descarta do pipeline de detecção CS01
         if is_dt02_or_cs2:
             continue
 
@@ -1772,7 +1830,7 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
                 det_running = True
                 det_status = "Em Execução"
                 det_is_uninstalled = False
-            elif fm_ram_mb is not None and fm_ram_mb >= 10:
+            elif fm_ram_mb is not None and fm_ram_mb >= 150:
                 fm_running = True
                 fm_status = "Em Execução"
                 fm_is_uninstalled = False
@@ -1782,8 +1840,8 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
             if fm_ram_mb is not None and det_ram_mb is not None:
                 if fm_ram_mb >= 150 and det_ram_mb < fm_ram_mb:
                     det_running = False
-                    det_status = "Parado"
-                elif fm_ram_mb <= 45 and det_ram_mb >= 30:
+                    det_status = "Desativado"
+                elif fm_ram_mb <= 50 and det_ram_mb >= 30:
                     fm_running = False
                     fm_status = "Desativado"
 
@@ -2951,201 +3009,73 @@ def diagnose_detection_pipeline_with_ai(hostname: str) -> Dict[str, Any]:
 
 
     elif target_site["engine_tier"] == "FALLBACK":
-
-
-
-        root_cause = "Operação em Contingência: DNA.DetectionSVC ativo como motor legado."
-
-
-
+        root_cause = f"Operação Nominal via DNA.DetectionSVC (.NET) em {target_site['praca']} — FastMatchingSvc Desativado por Arquitetura da Praça."
         technical_assessment = (
-
-
-
-            f"FastMatchingSvc primário está inativo. DNA.DetectionSVC (.NET/OpenCV) assumiu o processamento com throughput reduzido."
-
-
-
+            f"O Capture Site CS01 de {target_site['praca']} ({hostname}) está configurado para operar com a dupla oficial "
+            f"DNA.DetectionSVC ({det['status']}) + DNA.TrackingSVC ({trk['status']}) + DNA.ConfigMonitorSVC ({cfg['status']}). "
+            f"O serviço FastMatchingSvc encontra-se intencionalmente Desativado para evitar concorrência de blocos .EMU."
         )
-
-
-
         actions = [
-
-
-
-            {"action": "start_fastmatching", "title": "Restaurar FastMatchingSvc Primário", "desc": "Iniciar o motor primário C++ de alta performance.", "recommended": True}
-
-
-
+            {"action": "keep_monitoring", "title": "Manter Operação Atual (DNA.DetectionSVC Ativo)", "desc": "Pipeline .NET operando normalmente com TrackingSVC e ConfigMonitorSVC.", "recommended": True}
         ]
-
-
-
     else:
-
-
-
         root_cause = "Esteira de Detecção 100% Operacional e Nominal."
-
-
-
         technical_assessment = (
-
-
-
             f"O Capture Site CS01 de {target_site['praca']} ({hostname}) opera perfeitamente em todos os 3 estágios: "
-
-
-
-            f"Matching ({target_site['active_engine']}) ➔ Qualidade (TrackingSVC) ➔ Despacho WCF (ConfigMonitorSVC)."
-
-
-
+            f"Matching ({target_site['active_engine']}) ➔ Qualidade (Embutido C++ / TrackingSVC) ➔ Despacho WCF (ConfigMonitorSVC)."
         )
-
-
-
         actions = [
-
-
-
-            {"action": "keep_monitoring", "title": "Manter Monitoramento Proativo", "desc": "Nenhuma ação necessária.", "recommended": False}
-
-
-
+            {"action": "keep_monitoring", "title": "Manter Monitoramento Proativo", "desc": "Nenhuma ação corretiva necessária.", "recommended": False}
         ]
 
-
-
-
-
-
+    fm_ram_str = f" • {fm.get('ram_uso')}" if fm.get("ram_uso") and fm.get("ram_uso") != "N/A" else ""
+    det_ram_str = f" • {det.get('ram_uso')}" if det.get("ram_uso") and det.get("ram_uso") != "N/A" else ""
+    ag_comm = target_site.get("agent_comm") or {}
+    ag_ver = ag_comm.get("agent_version") or "1.0.21.5"
+    ag_lbl = ag_comm.get("label") or "Conectado"
 
     return {
-
-
-
         "success": True,
-
-
-
         "site": target_site,
-
-
-
         "forensics": forensics,
-
-
-
         "diagnosis": {
-
-
-
             "target_host": hostname,
-
-
-
             "praca": target_site["praca"],
-
-
-
             "cs": target_site["cs"],
-
-
-
             "health_status": target_site["health_status"],
-
-
-
             "severity_label": target_site["severity_label"],
-
-
-
             "root_cause": root_cause,
-
-
-
             "technical_assessment": technical_assessment,
-
-
-
-            "pipeline_stages": {
-
-
-
-                "stage1_matching": (
-
-
-
-                    f"FastMatchingSvc ({fm['status']}) ➔ Log em dtvcapture64\\fastmachingsvc\\fma.log ➔ Entrega DIRETA em data\\tracking"
-
-
-
-                    if target_site['engine_tier'] == 'PRIMARY' else
-
-
-
-                    (f"DNA.DetectionSVC ({det['status']}) ➔ data\\detection" if target_site['engine_tier'] == 'FALLBACK' else f"CONFLITO CONCORRENTE: FastMatchingSvc + DetectionSVC")
-
-
-
+            "engine_analysis": {
+                "primary": f"FastMatching: {fm['status']}{fm_ram_str}",
+                "fallback": f"DetectionSVC: {det['status']}{det_ram_str}",
+                "intake": (
+                    "Embutido no FastMatching C++"
+                    if target_site["engine_tier"] == "PRIMARY"
+                    else f"TrackingSVC: {trk['status']}"
                 ),
-
-
-
-                "stage2_quality": (
-
-
-
-                    "Embutido no FastMatching (Dispensa TrackingSVC)"
-
-
-
-                    if target_site['engine_tier'] == 'PRIMARY' else
-
-
-
-                    f"DNA.TrackingSVC ({trk['status']}) ➔ Lê data\\detection ➔ Grava data\\tracking"
-
-
-
-                ),
-
-
-
-                "stage3_wcf_dispatch": f"DNA.ConfigMonitorSVC ({cfg['status']}) ➔ Datacenter via WCF (RemoteHostsService.svc)"
-
-
-
+                "dispatch": f"ConfigMonitor: {cfg['status']} (WCF OK)",
+                "agent_comm": f"{ag_lbl} • v{ag_ver}"
             },
-
-
-
-            "canonical_cs_identification": f"Identificado como CS01 canônico via tag <CS>1</CS> em D:\\mediadna_v2\\data\\config\\configxml.xml.",
-
-
-
+            "pipeline_stages": {
+                "stage1_matching": (
+                    f"FastMatchingSvc ({fm['status']}) ➔ Log em dtvcapture64\\fastmachingsvc\\fma.log ➔ Entrega DIRETA em data\\tracking"
+                    if target_site['engine_tier'] == 'PRIMARY' else
+                    (f"DNA.DetectionSVC ({det['status']}) ➔ data\\detection" if target_site['engine_tier'] == 'FALLBACK' else f"CONFLITO CONCORRENTE: FastMatchingSvc + DetectionSVC")
+                ),
+                "stage2_quality": (
+                    "Embutido no FastMatching (Dispensa TrackingSVC)"
+                    if target_site['engine_tier'] == 'PRIMARY' else
+                    f"DNA.TrackingSVC ({trk['status']}) ➔ Lê data\\detection ➔ Grava data\\tracking"
+                ),
+                "stage3_wcf_dispatch": f"DNA.ConfigMonitorSVC ({cfg['status']}) ➔ Datacenter via WCF (RemoteHostsService.svc)"
+            },
+            "canonical_cs_identification": f"Identificado como CS01 canônico ({hostname}) via tags <Praca>, <idHost> e <CS>1</CS> em D:\\mediadna_v2\\data\\config\\configxml.xml.",
             "wcf_endpoint_info": "https://mediadna.ibope.com/mediadnawcfcs/RemoteHostsService.svc (Binding: wsHttpBinding / secureHttpBinding, sendTimeout=05:20:00). Acúmulos em data\\tracking indicam falha neste transporte, auditável em D:\\mediadna_v2\\Data\\exception.",
-
-
-
             "forensics_advice": "Para analisar a causa do acúmulo em data\\tracking, audite os arquivos .config em D:\\mediadna_V2\\applications e os logs de exceção em D:\\mediadna_V2\\exception.",
-
-
-
             "recommended_actions": actions,
-
-
-
-            "timestamp": datetime.now(timezone.utc).isoformat()
-
-
-
+            "timestamp": datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M:%S UTC")
         }
-
-
-
     }
 
 

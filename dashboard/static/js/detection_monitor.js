@@ -442,23 +442,23 @@ async function openDetectionAIDiagnosticModal(hostname) {
                 <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; font-size: 11px; margin-top: 10px;">
                     <div style="background: rgba(15, 23, 42, 0.8); padding: 8px; border-radius: 6px;">
                         <div style="color: #64748b; font-size: 10px;">Motor Primário</div>
-                        <div style="font-weight: 600; color: #f8fafc; margin-top: 2px;">${diag.engine_analysis.primary}</div>
+                        <div style="font-weight: 600; color: #f8fafc; margin-top: 2px;">${diag.engine_analysis?.primary || site.pipeline_services?.fast_matching?.status || "FastMatching"}</div>
                     </div>
                     <div style="background: rgba(15, 23, 42, 0.8); padding: 8px; border-radius: 6px;">
                         <div style="color: #64748b; font-size: 10px;">Motor Fallback</div>
-                        <div style="font-weight: 600; color: #f8fafc; margin-top: 2px;">${diag.engine_analysis.fallback}</div>
+                        <div style="font-weight: 600; color: #f8fafc; margin-top: 2px;">${diag.engine_analysis?.fallback || site.pipeline_services?.detection_svc?.status || "DetectionSVC"}</div>
                     </div>
                     <div style="background: rgba(15, 23, 42, 0.8); padding: 8px; border-radius: 6px;">
                         <div style="color: #64748b; font-size: 10px;">Ingestão SGG</div>
-                        <div style="font-weight: 600; color: #f8fafc; margin-top: 2px;">${diag.engine_analysis.intake}</div>
+                        <div style="font-weight: 600; color: #f8fafc; margin-top: 2px;">${diag.engine_analysis?.intake || diag.pipeline_stages?.stage2_quality || "TrackingSVC"}</div>
                     </div>
                     <div style="background: rgba(15, 23, 42, 0.8); padding: 8px; border-radius: 6px;">
                         <div style="color: #64748b; font-size: 10px;">Despacho XML</div>
-                        <div style="font-weight: 600; color: #f8fafc; margin-top: 2px;">${diag.engine_analysis.dispatch}</div>
+                        <div style="font-weight: 600; color: #f8fafc; margin-top: 2px;">${diag.engine_analysis?.dispatch || site.pipeline_services?.config_monitor?.status || "ConfigMonitor"}</div>
                     </div>
                     <div style="background: rgba(15, 23, 42, 0.8); padding: 8px; border-radius: 6px;">
                         <div style="color: #64748b; font-size: 10px;">Heartbeat Agente</div>
-                        <div style="font-weight: 600; color: #38bdf8; margin-top: 2px;">${diag.engine_analysis.agent_comm}</div>
+                        <div style="font-weight: 600; color: #38bdf8; margin-top: 2px;">${diag.engine_analysis?.agent_comm || site.agent_comm?.label || "Online"}</div>
                     </div>
                 </div>
             </div>
@@ -929,11 +929,12 @@ function initFastMatchingDedicatedView() {
     const badgeCount = document.getElementById("badgeFastMatchingCount");
     if (!select) return;
 
-    // Filtrar apenas sites que possuem FastMatching ativo e instalado (exclui nós desinstalados como Montes Claros)
+    // Filtrar apenas sites que realmente operam com FastMatching ativo (exclui praças que operam via DNA.DetectionSVC onde FastMatching está Desativado)
     const allSites = (typeof detectionCachedSites !== "undefined" && detectionCachedSites.length > 0) ? detectionCachedSites : (typeof detectionSitesData !== "undefined" ? detectionSitesData : []);
     const fmSites = allSites.filter(s => {
+        if (s.engine_tier === "FALLBACK" || s.active_engine === "DNA.DetectionSVC") return false;
         const fm = s.pipeline_services?.fast_matching || s.pipeline_services?.fastmatching;
-        return fm && !fm.is_uninstalled && fm.status !== "Não Encontrado" && (fm.running || s.engine_tier === "PRIMARY" || s.active_engine === "FastMatching");
+        return fm && !fm.is_uninstalled && fm.status !== "Não Encontrado" && fm.status !== "Desativado" && (fm.running || s.engine_tier === "PRIMARY");
     });
 
     if (badgeCount) {
@@ -1837,8 +1838,9 @@ function renderFastMatchingFleetTable(filterStatus = currentFmFleetFilter, searc
 
     const allSites = (typeof detectionCachedSites !== "undefined" && detectionCachedSites.length > 0) ? detectionCachedSites : (typeof detectionSitesData !== "undefined" ? detectionSitesData : []);
     const fmSites = allSites.filter(s => {
-        const fm = s.pipeline_services?.fastmatching;
-        return (fm && fm.running) || s.engine_tier === "PRIMARY" || s.active_engine === "FastMatching";
+        if (s.engine_tier === "FALLBACK" || s.active_engine === "DNA.DetectionSVC") return false;
+        const fm = s.pipeline_services?.fast_matching || s.pipeline_services?.fastmatching;
+        return fm && !fm.is_uninstalled && fm.status !== "Não Encontrado" && fm.status !== "Desativado" && (fm.running || s.engine_tier === "PRIMARY");
     });
 
     const pills = [
@@ -1872,8 +1874,8 @@ function renderFastMatchingFleetTable(filterStatus = currentFmFleetFilter, searc
     const enrichedList = fmSites.map(s => {
         const t = s.fastmatching_telemetry || {};
         const fmPipeline = s.pipeline_services?.fast_matching || s.pipeline_services?.fastmatching;
-        const fmInstalled = (t.is_installed !== false) && (!fmPipeline || !fmPipeline.is_uninstalled);
-        const fmRunning = (t.is_running !== false) && (!fmPipeline || fmPipeline.running);
+        const fmInstalled = (s.engine_tier === "PRIMARY") || ((t.is_installed !== false) && (!fmPipeline || !fmPipeline.is_uninstalled));
+        const fmRunning = (s.engine_tier === "PRIMARY" && (!fmPipeline || fmPipeline.running !== false)) || ((t.is_running !== false) && (!fmPipeline || fmPipeline.running));
 
         const lastDet = t.last_detection;
         const procMs = lastDet ? lastDet.proc_time_ms : null;
@@ -2314,8 +2316,8 @@ function openFmHowToModal(hostname, condition) {
         const s = allSites.find(s => s.hostname === hostname) || { hostname, praca: hostname };
         const t = s.fastmatching_telemetry || {};
         const fmPipeline = s.pipeline_services?.fast_matching || s.pipeline_services?.fastmatching;
-        const fmInstalled = (t.is_installed !== false) && (!fmPipeline || !fmPipeline.is_uninstalled);
-        const fmRunning = (t.is_running !== false) && (!fmPipeline || fmPipeline.running);
+        const fmInstalled = (s.engine_tier === "PRIMARY") || ((t.is_installed !== false) && (!fmPipeline || !fmPipeline.is_uninstalled));
+        const fmRunning = (s.engine_tier === "PRIMARY" && (!fmPipeline || fmPipeline.running !== false)) || ((t.is_running !== false) && (!fmPipeline || fmPipeline.running));
         const lastDet = t.last_detection;
         const procMs = lastDet ? lastDet.proc_time_ms : null;
         const delayedCount = t.delayed_candidates_count || 0;

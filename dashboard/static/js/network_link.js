@@ -124,7 +124,15 @@ function populateNetworkPracasDropdown(metrics) {
     if (!sel) return;
     const curVal = sel.value;
 
-    const uniqueCities = Array.from(new Set(metrics.map(m => m.praca).filter(Boolean))).sort((a,b) => a.localeCompare(b));
+    const regSel = document.getElementById("netFilterRegion");
+    const selectedRegion = regSel ? regSel.value : "all";
+
+    let relevantMetrics = metrics;
+    if (selectedRegion && selectedRegion !== "all") {
+        relevantMetrics = metrics.filter(m => m.regiao === selectedRegion);
+    }
+
+    const uniqueCities = Array.from(new Set(relevantMetrics.map(m => m.praca).filter(Boolean))).sort((a,b) => a.localeCompare(b));
     sel.innerHTML = `<option value="all">Todas as Praças (${uniqueCities.length})</option>`;
     uniqueCities.forEach(city => {
         const opt = document.createElement("option");
@@ -133,6 +141,11 @@ function populateNetworkPracasDropdown(metrics) {
         if (city === curVal) opt.selected = true;
         sel.appendChild(opt);
     });
+
+    if (curVal !== "all" && !uniqueCities.includes(curVal)) {
+        sel.value = "all";
+        networkFilterPraca = "all";
+    }
 }
 
 function setNetworkFilterPill(mode) {
@@ -180,10 +193,28 @@ function applyNetworkFilters() {
     const slaSel = document.getElementById("netFilterSLA");
     const searchInput = document.getElementById("netFilterSearch");
 
-    if (citySel) networkFilterPraca = citySel.value;
+    const prevRegion = networkFilterRegion;
     if (regSel) networkFilterRegion = regSel.value;
+    if (citySel) networkFilterPraca = citySel.value;
     if (slaSel) networkFilterSLA = slaSel.value;
     if (searchInput) networkFilterSearch = searchInput.value.toLowerCase().trim();
+
+    // Se o operador mudou a região, re-popula as praças coerentes daquela região
+    if (prevRegion !== networkFilterRegion && Array.isArray(cachedLinkMetrics)) {
+        populateNetworkPracasDropdown(cachedLinkMetrics);
+        if (citySel) networkFilterPraca = citySel.value;
+    }
+
+    // Se o operador selecionou uma praça específica que pertence a outra região, alinha a região automaticamente
+    if (networkFilterPraca !== "all" && Array.isArray(cachedLinkMetrics)) {
+        const item = cachedLinkMetrics.find(m => m.praca === networkFilterPraca);
+        if (item && item.regiao && networkFilterRegion !== "all" && item.regiao !== networkFilterRegion) {
+            networkFilterRegion = item.regiao;
+            if (regSel) regSel.value = item.regiao;
+            populateNetworkPracasDropdown(cachedLinkMetrics);
+            if (citySel) citySel.value = networkFilterPraca;
+        }
+    }
 
     // Se o operador está buscando especificamente ou selecionou praça/região, saímos do modo worst15
     if (networkFilterPraca !== "all" || networkFilterRegion !== "all" || networkFilterSearch !== "") {

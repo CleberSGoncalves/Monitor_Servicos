@@ -12450,7 +12450,18 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
         const atriaRun = atria && anyStatusRunning(atria.status_servico || atria.status);
         const mrecRun = mrec && anyStatusRunning(mrec.status_servico || mrec.status);
 
-        if (!atriaRun && !mrecRun && (atria || mrec)) {
+        // Se o host tem canais ativos gravando MP4/MP3 ou Atria em Sessão 0 com RAM ativa, a gravação NÃO está paralisada
+        const hostHasActiveRecording = (channelsList || []).some(c => {
+            const cHost = (c.host || c.hostname || '').toLowerCase().trim();
+            const cPraca = (c.cidade || c.praca || '').toLowerCase().trim();
+            const cCs = parseInt(c.cs || c.id_cs || 1);
+            const matchesHost = (cHost && cHost === hLow) || (cPraca === (h.praca || '').toLowerCase().trim() && cCs === csNum);
+            return matchesHost && (c.gravando_mp4 === "Sim" || c.gravando_mp3 === "Sim" || c.gravando === true);
+        });
+
+        const atriaRamMb = atria ? parseRamMetric(atria.ram_uso || atria.ram)?.mb || 0 : 0;
+
+        if (!atriaRun && !mrecRun && (atria || mrec) && !hostHasActiveRecording && atriaRamMb < 20) {
             incidents.push({
                 id: `p0_rec_${h.hostname}`,
                 key: `rec_engine_${h.hostname}`,

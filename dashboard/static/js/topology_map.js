@@ -1001,12 +1001,18 @@ function updateRfModalEngineeringNotes(market, channelIdx = null) {
 // ==============================================================================
 // MODAL DE GEOLOCALIZAÇÃO PRECISA, RELEVO TOPOGRÁFICO & CANAIS DIGITAIS TERRESTRES (WIDESCREEN)
 // ==============================================================================
-async function openMarketRfModal(marketId, targetCs = "all", forceRefresh = true) {
+async function openMarketRfModal(marketId, targetCs = "all", forceRefresh = false) {
     currentRfModalCs = (targetCs !== undefined && targetCs !== null) ? targetCs : "all";
     window.currentRfModalCs = currentRfModalCs;
+
+    // Toast e Progress Indicator imediato para feedback tátil instantâneo ao operador
+    if (typeof showToast === "function") {
+        showToast("⏳ Carregando topografia RF e telemetria de canais...", "info", 1500);
+    }
+
     if (forceRefresh || !topologyMarketsData || topologyMarketsData.length === 0) {
         if (typeof loadTopologyMapData === "function") {
-            await loadTopologyMapData(true);
+            await loadTopologyMapData(forceRefresh);
         }
     }
     let market = null;

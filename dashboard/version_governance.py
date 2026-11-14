@@ -200,7 +200,7 @@ def _parse_ver_tuple(v: str) -> tuple:
 
 
 def _is_version_up_to_date(installed: str, target: str, service_name: str = "") -> bool:
-    """Retorna True se a versão instalada for igual ou superior à versão alvo homologada."""
+    """Retorna True se a versão instalada for estritamente igual ou superior à versão alvo homologada."""
     v_inst = str(installed or "").strip().lstrip("vV")
     v_targ = str(target or "").strip().lstrip("vV")
     if not v_inst or v_inst in ("Desconhecido", "Não Instalado", "0.0.0.0", "N/A"):
@@ -210,11 +210,7 @@ def _is_version_up_to_date(installed: str, target: str, service_name: str = "") 
     t_inst = _parse_ver_tuple(v_inst)
     t_targ = _parse_ver_tuple(v_targ)
     if len(t_inst) >= 3 and len(t_targ) >= 3:
-        if t_inst >= t_targ:
-            return True
-        # Hotfixes na mesma família 1.0.21.x permanecem homologados durante propagação OTA
-        if "monitorservice" in str(service_name).lower() and t_inst[:3] == t_targ[:3] and t_inst >= (1, 0, 21, 0):
-            return True
+        return t_inst >= t_targ
     return False
 
 
