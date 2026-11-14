@@ -579,6 +579,14 @@ async function loadFleetUpdateEvolution(forceRefresh = false) {
         const fOff = document.getElementById("filterCountOffline");
         if (fOff) fOff.innerText = data.offline_count;
 
+        // Atualizar Botão de Acompanhar Rollout
+        const btnBatchProg = document.getElementById("btnOpenBatchProgress");
+        const countBatchLive = document.getElementById("btnBatchLiveActiveCount");
+        if (btnBatchProg) {
+            btnBatchProg.style.display = "inline-flex";
+            if (countBatchLive) countBatchLive.innerText = `${data.updated_count}/${data.total_hosts}`;
+        }
+
         // 6. Renderizar a Tabela
         renderFleetEvolutionTable();
 
@@ -1076,6 +1084,14 @@ async function dispatchBatchPendingUpdate() {
                     if (typeof showToast === "function") {
                         showToast(`Atualização despachada no Google Cloud para ${data.dispatched_count} hosts!`, "success");
                     }
+                    // ABRIR COCKPIT AO VIVO DE ACOMPANHAMENTO DO LOTE
+                    openFleetBatchProgressModal({
+                        serviceName: svc,
+                        targetVersion: ver,
+                        dispatchedHosts: data.dispatched_hosts || pendingHosts,
+                        totalTargets: data.total_targets || count,
+                        startTime: Date.now()
+                    });
                     await loadFleetUpdateEvolution(true);
                     await loadFleetGovernanceSummary(false);
                     await loadFleetAuditLog(false);
@@ -1614,3 +1630,413 @@ window.closeFleetUpdateProgressModal = closeFleetUpdateProgressModal;
 window.refreshFleetUpdateProgressLive = refreshFleetUpdateProgressLive;
 window.toggleUpProgManualBox = toggleUpProgManualBox;
 window.copyUpProgManualCmd = copyUpProgManualCmd;
+
+// =========================================================================
+// ACOMPANHAMENTO AO VIVO DE ATUALIZAÇÃO EM LOTE (ROLLOUT COCKPIT)
+// =========================================================================
+
+let currentBatchProgressInfo = null;
+let currentBatchTimerInterval = null;
+let currentBatchPollInterval = null;
+let currentBatchFilter = "all";
+let currentBatchSearch = "";
+let cachedBatchEvolutionData = null;
+
+async function openFleetBatchProgressModal(batchConfig) {
+    if (batchConfig) {
+        currentBatchProgressInfo = {
+            serviceName: batchConfig.serviceName || currentGovernanceService || "DNA.MonitorServiceSVC",
+            targetVersion: batchConfig.targetVersion || (cachedFleetEvolutionData ? cachedFleetEvolutionData.target_version : "1.0.21.5"),
+            dispatchedHosts: Array.isArray(batchConfig.dispatchedHosts) ? batchConfig.dispatchedHosts : [],
+            totalTargets: batchConfig.totalTargets || (batchConfig.dispatchedHosts ? batchConfig.dispatchedHosts.length : 0),
+            startTime: batchConfig.startTime || Date.now()
+        };
+    } else if (!currentBatchProgressInfo) {
+        currentBatchProgressInfo = {
+            serviceName: currentGovernanceService || "DNA.MonitorServiceSVC",
+            targetVersion: (cachedFleetEvolutionData ? cachedFleetEvolutionData.target_version : "1.0.21.5"),
+            dispatchedHosts: (cachedFleetEvolutionData && cachedFleetEvolutionData.pending_online_hosts) ? cachedFleetEvolutionData.pending_online_hosts : [],
+            totalTargets: (cachedFleetEvolutionData && cachedFleetEvolutionData.pending_online_hosts) ? cachedFleetEvolutionData.pending_online_hosts.length : 0,
+            startTime: Date.now()
+        };
+    }
+
+    const modal = document.getElementById("fleetBatchProgressModal");
+    if (!modal) return;
+    modal.style.display = "flex";
+
+    // Oculta pílula flutuante quando o modal está aberto
+    const pill = document.getElementById("floatingBatchTrackerPill");
+    if (pill) pill.style.display = "none";
+
+    // Atualiza cabeçalho
+    const svcTargetEl = document.getElementById("batchProgServiceTarget");
+    if (svcTargetEl) {
+        svcTargetEl.innerText = `${currentBatchProgressInfo.serviceName} ➔ v${currentBatchProgressInfo.targetVersion}`;
+    }
+
+    // Timer decorrido
+    if (currentBatchTimerInterval) clearInterval(currentBatchTimerInterval);
+    currentBatchTimerInterval = setInterval(() => {
+        if (!currentBatchProgressInfo || !currentBatchProgressInfo.startTime) return;
+        const elapsed = Math.floor((Date.now() - currentBatchProgressInfo.startTime) / 1000);
+        const mm = String(Math.floor(elapsed / 60)).padStart(2, "0");
+        const ss = String(elapsed % 60).padStart(2, "0");
+        const timerEl = document.getElementById("batchProgTimer");
+        if (timerEl) timerEl.innerText = `⏱️ Tempo decorrido: ${mm}:${ss}`;
+    }, 1000);
+
+    // Carrega dados imediatamente
+    await refreshFleetBatchProgressLive();
+
+    // Inicia auto-polling a cada 4 segundos
+    if (currentBatchPollInterval) clearInterval(currentBatchPollInterval);
+    currentBatchPollInterval = setInterval(() => {
+        const chk = document.getElementById("batchProgAutoRefresh");
+        if (chk && chk.checked) {
+            refreshFleetBatchProgressLive();
+        }
+    }, 4000);
+}
+
+function minimizeFleetBatchProgressModal() {
+    const modal = document.getElementById("fleetBatchProgressModal");
+    if (modal) modal.style.display = "none";
+
+    // Exibe o floating pill no dashboard para o operador continuar navegando
+    const pill = document.getElementById("floatingBatchTrackerPill");
+    if (pill && currentBatchProgressInfo) pill.style.display = "flex";
+}
+
+function closeFleetBatchProgressModal() {
+    const modal = document.getElementById("fleetBatchProgressModal");
+    if (modal) modal.style.display = "none";
+
+    // Se ainda houver máquinas pendentes no lote, mantém o pill flutuante ativo
+    if (cachedBatchEvolutionData && cachedBatchEvolutionData.inProgressCount > 0) {
+        const pill = document.getElementById("floatingBatchTrackerPill");
+        if (pill) pill.style.display = "flex";
+    } else {
+        if (currentBatchTimerInterval) {
+            clearInterval(currentBatchTimerInterval);
+            currentBatchTimerInterval = null;
+        }
+        if (currentBatchPollInterval) {
+            clearInterval(currentBatchPollInterval);
+            currentBatchPollInterval = null;
+        }
+    }
+}
+
+async function refreshFleetBatchProgressLive() {
+    if (!currentBatchProgressInfo) return;
+    const icon = document.getElementById("batchProgRefreshIcon");
+    if (icon) icon.classList.add("fa-spin");
+
+    try {
+        const svc = currentBatchProgressInfo.serviceName;
+        const ver = currentBatchProgressInfo.targetVersion;
+        const resp = await fetch(`/api/fleet/governance/service/${encodeURIComponent(svc)}?target_version=${encodeURIComponent(ver)}&_t=${Date.now()}`, {
+            headers: {
+                ...(getFleetAuthToken() ? { "Authorization": `Bearer ${getFleetAuthToken()}` } : {})
+            }
+        });
+        if (!resp.ok) return;
+        const evolData = await resp.json();
+        renderFleetBatchProgressData(evolData);
+    } catch (err) {
+        console.warn("[FleetBatchProgress] Erro ao buscar evolução ao vivo:", err);
+    } finally {
+        if (icon) icon.classList.remove("fa-spin");
+    }
+}
+
+function renderFleetBatchProgressData(evolData) {
+    if (!evolData || !evolData.hosts_detail) return;
+    const targetVer = currentBatchProgressInfo.targetVersion;
+    const targetHostsList = currentBatchProgressInfo.dispatchedHosts;
+    const targetHostsSet = (targetHostsList && targetHostsList.length > 0) ? new Set(targetHostsList) : null;
+
+    // Filtra apenas os hosts do lote (ou todos se não houver lista restritiva)
+    const allHosts = evolData.hosts_detail;
+    const batchHosts = targetHostsSet ? allHosts.filter(h => targetHostsSet.has(h.hostname)) : allHosts;
+
+    let completedCount = 0;
+    let inProgressCount = 0;
+    let queuedCount = 0;
+    let failedCount = 0;
+
+    const enrichedHosts = batchHosts.map(h => {
+        const isUpToDate = (h.status_atualizacao === "Atualizado" || h.versao_instalada === targetVer);
+        let batchState = "queued"; // 'completed', 'in_progress', 'queued', 'failed'
+
+        if (isUpToDate) {
+            batchState = "completed";
+            completedCount++;
+        } else if (h.acao_solicitada === "Atualizar") {
+            batchState = "in_progress";
+            inProgressCount++;
+        } else if (!h.is_online_today || h.category === "offline") {
+            batchState = "failed";
+            failedCount++;
+        } else {
+            batchState = "queued";
+            queuedCount++;
+        }
+
+        return {
+            ...h,
+            batchState: batchState
+        };
+    });
+
+    const totalBatch = batchHosts.length || 1;
+    const completedPct = ((completedCount / totalBatch) * 100).toFixed(1);
+
+    cachedBatchEvolutionData = {
+        enrichedHosts,
+        totalBatch,
+        completedCount,
+        inProgressCount,
+        queuedCount,
+        failedCount,
+        completedPct
+    };
+
+    // Atualiza KPIs
+    const elComp = document.getElementById("batchKpiCompleted");
+    if (elComp) elComp.innerText = completedCount;
+    const elTot = document.getElementById("batchKpiTotal");
+    if (elTot) elTot.innerText = totalBatch;
+    const elPct = document.getElementById("batchKpiPct");
+    if (elPct) elPct.innerText = `${completedPct}%`;
+
+    const elInProg = document.getElementById("batchKpiInProgress");
+    if (elInProg) elInProg.innerText = inProgressCount;
+    const elQueued = document.getElementById("batchKpiQueued");
+    if (elQueued) elQueued.innerText = queuedCount;
+    const elFailed = document.getElementById("batchKpiFailed");
+    if (elFailed) elFailed.innerText = failedCount;
+
+    // Atualiza barra segmentada
+    const barComp = document.getElementById("batchBarCompleted");
+    if (barComp) barComp.style.width = `${(completedCount / totalBatch) * 100}%`;
+    const barInProg = document.getElementById("batchBarInProgress");
+    if (barInProg) barInProg.style.width = `${(inProgressCount / totalBatch) * 100}%`;
+    const barQueued = document.getElementById("batchBarQueued");
+    if (barQueued) barQueued.style.width = `${(queuedCount / totalBatch) * 100}%`;
+    const barFailed = document.getElementById("batchBarFailed");
+    if (barFailed) barFailed.style.width = `${(failedCount / totalBatch) * 100}%`;
+
+    const summaryLbl = document.getElementById("batchProgSummaryLabel");
+    if (summaryLbl) {
+        summaryLbl.innerText = `${completedCount} de ${totalBatch} concluídos (${completedPct}%)`;
+    }
+
+    // Badge do cabeçalho
+    const badge = document.getElementById("batchProgStatusBadge");
+    if (badge) {
+        if (completedCount === totalBatch) {
+            badge.className = "badge badge-green";
+            badge.innerText = "Rollout 100% Concluído";
+        } else if (inProgressCount > 0) {
+            badge.className = "badge badge-yellow";
+            badge.innerText = `Executando (${inProgressCount} ativos)`;
+        } else if (failedCount > 0 && inProgressCount === 0) {
+            badge.className = "badge badge-red";
+            badge.innerText = `Atenção: ${failedCount} com Falha/Offline`;
+        } else {
+            badge.className = "badge badge-blue";
+            badge.innerText = "Aguardando Heartbeat";
+        }
+    }
+
+    // Atualiza contadores de filtro
+    const fcAll = document.getElementById("filterCountBatchAll");
+    if (fcAll) fcAll.innerText = totalBatch;
+    const fcProg = document.getElementById("filterCountBatchProg");
+    if (fcProg) fcProg.innerText = inProgressCount;
+    const fcDone = document.getElementById("filterCountBatchDone");
+    if (fcDone) fcDone.innerText = completedCount;
+    const fcFail = document.getElementById("filterCountBatchFailed");
+    if (fcFail) fcFail.innerText = failedCount + queuedCount;
+
+    // Atualiza pílula flutuante e botão da governança
+    updateFloatingBatchPill(completedCount, totalBatch, completedPct, inProgressCount);
+
+    // Renderiza tabela com filtros aplicados
+    renderBatchTableRows();
+}
+
+function updateFloatingBatchPill(completed, total, pct, inProgress) {
+    const pill = document.getElementById("floatingBatchTrackerPill");
+    const svcEl = document.getElementById("floatRolloutSvc");
+    const pctEl = document.getElementById("floatRolloutPct");
+    const doneEl = document.getElementById("floatRolloutDone");
+    const totEl = document.getElementById("floatRolloutTotal");
+
+    if (svcEl && currentBatchProgressInfo) svcEl.innerText = currentBatchProgressInfo.serviceName;
+    if (pctEl) pctEl.innerText = `${pct}%`;
+    if (doneEl) doneEl.innerText = completed;
+    if (totEl) totEl.innerText = total;
+
+    // Botão na barra da governança
+    const btnGov = document.getElementById("btnOpenBatchProgress");
+    const countGov = document.getElementById("btnBatchLiveActiveCount");
+    if (btnGov) {
+        btnGov.style.display = "inline-flex";
+        if (countGov) countGov.innerText = `${completed}/${total}`;
+    }
+}
+
+function filterFleetBatchList(filterType) {
+    currentBatchFilter = filterType;
+    const btnAll = document.getElementById("filterBtnBatchAll");
+    const btnProg = document.getElementById("filterBtnBatchProg");
+    const btnDone = document.getElementById("filterBtnBatchDone");
+    const btnFailed = document.getElementById("filterBtnBatchFailed");
+
+    if (btnAll) btnAll.className = filterType === "all" ? "btn-sm btn-filter-batch active" : "btn-sm btn-filter-batch";
+    if (btnProg) btnProg.className = filterType === "in_progress" ? "btn-sm btn-filter-batch active" : "btn-sm btn-filter-batch";
+    if (btnDone) btnDone.className = filterType === "completed" ? "btn-sm btn-filter-batch active" : "btn-sm btn-filter-batch";
+    if (btnFailed) btnFailed.className = filterType === "failed" ? "btn-sm btn-filter-batch active" : "btn-sm btn-filter-batch";
+
+    renderBatchTableRows();
+}
+
+function onFleetBatchSearchInput(val) {
+    currentBatchSearch = (val || "").trim().toLowerCase();
+    renderBatchTableRows();
+}
+
+function renderBatchTableRows() {
+    const tbody = document.getElementById("batchProgTableBody");
+    if (!tbody || !cachedBatchEvolutionData) return;
+
+    const { enrichedHosts } = cachedBatchEvolutionData;
+    const targetVer = currentBatchProgressInfo ? currentBatchProgressInfo.targetVersion : "1.0.21.5";
+    const svcName = currentBatchProgressInfo ? currentBatchProgressInfo.serviceName : "DNA.MonitorServiceSVC";
+
+    let filtered = enrichedHosts.filter(h => {
+        // Filtro por tipo
+        if (currentBatchFilter === "in_progress" && h.batchState !== "in_progress") return false;
+        if (currentBatchFilter === "completed" && h.batchState !== "completed") return false;
+        if (currentBatchFilter === "failed" && h.batchState !== "failed" && h.batchState !== "queued") return false;
+
+        // Filtro por busca de texto
+        if (currentBatchSearch) {
+            const matchPraca = String(h.praca || "").toLowerCase().includes(currentBatchSearch);
+            const matchHost = String(h.hostname || "").toLowerCase().includes(currentBatchSearch);
+            if (!matchPraca && !matchHost) return false;
+        }
+        return true;
+    });
+
+    if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" style="padding: 24px; text-align: center; color: #94a3b8; font-style: italic;">Nenhum host encontrado com os filtros selecionados.</td></tr>`;
+        return;
+    }
+
+    const rowsHtml = filtered.map(h => {
+        let statusBadge = "";
+        if (h.batchState === "completed") {
+            statusBadge = `<span class="badge badge-green" style="font-size: 11px; display: inline-flex; align-items: center; gap: 4px;"><i class="fas fa-check-circle"></i> Atualizado &amp; Ativo</span>`;
+        } else if (h.batchState === "in_progress") {
+            statusBadge = `<span class="badge badge-yellow" style="font-size: 11px; display: inline-flex; align-items: center; gap: 4px;"><i class="fas fa-spinner fa-spin"></i> Agente Atualizando (Ação: Atualizar)</span>`;
+        } else if (h.batchState === "failed") {
+            statusBadge = `<span class="badge badge-red" style="font-size: 11px; display: inline-flex; align-items: center; gap: 4px;"><i class="fas fa-exclamation-triangle"></i> Offline / Sem Heartbeat</span>`;
+        } else {
+            statusBadge = `<span class="badge badge-blue" style="font-size: 11px; display: inline-flex; align-items: center; gap: 4px;"><i class="fas fa-clock"></i> Fila de Leitura</span>`;
+        }
+
+        const verHtml = (h.versao_instalada === targetVer)
+            ? `<span style="color: #34d399; font-weight: 700;">v${h.versao_instalada}</span>`
+            : `<span style="color: #fbbf24;">v${h.versao_instalada}</span> <span style="color: #64748b;">➔</span> <span style="color: #38bdf8; font-weight: 700;">v${targetVer}</span>`;
+
+        const lastTs = h.ultima_atualizacao ? formatFleetRelativeTime(h.ultima_atualizacao) : "Desconhecido";
+
+        return `
+            <tr style="border-bottom: 1px solid rgba(148, 163, 184, 0.1); transition: background 0.15s ease;" onmouseover="this.style.background='rgba(51,65,85,0.25)'" onmouseout="this.style.background='transparent'">
+                <td style="padding: 8px 12px; font-weight: 600; color: #f8fafc;">
+                    ${h.praca} <span style="font-size: 10px; color: #64748b; font-weight: normal; margin-left: 4px;">CS ${h.cs || 1}</span>
+                </td>
+                <td style="padding: 8px 12px; font-family: monospace; font-size: 11px; color: #38bdf8;">
+                    ${h.hostname}
+                </td>
+                <td style="padding: 8px 12px; text-align: center; font-family: monospace; font-size: 11px;">
+                    ${verHtml}
+                </td>
+                <td style="padding: 8px 12px; text-align: center;">
+                    ${statusBadge}
+                </td>
+                <td style="padding: 8px 12px; text-align: center; font-size: 11px; color: #cbd5e1;">
+                    ${lastTs}
+                </td>
+                <td style="padding: 8px 12px; text-align: center;">
+                    <button class="btn-sm btn-secondary" onclick="openFleetUpdateProgressModal('${h.hostname}', '${svcName}', '${targetVer}')" style="padding: 3px 8px; font-size: 11px; display: inline-flex; align-items: center; gap: 4px;" title="Ver telemetria passo a passo e comandos deste host">
+                        <i class="fas fa-search"></i> N2 Detalhe
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join("");
+
+    tbody.innerHTML = rowsHtml;
+}
+
+function formatFleetRelativeTime(isoStr) {
+    try {
+        const d = new Date(isoStr);
+        if (isNaN(d.getTime())) return isoStr;
+        const diffSec = Math.floor((Date.now() - d.getTime()) / 1000);
+        if (diffSec < 60) return `Há ${Math.max(1, diffSec)}s`;
+        if (diffSec < 3600) return `Há ${Math.floor(diffSec / 60)}m`;
+        return `Há ${Math.floor(diffSec / 3600)}h`;
+    } catch {
+        return isoStr;
+    }
+}
+
+function copyFleetBatchSummaryToClipboard() {
+    if (!cachedBatchEvolutionData || !currentBatchProgressInfo) {
+        if (typeof showToast === "function") showToast("Nenhum dado de rollout para copiar!", "info");
+        return;
+    }
+
+    const { totalBatch, completedCount, inProgressCount, queuedCount, failedCount, completedPct } = cachedBatchEvolutionData;
+    const svc = currentBatchProgressInfo.serviceName;
+    const ver = currentBatchProgressInfo.targetVersion;
+    const now = new Date().toLocaleString("pt-BR");
+
+    const text = `🚀 [MediaDNA CS Fleet] Relatório de Rollout em Lote ao Vivo\n` +
+                 `• Serviço: ${svc} ➔ v${ver}\n` +
+                 `• Total de Máquinas no Lote: ${totalBatch}\n` +
+                 `• Progresso Global: ${completedCount} / ${totalBatch} Concluídos (${completedPct}%)\n` +
+                 `  - ✅ Atualizados / Em Dia: ${completedCount}\n` +
+                 `  - 🟡 Agente Atualizando: ${inProgressCount}\n` +
+                 `  - ⏱️ Aguardando Ciclo: ${queuedCount}\n` +
+                 `  - ⚠️ Offline / Atenção: ${failedCount}\n` +
+                 `• Registro de Auditoria: Google Cloud Firestore ↔ SharePoint\n` +
+                 `• Horário do Relatório: ${now}`;
+
+    navigator.clipboard.writeText(text).then(() => {
+        if (typeof showToast === "function") showToast("Relatório do rollout copiado com sucesso!", "success");
+    }).catch(() => {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        if (typeof showToast === "function") showToast("Relatório do rollout copiado com sucesso!", "success");
+    });
+}
+
+window.openFleetBatchProgressModal = openFleetBatchProgressModal;
+window.closeFleetBatchProgressModal = closeFleetBatchProgressModal;
+window.minimizeFleetBatchProgressModal = minimizeFleetBatchProgressModal;
+window.refreshFleetBatchProgressLive = refreshFleetBatchProgressLive;
+window.filterFleetBatchList = filterFleetBatchList;
+window.onFleetBatchSearchInput = onFleetBatchSearchInput;
+window.copyFleetBatchSummaryToClipboard = copyFleetBatchSummaryToClipboard;
+

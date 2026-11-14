@@ -154,4 +154,26 @@ def test_frontend_governance_dom_elements():
     assert 'id="modalSelectService"' in content
     assert 'id="modalInputVersion"' in content
     assert 'openSetTargetVersionModal' in content
+    assert 'id="fleetBatchProgressModal"' in content
+    assert 'id="floatingBatchTrackerPill"' in content
+    assert 'id="btnOpenBatchProgress"' in content
+    assert 'id="batchProgTableBody"' in content
+    assert 'id="batchKpiCompleted"' in content
+
+
+def test_batch_rollout_progress_cockpit_and_js():
+    """Valida a infraestrutura de acompanhamento ao vivo do progresso de execuções em lote."""
+    js_file = Path(__file__).resolve().parent.parent / "dashboard" / "static" / "js" / "fleet_ops.js"
+    assert js_file.exists()
+    js_content = js_file.read_text(encoding="utf-8")
+
+    assert "openFleetBatchProgressModal" in js_content
+    assert "minimizeFleetBatchProgressModal" in js_content
+    assert "closeFleetBatchProgressModal" in js_content
+    assert "refreshFleetBatchProgressLive" in js_content
+    assert "renderFleetBatchProgressData" in js_content
+    assert "copyFleetBatchSummaryToClipboard" in js_content
+    assert "updateFloatingBatchPill" in js_content
+    assert "dispatchBatchPendingUpdate" in js_content
+
 

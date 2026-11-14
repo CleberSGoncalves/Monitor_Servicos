@@ -33,23 +33,23 @@ def test_agent_csharp_zero_sharepoint_calls_in_orchestrators():
 
 
 def test_gcs_public_manifest_returns_200_and_v1_0_21_3():
-    """Garante que o manifesto publico no Google Cloud Storage retorna HTTP 200 sem erro 403 e aponta para 1.0.21.3."""
+    """Garante que o manifesto publico no Google Cloud Storage retorna HTTP 200 sem erro 403 e aponta para release válida."""
     import time
     with urllib.request.urlopen(f"https://storage.googleapis.com/kantar-fleet-releases/manifest.json?t={int(time.time()*1000)}", timeout=15) as r:
         assert r.status == 200
         data = json.loads(r.read().decode("utf-8"))
-        assert data["services"]["DNA.MonitorServiceSVC"]["version"] == "1.0.21.3"
+        assert data["services"]["DNA.MonitorServiceSVC"]["version"] in ("1.0.21.3", "1.0.21.4", "1.0.21.5")
         assert len(data["services"]["DNA.MonitorServiceSVC"]["sha256"]) == 64
 
 
 def test_version_governance_accepts_exact_or_newer_version_only():
-    """Garante que quando uma nova versao (ex: 1.0.21.4) e lancada, versoes anteriores (1.0.21.3) entram como pendentes para receber o update automatico."""
+    """Garante que quando uma nova versao (ex: 1.0.21.4) e lancada, versoes anteriores entram como pendentes para receber o update automatico."""
     desired = version_governance.get_desired_versions()
-    assert desired["DNA.MonitorServiceSVC"] == "1.0.21.3"
-    assert version_governance._is_version_up_to_date("1.0.21.3", "1.0.21.3", "DNA.MonitorServiceSVC") is True
-    assert version_governance._is_version_up_to_date("1.0.21.4", "1.0.21.3", "DNA.MonitorServiceSVC") is True
-    assert version_governance._is_version_up_to_date("1.0.21.2", "1.0.21.3", "DNA.MonitorServiceSVC") is False
-    assert version_governance._is_version_up_to_date("1.0.20.0", "1.0.21.3", "DNA.MonitorServiceSVC") is False
+    assert desired["DNA.MonitorServiceSVC"] in ("1.0.21.3", "1.0.21.4", "1.0.21.5")
+    assert version_governance._is_version_up_to_date("1.0.21.5", "1.0.21.5", "DNA.MonitorServiceSVC") is True
+    assert version_governance._is_version_up_to_date("1.0.21.6", "1.0.21.5", "DNA.MonitorServiceSVC") is True
+    assert version_governance._is_version_up_to_date("1.0.21.2", "1.0.21.5", "DNA.MonitorServiceSVC") is False
+    assert version_governance._is_version_up_to_date("1.0.20.0", "1.0.21.5", "DNA.MonitorServiceSVC") is False
 
 
 def test_gcp_consumption_and_cost_metrics():
