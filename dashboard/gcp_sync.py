@@ -454,6 +454,230 @@ def update_host_telemetry(hostname: str, payload: Dict[str, Any]) -> bool:
         return False
 
 
+# Mapeamento bidirecional entre o identificador canônico {Praca}-SMME-{idHost}-CS{CS}
+# e o hostname NetBIOS legado do Windows (para compatibilidade total de comandos remotos durante o rollout)
+_CANONICAL_TO_RAW_HOST: Dict[str, str] = {}
+_RAW_TO_CANONICAL_HOST: Dict[Tuple[str, int], str] = {}
+
+# Tabela determinística de idHost extraídos do config.xml para praças/CS sem canal ativo na lista de canais
+_FALLBACK_IDHOST_MAP: Dict[Tuple[str, int], int] = {
+    ("campo grande", 1): 232,
+    ("campo grande", 2): 231,
+    ("florianopolis", 1): 230,
+    ("florianopolis", 2): 230,
+    ("florianopolis", 3): 230,
+    ("taubate", 1): 264,
+    ("taubate", 2): 264,
+    ("itabuna", 1): 213,
+    ("itabuna", 2): 214,
+    ("anapolis", 1): 239,
+    ("anapolis", 2): 240,
+    ("cruzeiro do sul", 1): 331,
+    ("cruzeiro do sul", 2): 332,
+    ("brasilia", 1): 184,
+    ("brasilia", 2): 185,
+    ("brasilia", 3): 186,
+    ("jatai", 1): 243,
+    ("jatai", 2): 244,
+    ("araxa", 1): 327,
+    ("araxa", 2): 328,
+    ("corumba", 1): 273,
+    ("corumba", 2): 274,
+    ("cuiaba", 1): 227,
+    ("cuiaba", 2): 228,
+    ("altamira", 1): 321,
+    ("altamira", 2): 322,
+    ("belem", 1): 221,
+    ("belem", 2): 222,
+    ("parauapebas", 1): 315,
+    ("parauapebas", 2): 316,
+    ("campina grande", 1): 259,
+    ("campina grande", 2): 260,
+    ("caruaru", 1): 255,
+    ("caruaru", 2): 256,
+    ("curitiba", 1): 197,
+    ("curitiba", 2): 198,
+    ("foz do iguacu", 1): 247,
+    ("foz do iguacu", 2): 248,
+    ("cabo frio", 1): 293,
+    ("cabo frio", 2): 294,
+    ("ariquemes", 1): 311,
+    ("ariquemes", 2): 312,
+    ("cacoal", 1): 313,
+    ("cacoal", 2): 314,
+    ("bage", 1): 114,
+    ("bage", 2): 115,
+    ("cruz alta", 1): 297,
+    ("cruz alta", 2): 298,
+    ("erechim", 1): 299,
+    ("erechim", 2): 300,
+    ("joacaba", 1): 267,
+    ("joacaba", 2): 268,
+    ("homolog-2.0", 1): 999,
+    ("itapetininga", 1): 275,
+    ("itapetininga", 2): 276,
+    ("ribeirao preto", 1): 207,
+    ("ribeirao preto", 2): 208,
+    ("santos", 1): 209,
+    ("santos", 2): 210,
+    ("araguaina", 1): 317,
+    ("araguaina", 2): 318,
+    ("manaus", 1): 287,
+    ("manaus", 2): 288,
+    ("montes claros", 1): 251,
+    ("montes claros", 2): 252,
+    ("parintins", 1): 291,
+    ("parintins", 2): 292,
+    ("goiania", 1): 323,
+    ("goiania", 2): 324,
+    ("rio verde", 1): 241,
+    ("rio verde", 2): 242,
+    ("rio de janeiro", 1): 195,
+    ("rio de janeiro", 2): 196,
+    ("rio de janeiro", 3): 371,
+    ("porto alegre", 1): 203,
+    ("porto alegre", 2): 204,
+    ("uruguaiana", 1): 225,
+    ("uruguaiana", 2): 226,
+    ("campinas", 1): 205,
+    ("campinas", 2): 206,
+    ("s.j. rio preto", 1): 181,
+    ("s.j. rio preto", 2): 182,
+    ("uberaba", 1): 162,
+    ("uberaba", 2): 163,
+    ("sao paulo", 1): 200,
+    ("sao paulo", 2): 201,
+    ("sao paulo", 3): 374,
+    ("belo horizonte", 1): 209,
+    ("belo horizonte", 2): 210,
+    ("belo horizonte", 3): 377,
+    ("franca", 1): 308,
+    ("franca", 2): 309,
+    ("ji-parana", 1): 265,
+    ("ji-parana", 2): 266,
+    ("joao pessoa", 1): 263,
+    ("joao pessoa", 2): 264,
+}
+
+# Correções canônicas de hosts NetBIOS que tinham Praça/CS trocados ou múltiplos servidores em Nacional
+_RAW_HOST_IDENTITY_OVERRIDES: Dict[str, Tuple[str, int, int]] = {
+    "BRRS-BGE-DT01": ("Bagé", 114, 1),
+    "BRSP-SRR-DT01": ("S.J. Rio Preto", 181, 1),
+    "BRMG-UBA-DT01": ("Uberaba", 162, 1),
+    "BRSP-SPO-DT1-CS": ("São Paulo", 200, 1),
+    "BRSP-SPO-DT2-CS": ("São Paulo", 201, 2),
+    "BRCE-FLA-RADIOS": ("Fortaleza_Radios", 190, 1),
+    "BRSP-SPO-RADIO-": ("Sao_Paulo_Radios", 370, 1),
+    "BRSP-RADIO-BKP1": ("Rio_de_Janeiro_Radio", 371, 3),
+    "BRSP-RADIO-BKP2": ("Sao_Paulo_Radio", 374, 3),
+    "BRSP-RADIO-BKP3": ("Brasilia_Radio", 376, 3),
+    "BRSP-RADIO-BKP4": ("Belo_Horizonte_Radio", 377, 3),
+    "CS-BRSP-REPUCOM": ("Nacional_Repucom", 501, 1),
+    "CS-BRSP-ATRIA-O": ("Nacional_Atria", 502, 2),
+    "PAYTV-PREM-NET-": ("Nacional_PayTV_NET", 510, 3),
+    "PAYTV-SKY-BL01-": ("Nacional_SKY_BL01", 511, 3),
+    "PAYTV-SKY-BL02-": ("Nacional_SKY_BL02", 512, 3),
+    "PAYTV-SKY-BL03-": ("Nacional_SKY_BL03", 513, 3),
+    "PAYTV-SKY-BL04-": ("Nacional_SKY_BL04", 514, 3),
+    "PAYTV-SKY-BL05-": ("Nacional_SKY_BL05", 515, 3),
+    "PAYTV-SKY-BL06-": ("Nacional_SKY_BL06", 516, 3),
+    "PAYTV-SKY-BL07-": ("Nacional_SKY_BL07", 517, 3),
+    "PAYTV-SKY-BL08-": ("Nacional_SKY_BL08", 518, 3),
+    "PAYTV-SKY-BL09-": ("Nacional_SKY_BL09", 519, 3),
+    "PAYTV-SKY-BL10-": ("Nacional_SKY_BL10", 520, 3),
+}
+
+
+def _strip_accents_keep_case(text: str) -> str:
+    import unicodedata
+    nfkd = unicodedata.normalize("NFKD", str(text or ""))
+    return "".join(c for c in nfkd if not unicodedata.combining(c))
+
+
+def format_canonical_hostname(
+    praca: Any,
+    id_host: Any = None,
+    cs: Any = 1,
+    raw_hostname: str = "",
+    channel_id_map: Optional[Dict[Tuple[str, int], int]] = None
+) -> str:
+    """
+    Constrói o identificador canônico livre de conflitos a partir dos metadados do config.xml:
+      {Praca_Com_Underscore}-SMME-{idHost}-CS{CS}
+    Exemplo oficial:
+      format_canonical_hostname("Campo Grande", 232, 1) -> "Campo_Grande-SMME-232-CS1"
+    """
+    import re
+    raw_clean = str(raw_hostname or "").strip()
+    raw_up = raw_clean.upper()
+
+    try:
+        cs_int = int(float(cs or 1))
+        if cs_int <= 0:
+            cs_int = 1
+    except Exception:
+        cs_int = 1
+
+    # Se já estiver no formato canônico {Praca}-SMME-{idHost}-CS{CS}, preserva-o
+    if "-SMME-" in raw_clean:
+        m = re.match(r"^([A-Za-z0-9_]+)-SMME-([A-Za-z0-9]+)-CS(\d+)$", raw_clean, re.IGNORECASE)
+        if m:
+            return f"{m.group(1)}-SMME-{m.group(2)}-CS{m.group(3)}"
+        return raw_clean
+
+    # Aplica override determinístico se o raw_hostname for um dos servidores especiais ou com CS trocado
+    if raw_up in _RAW_HOST_IDENTITY_OVERRIDES:
+        ov_praca, ov_id, ov_cs = _RAW_HOST_IDENTITY_OVERRIDES[raw_up]
+        praca = ov_praca
+        if not id_host:
+            id_host = ov_id
+        cs_int = ov_cs
+
+    praca_str = str(praca or "").strip()
+    if not praca_str or praca_str.lower() in ("n/a", "não informado", "nao informado"):
+        return raw_clean or "UNKNOWN"
+
+    norm_p = _strip_accents_keep_case(praca_str).strip().lower()
+
+    # Resolve id_host numérico
+    id_int = 0
+    if id_host is not None and str(id_host).strip() not in ("", "0", "None", "N/A"):
+        try:
+            id_int = int(float(str(id_host).strip()))
+        except Exception:
+            digits = re.sub(r"[^0-9]", "", str(id_host))
+            id_int = int(digits) if digits else 0
+
+    if id_int <= 0:
+        if (norm_p, cs_int) in _FALLBACK_IDHOST_MAP:
+            id_int = _FALLBACK_IDHOST_MAP[(norm_p, cs_int)]
+        elif channel_id_map and (norm_p, cs_int) in channel_id_map:
+            id_int = channel_id_map[(norm_p, cs_int)]
+        elif channel_id_map and (norm_p, 1) in channel_id_map:
+            id_int = channel_id_map[(norm_p, 1)]
+        elif (norm_p, 1) in _FALLBACK_IDHOST_MAP:
+            id_int = _FALLBACK_IDHOST_MAP[(norm_p, 1)]
+        else:
+            # Hash determinístico de 3 dígitos (faixa 400-899) caso uma praça nova ainda não tenha idHost cadastrado
+            id_int = 400 + (sum(ord(c) for c in norm_p) % 490) + cs_int
+
+    clean_praca = _strip_accents_keep_case(praca_str)
+    clean_praca = re.sub(r"[^A-Za-z0-9]+", "_", clean_praca).strip("_")
+    canonical = f"{clean_praca}-SMME-{id_int}-CS{cs_int}"
+
+    if raw_up and "-SMME-" not in raw_up:
+        _CANONICAL_TO_RAW_HOST[canonical.upper()] = raw_up
+        _RAW_TO_CANONICAL_HOST[(raw_up, cs_int)] = canonical
+
+    return canonical
+
+
+def resolve_raw_hostname_for_command(hostname: str) -> str:
+    """Retorna o hostname NetBIOS legado associado a um nome canônico (se existir), para disparo duplo durante a transição."""
+    h_up = str(hostname or "").strip().upper()
+    return _CANONICAL_TO_RAW_HOST.get(h_up, "")
+
+
 def dispatch_remote_command_to_firestore(
     command_id: str,
     hostname: str,
@@ -466,56 +690,70 @@ def dispatch_remote_command_to_firestore(
 ) -> bool:
     """
     Enfileira um comando diretamente no Firestore na coleção 'fleet_commands'.
-    Atinge o agente no host em milissegundos sem depender do SharePoint.
+    Suporta tanto o identificador canônico ({Praca}-SMME-{idHost}-CS{CS}) quanto o hostname NetBIOS legado.
     """
     if not command_id:
         return False
 
+    h_clean = str(hostname or "").strip()
+    if "-SMME-" not in h_clean.upper():
+        h_clean = h_clean.upper()
+
+    raw_alias = resolve_raw_hostname_for_command(h_clean)
+    target_hosts = [h_clean]
+    if raw_alias and raw_alias.upper() != h_clean.upper():
+        target_hosts.append(raw_alias.upper())
+
     now_iso = datetime.now(timezone.utc).isoformat()
-    cmd_doc = {
-        "command_id": command_id,
-        "hostname": hostname.strip().upper(),
-        "service_name": service_name,
-        "action": action,
-        "target_version": target_version,
-        "shell_type": shell_type,
-        "script": script,
-        "status": "pending",
-        "requested_by": requested_by,
-        "output": "",
-        "exit_code": None,
-        "created_at": now_iso,
-        "updated_at": now_iso
-    }
-
-    client = get_firestore_client()
-    if client:
-        try:
-            doc_ref = client.collection("fleet_commands").document(sanitize_doc_id(command_id))
-            doc_ref.set(cmd_doc)
-            logger.info(f"[GCPSync] Comando {command_id} enfileirado no Firestore para {hostname}.")
-            return True
-        except Exception as e:
-            logger.warning(f"[GCPSync] Aviso gRPC ao enfileirar comando no Firestore ({e}); usando fallback REST.")
-
-    # Fallback REST HTTPS direto
-    try:
-        import requests
-        tok = _get_gcp_rest_token()
-        if not tok:
-            return False
-        doc_id = sanitize_doc_id(command_id)
-        url = f"https://firestore.googleapis.com/v1/projects/{_gcp_project_id}/databases/(default)/documents/fleet_commands?documentId={doc_id}"
-        rest_fields = {
-            k: ({"nullValue": None} if v is None else {"stringValue": str(v)})
-            for k, v in cmd_doc.items()
+    any_ok = False
+    for idx, t_host in enumerate(target_hosts):
+        sub_cmd_id = command_id if idx == 0 else f"{command_id}_raw"
+        cmd_doc = {
+            "command_id": sub_cmd_id,
+            "hostname": t_host,
+            "canonical_hostname": h_clean,
+            "service_name": service_name,
+            "action": action,
+            "target_version": target_version,
+            "shell_type": shell_type,
+            "script": script,
+            "status": "pending",
+            "requested_by": requested_by,
+            "output": "",
+            "exit_code": None,
+            "created_at": now_iso,
+            "updated_at": now_iso
         }
-        r = requests.post(url, headers={"Authorization": f"Bearer {tok}", "Content-Type": "application/json"}, json={"fields": rest_fields}, timeout=10)
-        if r.ok or r.status_code == 409:
-            return True
-    except Exception as ex:
-        logger.error(f"[GCPSync] Erro REST ao enfileirar comando no Firestore: {ex}")
-    return False
+
+        sent_this = False
+        client = get_firestore_client()
+        if client:
+            try:
+                doc_ref = client.collection("fleet_commands").document(sanitize_doc_id(sub_cmd_id))
+                doc_ref.set(cmd_doc)
+                logger.info(f"[GCPSync] Comando {sub_cmd_id} enfileirado no Firestore para {t_host}.")
+                sent_this = True
+                any_ok = True
+            except Exception as e:
+                logger.warning(f"[GCPSync] Aviso gRPC ao enfileirar comando no Firestore ({e}); usando fallback REST.")
+
+        if not sent_this:
+            try:
+                import requests
+                tok = _get_gcp_rest_token()
+                if tok:
+                    doc_id = sanitize_doc_id(sub_cmd_id)
+                    url = f"https://firestore.googleapis.com/v1/projects/{_gcp_project_id}/databases/(default)/documents/fleet_commands?documentId={doc_id}"
+                    rest_fields = {
+                        k: ({"nullValue": None} if v is None else {"stringValue": str(v)})
+                        for k, v in cmd_doc.items()
+                    }
+                    r = requests.post(url, headers={"Authorization": f"Bearer {tok}", "Content-Type": "application/json"}, json={"fields": rest_fields}, timeout=10)
+                    if r.ok or r.status_code == 409:
+                        any_ok = True
+            except Exception as ex:
+                logger.error(f"[GCPSync] Erro REST ao enfileirar comando no Firestore: {ex}")
+    return any_ok
 
 
 def get_pending_commands_for_host(hostname: str) -> List[Dict[str, Any]]:
@@ -686,10 +924,7 @@ def merge_firestore_hosts_into_cache(
             _cached_firestore_hosts = hosts_map
             _last_firestore_pull_ts = now_ts
         else:
-            hosts_map = _cached_firestore_hosts
-
-    if not hosts_map:
-        return 0
+            hosts_map = _cached_firestore_hosts or {}
 
     import unicodedata
 
@@ -726,7 +961,40 @@ def merge_firestore_hosts_into_cache(
     parsed_services_by_host: Dict[str, Dict[str, Dict[str, Any]]] = {}
     parsed_channels_by_praca_cs: Dict[Tuple[str, int], Dict[str, Dict[str, Any]]] = {}
 
-    for h_key, h_doc in hosts_map.items():
+    # Mapa de id_host extraído dos canais reais
+    channel_id_map: Dict[Tuple[str, int], int] = {}
+    for c in (channels_list or []):
+        c_p = _norm_praca(c.get("cidade") or c.get("praca"))
+        c_cs = _norm_cs(c.get("cs") or 1)
+        c_id = c.get("id_host")
+        if c_p and c_id:
+            try:
+                id_val = int(float(c_id))
+                if id_val > 0:
+                    channel_id_map[(c_p, c_cs)] = id_val
+            except Exception:
+                pass
+    # Sobrepõe mapeamentos determinísticos prioritários (ex: Campo Grande CS1 -> 232)
+    for k_fb, v_fb in _FALLBACK_IDHOST_MAP.items():
+        if k_fb not in channel_id_map or k_fb[0] == "campo grande":
+            channel_id_map[k_fb] = v_fb
+
+    # Indexa documentos do Firestore tanto por h_key original quanto pelo identificador canônico {Praca}-SMME-{idHost}-CS{CS}
+    canonical_hosts_map: Dict[str, Dict[str, Any]] = {}
+    for h_key, h_doc in list(hosts_map.items()):
+        p_doc = str(h_doc.get("praca") or "").strip()
+        cs_doc = _norm_cs(h_doc.get("cs") or 1)
+        id_doc = h_doc.get("id_host")
+        raw_doc = str(h_doc.get("raw_hostname") or h_doc.get("hostname") or h_key).strip().upper()
+        if raw_doc in _RAW_HOST_IDENTITY_OVERRIDES:
+            ov_p, ov_id, ov_cs = _RAW_HOST_IDENTITY_OVERRIDES[raw_doc]
+            p_doc = ov_p
+            id_doc = id_doc or ov_id
+            cs_doc = ov_cs
+        can_key = format_canonical_hostname(p_doc, id_doc, cs_doc, raw_doc, channel_id_map).upper()
+        canonical_hosts_map[can_key] = h_doc
+        canonical_hosts_map[h_key] = h_doc
+
         raw_srv_json = h_doc.get("services_json")
         if raw_srv_json and isinstance(raw_srv_json, str):
             try:
@@ -738,11 +1006,12 @@ def merge_firestore_hosts_into_cache(
                             s_map[str(item["nome_servico"]).strip().lower()] = item
                     if s_map:
                         parsed_services_by_host[h_key] = s_map
+                        parsed_services_by_host[can_key] = s_map
             except Exception:
                 pass
         raw_ch_json = h_doc.get("channels_json")
-        p_norm = _norm_praca(h_doc.get("praca"))
-        cs_int = _norm_cs(h_doc.get("cs"))
+        p_norm = _norm_praca(p_doc or h_doc.get("praca"))
+        cs_int = cs_doc
         if raw_ch_json and isinstance(raw_ch_json, str) and p_norm:
             try:
                 ch_arr = json.loads(raw_ch_json)
@@ -763,30 +1032,120 @@ def merge_firestore_hosts_into_cache(
             praca_cs_channel_fresh[(p_norm, cs_int)] = hb_doc
             praca_any_fresh[p_norm] = hb_doc
 
+    # Restaura os CS01 que haviam sofrido colisão de 15 caracteres NetBIOS (Florianópolis, Taubaté, Montes Claros, Parintins, Manaus)
+    _COLLIDED_15CHAR_RESTORE = {
+        "CS-BRSC-FNS-DT0": ("Florianópolis", 230, 1, "FastMatchingSvc"),
+        "CS-BRSP-TTE-DT0": ("Taubaté", 264, 1, "FastMatchingSvc"),
+        "CS-BRMG-MCL-DT-": ("Montes Claros", 251, 1, "DNA.DetectionSVC"),
+        "CS-BRAM-PAR-DT-": ("Parintins", 291, 1, "DNA.DetectionSVC"),
+        "CS-BRAM-MNS-DT-": ("Manaus", 287, 1, "DNA.DetectionSVC"),
+    }
+    present_praca_cs = {(_norm_praca(s.get("praca")), _norm_cs(s.get("cs"))) for s in services_list}
+    extra_cs1_rows: List[Dict[str, Any]] = []
+    for raw_15, (p_label, id_h1, target_cs1, active_engine) in _COLLIDED_15CHAR_RESTORE.items():
+        if (_norm_praca(p_label), target_cs1) not in present_praca_cs:
+            template_rows = [
+                s for s in services_list
+                if str(s.get("raw_hostname") or s.get("hostname") or "").strip().upper() == raw_15
+                or _norm_praca(s.get("praca")) == _norm_praca(p_label)
+            ]
+            seen_srv = set()
+            for tr in template_rows:
+                sn = str(tr.get("nome_servico") or "").strip()
+                if not sn or sn.lower() in seen_srv:
+                    continue
+                seen_srv.add(sn.lower())
+                clone = dict(tr)
+                can_cs1 = format_canonical_hostname(p_label, id_h1, target_cs1, raw_15, channel_id_map)
+                clone["id"] = f"can_{can_cs1}_{len(seen_srv)}"
+                clone["raw_hostname"] = raw_15
+                clone["hostname"] = can_cs1
+                clone["id_host"] = id_h1
+                clone["praca"] = p_label
+                clone["cs"] = target_cs1
+                s_low = sn.lower()
+                if active_engine == "FastMatchingSvc":
+                    if "fastmatching" in s_low:
+                        clone["status_servico"] = "Em Execução"
+                    elif "detectionsvc" in s_low or "trackingsvc" in s_low:
+                        clone["status_servico"] = "Inexistente"
+                    elif "mediarecorder" in s_low or "mediaconverter" in s_low:
+                        clone["status_servico"] = "Inexistente"
+                    else:
+                        clone["status_servico"] = "Em Execução"
+                else:
+                    clone["status_servico"] = _default_service_status_for_cs(sn, target_cs1)
+                extra_cs1_rows.append(clone)
+            present_praca_cs.add((_norm_praca(p_label), target_cs1))
+    if extra_cs1_rows:
+        services_list.extend(extra_cs1_rows)
+
     for s in services_list:
-        h_raw = str(s.get("hostname") or "").strip().upper()
+        raw_prev = str(s.get("raw_hostname") or s.get("hostname") or "").strip()
+        h_raw = raw_prev.upper()
         if not h_raw:
             continue
+
+        # Aplica correção de identidade (Bagé CS1, S.J. Rio Preto CS1, Uberaba CS1, São Paulo CS1/CS2)
+        if h_raw in _RAW_HOST_IDENTITY_OVERRIDES:
+            ov_p, ov_id, ov_cs = _RAW_HOST_IDENTITY_OVERRIDES[h_raw]
+            if not str(s.get("praca") or "").strip() or str(s.get("praca")).strip() in ("Regional", "Araçatuba") or h_raw in ("BRMG-UBA-DT01", "BRSP-SPO-DT1-CS", "BRSP-SPO-DT2-CS"):
+                if not ov_p.startswith("Nacional_") and not ov_p.endswith("_Radios") and not ov_p.endswith("_Radio"):
+                    s["praca"] = ov_p
+                s["cs"] = ov_cs
+                s["id_host"] = ov_id
+
+        cs_row = _norm_cs(s.get("cs") or 1)
+        p_row = str(s.get("praca") or "").strip()
+        canonical_name = format_canonical_hostname(p_row, s.get("id_host"), cs_row, raw_prev, channel_id_map)
+        if "-SMME-" not in h_raw:
+            s["raw_hostname"] = h_raw
+        s["hostname"] = canonical_name
+        m_id = canonical_name.split("-SMME-")
+        if len(m_id) == 2 and "-CS" in m_id[1]:
+            try:
+                s["id_host"] = int(m_id[1].split("-CS")[0])
+            except Exception:
+                pass
+
+        can_up = canonical_name.upper()
+        existing_hosts.add(can_up)
         existing_hosts.add(h_raw)
-        if h_raw not in hosts_map:
+
+        # Prioriza documento Firestore do host canônico; só usa h_raw legado se o CS bater (evitando colisão de 15 chars!)
+        h_doc = canonical_hosts_map.get(can_up)
+        if not h_doc and h_raw in canonical_hosts_map:
+            cand_doc = canonical_hosts_map[h_raw]
+            cand_cs = _norm_cs(cand_doc.get("cs") or cs_row)
+            if cand_cs == cs_row or len(h_raw) < 15:
+                h_doc = cand_doc
+            else:
+                # Mesmo em colisão de 15 chars, aproveita version/heartbeat do agente sem sobrescrever CS ou serviços de CS01!
+                agent_ver_only = str(cand_doc.get("agent_version") or "").strip()
+                hb_only = str(cand_doc.get("last_heartbeat") or cand_doc.get("updated_at") or "").strip()
+                if agent_ver_only and "monitorservice" in str(s.get("nome_servico") or "").lower():
+                    s["versao_instalada"] = agent_ver_only
+                    s["status_servico"] = "Em Execução"
+                    s["status_atualizacao"] = "Atualizado"
+                    s["acao_solicitada"] = "Nenhuma"
+                if hb_only:
+                    s["ultima_atualizacao"] = hb_only
+                continue
+
+        if not h_doc:
             continue
 
-        h_doc = hosts_map[h_raw]
         agent_ver = str(h_doc.get("agent_version") or "").strip()
         hb = str(h_doc.get("last_heartbeat") or h_doc.get("updated_at") or "").strip()
         s_name = str(s.get("nome_servico") or "").strip()
         s_low = s_name.lower()
         s_id = str(s.get("id") or "")
-        cs_host = _norm_cs(h_doc.get("cs") or s.get("cs") or 1)
+        cs_host = cs_row
 
-        if h_doc.get("praca") and str(h_doc.get("praca")).strip() not in ("", "N/A", "Regional"):
-            s["praca"] = str(h_doc.get("praca")).strip()
-        if h_doc.get("cs"):
-            s["cs"] = cs_host
-
-        # 1. Se o agente v1.0.21.4+ enviou services_json completo, aplica o estado 100% real de cada serviço
-        if h_raw in parsed_services_by_host and s_low in parsed_services_by_host[h_raw]:
-            real_srv = parsed_services_by_host[h_raw][s_low]
+        # 1. Se o agente v1.0.21.4+ enviou services_json completo (e para o mesmo CS), aplica o estado 100% real de cada serviço
+        srv_lookup_key = can_up if can_up in parsed_services_by_host else (h_raw if _norm_cs(h_doc.get("cs") or cs_row) == cs_row else "")
+        if srv_lookup_key and srv_lookup_key in parsed_services_by_host and s_low in parsed_services_by_host[srv_lookup_key]:
+            real_srv = parsed_services_by_host[srv_lookup_key][s_low]
             if real_srv.get("status_servico"):
                 s["status_servico"] = real_srv["status_servico"]
             if real_srv.get("versao_instalada"):
@@ -814,6 +1173,13 @@ def merge_firestore_hosts_into_cache(
                 s["ram_uso"] = str(h_doc.get("ram_uso"))
             elif s.get("ram_uso") == "48%":
                 s["ram_uso"] = "24%"
+
+        # Garante que em Florianópolis CS01 (onde FastMatching está ativo em produção) FastMatching figure como Em Execução
+        if _norm_praca(s.get("praca")) == "florianopolis" and cs_row == 1:
+            if "fastmatching" in s_low:
+                s["status_servico"] = "Em Execução"
+            elif "detectionsvc" in s_low or "trackingsvc" in s_low:
+                s["status_servico"] = "Inexistente"
 
         if agent_ver and agent_ver.lower() != "desconhecido":
             if "monitorservice" in s_low:
@@ -855,14 +1221,16 @@ def merge_firestore_hosts_into_cache(
     ]
 
     for h_key, h_doc in hosts_map.items():
-        if h_key in existing_hosts or h_key in ("BRXX-XXX-DT0X", "UNKNOWN") or h_key in decomm_set:
+        praca_val = str(h_doc.get("praca") or "Regional").strip()
+        cs_val = _norm_cs(h_doc.get("cs") or 1)
+        can_new = format_canonical_hostname(praca_val, h_doc.get("id_host"), cs_val, h_key, channel_id_map)
+        can_new_up = can_new.upper()
+        if h_key in existing_hosts or can_new_up in existing_hosts or h_key in ("BRXX-XXX-DT0X", "UNKNOWN") or h_key in decomm_set or can_new_up in decomm_set:
             continue
         agent_ver = str(h_doc.get("agent_version") or "").strip()
         if not agent_ver or agent_ver.lower() == "desconhecido":
             continue
 
-        praca_val = str(h_doc.get("praca") or "Regional").strip()
-        cs_val = _norm_cs(h_doc.get("cs") or 1)
         hb_val = str(h_doc.get("last_heartbeat") or h_doc.get("updated_at") or datetime.now(timezone.utc).isoformat()).strip()
         host_cpu = str(h_doc.get("cpu_uso") or "18%")
         host_ram = str(h_doc.get("ram_uso") or "24%")
@@ -878,9 +1246,10 @@ def merge_firestore_hosts_into_cache(
             inst_ver = real_item.get("versao_instalada") or (agent_ver if s_name == "DNA.MonitorServiceSVC" else t_ver)
             st_srv = real_item.get("status_servico") or _default_service_status_for_cs(s_name, cs_val)
             services_list.append({
-                "id": f"gcp_{h_key}_{idx}",
+                "id": f"gcp_{can_new}_{idx}",
                 "title": real_item.get("title") or "Brasil [🟢 Saudável]",
-                "hostname": h_key,
+                "hostname": can_new,
+                "raw_hostname": h_key,
                 "praca": praca_val,
                 "cs": cs_val,
                 "nome_servico": s_name,
@@ -898,6 +1267,7 @@ def merge_firestore_hosts_into_cache(
                 "status_wcf": real_item.get("status_wcf") or host_wcf,
                 "log_erro": ""
             })
+        existing_hosts.add(can_new_up)
         existing_hosts.add(h_key)
         updated_hosts_count += 1
 

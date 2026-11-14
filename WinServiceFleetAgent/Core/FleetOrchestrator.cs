@@ -59,9 +59,11 @@ namespace WinServiceFleetAgent.Core
             AutoUpdateConfig? autoUpdateConfig = null,
             RemoteCommandConfig? remoteCommandConfig = null)
         {
-            _hostname = string.IsNullOrWhiteSpace(hostnameOverride) ? Environment.MachineName : hostnameOverride;
             _configXmlPath = configXmlPath;
             _configMonitorConfigPath = configMonitorConfigPath;
+            var initMeta = MetadataReader.GetGlobalMachineMetadata(_configXmlPath, _configMonitorConfigPath);
+            string baseFallbackHost = string.IsNullOrWhiteSpace(hostnameOverride) ? Environment.MachineName : hostnameOverride;
+            _hostname = MetadataReader.BuildCanonicalHostName(initMeta, baseFallbackHost);
             _backupBaseDir = backupBaseDir;
             _tempStagingDir = tempStagingDir;
             _githubToken = githubToken;
@@ -329,8 +331,8 @@ namespace WinServiceFleetAgent.Core
                         ExeName = s.Def.ExeName
                     });
                 }
-                string currentAgentVer = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "1.0.21.3";
-                await _cloudClient.SendTelemetryAsync(metadata.Praca, metadata.CS, allBatchItems, null, metrics, currentAgentVer);
+                string currentAgentVer = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "1.0.21.5";
+                await _cloudClient.SendTelemetryAsync(metadata.Praca, metadata.CS, allBatchItems, null, metrics, currentAgentVer, metadata.IdHost);
             }
             catch (Exception exCloud)
             {

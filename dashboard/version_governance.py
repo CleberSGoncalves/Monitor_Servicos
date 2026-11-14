@@ -169,7 +169,7 @@ def add_decommissioned_host(hostname: str) -> List[str]:
 
 # Versões oficiais padrão homologadas pela engenharia
 DEFAULT_DESIRED_VERSIONS: Dict[str, str] = {
-    "DNA.MonitorServiceSVC": "1.0.21.4",
+    "DNA.MonitorServiceSVC": "1.0.21.5",
     "FastMatchingSvc": "1.1.0.0",
     "DNA.DetectionSVC": "3.4.6040.21056",
     "DNA.ConfigMonitorSVC": "4.8.0.0",

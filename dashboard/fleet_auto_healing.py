@@ -30,7 +30,7 @@ from version_governance import get_desired_versions, _is_version_up_to_date
 
 logger = logging.getLogger("fleet_auto_healing")
 
-TARGET_AGENT_VERSION = "1.0.21.4"
+TARGET_AGENT_VERSION = "1.0.21.5"
 AUTO_HEALING_LOG_FILE = DATA_DIR / "auto_healing_history.json"
 
 

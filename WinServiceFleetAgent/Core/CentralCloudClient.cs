@@ -43,16 +43,35 @@ namespace WinServiceFleetAgent.Core
         private readonly string _primaryBaseUrl;
         private readonly string _fallbackBaseUrl;
         private readonly string _hostname;
+        private readonly string _rawMachineName;
 
         public CentralCloudClient(string hostname, string? primaryUrl = null, string? fallbackUrl = null)
         {
-            _hostname = (hostname ?? Environment.MachineName).Trim().ToUpperInvariant();
+            _rawMachineName = Environment.MachineName.Trim().ToUpperInvariant();
+            string rawHost = (hostname ?? Environment.MachineName).Trim();
+            // Preserva o casing canônico {Praca}-SMME-{idHost}-CS{CS} (ex: Campo_Grande-SMME-232-CS1)
+            _hostname = rawHost.Contains("-SMME-", StringComparison.OrdinalIgnoreCase)
+                ? rawHost
+                : rawHost.ToUpperInvariant();
             _primaryBaseUrl = (primaryUrl ?? "http://10.1.30.1:8092").TrimEnd('/');
             _fallbackBaseUrl = (fallbackUrl ?? "http://localhost:8092").TrimEnd('/');
         }
 
-        private string ResolveCanonicalHostDocId(int cs)
+        private string ResolveCanonicalHostDocId(int cs, string? praca = null, string? idHost = null)
         {
+            if (_hostname.Contains("-SMME-", StringComparison.OrdinalIgnoreCase))
+            {
+                return _hostname;
+            }
+            if (!string.IsNullOrWhiteSpace(praca) && !praca.Equals("Não Informado", StringComparison.OrdinalIgnoreCase))
+            {
+                var meta = new GlobalMetadata { Praca = praca, IdHost = idHost ?? "", CS = cs > 0 ? cs : 1 };
+                string built = MetadataReader.BuildCanonicalHostName(meta, _hostname);
+                if (built.Contains("-SMME-", StringComparison.OrdinalIgnoreCase))
+                {
+                    return built;
+                }
+            }
             if (cs >= 2 && _hostname.Length == 15)
             {
                 if (_hostname.EndsWith("DT0", StringComparison.OrdinalIgnoreCase))
@@ -73,10 +92,11 @@ namespace WinServiceFleetAgent.Core
             List<ServiceBatchItem> services,
             List<ChannelStatusItem>? channels,
             PerformanceMetrics? metrics,
-            string agentVersion)
+            string agentVersion,
+            string? idHost = null)
         {
             bool gcpSuccess = false;
-            string docHost = ResolveCanonicalHostDocId(cs);
+            string docHost = ResolveCanonicalHostDocId(cs, praca, idHost);
 
             var srvTelemetryList = services.Select(s =>
             {
@@ -134,7 +154,7 @@ namespace WinServiceFleetAgent.Core
                         using var gcpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
                         gcpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
-                        string mask = "updateMask.fieldPaths=hostname&updateMask.fieldPaths=last_heartbeat&updateMask.fieldPaths=status&updateMask.fieldPaths=agent_version&updateMask.fieldPaths=praca&updateMask.fieldPaths=cs&updateMask.fieldPaths=services_count&updateMask.fieldPaths=services_running&updateMask.fieldPaths=updated_at&updateMask.fieldPaths=services_json&updateMask.fieldPaths=cpu_uso&updateMask.fieldPaths=ram_uso&updateMask.fieldPaths=disco_d_livre&updateMask.fieldPaths=uptime&updateMask.fieldPaths=status_wcf";
+                        string mask = "updateMask.fieldPaths=hostname&updateMask.fieldPaths=raw_hostname&updateMask.fieldPaths=id_host&updateMask.fieldPaths=last_heartbeat&updateMask.fieldPaths=status&updateMask.fieldPaths=agent_version&updateMask.fieldPaths=praca&updateMask.fieldPaths=cs&updateMask.fieldPaths=services_count&updateMask.fieldPaths=services_running&updateMask.fieldPaths=updated_at&updateMask.fieldPaths=services_json&updateMask.fieldPaths=cpu_uso&updateMask.fieldPaths=ram_uso&updateMask.fieldPaths=disco_d_livre&updateMask.fieldPaths=uptime&updateMask.fieldPaths=status_wcf";
                         string url = $"https://firestore.googleapis.com/v1/projects/{GoogleCloudAuth.ProjectId}/databases/(default)/documents/fleet_hosts/{docHost}?{mask}";
 
                         int runningCount = services.Count(s => s.StatusServico != null && s.StatusServico.Equals("Em Execução", StringComparison.OrdinalIgnoreCase));
@@ -142,6 +162,8 @@ namespace WinServiceFleetAgent.Core
                         var fields = new Dictionary<string, object>
                         {
                             ["hostname"] = new { stringValue = docHost },
+                            ["raw_hostname"] = new { stringValue = _rawMachineName },
+                            ["id_host"] = new { stringValue = idHost ?? "" },
                             ["praca"] = new { stringValue = praca ?? "" },
                             ["cs"] = new { integerValue = cs.ToString() },
                             ["agent_version"] = new { stringValue = agentVersion },
@@ -306,6 +328,12 @@ namespace WinServiceFleetAgent.Core
 
                     string queryUrl = $"https://firestore.googleapis.com/v1/projects/{GoogleCloudAuth.ProjectId}/databases/(default)/documents:runQuery";
 
+                    var candidateHosts = new List<object> { new { stringValue = _hostname } };
+                    if (!string.Equals(_hostname, _rawMachineName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        candidateHosts.Add(new { stringValue = _rawMachineName });
+                    }
+
                     var structuredQuery = new
                     {
                         structuredQuery = new
@@ -323,8 +351,8 @@ namespace WinServiceFleetAgent.Core
                                             fieldFilter = new
                                             {
                                                 field = new { fieldPath = "hostname" },
-                                                op = "EQUAL",
-                                                value = new { stringValue = _hostname }
+                                                op = "IN",
+                                                value = new { arrayValue = new { values = candidateHosts.ToArray() } }
                                             }
                                         },
                                         new

@@ -25,11 +25,27 @@ def test_disabled_service_normalization():
     assert is_service_running("Desativado") is False
 
 
+def test_canonical_hostname_format_from_config_xml():
+    """Valida o padrão determinístico {Praca}-SMME-{idHost}-CS{CS} extraído do config.xml."""
+    from gcp_sync import format_canonical_hostname
+    from sharepoint_sync import get_cached_data
+
+    assert format_canonical_hostname("Campo Grande", 232, 1) == "Campo_Grande-SMME-232-CS1"
+    assert format_canonical_hostname("Florianópolis", 230, 1) == "Florianopolis-SMME-230-CS1"
+    assert format_canonical_hostname("Anápolis", 240, 2) == "Anapolis-SMME-240-CS2"
+
+    data = get_cached_data()
+    hosts = {s["hostname"] for s in data["services"] if s.get("hostname")}
+    assert "Campo_Grande-SMME-232-CS1" in hosts
+    assert "Florianopolis-SMME-230-CS1" in hosts
+    assert all("-SMME-" in h and "-CS" in h for h in hosts), "Todos os hosts devem usar o padrão {Praca}-SMME-{idHost}-CS{CS}"
+
+
 def test_florianopolis_cs01_fastmatching_nominal():
-    """Valida que Florianópolis CS01 (CS-BRSC-FNS-DT0) reporta FastMatchingSvc ativo (PRIMARY / NOMINAL) sem falso P0."""
+    """Valida que Florianópolis CS01 (Florianopolis-SMME-230-CS1) reporta FastMatchingSvc ativo (PRIMARY / NOMINAL) sem falso P0."""
     snap = build_detection_fleet_snapshot()
-    fns = next((s for s in snap["sites"] if s["hostname"] == "CS-BRSC-FNS-DT0"), None)
-    assert fns is not None, "Florianópolis CS-BRSC-FNS-DT0 deve existir no snapshot CS01"
+    fns = next((s for s in snap["sites"] if s["hostname"] == "Florianopolis-SMME-230-CS1"), None)
+    assert fns is not None, "Florianópolis Florianopolis-SMME-230-CS1 deve existir no snapshot CS01"
     assert fns["active_engine"] == "FastMatchingSvc"
     assert fns["engine_tier"] == "PRIMARY"
     assert fns["health_status"] == "NOMINAL"
@@ -38,10 +54,10 @@ def test_florianopolis_cs01_fastmatching_nominal():
 
 
 def test_campo_grande_cs01_no_false_conflict():
-    """Valida que Campo Grande CS01 (BRMS-CPE-DT01) com FastMatching Desativado opera em FALLBACK sem falso Conflito Concorrente."""
+    """Valida que Campo Grande CS01 (Campo_Grande-SMME-232-CS1) com FastMatching Desativado opera em FALLBACK sem falso Conflito Concorrente."""
     snap = build_detection_fleet_snapshot()
-    cpe = next((s for s in snap["sites"] if s["hostname"] == "BRMS-CPE-DT01"), None)
-    assert cpe is not None, "Campo Grande BRMS-CPE-DT01 deve existir no snapshot CS01"
+    cpe = next((s for s in snap["sites"] if s["hostname"] == "Campo_Grande-SMME-232-CS1"), None)
+    assert cpe is not None, "Campo Grande Campo_Grande-SMME-232-CS1 deve existir no snapshot CS01"
     assert cpe["active_engine"] == "DNA.DetectionSVC"
     assert cpe["engine_tier"] == "FALLBACK"
     assert cpe["pipeline_services"]["fast_matching"]["running"] is False
@@ -59,8 +75,7 @@ def test_zero_false_conflicts_and_zero_false_p0_across_fleet():
     assert summary["nominal_fastmatching"] + summary["fallback_detection_svc"] == summary["total_sites"]
 
     hostnames = {s["hostname"] for s in snap["sites"]}
-    assert "CS-BRSP-SOR-DT0" not in hostnames, "Host puramente CS02 não deve aparecer na aba CS01"
-    assert "BRSP-RADIO-BKP1" not in hostnames, "Host puramente CS03 não deve aparecer na aba CS01"
+    assert all(h.endswith("-CS1") for h in hostnames), "Apenas nós CS1 canônicos devem aparecer na aba de Detecção CS01"
 
 
 def test_gcp_sync_parses_services_json_and_prevents_synthetic_conflict(monkeypatch):
@@ -70,9 +85,10 @@ def test_gcp_sync_parses_services_json_and_prevents_synthetic_conflict(monkeypat
     fake_hosts_map = {
         "TEST-HOST-CS01": {
             "hostname": "TEST-HOST-CS01",
+            "id_host": "801",
             "praca": "Praça Teste",
             "cs": 1,
-            "agent_version": "1.0.21.4",
+            "agent_version": "1.0.21.5",
             "last_heartbeat": "2026-11-13T21:00:00Z",
             "services_json": json.dumps([
                 {"nome_servico": "FastMatchingSvc", "status_servico": "Em Execução", "versao_instalada": "1.1.0.0", "cpu_uso": "9%", "ram_uso": "140 MB"},
@@ -81,9 +97,10 @@ def test_gcp_sync_parses_services_json_and_prevents_synthetic_conflict(monkeypat
         },
         "TEST-SYNTH-CS01": {
             "hostname": "TEST-SYNTH-CS01",
+            "id_host": "802",
             "praca": "Praça Synth",
             "cs": 1,
-            "agent_version": "1.0.21.3",
+            "agent_version": "1.0.21.5",
             "last_heartbeat": "2026-11-13T21:00:00Z",
         },
     }
@@ -95,14 +112,14 @@ def test_gcp_sync_parses_services_json_and_prevents_synthetic_conflict(monkeypat
     mock_channels = []
     merge_firestore_hosts_into_cache(mock_services, mock_channels)
 
-    fm = next(s for s in mock_services if s["hostname"] == "TEST-HOST-CS01" and s["nome_servico"] == "FastMatchingSvc")
-    det = next(s for s in mock_services if s["hostname"] == "TEST-HOST-CS01" and s["nome_servico"] == "DNA.DetectionSVC")
+    fm = next(s for s in mock_services if s["hostname"] == "Praca_Teste-SMME-801-CS1" and s["nome_servico"] == "FastMatchingSvc")
+    det = next(s for s in mock_services if s["hostname"] == "Praca_Teste-SMME-801-CS1" and s["nome_servico"] == "DNA.DetectionSVC")
     assert fm["status_servico"] == "Em Execução"
     assert fm["ram_uso"] == "140 MB"
     assert det["status_servico"] == "Desativado"
 
-    fm_syn = next(s for s in mock_services if s["hostname"] == "TEST-SYNTH-CS01" and s["nome_servico"] == "FastMatchingSvc")
-    det_syn = next(s for s in mock_services if s["hostname"] == "TEST-SYNTH-CS01" and s["nome_servico"] == "DNA.DetectionSVC")
+    fm_syn = next(s for s in mock_services if s["hostname"] == "Praca_Synth-SMME-802-CS1" and s["nome_servico"] == "FastMatchingSvc")
+    det_syn = next(s for s in mock_services if s["hostname"] == "Praca_Synth-SMME-802-CS1" and s["nome_servico"] == "DNA.DetectionSVC")
     assert fm_syn["status_servico"] == "Desativado"
     assert det_syn["status_servico"] == "Em Execução"
 
@@ -122,11 +139,11 @@ def test_links_monitoring_no_fake_hash_packet_loss():
     assert all(m["packet_loss_pct"] == 0.0 for m in metrics)
 
 
-def test_version_governance_v10214():
-    """Verifica alinhamento da governança central na versão 1.0.21.4."""
+def test_version_governance_v10215():
+    """Verifica alinhamento da governança central na versão 1.0.21.5."""
     desired = get_desired_versions()
-    assert desired["DNA.MonitorServiceSVC"] == "1.0.21.4"
-    evol = get_service_fleet_evolution("DNA.MonitorServiceSVC", "1.0.21.4")
+    assert desired["DNA.MonitorServiceSVC"] == "1.0.21.5"
+    evol = get_service_fleet_evolution("DNA.MonitorServiceSVC", "1.0.21.5")
     assert evol["updated_pct"] >= 98.0
 
 

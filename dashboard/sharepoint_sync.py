@@ -182,11 +182,28 @@ def sanitize_and_recalculate_cache(force_refresh_time: bool = False, save_to_dis
             services = clean_services
             save_to_disk = True
 
-        # Mescla em tempo real os heartbeats e versões reportados diretamente no Google Cloud Firestore
+        # Mescla em tempo real os heartbeats, versões e nomes canônicos ({Praca}-SMME-{idHost}-CS{CS}) do Google Cloud Firestore
         try:
-            from gcp_sync import merge_firestore_hosts_into_cache
+            from gcp_sync import merge_firestore_hosts_into_cache, format_canonical_hostname
+            had_legacy_names = any("-SMME-" not in str(s.get("hostname") or "") for s in services)
             merged_gcp = merge_firestore_hosts_into_cache(services, channels)
-            if merged_gcp > 0:
+            if any("-SMME-" not in str(s.get("hostname") or "") for s in services):
+                for s in services:
+                    h_prev = str(s.get("raw_hostname") or s.get("hostname") or "").strip()
+                    if h_prev and "-SMME-" not in h_prev:
+                        s["raw_hostname"] = h_prev.upper()
+                        s["hostname"] = format_canonical_hostname(s.get("praca"), s.get("id_host"), s.get("cs"), h_prev)
+            # Deduplica por (hostname canônico, nome_servico) preservando o registro mais recente
+            dedup_map = {}
+            for s in services:
+                k = (str(s.get("hostname") or "").strip(), str(s.get("nome_servico") or "").strip().lower())
+                if k not in dedup_map or str(s.get("ultima_atualizacao") or "") >= str(dedup_map[k].get("ultima_atualizacao") or ""):
+                    dedup_map[k] = s
+            if len(dedup_map) != len(services):
+                services = list(dedup_map.values())
+                _cached_data["services"] = services
+                save_to_disk = True
+            if merged_gcp > 0 or had_legacy_names:
                 save_to_disk = True
         except Exception:
             pass
@@ -284,10 +301,11 @@ def sanitize_and_recalculate_cache(force_refresh_time: bool = False, save_to_dis
             try:
 
                 if len(channels) > 20 and len(services) > 50:
-
-                    with open(CACHE_FILE, "w", encoding="utf-8") as f:
-
+                    import os as _os
+                    tmp_cache = CACHE_FILE.with_suffix(".json.tmp")
+                    with open(tmp_cache, "w", encoding="utf-8") as f:
                         json.dump(_cached_data, f, ensure_ascii=False)
+                    _os.replace(tmp_cache, CACHE_FILE)
 
             except Exception:
 

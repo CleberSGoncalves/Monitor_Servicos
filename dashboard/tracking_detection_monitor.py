@@ -1340,26 +1340,24 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
 
         h_upper = hostname.upper()
 
-        is_dt02_or_cs2 = any(tag in h_upper for tag in ["DT02", "DT-02", "DT2", "-02", "CS02", "CS2", "DT03", "DT-03", "DT3", "-03", "CS03", "CS3"])
+        is_dt02_or_cs2 = (
+            cs_int in (2, 3)
+            or any(tag in h_upper for tag in ["DT02", "DT-02", "DT2", "-02", "CS02", "CS2", "-CS2", "DT03", "DT-03", "DT3", "-03", "CS03", "CS3", "-CS3"])
+        )
 
         # Se for fisicamente nó secundário DT02/DT03/CS2/CS3, descarta sumariamente do pipeline de detecção CS01
         if is_dt02_or_cs2:
             continue
 
-        # Normalização canônica de hostname e consolidação de nós irmãos da CS01 (ex: Campinas)
-        canonical_host = hostname
-        if "CAS-ATRIA" in h_upper:
-            canonical_host = "BRSP-CAS-ATRIA--DT01"
-            praca = "Campinas"
-        elif h_upper.endswith("-") and not h_upper.endswith("--DT01"):
-            canonical_host = f"{hostname}-DT01" if not hostname.endswith("--") else f"{hostname}DT01"
-
-        # Se o host físico é CS01, mas algum serviço específico no SharePoint veio com CS: 2.0 por engano administrativo:
-        # Apenas descarta se NÃO for serviço crítico da esteira de detecção e telemetria CS01
-        svc_name_raw = str(s.get("nome_servico") or "").strip().lower()
-        is_pipeline_svc = any(k in svc_name_raw for k in ["fastmatching", "detectionsvc", "configmonitor", "tracking", "monitorservice"])
-        if cs_int in (2, 3) and not is_pipeline_svc:
-            continue
+        # Normalização canônica determinística {Praca}-SMME-{idHost}-CS1
+        if "-SMME-" in hostname:
+            canonical_host = hostname
+        else:
+            try:
+                from gcp_sync import format_canonical_hostname
+                canonical_host = format_canonical_hostname(praca, s.get("id_host"), 1, hostname)
+            except Exception:
+                canonical_host = hostname
 
         if canonical_host not in cs01_hosts_map:
             cs01_hosts_map[canonical_host] = {

@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -17,6 +18,56 @@ namespace WinServiceFleetAgent.Core
 
     public static class MetadataReader
     {
+        /// <summary>
+        /// Constrói o identificador canônico determinístico da máquina a partir do config.xml / configxml.xml:
+        /// Formato oficial: {Praca_Com_Underscore}-SMME-{idHost}-CS{CS}
+        /// Exemplo: Campo_Grande-SMME-232-CS1
+        /// </summary>
+        public static string BuildCanonicalHostName(GlobalMetadata? metadata, string? fallbackMachineName = null)
+        {
+            string fallback = string.IsNullOrWhiteSpace(fallbackMachineName) ? Environment.MachineName : fallbackMachineName.Trim();
+            if (metadata == null)
+            {
+                return fallback;
+            }
+
+            string rawPraca = (metadata.Praca ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(rawPraca) ||
+                rawPraca.Equals("Não Informado", StringComparison.OrdinalIgnoreCase) ||
+                rawPraca.Equals("Nao Informado", StringComparison.OrdinalIgnoreCase))
+            {
+                return fallback;
+            }
+
+            // Remove acentos mantendo maiúsculas/minúsculas originais de cada palavra (ex: "Campo Grande" -> "Campo_Grande")
+            string normalized = rawPraca.Normalize(NormalizationForm.FormD);
+            var sb = new StringBuilder();
+            foreach (char c in normalized)
+            {
+                var cat = CharUnicodeInfo.GetUnicodeCategory(c);
+                if (cat != UnicodeCategory.NonSpacingMark)
+                {
+                    sb.Append(c);
+                }
+            }
+
+            string cleanPraca = sb.ToString().Normalize(NormalizationForm.FormC);
+            cleanPraca = Regex.Replace(cleanPraca, @"[^A-Za-z0-9]+", "_").Trim('_');
+            if (string.IsNullOrWhiteSpace(cleanPraca))
+            {
+                return fallback;
+            }
+
+            string cleanIdHost = Regex.Replace((metadata.IdHost ?? string.Empty).Trim(), @"[^A-Za-z0-9]", "");
+            if (string.IsNullOrWhiteSpace(cleanIdHost))
+            {
+                cleanIdHost = "0";
+            }
+
+            int csNum = metadata.CS > 0 ? metadata.CS : 1;
+            return $"{cleanPraca}-SMME-{cleanIdHost}-CS{csNum}";
+        }
+
         public static GlobalMetadata GetGlobalMachineMetadata(string configXmlPath, string configMonitorConfigPath)
         {
             var metadata = new GlobalMetadata();
@@ -101,21 +152,28 @@ namespace WinServiceFleetAgent.Core
                     // Regex Fallback para idHost
                     if (string.IsNullOrWhiteSpace(metadata.IdHost))
                     {
-                        var matchIdHost = Regex.Match(xmlText, @"<idHost>([^<]+)</idHost>", RegexOptions.IgnoreCase);
+                        var matchIdHost = Regex.Match(xmlText, @"<idHost>\s*([^<\s]+)\s*</idHost>", RegexOptions.IgnoreCase);
                         if (matchIdHost.Success)
                         {
                             metadata.IdHost = matchIdHost.Groups[1].Value.Trim();
                         }
                     }
+
+                    // Regex Fallback para CS
+                    var matchCs = Regex.Match(xmlText, @"<CS>\s*(\d+)\s*</CS>", RegexOptions.IgnoreCase);
+                    if (matchCs.Success && int.TryParse(matchCs.Groups[1].Value.Trim(), out int regexCs))
+                    {
+                        metadata.CS = regexCs;
+                    }
                 }
                 else
                 {
-                    FileLogger.Log($"[MetadataReader] Arquivo configxml.xml não encontrado nos diretórios locais.");
+                    FileLogger.Log($"[MetadataReader] Arquivo config.xml / configxml.xml não encontrado nos diretórios locais.");
                 }
             }
             catch (Exception ex)
             {
-                FileLogger.LogError($"Erro ao ler configxml.xml", ex);
+                FileLogger.LogError($"Erro ao ler config.xml / configxml.xml", ex);
             }
 
             // 2. Leitura do WCFMainURL no DNA.ConfigMonitorSVC.exe.config
@@ -169,15 +227,21 @@ namespace WinServiceFleetAgent.Core
 
             if (File.Exists(altPath)) return altPath;
 
-            // Busca nas pastas padrão comuns
+            // Busca nas pastas padrão comuns (suporta tanto config.xml quanto configxml.xml)
             string[] candidatePaths = new[]
             {
-                @"D:\MediaDNA_V2\data\configxml.xml",
-                @"C:\MediaDNA_V2\data\configxml.xml",
-                @"D:\MediaDNA_V2\configxml.xml",
-                @"C:\MediaDNA_V2\configxml.xml",
+                @"D:\MediaDNA_V2\data\config\config.xml",
+                @"C:\MediaDNA_V2\data\config\config.xml",
                 @"D:\MediaDNA_V2\data\config\configxml.xml",
                 @"C:\MediaDNA_V2\data\config\configxml.xml",
+                @"D:\MediaDNA_V2\data\config.xml",
+                @"C:\MediaDNA_V2\data\config.xml",
+                @"D:\MediaDNA_V2\data\configxml.xml",
+                @"C:\MediaDNA_V2\data\configxml.xml",
+                @"D:\MediaDNA_V2\config.xml",
+                @"C:\MediaDNA_V2\config.xml",
+                @"D:\MediaDNA_V2\configxml.xml",
+                @"C:\MediaDNA_V2\configxml.xml",
                 @"D:\MediaDNA_V2\applications\ConfigMonitorSVC\configxml.xml",
                 @"C:\MediaDNA_V2\applications\ConfigMonitorSVC\configxml.xml"
             };
@@ -190,15 +254,15 @@ namespace WinServiceFleetAgent.Core
             // Busca recursiva profunda nos drives D:\ e C:\MediaDNA_V2 se existirem
             try
             {
-                if (Directory.Exists(@"D:\MediaDNA_V2"))
+                foreach (var rootDir in new[] { @"D:\MediaDNA_V2", @"C:\MediaDNA_V2" })
                 {
-                    var found = Directory.GetFiles(@"D:\MediaDNA_V2", "configxml.xml", SearchOption.AllDirectories).FirstOrDefault();
-                    if (!string.IsNullOrEmpty(found)) return found;
-                }
-                if (Directory.Exists(@"C:\MediaDNA_V2"))
-                {
-                    var found = Directory.GetFiles(@"C:\MediaDNA_V2", "configxml.xml", SearchOption.AllDirectories).FirstOrDefault();
-                    if (!string.IsNullOrEmpty(found)) return found;
+                    if (Directory.Exists(rootDir))
+                    {
+                        var foundXml = Directory.GetFiles(rootDir, "configxml.xml", SearchOption.AllDirectories).FirstOrDefault();
+                        if (!string.IsNullOrEmpty(foundXml)) return foundXml;
+                        var foundCfg = Directory.GetFiles(rootDir, "config.xml", SearchOption.AllDirectories).FirstOrDefault();
+                        if (!string.IsNullOrEmpty(foundCfg)) return foundCfg;
+                    }
                 }
             }
             catch { }
