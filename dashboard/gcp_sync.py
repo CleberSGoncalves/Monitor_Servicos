@@ -8,6 +8,7 @@ Permite persistência sub-segundo da telemetria da frota, status de serviços, c
 """
 
 import os
+import re
 import json
 import logging
 from datetime import datetime, timezone
@@ -683,7 +684,21 @@ def format_canonical_hostname(
 def resolve_raw_hostname_for_command(hostname: str) -> str:
     """Retorna o hostname NetBIOS legado associado a um nome canônico (se existir), para disparo duplo durante a transição."""
     h_up = str(hostname or "").strip().upper()
-    return _CANONICAL_TO_RAW_HOST.get(h_up, "")
+    if h_up in _CANONICAL_TO_RAW_HOST:
+        return _CANONICAL_TO_RAW_HOST[h_up]
+    try:
+        from sharepoint_sync import get_cached_data
+        c_data = get_cached_data()
+        for s in c_data.get("services", []):
+            s_host = str(s.get("hostname") or "").strip().upper()
+            if s_host == h_up:
+                raw = str(s.get("raw_hostname") or "").strip().upper()
+                if raw and "-SMME-" not in raw:
+                    _CANONICAL_TO_RAW_HOST[h_up] = raw
+                    return raw
+    except Exception:
+        pass
+    return ""
 
 
 def dispatch_remote_command_to_firestore(
@@ -1474,15 +1489,23 @@ def update_gcs_manifest_version(service_name: str, target_version: str) -> bool:
         now_iso = datetime.now(timezone.utc).isoformat()
         manifest["updated_at"] = now_iso
 
+        sha_val = None
+        sha_file = Path(__file__).resolve().parent.parent / "releases" / f"{s_clean}_v{clean_v}.zip.sha256"
+        if sha_file.exists():
+            try:
+                sha_val = sha_file.read_text(encoding="utf-8").strip()
+            except Exception:
+                pass
+
         for key in (s_clean, alt_key):
             entry = services_node.get(key, {})
             entry["version"] = clean_v
             entry["latest_version"] = clean_v
-            if not entry.get("file_name"):
-                entry["file_name"] = f"{s_clean}_v{clean_v}.zip"
-                entry["package_name"] = f"{s_clean}_v{clean_v}.zip"
-            if not entry.get("download_url"):
-                entry["download_url"] = f"https://storage.googleapis.com/kantar-fleet-releases/{entry['file_name']}"
+            entry["file_name"] = f"{s_clean}_v{clean_v}.zip"
+            entry["package_name"] = f"{s_clean}_v{clean_v}.zip"
+            entry["download_url"] = f"https://storage.googleapis.com/kantar-fleet-releases/{entry['file_name']}"
+            if sha_val:
+                entry["sha256"] = sha_val
             entry["updated_at"] = now_iso
             services_node[key] = entry
 

@@ -177,3 +177,18 @@ def test_batch_rollout_progress_cockpit_and_js():
     assert "dispatchBatchPendingUpdate" in js_content
 
 
+def test_resolve_raw_hostname_and_firestore_merge_no_re_error():
+    """Valida que resolve_raw_hostname_for_command funciona com fallback do cache e merge_firestore_hosts_into_cache não tem NameError."""
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "dashboard"))
+    from gcp_sync import resolve_raw_hostname_for_command, merge_firestore_hosts_into_cache
+    from sharepoint_sync import get_cached_data
+
+    alias = resolve_raw_hostname_for_command("Anapolis-SMME-240-CS2")
+    assert alias == "BRGO-ANA-DT02"
+
+    data = get_cached_data()
+    merged = merge_firestore_hosts_into_cache(data.get("services", []), data.get("channels", []), force=False)
+    assert isinstance(merged, int)
+
+

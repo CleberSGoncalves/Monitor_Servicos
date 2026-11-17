@@ -1773,12 +1773,12 @@ function renderFleetBatchProgressData(evolData) {
         if (isUpToDate) {
             batchState = "completed";
             completedCount++;
-        } else if (h.acao_solicitada === "Atualizar") {
-            batchState = "in_progress";
-            inProgressCount++;
         } else if (!h.is_online_today || h.category === "offline") {
             batchState = "failed";
             failedCount++;
+        } else if (h.acao_solicitada === "Atualizar") {
+            batchState = "in_progress";
+            inProgressCount++;
         } else {
             batchState = "queued";
             queuedCount++;
