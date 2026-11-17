@@ -480,14 +480,16 @@ _FALLBACK_IDHOST_MAP: Dict[Tuple[str, int], int] = {
     ("brasilia", 3): 186,
     ("jatai", 1): 243,
     ("jatai", 2): 244,
-    ("araxa", 1): 327,
-    ("araxa", 2): 328,
+    ("araxa", 1): 321,
+    ("araxa", 2): 321,
     ("corumba", 1): 273,
     ("corumba", 2): 274,
     ("cuiaba", 1): 227,
     ("cuiaba", 2): 228,
-    ("altamira", 1): 321,
-    ("altamira", 2): 322,
+    ("altamira", 1): 271,
+    ("altamira", 2): 271,
+    ("aracatuba", 1): 239,
+    ("aracatuba", 2): 239,
     ("belem", 1): 221,
     ("belem", 2): 222,
     ("parauapebas", 1): 315,
@@ -502,8 +504,8 @@ _FALLBACK_IDHOST_MAP: Dict[Tuple[str, int], int] = {
     ("foz do iguacu", 2): 248,
     ("cabo frio", 1): 293,
     ("cabo frio", 2): 294,
-    ("ariquemes", 1): 311,
-    ("ariquemes", 2): 312,
+    ("ariquemes", 1): 261,
+    ("ariquemes", 2): 261,
     ("cacoal", 1): 313,
     ("cacoal", 2): 314,
     ("bage", 1): 114,
@@ -521,8 +523,8 @@ _FALLBACK_IDHOST_MAP: Dict[Tuple[str, int], int] = {
     ("ribeirao preto", 2): 208,
     ("santos", 1): 209,
     ("santos", 2): 210,
-    ("araguaina", 1): 317,
-    ("araguaina", 2): 318,
+    ("araguaina", 1): 238,
+    ("araguaina", 2): 238,
     ("manaus", 1): 287,
     ("manaus", 2): 288,
     ("montes claros", 1): 251,
@@ -1008,8 +1010,16 @@ def merge_firestore_hosts_into_cache(
         if k_fb not in channel_id_map or k_fb[0] == "campo grande":
             channel_id_map[k_fb] = v_fb
 
+    def _doc_freshness(d_in: Any) -> str:
+        if not d_in or not isinstance(d_in, dict):
+            return ""
+        return str(d_in.get("last_heartbeat") or d_in.get("updated_at") or d_in.get("channels_updated_at") or "").strip()
+
     # Indexa documentos do Firestore tanto por h_key original quanto pelo identificador canônico {Praca}-SMME-{idHost}-CS{CS}
     canonical_hosts_map: Dict[str, Dict[str, Any]] = {}
+    praca_cs_doc_map: Dict[Tuple[str, int], Dict[str, Any]] = {}
+    parsed_services_by_praca_cs: Dict[Tuple[str, int], Dict[str, Dict[str, Any]]] = {}
+
     for h_key, h_doc in list(hosts_map.items()):
         p_doc = str(h_doc.get("praca") or "").strip()
         cs_doc = _norm_cs(h_doc.get("cs") or 1)
@@ -1021,8 +1031,18 @@ def merge_firestore_hosts_into_cache(
             id_doc = id_doc or ov_id
             cs_doc = ov_cs
         can_key = format_canonical_hostname(p_doc, id_doc, cs_doc, raw_doc, channel_id_map).upper()
-        canonical_hosts_map[can_key] = h_doc
-        canonical_hosts_map[h_key] = h_doc
+        
+        doc_hb = _doc_freshness(h_doc)
+        if can_key not in canonical_hosts_map or doc_hb > _doc_freshness(canonical_hosts_map[can_key]):
+            canonical_hosts_map[can_key] = h_doc
+        if h_key not in canonical_hosts_map or doc_hb > _doc_freshness(canonical_hosts_map[h_key]):
+            canonical_hosts_map[h_key] = h_doc
+
+        p_norm = _norm_praca(p_doc or h_doc.get("praca"))
+        if p_norm:
+            k_pcs = (p_norm, cs_doc)
+            if k_pcs not in praca_cs_doc_map or doc_hb > _doc_freshness(praca_cs_doc_map[k_pcs]):
+                praca_cs_doc_map[k_pcs] = h_doc
 
         raw_srv_json = h_doc.get("services_json")
         if raw_srv_json and isinstance(raw_srv_json, str):
@@ -1036,10 +1056,11 @@ def merge_firestore_hosts_into_cache(
                     if s_map:
                         parsed_services_by_host[h_key] = s_map
                         parsed_services_by_host[can_key] = s_map
+                        if p_norm:
+                            parsed_services_by_praca_cs[(p_norm, cs_doc)] = s_map
             except Exception:
                 pass
         raw_ch_json = h_doc.get("channels_json")
-        p_norm = _norm_praca(p_doc or h_doc.get("praca"))
         cs_int = cs_doc
         if raw_ch_json and isinstance(raw_ch_json, str) and p_norm:
             try:
@@ -1142,8 +1163,7 @@ def merge_firestore_hosts_into_cache(
                 pass
 
         can_up = canonical_name.upper()
-        existing_hosts.add(can_up)
-        existing_hosts.add(h_raw)
+        p_row_norm = _norm_praca(p_row)
 
         # Prioriza documento Firestore do host canônico; só usa h_raw legado se o CS bater (evitando colisão de 15 chars!)
         h_doc = canonical_hosts_map.get(can_up)
@@ -1176,6 +1196,25 @@ def merge_firestore_hosts_into_cache(
                     s["ultima_atualizacao"] = hb_only
                 continue
 
+        # Reconciliação direta por (Praça, CS): se a máquina reportou com id_host real diferente do SharePoint legado
+        # (ex: Altamira CS2 id 271 vs 322 legado, Araxá CS2 id 321 vs 328, Ariquemes CS1 id 261 vs 311)
+        if (p_row_norm, cs_row) in praca_cs_doc_map:
+            cand_pcs = praca_cs_doc_map[(p_row_norm, cs_row)]
+            if not h_doc or _doc_freshness(cand_pcs) > _doc_freshness(h_doc):
+                h_doc = cand_pcs
+                real_id = cand_pcs.get("id_host")
+                if real_id:
+                    try:
+                        s["id_host"] = int(real_id)
+                    except Exception:
+                        s["id_host"] = real_id
+                    canonical_name = format_canonical_hostname(p_row, real_id, cs_row, raw_prev, channel_id_map)
+                    s["hostname"] = canonical_name
+                    can_up = canonical_name.upper()
+
+        existing_hosts.add(can_up)
+        existing_hosts.add(h_raw)
+
         if not h_doc:
             continue
 
@@ -1188,8 +1227,11 @@ def merge_firestore_hosts_into_cache(
 
         # 1. Se o agente v1.0.21.4+ enviou services_json completo (e para o mesmo CS), aplica o estado 100% real de cada serviço
         srv_lookup_key = can_up if can_up in parsed_services_by_host else (h_raw if _norm_cs(h_doc.get("cs") or cs_row) == cs_row else "")
-        if srv_lookup_key and srv_lookup_key in parsed_services_by_host and s_low in parsed_services_by_host[srv_lookup_key]:
-            real_srv = parsed_services_by_host[srv_lookup_key][s_low]
+        real_srv_map = parsed_services_by_host.get(srv_lookup_key, {})
+        if not real_srv_map and (p_row_norm, cs_row) in parsed_services_by_praca_cs:
+            real_srv_map = parsed_services_by_praca_cs[(p_row_norm, cs_row)]
+        if real_srv_map and s_low in real_srv_map:
+            real_srv = real_srv_map[s_low]
             if real_srv.get("status_servico"):
                 s["status_servico"] = real_srv["status_servico"]
             if real_srv.get("versao_instalada"):
@@ -1287,9 +1329,13 @@ def merge_firestore_hosts_into_cache(
         "Tanium Client"
     ]
 
+    present_praca_cs = {(_norm_praca(s.get("praca")), _norm_cs(s.get("cs"))) for s in services_list}
     for h_key, h_doc in hosts_map.items():
         praca_val = str(h_doc.get("praca") or "Regional").strip()
         cs_val = _norm_cs(h_doc.get("cs") or 1)
+        p_val_norm = _norm_praca(praca_val)
+        if (p_val_norm, cs_val) in present_praca_cs:
+            continue
         can_new = format_canonical_hostname(praca_val, h_doc.get("id_host"), cs_val, h_key, channel_id_map)
         can_new_up = can_new.upper()
         if h_key in existing_hosts or can_new_up in existing_hosts or h_key in ("BRXX-XXX-DT0X", "UNKNOWN") or h_key in decomm_set or can_new_up in decomm_set:
@@ -1487,6 +1533,21 @@ def merge_firestore_hosts_into_cache(
                     r["status_servico"] = "Em Execução"
                 elif "mediaconverter" in sn_cur or "mediarecorder" in sn_cur:
                     r["status_servico"] = "Inexistente"
+
+    # Deduplica rigorosamente services_list por (nome_servico, praca, cs)
+    # Mantém o registro com timestamp mais recente e nome canônico (-SMME-)
+    dedup_svcs: Dict[Tuple[str, str, int], Tuple[Tuple[str, int], Dict[str, Any]]] = {}
+    for item in services_list:
+        sn_k = str(item.get("nome_servico") or "").strip().lower()
+        pr_k = _norm_praca(item.get("praca"))
+        cs_k = _norm_cs(item.get("cs") or 1)
+        dedup_k = (sn_k, pr_k, cs_k)
+        hb_val = str(item.get("ultima_atualizacao") or "")
+        is_can = 1 if "-SMME-" in str(item.get("hostname") or "") else 0
+        score = (hb_val, is_can)
+        if dedup_k not in dedup_svcs or score > dedup_svcs[dedup_k][0]:
+            dedup_svcs[dedup_k] = (score, item)
+    services_list[:] = [val[1] for val in dedup_svcs.values()]
 
     return updated_hosts_count
 
