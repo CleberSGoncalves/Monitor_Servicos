@@ -1420,6 +1420,7 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
         if canonical_host not in cs01_hosts_map:
             cs01_hosts_map[canonical_host] = {
                 "hostname": canonical_host,
+                "raw_hostname": hostname,
                 "praca": praca,
                 "cs": 1,
                 "cpu_uso": s.get("cpu_uso", "N/A"),
@@ -1826,11 +1827,11 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
         # Parintins CS-BRAM-PAR-DT- 119 MB, Uruguaiana BRRS-UGN-ATRIA- 10 MB) onde o nó CS02 sobrescreveu o status
         # com 'Parado'/'Inexistente', mas o processo no CS01 possui WorkingSet RAM ativo medido:
         if not fm_running and not det_running:
-            if det_ram_mb is not None and det_ram_mb >= 50:
+            if det_ram_mb is not None and det_ram_mb >= 50 and not det_is_uninstalled and det_status.lower() != "inexistente":
                 det_running = True
                 det_status = "Em Execução"
                 det_is_uninstalled = False
-            elif fm_ram_mb is not None and fm_ram_mb >= 150:
+            elif fm_ram_mb is not None and fm_ram_mb >= 150 and not fm_is_uninstalled and fm_status.lower() != "inexistente":
                 fm_running = True
                 fm_status = "Em Execução"
                 fm_is_uninstalled = False
@@ -1953,16 +1954,16 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
             severity_label = f"Alerta (P1) - Fila de Tracking Acumulada ({tracking_age_minutes}m)"
             incident_description = f"Fila de XMLs estagnada em D:\\mediadna_V2\\data\\tracking. Gargalo no envio WCF (DNA.ConfigMonitorSVC) ou bloqueio de rede WCF."
             pipeline_bottleneck = "CONFIGMONITOR_WCF"
-        elif engine_tier == "FALLBACK":
-            health_status = "WARNING"
-            severity_label = "Aviso (P2) - Operando via DetectionSVC (Legado)"
-            incident_description = "Deteccao operando via DNA.DetectionSVC (.NET/OpenCV classico). FastMatchingSvc primario inativo."
-            pipeline_bottleneck = "NONE"
         elif not trk_running and engine_tier == "FALLBACK":
             health_status = "WARNING"
-            severity_label = "Atencao - TrackingSVC Parado (Modo Fallback)"
+            severity_label = "Atenção - TrackingSVC Parado (Modo DetectionSVC)"
             incident_description = "DNA.TrackingSVC inoperante. Em modo DetectionSVC, a analise de qualidade em data\\detection esta suspensa."
             pipeline_bottleneck = "TRACKING"
+        elif engine_tier == "FALLBACK":
+            health_status = "NOMINAL"
+            severity_label = "Nominal (DetectionSVC .NET)"
+            incident_description = "Pipeline operando normalmente via DNA.DetectionSVC (.NET/OpenCV homologado)."
+            pipeline_bottleneck = "NONE"
         else:
             health_status = "NOMINAL"
             severity_label = "Nominal (FastMatching C++)"
@@ -2211,9 +2212,7 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
 
         site_item = {
             "hostname": hostname,
-
-
-
+            "raw_hostname": host_info.get("raw_hostname", hostname),
             "praca": host_info["praca"],
 
 
@@ -2711,7 +2710,17 @@ def diagnose_detection_pipeline_with_ai(hostname: str) -> Dict[str, Any]:
 
 
 
-    target_site = next((s for s in snapshot["sites"] if s["hostname"].lower() == hostname.lower()), None)
+    h_tgt = hostname.strip().lower()
+    target_site = next(
+        (
+            s for s in snapshot["sites"]
+            if s.get("hostname", "").strip().lower() == h_tgt
+            or s.get("raw_hostname", "").strip().lower() == h_tgt
+            or h_tgt in s.get("hostname", "").strip().lower()
+            or h_tgt.replace("-", "_") in s.get("hostname", "").strip().lower().replace("-", "_")
+        ),
+        None
+    )
 
 
 

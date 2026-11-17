@@ -14084,20 +14084,11 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
 
         if (isOffline) {
             const hoursAgo = site.agent_comm?.hours_since_last_seen || 0;
-            // Host com atraso de telemetria transitório (< 24h) pertence ao painel de delay da frota, NÃO a incidente de host morto
             if (hoursAgo < 24.0) {
                 return;
             }
-
-            sev = "P1";
-            sevLabel = "ALERTA (P1)";
-            catLabel = "Host Desconectado";
-            catIcon = "fa-network-wired";
-            title = `Host Desconectado (Telemetria Ausente > 24h)`;
-            const commAgo = formatNocHumanTime(hoursAgo);
-            telText = `Telemetria suspensa há ${commAgo} | Processos locais indeterminados | Verifique DNA.MonitorServiceSVC`;
-            summaryText = `Host CS01 sem envio de telemetria há ${commAgo}. Os serviços no servidor físico podem estar operando normalmente (ex: FastMatching em execução), porém os dados centrais estão suspensos.`;
-
+            // Se o host físico já foi processado em hostsMap, não duplica alertas sintéticos no cockpit N1
+            return;
         } else if (hStatus === "CRITICAL") {
 
 

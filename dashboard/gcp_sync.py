@@ -583,6 +583,12 @@ _RAW_HOST_IDENTITY_OVERRIDES: Dict[str, Tuple[str, int, int]] = {
     "BRSP-RADIO-BKP4": ("Belo_Horizonte_Radio", 377, 3),
     "CS-BRSP-REPUCOM": ("Nacional_Repucom", 501, 1),
     "CS-BRSP-ATRIA-O": ("Nacional_Atria", 502, 2),
+    "BRGO-GNA-ATRIA-": ("Goiânia", 324, 2),
+    "BRGO-RVD-ATRIA-": ("Rio Verde", 242, 2),
+    "BRSP-STS-ATRIA-": ("Santos", 210, 2),
+    "BRGO-JT-ATRIA-D": ("Jataí", 244, 2),
+    "BRRS-UGN-ATRIA-": ("Uruguaiana", 225, 1),
+    "BRRJ-RJO-ATRIA-": ("Rio de Janeiro", 237, 1),
     "PAYTV-PREM-NET-": ("Nacional_PayTV_NET", 510, 3),
     "PAYTV-SKY-BL01-": ("Nacional_SKY_BL01", 511, 3),
     "PAYTV-SKY-BL02-": ("Nacional_SKY_BL02", 512, 3),
@@ -1153,8 +1159,19 @@ def merge_firestore_hosts_into_cache(
                 if agent_ver_only and "monitorservice" in str(s.get("nome_servico") or "").lower():
                     s["versao_instalada"] = agent_ver_only
                     s["status_servico"] = "Em Execução"
-                    s["status_atualizacao"] = "Atualizado"
-                    s["acao_solicitada"] = "Nenhuma"
+                    des_v = str(s.get("versao_desejada") or "").strip().lstrip("vV")
+                    cur_v = str(agent_ver_only or "").strip().lstrip("vV")
+                    if des_v and des_v.lower() != "nenhuma":
+                        if cur_v == des_v:
+                            s["status_atualizacao"] = "Atualizado"
+                            s["acao_solicitada"] = "Nenhuma"
+                        else:
+                            if s.get("acao_solicitada") == "Atualizar":
+                                s["status_atualizacao"] = "Em Progresso"
+                            else:
+                                s["status_atualizacao"] = "Desatualizado"
+                    else:
+                        s["status_atualizacao"] = "Atualizado"
                 if hb_only:
                     s["ultima_atualizacao"] = hb_only
                 continue
@@ -1212,8 +1229,19 @@ def merge_firestore_hosts_into_cache(
             if "monitorservice" in s_low:
                 s["versao_instalada"] = agent_ver
                 s["status_servico"] = "Em Execução"
-                s["status_atualizacao"] = "Atualizado"
-                s["acao_solicitada"] = "Nenhuma"
+                des_v = str(s.get("versao_desejada") or "").strip().lstrip("vV")
+                cur_v = str(agent_ver or "").strip().lstrip("vV")
+                if des_v and des_v.lower() != "nenhuma":
+                    if cur_v == des_v:
+                        s["status_atualizacao"] = "Atualizado"
+                        s["acao_solicitada"] = "Nenhuma"
+                    else:
+                        if s.get("acao_solicitada") == "Atualizar":
+                            s["status_atualizacao"] = "Em Progresso"
+                        else:
+                            s["status_atualizacao"] = "Desatualizado"
+                else:
+                    s["status_atualizacao"] = "Atualizado"
                 if h_doc.get("cpu_uso") and h_doc.get("cpu_uso") != "N/A":
                     s["cpu_uso"] = str(h_doc.get("cpu_uso"))
                 if h_doc.get("ram_uso") and h_doc.get("ram_uso") != "N/A":

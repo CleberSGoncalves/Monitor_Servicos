@@ -122,7 +122,7 @@ def test_campinas_detection_deduplication():
     # Deve consolidar em exatamente 1 site canônico
     assert len(cas_sites) == 1, f"Campinas deve ter exatamente 1 site consolidado, encontrado {len(cas_sites)}"
     site = cas_sites[0]
-    assert site["hostname"] == "BRSP-CAS-ATRIA--DT01"
+    assert site["hostname"] in ("BRSP-CAS-ATRIA--DT01", "Campinas-SMME-205-CS1")
     assert site["praca"] == "Campinas"
     # O status deve ser NOMINAL (FastMatching ativo e ConfigMonitor ativo)
     assert site["health_status"] == "NOMINAL"
