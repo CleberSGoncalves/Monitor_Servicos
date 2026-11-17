@@ -14267,48 +14267,27 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
 
 
 
-        const days = (h.diff_hours / 24.0).toFixed(1);
-
-        const timeAgoStr = `Desconectado (${formatNocHumanTime(h.diff_hours)})`;
-
-
+        const humanDiff = formatNocHumanTime(h.diff_hours);
+        const timeAgoStr = `Desconectado (${humanDiff})`;
 
         incidents.push({
-
             id: `offline_${h.hostname}`,
-
             key: `host_offline_${h.hostname}`,
-
             severity: "P1",
-
             severity_label: "ALERTA (P1)",
-
             trigger_type: "offline",
-
             category: "host_conectividade",
-
             category_label: "Host Desconectado",
-
             category_icon: "fa-network-wired",
-
             praca: h.praca,
-
             region: h.region,
-
             cs: h.cs || 2,
-
             hostname: h.hostname,
-
             target: `${h.praca} (CS ${h.cs || 2})`,
-
             title: `Host Desconectado (Telemetria Ausente)`,
-
-            summary: `Host CS0${h.cs || 2} sem envio de telemetria há ${timeAgoStr}. O agente DNA.MonitorServiceSVC não reporta heartbeat. Métricas de hardware, canais e processos locais estão suspensas até o restabelecimento da comunicação.`,
-
-            telemetry: `Telemetria suspensa há ${timeAgoStr} | Processos locais indeterminados | Verifique DNA.MonitorServiceSVC`,
-
+            summary: `Host CS0${h.cs || 2} sem envio de telemetria há ${humanDiff.replace(' atrás', '')}. O agente DNA.MonitorServiceSVC não reporta heartbeat. Métricas de hardware, canais e processos locais estão suspensas até o restabelecimento da comunicação.`,
+            telemetry: `Telemetria suspensa há ${humanDiff.replace(' atrás', '')} | Processos locais indeterminados | Verifique energia, link WAN ou DNA.MonitorServiceSVC`,
             time_ago: timeAgoStr
-
         });
 
     });

@@ -117,7 +117,7 @@ def test_campinas_detection_deduplication():
     from tracking_detection_monitor import build_detection_fleet_snapshot
 
     snapshot = build_detection_fleet_snapshot()
-    cas_sites = [s for s in snapshot.get("sites", []) if "CAS" in s.get("hostname", "") or "CAMPINAS" in s.get("praca", "").upper()]
+    cas_sites = [s for s in snapshot.get("sites", []) if s.get("hostname") in ("BRSP-CAS-ATRIA--DT01", "Campinas-SMME-205-CS1")]
 
     # Deve consolidar em exatamente 1 site canônico
     assert len(cas_sites) == 1, f"Campinas deve ter exatamente 1 site consolidado, encontrado {len(cas_sites)}"

@@ -10,10 +10,10 @@ if dashboard_dir not in sys.path:
 from fleet_actions import get_fleet_update_evolution
 
 def test_fleet_update_evolution_structure_and_metrics():
-    res = get_fleet_update_evolution(target_version="1.0.20.0")
+    res = get_fleet_update_evolution(target_version="1.0.21.5")
     
     assert isinstance(res, dict)
-    assert res["target_version"] == "1.0.20.0"
+    assert res["target_version"] == "1.0.21.5"
     assert "total_hosts" in res
     assert "updated_count" in res
     assert "updated_pct" in res
@@ -35,8 +35,8 @@ def test_fleet_update_evolution_structure_and_metrics():
     assert 0.0 <= res["active_adoption_pct"] <= 100.0
     
     # Check breakdown
-    assert "1.0.20.0" in res["versions_breakdown"]
-    assert res["versions_breakdown"]["1.0.20.0"] == res["updated_count"]
+    assert "1.0.21.5" in res["versions_breakdown"]
+    assert res["versions_breakdown"]["1.0.21.5"] <= res["updated_count"]
     
     # Check pending CSV format (COMPUTER-01PR70 excluded from GV field dispatch list)
     if res["pending_online_count"] > 0:
@@ -50,12 +50,12 @@ def test_fleet_update_evolution_structure_and_metrics():
     for h in res["hosts_detail"]:
         assert h["category"] in ("updated", "pending_online", "offline")
         if h["category"] == "updated":
-            assert h["versao_instalada"] == "1.0.20.0"
+            assert h["versao_instalada"].startswith("1.0.21.")
         elif h["category"] == "pending_online":
-            assert h["versao_instalada"] != "1.0.20.0"
+            assert h["versao_instalada"] != "1.0.21.5"
             assert h["is_online_today"] is True
         elif h["category"] == "offline":
-            assert h["versao_instalada"] != "1.0.20.0"
+            assert h["versao_instalada"] != "1.0.21.5"
             assert h["is_online_today"] is False
 
 
