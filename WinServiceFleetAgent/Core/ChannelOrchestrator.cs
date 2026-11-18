@@ -741,7 +741,8 @@ namespace WinServiceFleetAgent.Core
                 var latestFile = dir.EnumerateFiles("*.*")
                     .Where(f => f.Extension.Equals(".mp4", StringComparison.OrdinalIgnoreCase) || 
                                 f.Extension.Equals(".asf", StringComparison.OrdinalIgnoreCase) ||
-                                f.Extension.Equals(".wmv", StringComparison.OrdinalIgnoreCase))
+                                f.Extension.Equals(".wmv", StringComparison.OrdinalIgnoreCase) ||
+                                f.Extension.Equals(".tmp", StringComparison.OrdinalIgnoreCase))
                     .OrderByDescending(f => f.LastWriteTimeUtc)
                     .FirstOrDefault();
 
@@ -780,6 +781,11 @@ namespace WinServiceFleetAgent.Core
                         return "Gravando (.ASF BKP)";
                     }
                     return $"⚠️ Travado ({minutesSinceLastFile:F0}m sem Mídia)";
+                }
+
+                if (latestFile.Extension.Equals(".tmp", StringComparison.OrdinalIgnoreCase))
+                {
+                    return "Sim (Captura Ativa .TMP)";
                 }
 
                 if (latestFile.Extension.Equals(".asf", StringComparison.OrdinalIgnoreCase) || isMediaConverterRunning)

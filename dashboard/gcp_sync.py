@@ -540,8 +540,8 @@ _FALLBACK_IDHOST_MAP: Dict[Tuple[str, int], int] = {
     ("rio de janeiro", 3): 371,
     ("porto alegre", 1): 203,
     ("porto alegre", 2): 204,
-    ("uruguaiana", 1): 225,
-    ("uruguaiana", 2): 226,
+    ("uruguaiana", 1): 306,
+    ("uruguaiana", 2): 307,
     ("campinas", 1): 205,
     ("campinas", 2): 206,
     ("s.j. rio preto", 1): 181,
@@ -589,7 +589,9 @@ _RAW_HOST_IDENTITY_OVERRIDES: Dict[str, Tuple[str, int, int]] = {
     "BRGO-RVD-ATRIA-": ("Rio Verde", 242, 2),
     "BRSP-STS-ATRIA-": ("Santos", 210, 2),
     "BRGO-JT-ATRIA-D": ("Jataí", 244, 2),
-    "BRRS-UGN-ATRIA-": ("Uruguaiana", 225, 1),
+    "BRRS-UGN-ATRIA-": ("Uruguaiana", 307, 2),
+    "BRRS-UGN-ATRIA--DT01": ("Uruguaiana", 306, 1),
+    "BRRS-UGN-ATRIA--DT02": ("Uruguaiana", 307, 2),
     "BRRJ-RJO-ATRIA-": ("Rio de Janeiro", 237, 1),
     "PAYTV-PREM-NET-": ("Nacional_PayTV_NET", 510, 3),
     "PAYTV-SKY-BL01-": ("Nacional_SKY_BL01", 511, 3),
@@ -1091,8 +1093,8 @@ def merge_firestore_hosts_into_cache(
         "CS-BRAM-MNS-DT-": ("Manaus", 287, 1, "DNA.DetectionSVC"),
         "BRSP-STS-ATRIA-": ("Santos", 209, 1, "DNA.DetectionSVC"),
         "BRGO-JT-ATRIA-D": ("Jataí", 332, 1, "DNA.DetectionSVC"),
-        "BRRS-UGN-ATRIA-": ("Uruguaiana", 225, 1, "DNA.DetectionSVC"),
-        "BRRJ-RJO-ATRIA-": ("Rio de Janeiro", 237, 1, "DNA.DetectionSVC"),
+        "BRRS-UGN-ATRIA-": ("Uruguaiana", 306, 1, "Atria Capture"),
+        "BRRJ-RJO-ATRIA-": ("Rio de Janeiro", 237, 1, "FastMatchingSvc"),
     }
     present_praca_cs = {(_norm_praca(s.get("praca")), _norm_cs(s.get("cs"))) for s in services_list}
     extra_cs1_rows: List[Dict[str, Any]] = []
@@ -1119,11 +1121,18 @@ def merge_firestore_hosts_into_cache(
                 clone["cs"] = target_cs1
                 s_low = sn.lower()
                 if active_engine == "FastMatchingSvc":
-                    if "fastmatching" in s_low:
+                    if "fastmatching" in s_low or "atria" in s_low:
                         clone["status_servico"] = "Em Execução"
                     elif "detectionsvc" in s_low or "trackingsvc" in s_low:
                         clone["status_servico"] = "Inexistente"
                     elif "mediarecorder" in s_low or "mediaconverter" in s_low:
+                        clone["status_servico"] = "Inexistente"
+                    else:
+                        clone["status_servico"] = "Em Execução"
+                elif active_engine == "Atria Capture":
+                    if "atria" in s_low or "fastmatching" in s_low or "configmonitor" in s_low or "filetransfer" in s_low or "monitorservice" in s_low:
+                        clone["status_servico"] = "Em Execução"
+                    elif "detectionsvc" in s_low or "trackingsvc" in s_low or "mediarecorder" in s_low or "mediaconverter" in s_low:
                         clone["status_servico"] = "Inexistente"
                     else:
                         clone["status_servico"] = "Em Execução"

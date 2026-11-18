@@ -1880,21 +1880,34 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
             else:
                 active_engine_label = f"Telemetria Ausente ({agent_comm_label})"
 
-        # Idade de Tracking e Fila
+        # Idade de Tracking e Fila (Baseado estritamente em telemetria real de pasta ou métricas do agente)
+        # NUNCA injetar atrasos sintéticos arbitrários sem prova física em disco.
+        queue_depth_real = int(cfg_svc.get("tracking_queue_depth") or 0) if isinstance(cfg_svc, dict) else 0
+        real_age_reported = float(cfg_svc.get("oldest_xml_age_minutes") or 0.0) if isinstance(cfg_svc, dict) else 0.0
+
         if is_agent_stale or not is_telemetry_fresh_for_p0:
             tracking_age_minutes = 0
             is_stalled = False
+        elif real_age_reported > 0:
+            tracking_age_minutes = int(real_age_reported)
+            is_stalled = tracking_age_minutes >= 30
+        elif queue_depth_real > 20 and not cfg_running:
+            tracking_age_minutes = 45
+            is_stalled = True
+        elif not cfg_running and cfg_is_uninstalled:
+            tracking_age_minutes = 0
+            is_stalled = False
         elif not cfg_running:
-            tracking_age_minutes = 65
-            is_stalled = True
+            tracking_age_minutes = 0
+            is_stalled = False
         elif not trk_running and engine_tier == "FALLBACK":
-            tracking_age_minutes = 70
-            is_stalled = True
+            tracking_age_minutes = 0
+            is_stalled = False
         elif engine_tier == "NONE":
             tracking_age_minutes = 0
             is_stalled = False
         else:
-            tracking_age_minutes = 8
+            tracking_age_minutes = 0
             is_stalled = False
 
         if is_stalled and not is_agent_stale:
@@ -1955,10 +1968,16 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
             incident_description = f"Fila de XMLs estagnada em D:\\mediadna_V2\\data\\tracking. Gargalo no envio WCF (DNA.ConfigMonitorSVC) ou bloqueio de rede WCF."
             pipeline_bottleneck = "CONFIGMONITOR_WCF"
         elif not trk_running and engine_tier == "FALLBACK":
-            health_status = "WARNING"
-            severity_label = "Atenção - TrackingSVC Parado (Modo DetectionSVC)"
-            incident_description = "DNA.TrackingSVC inoperante. Em modo DetectionSVC, a analise de qualidade em data\\detection esta suspensa."
-            pipeline_bottleneck = "TRACKING"
+            if trk_is_uninstalled or str(trk_status or "").lower() in ("inexistente", "não instalado", "nao instalado", "desativado", ""):
+                health_status = "NOMINAL"
+                severity_label = "Nominal (DetectionSVC .NET)"
+                incident_description = "Pipeline operando via DNA.DetectionSVC (.NET) sem necessidade de DNA.TrackingSVC."
+                pipeline_bottleneck = "NONE"
+            else:
+                health_status = "WARNING"
+                severity_label = "Atenção - TrackingSVC Parado (Modo DetectionSVC)"
+                incident_description = "DNA.TrackingSVC inoperante. Em modo DetectionSVC, a analise de qualidade em data\\detection esta suspensa."
+                pipeline_bottleneck = "TRACKING"
         elif engine_tier == "FALLBACK":
             health_status = "NOMINAL"
             severity_label = "Nominal (DetectionSVC .NET)"

@@ -12878,30 +12878,46 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
         const normHPraca = normalizeNocStr(h.praca || '');
 
         // A. Motor de Gravação: Atria Capture vs DNA.MediaRecorderSVC
-        const atria = hostSvcs.find(s => s.nome_servico === "Atria Capture");
-        const mrec = hostSvcs.find(s => s.nome_servico === "DNA.MediaRecorderSVC");
+        const atria = hostSvcs.find(s => {
+            const sn = (s.nome_servico || '').toLowerCase();
+            return sn === "atria capture" || sn.includes("atria") || sn.includes("digitaltv") || sn.includes("dtvcapture");
+        });
+        const mrec = hostSvcs.find(s => (s.nome_servico || '').toLowerCase().includes("mediarecorder"));
         const atriaRun = atria && anyStatusRunning(atria.status_servico || atria.status);
         const mrecRun = mrec && anyStatusRunning(mrec.status_servico || mrec.status);
 
-        // Se o host tem canais ativos gravando MP4/MP3 ou Atria com tuner conectado / gravando .ASF BKP, a gravação NÃO está paralisada
+        // Se o host tem canais ativos gravando MP4/MP3 ou Atria com tuner conectado / gravando .ASF BKP / .TMP, a gravação NÃO está paralisada
         const hostHasActiveRecording = (channelsList || []).some(c => {
             const cHost = normalizeNocStr(c.host || c.hostname || '');
             const cPraca = normalizeNocStr(c.cidade || c.praca || '');
             const cCs = parseInt(c.cs || c.id_cs || 1);
             const matchesHost = (cHost && (cHost === hLow || cHost.includes(hLow) || hLow.includes(cHost))) || 
-                                (cPraca && normHPraca && cPraca === normHPraca && cCs === csNum);
+                                (cPraca && normHPraca && cPraca === normHPraca && (cCs === csNum || !c.cs || !h.cs));
             if (!matchesHost) return false;
 
             const mp4 = String(c.gravando_mp4 || '').toLowerCase();
             const mp3 = String(c.gravando_mp3 || '').toLowerCase();
             const tuner = String(c.status_tuner || '').toLowerCase();
-            const isRec = (mp4.includes("sim") || mp4.includes("gravando") || mp4.includes("asf") || mp4.includes("rest")) && !mp4.includes("travado") && !mp4.includes("erro");
+            const isRec = (mp4.includes("sim") || mp4.includes("gravando") || mp4.includes("asf") || mp4.includes("tmp") || mp4.includes("rest")) && !mp4.includes("travado") && !mp4.includes("erro");
             const isRecAudio = (mp3.includes("sim") || mp3.includes("gravando")) && !mp3.includes("travado");
             const isTunerWorking = tuner.includes("working") || tuner.includes("lock") || 
                                    ((tuner.includes("connect") || tuner.includes("conect")) && !tuner.includes("disconnect") && !tuner.includes("desconect"));
             const hasSignal = c.qualidade_sinal != null && parseFloat(c.qualidade_sinal) > 0;
 
             return isRec || isRecAudio || isTunerWorking || hasSignal;
+        });
+
+        // Se a praça possui qualquer canal com gravação ativa ou tuner sintonizado (caso de Uruguaiana, etc.)
+        const pracaHasActiveRecording = (channelsList || []).some(c => {
+            const cPraca = normalizeNocStr(c.cidade || c.praca || '');
+            if (!cPraca || !normHPraca || cPraca !== normHPraca) return false;
+            const mp4 = String(c.gravando_mp4 || '').toLowerCase();
+            const tuner = String(c.status_tuner || '').toLowerCase();
+            const isRec = (mp4.includes("sim") || mp4.includes("gravando") || mp4.includes("asf") || mp4.includes("tmp") || mp4.includes("rest")) && !mp4.includes("travado") && !mp4.includes("erro");
+            const isTunerWorking = tuner.includes("working") || tuner.includes("lock") || 
+                                   ((tuner.includes("connect") || tuner.includes("conect")) && !tuner.includes("disconnect") && !tuner.includes("desconect"));
+            const hasSignal = c.qualidade_sinal != null && parseFloat(c.qualidade_sinal) > 0;
+            return isRec || isTunerWorking || hasSignal;
         });
 
         const atriaRamMb = atria ? parseRamMetric(atria.ram_uso || atria.ram)?.mb || 0 : 0;
@@ -12912,7 +12928,8 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
         // 1. Se qualquer canal do host está gravando ou com tuner TBS conectado/lockado, a gravação NÃO está paralisada!
         // 2. Se Atria está em execução ou com RAM ativa (> 0% ou >= 20MB), a gravação está nominal.
         // 3. Se MediaRecorder está em execução, a gravação está nominal.
-        const isRecordingEngineRunning = atriaRun || atriaHasActiveRam || mrecRun || hostHasActiveRecording;
+        // 4. Se a praça possui canais com captura/sintonização ativa, a gravação está nominal.
+        const isRecordingEngineRunning = atriaRun || atriaHasActiveRam || mrecRun || hostHasActiveRecording || pracaHasActiveRecording;
         const hasRecordingComponent = atria || mrec;
         const recordingParalyzed = !isRecordingEngineRunning && hasRecordingComponent;
 
@@ -13348,13 +13365,24 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
             } catch(e) {}
         }
 
-        // Regra Férrea Anti-Alarme Falso Estagnado:
-        // Se a notificação tem mais de 24 horas (diffMin > 1440) mas o tuner está 'Connected with tuner. WORKING.' ou locked,
-        // a emissora está no ar e o registro antigo estagnado do SharePoint deve ser suprimido da fila de incidentes de tempo real do N1.
+        // Regra Férrea Anti-Alarme Falso Estagnado / Zumbi no N1:
+        // 1. Se a notificação tem mais de 24 horas (diffMin > 1440) mas o tuner está 'Connected with tuner. WORKING.' ou locked, suprime.
+        // 2. Se a notificação é crônica com mais de 48 horas (diffMin > 2880) sem reconfirmação recente (ex: placas analógicas desativadas há semanas, como ESPN 2 Nacional há 454h),
+        //    trata-se de inventário / manutenção física crônica e NUNCA de interrupção operacional de transmissão P0 em tempo real.
+        // 3. Se for canal analógico gravando em formato de backup (ASF/BKP/TMP), a captura está ativa.
         const tunerSt = String(c.status_tuner || '').toLowerCase();
         const isTunerWorking = tunerSt.includes('working') || tunerSt.includes('lock') || 
                                ((tunerSt.includes('connect') || tunerSt.includes('conect')) && !tunerSt.includes('disconnect') && !tunerSt.includes('desconect'));
+        const mp4St = String(c.gravando_mp4 || '').toLowerCase();
+        const isRecAnalogOk = isAnalog && (mp4St.includes('grav') || mp4St.includes('asf') || mp4St.includes('bkp') || mp4St.includes('sim'));
+
         if (diffMin > 1440 && isTunerWorking) {
+            return;
+        }
+        if (isRecAnalogOk) {
+            return;
+        }
+        if (diffMin > 2880) {
             return;
         }
 

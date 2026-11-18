@@ -107,7 +107,7 @@ namespace WinServiceFleetAgent.Core
 
         /// <summary>Nomes de processo do ecossistema Atria (GUI + receivers filhos).</summary>
         public static readonly string[] AtriaProcessNames = { "DigitalTVCapture", "AtriaCapture", "Atria", "DigitalTVReceiver" };
-        private static readonly string[] AtriaMainProcessNames = { "DigitalTVCapture", "AtriaCapture", "Atria" };
+        private static readonly string[] AtriaMainProcessNames = { "DigitalTVCapture", "AtriaCapture", "Atria", "DigitalTVReceiver" };
 
         /// <summary>Retorna a sessão de usuário ativa (Console/RDP/TeamViewer) ou null se ninguém estiver logado.</summary>
         public static uint? GetActiveUserSessionId()

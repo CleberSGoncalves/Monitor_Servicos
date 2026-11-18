@@ -225,6 +225,49 @@ namespace WinServiceFleetAgent.Core
                     }
                 }
 
+                if (!File.Exists(exeFullPath) && srv.ServiceName.Equals("Atria Capture", StringComparison.OrdinalIgnoreCase))
+                {
+                    string[] atriaPaths =
+                    {
+                        @"D:\MediaDNA_V2\applications\DTVCapture64\DigitalTVCapture.exe",
+                        @"D:\MediaDNA_V2\applications\DTVCapture64\DigitalTVReceiver.exe",
+                        @"D:\MediaDNA_V2\applications\DTVCapture\DigitalTVCapture.exe",
+                        @"D:\MediaDNA_V2\applications\DTVCapture\DigitalTVReceiver.exe",
+                        @"C:\MediaDNA_V2\applications\DTVCapture64\DigitalTVCapture.exe",
+                        @"C:\MediaDNA_V2\applications\DTVCapture64\DigitalTVReceiver.exe",
+                        @"C:\MediaDNA_V2\applications\DTVCapture\DigitalTVCapture.exe",
+                        @"C:\MediaDNA_V2\applications\DTVCapture\DigitalTVReceiver.exe"
+                    };
+                    foreach (var p in atriaPaths)
+                    {
+                        if (File.Exists(p))
+                        {
+                            exeFullPath = p;
+                            break;
+                        }
+                    }
+                    if (!File.Exists(exeFullPath))
+                    {
+                        foreach (var pName in InteractiveProcessLauncher.AtriaProcessNames)
+                        {
+                            var procs = Process.GetProcessesByName(pName);
+                            if (procs.Length > 0)
+                            {
+                                try
+                                {
+                                    string? pPath = procs[0].MainModule?.FileName;
+                                    if (!string.IsNullOrEmpty(pPath) && File.Exists(pPath))
+                                    {
+                                        exeFullPath = pPath;
+                                        break;
+                                    }
+                                }
+                                catch { }
+                            }
+                        }
+                    }
+                }
+
                 if (!File.Exists(exeFullPath) && srv.ServiceName.Equals("DNA.MonitorServiceSVC", StringComparison.OrdinalIgnoreCase))
                 {
                     string localExe = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, srv.ExeName);
@@ -242,18 +285,19 @@ namespace WinServiceFleetAgent.Core
 
                 if (isStandaloneApp)
                 {
-                    if (exeExists)
+                    bool anyProc = InteractiveProcessLauncher.IsAtriaRunningAnySession();
+                    if (exeExists || anyProc)
                     {
                         // Instância só na Sessão 0 = sem interface (fantasma). Se há usuário logado, trata como "Parado"
                         // para disparar a reabertura correta na sessão interativa.
                         bool procRunning = InteractiveProcessLauncher.IsAtriaRunningInUserSession() ||
-                                           (InteractiveProcessLauncher.IsAtriaRunningAnySession() && InteractiveProcessLauncher.GetActiveUserSessionId() == null);
-                        if (!procRunning && InteractiveProcessLauncher.IsAtriaRunningAnySession())
+                                           (anyProc && InteractiveProcessLauncher.GetActiveUserSessionId() == null);
+                        if (!procRunning && anyProc)
                         {
                             FileLogger.Log("[FleetOrchestrator] 👻 Atria rodando apenas na Sessão 0 (sem janela) com usuário logado. Marcado como 'Parado' para reabertura interativa.");
                         }
                         statusServico = procRunning ? "Em Execução" : "Parado";
-                        installedVer = VersionInspector.GetExecutableVersion(exeFullPath);
+                        installedVer = exeExists ? VersionInspector.GetExecutableVersion(exeFullPath) : "Instalado (Processo Ativo)";
                     }
                     else
                     {
