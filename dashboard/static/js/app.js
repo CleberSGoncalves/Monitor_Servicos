@@ -3140,13 +3140,9 @@ function filterServicesTable() {
 
         const cpuNum = parseFloat(String(s.cpu_uso || "0").replace("%", "").replace("<", "")) || 0;
 
-
-
-        const cpuBadge = cpuNum >= 25 ? `<span class="badge badge-yellow" title="Pico no host: ${s.cpu_uso} (Proc individual: ~0.8%)">🔥 ${s.cpu_uso}</span>` :
-
-
-
-                         (cpuNum >= 10 ? `<span class="badge badge-blue">${s.cpu_uso}</span>` : `<span style="color: var(--text-muted);">${s.cpu_uso}</span>`);
+        const cpuBadge = cpuNum >= 92 ? `<span class="badge badge-red" title="Carga Crítica no host: ${s.cpu_uso}">🚨 ${s.cpu_uso}</span>` :
+                         (cpuNum >= 75 ? `<span class="badge badge-yellow" title="Carga Moderada: ${s.cpu_uso}">⚡ ${s.cpu_uso}</span>` :
+                         (cpuNum >= 20 ? `<span class="badge badge-blue">${s.cpu_uso}</span>` : `<span style="color: var(--text-muted);">${s.cpu_uso}</span>`));
 
 
 
@@ -12793,29 +12789,29 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
         }
         const hwState = window._nocHardwareStateTracker[hostKey];
 
-        // CPU: Exige carga sustentada >= 90% por pelo menos 3 ciclos sucessivos (ou 3 min)
-        // com histerese (só limpa quando cai abaixo de 80%), eliminando alertas falsos por picos rápidos transitórios
-        if (h.cpu_val >= 90) {
+        // CPU: Exige carga severa sustentada >= 92% por pelo menos 4 ciclos sucessivos (ou ~5 min)
+        // com histerese (só limpa quando cai abaixo de 75%), eliminando ruídos operacionais de decodificação ou picos normais de gravação
+        if (h.cpu_val >= 92) {
             hwState.cpuSpikeCount = (hwState.cpuSpikeCount || 0) + 1;
-            if (hwState.cpuSpikeCount >= 3) {
+            if (hwState.cpuSpikeCount >= 4) {
                 hwState.isCpuCritical = true;
             }
-        } else if (h.cpu_val < 80) {
+        } else if (h.cpu_val < 75) {
             hwState.cpuSpikeCount = 0;
             hwState.isCpuCritical = false;
         }
 
         if (hwState.isCpuCritical) {
             h.has_critical_hw = true;
-            h.critical_reasons.push(`CPU ${h.cpu_val}% (Sustentado)`);
+            h.critical_reasons.push(`CPU ${h.cpu_val}% (Sustentado > 5m)`);
         }
 
-        // RAM: Exige uso físico >= 92% ou consumo de processo de serviço > 6000MB (Atria nominal usa 2.5GB a 4.5GB com 16 canais)
+        // RAM: Exige uso físico >= 94% sustentado ou consumo de processo de serviço > 6500MB (Atria nominal usa 2.5GB a 4.5GB com 16 canais)
         if (h.ram_info) {
-            if (h.ram_info.isPct && h.ram_info.pct >= 92) {
+            if (h.ram_info.isPct && h.ram_info.pct >= 94) {
                 h.has_critical_hw = true;
                 h.critical_reasons.push(`RAM ${h.ram_info.pct}%`);
-            } else if (!h.ram_info.isPct && h.ram_info.mb >= 6000) {
+            } else if (!h.ram_info.isPct && h.ram_info.mb >= 6500) {
                 h.has_critical_hw = true;
                 h.critical_reasons.push(`RAM ${Math.round(h.ram_info.mb)}MB (Processo Crítico)`);
             }

@@ -105,9 +105,16 @@ def test_hardware_telemetry_and_anti_flapping():
     with open(app_js, "r", encoding="utf-8") as f:
         js = f.read()
 
-    # Valida janela sustentada de CPU e histerese
+    # Valida janela sustentada de CPU e histerese calibradas com limiar elevado
     assert '_nocHardwareStateTracker' in js
-    assert 'h.cpu_val >= 90' in js
-    assert 'hwState.cpuSpikeCount >= 3' in js
-    assert 'h.cpu_val < 80' in js
+    assert 'h.cpu_val >= 92' in js
+    assert 'hwState.cpuSpikeCount >= 4' in js
+    assert 'h.cpu_val < 75' in js
     assert 'h.diff_hours >= 2.0' in js
+
+    # Valida limiares operacionais no thresholds_manager.py
+    th_file = os.path.join("dashboard", "thresholds_manager.py")
+    with open(th_file, "r", encoding="utf-8") as f:
+        th_content = f.read()
+    assert '"value": 92.0' in th_content
+    assert '"value": 94.0' in th_content

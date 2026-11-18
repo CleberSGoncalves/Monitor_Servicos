@@ -11,7 +11,7 @@ DEFAULT_THRESHOLDS = [
         "key": "cpu_max_percent",
         "name": "Uso Máximo de CPU",
         "category": "sistema",
-        "value": 85.0,
+        "value": 92.0,
         "unit": "%",
         "is_enabled": 1,
         "description": "Alerta amarelo se o processador ultrapassar este limite contínuo."
@@ -20,7 +20,7 @@ DEFAULT_THRESHOLDS = [
         "key": "ram_max_percent",
         "name": "Uso Máximo de RAM",
         "category": "sistema",
-        "value": 90.0,
+        "value": 94.0,
         "unit": "%",
         "is_enabled": 1,
         "description": "Alerta se a memória da máquina ou serviço ultrapassar 90%."
