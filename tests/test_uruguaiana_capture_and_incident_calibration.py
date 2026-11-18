@@ -17,11 +17,11 @@ def test_uruguaiana_identity_and_engine_mapping():
     assert _RAW_HOST_IDENTITY_OVERRIDES.get("BRRS-UGN-ATRIA--DT01") == ("Uruguaiana", 306, 1)
     assert _RAW_HOST_IDENTITY_OVERRIDES.get("BRRS-UGN-ATRIA--DT02") == ("Uruguaiana", 307, 2)
 
-    # Restauração de colisão 15 chars em gcp_sync.py: Uruguaiana opera Atria Capture (e não DNA.DetectionSVC)
+    # Uruguaiana é máquina física única CS02 (Host ID 307) e NÃO sofre colisão NetBIOS sintética
     gcp_sync_path = os.path.join("dashboard", "gcp_sync.py")
     with open(gcp_sync_path, "r", encoding="utf-8") as f:
         src = f.read()
-    assert '"BRRS-UGN-ATRIA-": ("Uruguaiana", 306, 1, "Atria Capture")' in src
+    assert '"BRRS-UGN-ATRIA-"' not in src.split("_COLLIDED_15CHAR_RESTORE = {")[1].split("}")[0]
 
 def test_rio_de_janeiro_uses_fastmatching_engine():
     """Valida que Rio de Janeiro CS1 opera com FastMatching e não com DetectionSVC legado."""
@@ -81,3 +81,8 @@ def test_frontend_app_js_rules():
     assert 'pracaHasActiveRecording' in js
     # Supressão de telemetria zumbi > 2880 min (48h)
     assert 'diffMin > 2880' in js
+
+    # PROIBIÇÃO OPERACIONAL: CS02 nunca deve ser cobrado por FastMatchingSvc nem DNA.DetectionSVC
+    assert 'const isCs2OrHigher = csNum >= 2 || hLow.includes("-cs2") || hLow.includes("-cs02")' in js
+    assert 'csNum === 1 && !isCs2OrHigher' in js
+    assert 'fmaInstalled || detInstalled' in js

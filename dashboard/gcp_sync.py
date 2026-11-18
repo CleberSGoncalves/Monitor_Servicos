@@ -1084,7 +1084,7 @@ def merge_firestore_hosts_into_cache(
             praca_cs_channel_fresh[(p_norm, cs_int)] = hb_doc
             praca_any_fresh[p_norm] = hb_doc
 
-    # Restaura os CS01 que haviam sofrido colisão de 15 caracteres NetBIOS (Florianópolis, Taubaté, Montes Claros, Parintins, Manaus, Santos, Jataí, Uruguaiana, Rio de Janeiro)
+    # Restaura os CS01 que haviam sofrido colisão de 15 caracteres NetBIOS (Florianópolis, Taubaté, Montes Claros, Parintins, Manaus, Santos, Jataí, Rio de Janeiro)
     _COLLIDED_15CHAR_RESTORE = {
         "CS-BRSC-FNS-DT0": ("Florianópolis", 230, 1, "FastMatchingSvc"),
         "CS-BRSP-TTE-DT0": ("Taubaté", 263, 1, "FastMatchingSvc"),
@@ -1093,7 +1093,6 @@ def merge_firestore_hosts_into_cache(
         "CS-BRAM-MNS-DT-": ("Manaus", 287, 1, "DNA.DetectionSVC"),
         "BRSP-STS-ATRIA-": ("Santos", 209, 1, "DNA.DetectionSVC"),
         "BRGO-JT-ATRIA-D": ("Jataí", 332, 1, "DNA.DetectionSVC"),
-        "BRRS-UGN-ATRIA-": ("Uruguaiana", 306, 1, "Atria Capture"),
         "BRRJ-RJO-ATRIA-": ("Rio de Janeiro", 237, 1, "FastMatchingSvc"),
     }
     present_praca_cs = {(_norm_praca(s.get("praca")), _norm_cs(s.get("cs"))) for s in services_list}

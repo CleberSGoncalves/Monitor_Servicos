@@ -12660,42 +12660,32 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
 
 
 
+        let hostCs = parseInt(s.cs || 1);
+        const hNameLow = (hName || '').toLowerCase();
+        if (hNameLow.includes("-cs2") || hNameLow.includes("-cs02") || hNameLow.includes("_cs2") || hNameLow.endsWith("cs2") || hNameLow.includes("dt02") || hNameLow.includes("dt2")) {
+            hostCs = 2;
+        } else if (hNameLow.includes("-cs3") || hNameLow.includes("-cs03") || hNameLow.includes("_cs3") || hNameLow.endsWith("cs3")) {
+            hostCs = 3;
+        }
+
         if (!hostsMap[hName]) {
-
             hostsMap[hName] = {
-
                 hostname: hName,
-
                 praca: s.praca || "Matriz",
-
-                cs: s.cs || 1,
-
+                cs: hostCs,
                 region: getRegionForCity(s.praca),
-
                 cpu_val: parseNumericMetric(s.cpu_uso),
-
                 ram_info: parseRamMetric(s.ram_uso),
-
                 disco_val: parseNumericMetric(s.disco_d_livre),
-
                 has_critical_hw: false,
-
                 critical_reasons: [],
-
                 agent_timestamp: 0,
-
                 max_timestamp: 0,
-
                 last_update_str: "",
-
                 is_offline: false,
-
                 diff_hours: 0,
-
                 agent_running: false
-
             };
-
         }
 
 
@@ -12961,13 +12951,19 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
         }
 
         // B. Motor de Detecção CS01
-        if (csNum === 1) {
+        // LEI OPERACIONAL: FastMatchingSvc e DNA.DetectionSVC rodam EXCLUSIVAMENTE em máquinas CS01.
+        // NUNCA disparar alerta de detecção em máquinas CS02, CS03 ou hosts com '-CS2' no hostname!
+        const isCs2OrHigher = csNum >= 2 || hLow.includes("-cs2") || hLow.includes("-cs02") || hLow.includes("_cs2") || hLow.endsWith("cs2") || hLow.includes("dt02") || hLow.includes("dt2");
+        if (csNum === 1 && !isCs2OrHigher) {
             const fma = hostSvcs.find(s => (s.nome_servico || '').toLowerCase().includes("fastmatching"));
             const det = hostSvcs.find(s => s.nome_servico === "DNA.DetectionSVC");
             const fmaRun = fma && anyStatusRunning(fma.status_servico || fma.status);
             const detRun = det && anyStatusRunning(det.status_servico || det.status);
 
-            if (!fmaRun && !detRun && (fma || det)) {
+            const fmaInstalled = fma && !["inexistente", "não instalado", "nao instalado", "desinstalado"].includes((fma.status_servico || fma.status || '').toLowerCase().trim());
+            const detInstalled = det && !["inexistente", "não instalado", "nao instalado", "desinstalado"].includes((det.status_servico || det.status || '').toLowerCase().trim());
+
+            if (!fmaRun && !detRun && (fmaInstalled || detInstalled)) {
                 const alreadyCovered = (detectionSites || []).some(ds => (ds.hostname || '').toLowerCase().trim() === hLow);
                 if (!alreadyCovered) {
                     incidents.push({
