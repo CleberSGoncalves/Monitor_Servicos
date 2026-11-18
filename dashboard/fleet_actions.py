@@ -284,19 +284,48 @@ def build_service_raw_script(service_name: str, target_version: str) -> str:
         dest_c = r"C:\DTV\DTVCapture"
         return (
             "$ErrorActionPreference = 'Continue';\n"
+            "$ProgressPreference = 'SilentlyContinue';\n"
             "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;\n"
             f"$targetDir = '{dest_d}';\n"
-            "if (-not (Test-Path $targetDir)) { New-Item -ItemType Directory -Force -Path $targetDir };\n"
-            "Get-Process -Name 'DigitalTVCapture', 'AtriaCapture', 'Atria', 'DTVCapture64' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue;\n"
-            "$downloadFile = Join-Path $env:TEMP 'atria_setup.ps1';\n"
-            "Invoke-WebRequest -Uri 'https://stgengineeringreleases.blob.core.windows.net/atriacapture/v2.0.0.0_x64_AVX2/install_v2000_x64.ps1' -OutFile $downloadFile -UseBasicParsing;\n"
-            "& $downloadFile /nobackup /lav /ffdshow /nostreamlink /noytdlp;\n"
-            f"if ((Test-Path '{dest_c}') -and ('{dest_c}' -ne $targetDir)) {{\n"
-            f"    Copy-Item -Path '{dest_c}\\*' -Destination $targetDir -Recurse -Force -ErrorAction SilentlyContinue;\n"
+            f"$defaultDir = '{dest_c}';\n"
+            "if (-not (Test-Path $targetDir)) { New-Item -ItemType Directory -Force -Path $targetDir | Out-Null };\n"
+            "# 1. Backup previo das configuracoes locais da praca (AppConfig.xml)\n"
+            "$cfgBackup = Join-Path $env:TEMP 'AtriaConfigBackup';\n"
+            "if (-not (Test-Path $cfgBackup)) { New-Item -ItemType Directory -Force -Path $cfgBackup | Out-Null };\n"
+            "$existingCfg = @(\"$targetDir\\Config\\AppConfig.xml\", \"$defaultDir\\Config\\AppConfig.xml\") | Where-Object { Test-Path $_ } | Select-Object -First 1;\n"
+            "if ($existingCfg) { Copy-Item -Path (Split-Path $existingCfg -Parent) -Destination $cfgBackup -Recurse -Force -ErrorAction SilentlyContinue };\n"
+            "# 2. Encerramento seguro de processos e servicos associados\n"
+            "Stop-Service -Name FastMatchingSvc, FastMachingSvc -Force -ErrorAction SilentlyContinue;\n"
+            "Get-Process -Name 'DigitalTVCapture', 'AtriaCapture', 'Atria', 'DigitalTVReceiver', 'DTVCapture64', 'FastMatchingSvc' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue;\n"
+            "# 3. Download direto do pacote binario oficial Atria Capture 2.0.0.2 do Azure Blob (sem prompts bloqueantes)\n"
+            "$zipUrl = 'https://stgengineeringreleases.blob.core.windows.net/atriacapture/v2.0.0.0_x64_AVX2/AtriaCapture_v2002_x64.zip';\n"
+            "$zipFile = Join-Path $env:TEMP 'AtriaCapture_v2002_x64.zip';\n"
+            "$stgUnzip = Join-Path $env:TEMP 'AtriaCapture_v2002_x64_unzip';\n"
+            "if (Test-Path $stgUnzip) { Remove-Item $stgUnzip -Recurse -Force -ErrorAction SilentlyContinue };\n"
+            "New-Item -ItemType Directory -Force -Path $stgUnzip | Out-Null;\n"
+            "Invoke-WebRequest -Uri $zipUrl -OutFile $zipFile -UseBasicParsing;\n"
+            "Expand-Archive -Path $zipFile -DestinationPath $stgUnzip -Force;\n"
+            "# 4. Instalacao do MSI v2.0.0.2 de forma 100% silenciosa\n"
+            "$msi = if (Test-Path \"$stgUnzip\\DTVCaptureInstaller_x64.msi\") { \"$stgUnzip\\DTVCaptureInstaller_x64.msi\" } elseif (Test-Path \"$stgUnzip\\setup\\DTVCaptureInstaller_x64.msi\") { \"$stgUnzip\\setup\\DTVCaptureInstaller_x64.msi\" } else { $null };\n"
+            "if ($msi) { Start-Process 'msiexec.exe' -ArgumentList \"/i `\"$msi`\" /qn /norestart\" -Wait };\n"
+            "# 5. Sincronizacao de binarios atualizados para o diretorio operacional padrao D:\\MediaDNA_V2\\Applications\\DTVCapture64\n"
+            "if (Test-Path $defaultDir) { Copy-Item -Path \"$defaultDir\\*\" -Destination $targetDir -Recurse -Force -ErrorAction SilentlyContinue };\n"
+            "# 6. Restauracao transparente da configuracao original dos multiplexes e tuners\n"
+            "if (Test-Path \"$cfgBackup\\Config\\AppConfig.xml\") {\n"
+            "    Copy-Item -Path \"$cfgBackup\\Config\\*\" -Destination \"$targetDir\\Config\" -Recurse -Force -ErrorAction SilentlyContinue;\n"
+            "    if (Test-Path $defaultDir) { Copy-Item -Path \"$cfgBackup\\Config\\*\" -Destination \"$defaultDir\\Config\" -Recurse -Force -ErrorAction SilentlyContinue };\n"
             "};\n"
-            "$exe = if (Test-Path (Join-Path $targetDir 'DigitalTVCapture.exe')) { Join-Path $targetDir 'DigitalTVCapture.exe' } elseif (Test-Path (Join-Path $targetDir 'DTVCapture64.exe')) { Join-Path $targetDir 'DTVCapture64.exe' } else { $null };\n"
-            "if ($exe) { Start-Process $exe -WorkingDirectory $targetDir };\n"
-            f"Write-Host '[OK] Atria Capture atualizado para {target_v} em ' $targetDir;\n"
+            "# 7. Reiniciar FastMatchingSvc se configurado\n"
+            "Start-Service -Name FastMatchingSvc -ErrorAction SilentlyContinue;\n"
+            "# 8. Reabertura do Atria Capture no ambiente interativo\n"
+            "$exe = if (Test-Path (Join-Path $targetDir 'DigitalTVCapture.exe')) { Join-Path $targetDir 'DigitalTVCapture.exe' } elseif (Test-Path (Join-Path $defaultDir 'DigitalTVCapture.exe')) { Join-Path $defaultDir 'DigitalTVCapture.exe' } else { $null };\n"
+            "if ($exe) {\n"
+            "    # Dispara agendamento imediato via Task Scheduler no contexto do usuario para exibir GUI sem travar na Sessao 0\n"
+            "    schtasks /delete /tn 'Start_Atria_Interactive' /f >$null 2>&1;\n"
+            "    schtasks /create /tn 'Start_Atria_Interactive' /tr \"`\"$exe`\"\" /sc once /st 00:00 /it /f >$null 2>&1;\n"
+            "    schtasks /run /tn 'Start_Atria_Interactive' >$null 2>&1;\n"
+            "};\n"
+            f"Write-Host '[OK] Atria Capture atualizado com sucesso para {target_v} e reiniciado em ' $targetDir;\n"
         )
 
     # 2. FastMatchingSvc
@@ -746,6 +775,9 @@ def get_host_service_action_status(host: str, service_name: str, target_version:
         except Exception:
             pass
 
+        step4_status = "in_progress" if current_step_num == 4 else ("completed" if current_step_num > 4 else "pending")
+        step5_status = "completed" if current_step_num == 5 else "pending"
+
         steps = [
             {
                 "step": 1,
@@ -772,14 +804,14 @@ def get_host_service_action_status(host: str, service_name: str, target_version:
                 "step": 4,
                 "title": "Aplicação da Atualização & Reinício",
                 "description": f"Parada segura da versão anterior, extração de arquivos para diretório oficial e reinício de {service_name}.",
-                "status": "pending",
+                "status": step4_status,
                 "time_hint": "Execução silenciosa com token elevado"
             },
             {
                 "step": 5,
                 "title": "Confirmação & Governança Alinhada",
                 "description": f"Agente reporta Versao_Instalada={desired_ver} e limpa solicitação para 'Nenhuma'.",
-                "status": "pending",
+                "status": step5_status,
                 "time_hint": "Auditoria de telemetria em tempo real"
             }
         ]
