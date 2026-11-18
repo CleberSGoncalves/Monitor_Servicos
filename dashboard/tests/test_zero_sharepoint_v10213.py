@@ -1,4 +1,5 @@
 import sys
+import os
 from pathlib import Path
 import urllib.request
 import json
@@ -80,6 +81,21 @@ def test_decommission_host_workflow(tmp_path, monkeypatch):
 
 def test_self_update_script_uses_detached_task_scheduler():
     """Garante que o script de auto-atualizacao via comando remoto usa Task Scheduler isolado e nao mata o proprio processo antes de extrair."""
-    script = fleet_actions.build_service_raw_script("DNA.MonitorServiceSVC", "1.0.21.3")
+    script = fleet_actions.build_service_raw_script("DNA.MonitorServiceSVC", "1.0.21.5")
     assert "DNA_MonitorService_SelfUpdate" in script
     assert "apply_self_update.bat" in script
+    assert "sc.exe create" in script
+    assert "New-Item -ItemType Directory -Path $d -Force" in script
+
+
+def test_gv_powershell_provisioning_script():
+    """Garante que o script do botao 'Copiar Comando GV' provisiona pasta, registra o servico se nao existir e inicia."""
+    ops_js = os.path.join("dashboard", "static", "js", "fleet_ops.js")
+    with open(ops_js, "r", encoding="utf-8") as f:
+        js = f.read()
+
+    assert "copyGvCommandToClipboard" in js
+    assert "New-Item -ItemType Directory -Path $d -Force" in js
+    assert "sc.exe" in js
+    assert "create" in js
+    assert "delayed-auto" in js
