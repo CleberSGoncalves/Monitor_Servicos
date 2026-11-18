@@ -820,6 +820,7 @@ def get_pending_commands_for_host(hostname: str) -> List[Dict[str, Any]]:
 def get_latest_command_for_host(hostname: str, service_name: str = "") -> Optional[Dict[str, Any]]:
     """
     Retorna o comando mais recente registrado para um host (usado no modal de acompanhamento ao vivo).
+    Resolve aliases físicos (NetBIOS raw vs canônico) e prioriza comandos concluídos ou em processamento.
     """
     client = get_firestore_client()
     if not client or not hostname:
@@ -828,53 +829,111 @@ def get_latest_command_for_host(hostname: str, service_name: str = "") -> Option
     try:
         from google.cloud.firestore_v1.base_query import FieldFilter
         h_clean = hostname.strip().upper()
-        # Busca últimos comandos para este host
-        query = (
-            client.collection("fleet_commands")
-            .where(filter=FieldFilter("hostname", "==", h_clean))
-            .order_by("created_at", direction="DESCENDING")
-            .limit(5)
-        )
-        docs = query.stream()
-        for d in docs:
-            cmd = d.to_dict()
-            if not service_name or service_name.lower() in str(cmd.get("service_name", "")).lower():
-                return cmd
-        return None
-    except Exception:
-        # Fallback sem order_by (caso o índice composto ainda não tenha sido gerado)
+        raw_alias = resolve_raw_hostname_for_command(hostname).upper()
+
+        found_cmds: List[Dict[str, Any]] = []
+
+        # 1. Busca por hostname direto e raw_alias
+        hosts_to_query = {h_clean, raw_alias}
+        for h_q in hosts_to_query:
+            try:
+                docs = (
+                    client.collection("fleet_commands")
+                    .where(filter=FieldFilter("hostname", "==", h_q))
+                    .limit(10)
+                    .stream()
+                )
+                for d in docs:
+                    cmd_data = d.to_dict()
+                    cmd_data["_doc_id"] = d.id
+                    found_cmds.append(cmd_data)
+            except Exception:
+                pass
+
+        # 2. Busca também por canonical_hostname
         try:
-            from google.cloud.firestore_v1.base_query import FieldFilter
-            h_clean = hostname.strip().upper()
-            docs = client.collection("fleet_commands").where(filter=FieldFilter("hostname", "==", h_clean)).limit(10).stream()
-            cmds = [d.to_dict() for d in docs]
-            if cmds:
-                cmds.sort(key=lambda x: x.get("created_at", ""), reverse=True)
-                for cmd in cmds:
-                    if not service_name or service_name.lower() in str(cmd.get("service_name", "")).lower():
-                        return cmd
+            docs_canon = (
+                client.collection("fleet_commands")
+                .where(filter=FieldFilter("canonical_hostname", "==", h_clean))
+                .limit(10)
+                .stream()
+            )
+            for d in docs_canon:
+                cmd_data = d.to_dict()
+                cmd_data["_doc_id"] = d.id
+                if not any(x.get("_doc_id") == d.id for x in found_cmds):
+                    found_cmds.append(cmd_data)
         except Exception:
             pass
+
+        # Filtra por serviço se solicitado
+        if service_name:
+            s_low = service_name.lower().strip()
+            found_cmds = [
+                c for c in found_cmds
+                if s_low in str(c.get("service_name", "")).lower() or
+                   (s_low.startswith("atria") and "atria" in str(c.get("service_name", "")).lower()) or
+                   (s_low.startswith("dna.") and s_low in str(c.get("service_name", "")).lower())
+            ]
+
+        if not found_cmds:
+            return None
+
+        # Priorização inteligente:
+        # 1. Comandos com status 'completed' ou 'processing' têm precedência absoluta sobre 'pending'
+        # 2. Comandos mais recentes primeiro
+        def _sort_key(c):
+            st = str(c.get("status", "")).lower()
+            st_prio = 2 if st == "completed" else (1 if st == "processing" else 0)
+            created = str(c.get("created_at", ""))
+            return (st_prio, created)
+
+        found_cmds.sort(key=_sort_key, reverse=True)
+        return found_cmds[0]
+    except Exception as e:
+        logger.warning(f"[GCPSync] Erro ao buscar latest command para host {hostname}: {e}")
         return None
 
 
 def complete_remote_command(command_id: str, status: str, output: str = "", exit_code: int = 0) -> bool:
     """
     Atualiza o status de um comando concluído ou com falha no Firestore.
+    Sincroniza automaticamente documentos irmãos (_raw e canônico).
     """
     client = get_firestore_client()
     if not client or not command_id:
         return False
 
     try:
-        doc_ref = client.collection("fleet_commands").document(sanitize_doc_id(command_id))
-        doc_ref.update({
+        now_iso = datetime.now(timezone.utc).isoformat()
+        update_payload = {
             "status": status,
             "output": output[:30000],  # Limite seguro
             "exit_code": exit_code,
-            "completed_at": datetime.now(timezone.utc).isoformat(),
-            "updated_at": datetime.now(timezone.utc).isoformat()
-        })
+            "completed_at": now_iso,
+            "updated_at": now_iso
+        }
+
+        # Atualiza documento principal
+        doc_ref = client.collection("fleet_commands").document(sanitize_doc_id(command_id))
+        doc_ref.update(update_payload)
+
+        # Sincroniza documento irmão correspondente (_raw <-> canonical)
+        sibling_id = None
+        if command_id.endswith("_raw"):
+            sibling_id = command_id[:-4]
+        else:
+            sibling_id = f"{command_id}_raw"
+
+        if sibling_id:
+            try:
+                sib_ref = client.collection("fleet_commands").document(sanitize_doc_id(sibling_id))
+                sib_doc = sib_ref.get()
+                if sib_doc.exists:
+                    sib_ref.update(update_payload)
+            except Exception:
+                pass
+
         return True
     except Exception as e:
         logger.error(f"[GCPSync] Erro ao atualizar comando {command_id}: {e}")

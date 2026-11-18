@@ -423,6 +423,14 @@ namespace WinServiceFleetAgent.Core
                     bool isAutoRestartEnabled = autoRestartSetting.Equals("Sim", StringComparison.OrdinalIgnoreCase) ||
                                                 autoRestartSetting.Equals("True", StringComparison.OrdinalIgnoreCase);
 
+                    // Trava de atualização ativa: se uma atualização remota pelo dashboard estiver em andamento, suspende AutoRestart do Atria
+                    string atriaLockFile = Path.Combine(Path.GetTempPath(), "dna_atria_updating.lock");
+                    if (isStandaloneApp && File.Exists(atriaLockFile))
+                    {
+                        FileLogger.Log($"[FleetOrchestrator] ⏸️ AutoRestart de '{srv.ServiceName}' suspenso: atualização remota do dashboard em andamento.");
+                        continue;
+                    }
+
                     if (isAutoRestartEnabled)
                     {
                         // Verificação de Flapping / Prevenção de Crash-Loop (Item 1)

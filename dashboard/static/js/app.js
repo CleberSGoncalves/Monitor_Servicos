@@ -12688,16 +12688,12 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
 
         const hObj = hostsMap[hName];
 
-        if ((s.nome_servico || "").toLowerCase().includes("monitorservice")) {
-
+        const isMonitorSvc = (s.nome_servico || "").toLowerCase().includes("monitorservice");
+        if (isMonitorSvc) {
             const st = (s.status_servico || s.status || "").toLowerCase();
-
             if (st.includes("execu") || st.includes("running")) {
-
                 hObj.agent_running = true;
-
             }
-
             const sAgentDate = s.ultima_atualizacao || s.data_hora || "";
             if (sAgentDate) {
                 try {
@@ -12707,18 +12703,18 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
                     }
                 } catch(e) {}
             }
-
+            // Agente local tem precedência absoluta sobre métricas de hardware
+            if (s.cpu_uso && s.cpu_uso !== "N/A") hObj.cpu_val = parseNumericMetric(s.cpu_uso);
+            if (s.ram_uso && s.ram_uso !== "N/A") hObj.ram_info = parseRamMetric(s.ram_uso);
+            if (s.disco_d_livre && s.disco_d_livre !== "N/A") hObj.disco_val = parseNumericMetric(s.disco_d_livre);
+        } else {
+            // Fallback apenas se o agente ainda não reportou métricas para o host
+            if (s.cpu_uso && s.cpu_uso !== "N/A" && hObj.cpu_val === 0) hObj.cpu_val = parseNumericMetric(s.cpu_uso);
+            if (s.ram_uso && s.ram_uso !== "N/A" && (!hObj.ram_info || (!hObj.ram_info.isPct && hObj.ram_info.mb === 0))) {
+                hObj.ram_info = parseRamMetric(s.ram_uso);
+            }
+            if (s.disco_d_livre && s.disco_d_livre !== "N/A" && hObj.disco_val === 0) hObj.disco_val = parseNumericMetric(s.disco_d_livre);
         }
-
-        if (s.cpu_uso && s.cpu_uso !== "N/A" && hObj.cpu_val === 0) hObj.cpu_val = parseNumericMetric(s.cpu_uso);
-
-        if (s.ram_uso && s.ram_uso !== "N/A" && (!hObj.ram_info || (!hObj.ram_info.isPct && hObj.ram_info.mb === 0))) {
-
-            hObj.ram_info = parseRamMetric(s.ram_uso);
-
-        }
-
-        if (s.disco_d_livre && s.disco_d_livre !== "N/A" && hObj.disco_val === 0) hObj.disco_val = parseNumericMetric(s.disco_d_livre);
 
 
 
@@ -12789,11 +12785,11 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
         }
         const hwState = window._nocHardwareStateTracker[hostKey];
 
-        // CPU: Exige carga severa sustentada >= 92% por pelo menos 4 ciclos sucessivos (ou ~5 min)
+        // CPU: Exige carga severa sustentada >= 95% por pelo menos 5 ciclos sucessivos (ou ~6 min)
         // com histerese (só limpa quando cai abaixo de 75%), eliminando ruídos operacionais de decodificação ou picos normais de gravação
-        if (h.cpu_val >= 92) {
+        if (h.cpu_val >= 95) {
             hwState.cpuSpikeCount = (hwState.cpuSpikeCount || 0) + 1;
-            if (hwState.cpuSpikeCount >= 4) {
+            if (hwState.cpuSpikeCount >= 5) {
                 hwState.isCpuCritical = true;
             }
         } else if (h.cpu_val < 75) {
@@ -12871,7 +12867,12 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
         const hLow = (h.hostname || '').toLowerCase().trim();
         const hostSvcs = (servicesList || []).filter(s => (s.hostname || s.host || '').toLowerCase().trim() === hLow);
         if (hostSvcs.length === 0) return;
-        const csNum = parseInt(h.cs || 1);
+        let csNum = parseInt(h.cs || 1);
+        if (hLow.includes("-cs2") || hLow.includes("-cs02") || hLow.includes("_cs2") || hLow.endsWith("cs2") || hLow.includes("dt02") || hLow.includes("dt2")) {
+            csNum = 2;
+        } else if (hLow.includes("-cs3") || hLow.includes("-cs03") || hLow.includes("_cs3") || hLow.endsWith("cs3")) {
+            csNum = 3;
+        }
         const normHPraca = normalizeNocStr(h.praca || '');
 
         // A. Motor de Gravação: Atria Capture vs DNA.MediaRecorderSVC
@@ -12959,8 +12960,8 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
 
         // B. Motor de Detecção CS01
         // LEI OPERACIONAL: FastMatchingSvc e DNA.DetectionSVC rodam EXCLUSIVAMENTE em máquinas CS01.
-        // NUNCA disparar alerta de detecção em máquinas CS02, CS03 ou hosts com '-CS2' no hostname!
-        const isCs2OrHigher = csNum >= 2 || hLow.includes("-cs2") || hLow.includes("-cs02") || hLow.includes("_cs2") || hLow.endsWith("cs2") || hLow.includes("dt02") || hLow.includes("dt2");
+        // NUNCA disparar alerta de detecção em máquinas CS02, CS03 ou hosts com '-CS2', 'DT02', 'DT2' no hostname!
+        const isCs2OrHigher = csNum >= 2 || hLow.includes("-cs2") || hLow.includes("-cs02") || hLow.includes("_cs2") || hLow.endsWith("cs2") || hLow.includes("dt02") || hLow.includes("dt2") || hLow.includes("-cs3") || hLow.includes("_cs3");
         if (csNum === 1 && !isCs2OrHigher) {
             const fma = hostSvcs.find(s => (s.nome_servico || '').toLowerCase().includes("fastmatching"));
             const det = hostSvcs.find(s => s.nome_servico === "DNA.DetectionSVC");
@@ -12984,11 +12985,11 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
                         category_icon: "fa-ban",
                         praca: h.praca,
                         region: h.region,
-                        cs: 1,
+                        cs: csNum,
                         hostname: h.hostname,
                         target: `Detecção CS01 (${h.praca})`,
                         title: `Detecção Paralisada: Nem FastMatching nem DetectionSVC em Execução`,
-                        summary: `Host CS01 ${h.hostname} sem motor de matching ativo. Geração de comprovantes comerciais (.XML) paralisada.`,
+                        summary: `Host CS0${csNum} ${h.hostname} sem motor de matching ativo. Geração de comprovantes comerciais (.XML) paralisada.`,
                         telemetry: `FastMatching: ${fma?.status_servico || 'Inativo'} | DetectionSVC: ${det?.status_servico || 'Inativo'}`,
                         time_ago: "Tempo real",
                         how_to_steps: [

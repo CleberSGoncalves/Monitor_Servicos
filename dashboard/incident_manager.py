@@ -274,6 +274,12 @@ def sync_live_fleet_to_incident_events() -> int:
             except Exception:
                 cs_num = 1
 
+            h_low = h.lower()
+            if "-cs2" in h_low or "-cs02" in h_low or "_cs2" in h_low or h_low.endswith("cs2") or "dt02" in h_low or "dt2" in h_low:
+                cs_num = 2
+            elif "-cs3" in h_low or "-cs03" in h_low or "_cs3" in h_low or h_low.endswith("cs3"):
+                cs_num = 3
+
             # Se o agente do host está parado/offline, não dispara incidentes individuais falsos de serviços
             if mon and not any(x in (mon.get("status_servico") or "").lower() for x in ["execu", "running", "ok", "online"]):
                 continue
@@ -302,7 +308,8 @@ def sync_live_fleet_to_incident_events() -> int:
                 """, (code, praca, h, "Motor de Gravação", "Nenhum motor de gravação ativo no host (Atria e MediaRecorder parados). Gravação paralisada.", f"Falha de processos de captura em {h}", f"Capture Site {praca}", now_str))
 
             # B. Detecção CS01
-            if cs_num == 1:
+            is_cs2_or_higher = cs_num >= 2 or any(x in h_low for x in ["-cs2", "-cs02", "_cs2", "dt02", "dt2", "-cs3", "_cs3"])
+            if cs_num == 1 and not is_cs2_or_higher:
                 fma = next((s for s in svcs if "fastmatching" in (s.get("nome_servico") or "").lower() or "fastmaching" in (s.get("nome_servico") or "").lower()), None)
                 det = next((s for s in svcs if s.get("nome_servico") == "DNA.DetectionSVC"), None)
                 fma_st = (fma.get("status_servico") or "").lower() if fma else "desinstalado"
