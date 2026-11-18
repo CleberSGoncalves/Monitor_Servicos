@@ -86,3 +86,28 @@ def test_frontend_app_js_rules():
     assert 'const isCs2OrHigher = csNum >= 2 || hLow.includes("-cs2") || hLow.includes("-cs02")' in js
     assert 'csNum === 1 && !isCs2OrHigher' in js
     assert 'fmaInstalled || detInstalled' in js
+
+
+def test_hardware_telemetry_and_anti_flapping():
+    """Valida que a telemetria de CPU/RAM usa Win32 real e o frontend possui anti-flapping/histerese."""
+    sys_perf = os.path.join("WinServiceFleetAgent", "Core", "SystemPerformance.cs")
+    with open(sys_perf, "r", encoding="utf-8") as f:
+        cs = f.read()
+
+    # Não pode conter a fórmula sintética multiplicada por 3.5
+    assert 'Environment.ProcessorCount * 3.5' not in cs
+    # Deve usar GetSystemTimes e GlobalMemoryStatusEx reais da Win32
+    assert 'GetSystemTimes(' in cs
+    assert 'GlobalMemoryStatusEx(' in cs
+    assert '_smoothedCpu' in cs
+
+    app_js = os.path.join("dashboard", "static", "js", "app.js")
+    with open(app_js, "r", encoding="utf-8") as f:
+        js = f.read()
+
+    # Valida janela sustentada de CPU e histerese
+    assert '_nocHardwareStateTracker' in js
+    assert 'h.cpu_val >= 90' in js
+    assert 'hwState.cpuSpikeCount >= 3' in js
+    assert 'h.cpu_val < 80' in js
+    assert 'h.diff_hours >= 2.0' in js

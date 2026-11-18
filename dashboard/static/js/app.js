@@ -12771,49 +12771,60 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
         h.is_hw_stale = h.diff_hours > 0.33 || !h.agent_running;
 
         // 2. Classificação Real de Conectividade do Host:
-        // Um host SÓ é considerado Offline (>24h sem comunicação).
-        // Intervalos de sincronismo normais ou atrasos transitórios WAN (< 24h) NÃO são considerados Host Desconectado!
-        h.is_offline = h.diff_hours >= 24.0;
+        // Host é considerado Offline quando sem heartbeat há mais de 2 horas (evita limbo onde host sem sinal por horas não é classificado).
+        h.is_offline = h.diff_hours >= 2.0;
 
         if (h.is_hw_stale) {
             h.has_critical_hw = false;
             return; // Telemetria antiga não polui a barra de gargalos de hardware em tempo real!
         }
 
-
-
-        if (h.cpu_val >= 85) {
-
-            h.has_critical_hw = true;
-
-            h.critical_reasons.push(`CPU ${h.cpu_val}%`);
-
+        // 3. Rastreador de Estado Anti-Flapping / Anti-Spike de Hardware (Janela sustentada)
+        if (!window._nocHardwareStateTracker) {
+            window._nocHardwareStateTracker = {};
         }
+        const hostKey = (h.hostname || h.praca || '').toLowerCase().trim();
+        if (!window._nocHardwareStateTracker[hostKey]) {
+            window._nocHardwareStateTracker[hostKey] = {
+                cpuSpikeCount: 0,
+                isCpuCritical: false,
+                lastSeen: Date.now()
+            };
+        }
+        const hwState = window._nocHardwareStateTracker[hostKey];
 
-        if (h.ram_info) {
-
-            if (h.ram_info.isPct && h.ram_info.pct >= 90) {
-
-                h.has_critical_hw = true;
-
-                h.critical_reasons.push(`RAM ${h.ram_info.pct}%`);
-
-            } else if (!h.ram_info.isPct && h.ram_info.mb >= 3500) {
-
-                h.has_critical_hw = true;
-
-                h.critical_reasons.push(`RAM ${Math.round(h.ram_info.mb)}MB (Processo Alto)`);
-
+        // CPU: Exige carga sustentada >= 90% por pelo menos 3 ciclos sucessivos (ou 3 min)
+        // com histerese (só limpa quando cai abaixo de 80%), eliminando alertas falsos por picos rápidos transitórios
+        if (h.cpu_val >= 90) {
+            hwState.cpuSpikeCount = (hwState.cpuSpikeCount || 0) + 1;
+            if (hwState.cpuSpikeCount >= 3) {
+                hwState.isCpuCritical = true;
             }
-
+        } else if (h.cpu_val < 80) {
+            hwState.cpuSpikeCount = 0;
+            hwState.isCpuCritical = false;
         }
 
-        if (h.disco_val > 0 && h.disco_val < 30) {
-
+        if (hwState.isCpuCritical) {
             h.has_critical_hw = true;
+            h.critical_reasons.push(`CPU ${h.cpu_val}% (Sustentado)`);
+        }
 
+        // RAM: Exige uso físico >= 92% ou consumo de processo de serviço > 6000MB (Atria nominal usa 2.5GB a 4.5GB com 16 canais)
+        if (h.ram_info) {
+            if (h.ram_info.isPct && h.ram_info.pct >= 92) {
+                h.has_critical_hw = true;
+                h.critical_reasons.push(`RAM ${h.ram_info.pct}%`);
+            } else if (!h.ram_info.isPct && h.ram_info.mb >= 6000) {
+                h.has_critical_hw = true;
+                h.critical_reasons.push(`RAM ${Math.round(h.ram_info.mb)}MB (Processo Crítico)`);
+            }
+        }
+
+        // Disco D:\: Alerta quando espaço livre < 15 GB (limite operacional de segurança para gravação de vídeo contínuo)
+        if (h.disco_val > 0 && h.disco_val < 15) {
+            h.has_critical_hw = true;
             h.critical_reasons.push(`Disco D: ${h.disco_val}GB livres`);
-
         }
 
     });
