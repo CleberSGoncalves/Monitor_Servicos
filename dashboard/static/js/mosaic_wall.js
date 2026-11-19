@@ -1,4 +1,8 @@
-let currentMosaicViewMode = "real"; // 'real' = Snapshot/Foto Real do Canal | 'diag' = Telemetria e Diagnostico Visual
+let currentMosaicViewMode = "real"; // 'real' = Snapshot/Foto Real do Canal com HUD sobreposto
+let currentActiveCustomGroup = "all"; // 'all' ou id do grupo personalizado
+let isMosaicSplitScreenActive = false; // Alternador de Split Screen (Até 2 Grupos)
+let mosaicSplitGroupLeft = "all";
+let mosaicSplitGroupRight = "all";
 
 function setMosaicViewMode(mode) {
     currentMosaicViewMode = mode;
@@ -246,7 +250,11 @@ function applyMosaicFilters() {
             return (item.status_color && item.status_color !== "#10b981") || (item.tipo_falha && item.tipo_falha !== "none" && item.tipo_falha !== "paused");
         });
         currentMosaicPage = 1;
-        renderMosaicPage();
+        if (isMosaicSplitScreenActive) {
+            renderMosaicSplitView();
+        } else {
+            renderMosaicPage();
+        }
         return;
     }
 
@@ -258,7 +266,38 @@ function applyMosaicFilters() {
     const cs = document.getElementById("mosaicFilterCS") ? document.getElementById("mosaicFilterCS").value : "all";
     const status = document.getElementById("mosaicFilterStatus") ? document.getElementById("mosaicFilterStatus").value : "all";
 
+    // 1. Sincronização Obrigatória com o Filtro Global de Praças / Cidades do Topo
+    const globalPracaEl = document.getElementById("selectGlobalPraca") || document.getElementById("filterCity");
+    const globalPracaVal = (globalPracaEl && globalPracaEl.value && globalPracaEl.value !== "all") ? globalPracaEl.value.toLowerCase().trim() : "all";
+
+    // 2. Filtro de Grupo Personalizado
+    let customGroupChannels = null;
+    if (currentActiveCustomGroup && currentActiveCustomGroup !== "all") {
+        const groups = getCustomGroupsMap();
+        if (groups[currentActiveCustomGroup] && Array.isArray(groups[currentActiveCustomGroup].channels)) {
+            customGroupChannels = new Set(groups[currentActiveCustomGroup].channels.map(k => k.toLowerCase().trim()));
+        }
+    }
+
     filteredMosaicSnapshots = allMosaicSnapshots.filter(item => {
+        // Filtro Global de Praça / Cidade
+        if (globalPracaVal !== "all") {
+            const pNorm = (item.praca || "").toLowerCase().trim();
+            const cNorm = (item.cidade || "").toLowerCase().trim();
+            if (!pNorm.includes(globalPracaVal) && !cNorm.includes(globalPracaVal) && !globalPracaVal.includes(pNorm)) {
+                return false;
+            }
+        }
+
+        // Filtro de Grupo Personalizado Ativo
+        if (customGroupChannels) {
+            const chanKey = `${(item.praca || '').toLowerCase().trim()}::${(item.canal || '').toLowerCase().trim()}`;
+            const altKey = (item.canal || '').toLowerCase().trim();
+            if (!customGroupChannels.has(chanKey) && !customGroupChannels.has(altKey)) {
+                return false;
+            }
+        }
+
         if (country !== "all" && item.pais !== country) return false;
         if (region !== "all" && item.regiao !== region) return false;
         if (meio !== "all" && item.meio !== meio) return false;
@@ -270,7 +309,11 @@ function applyMosaicFilters() {
     });
 
     currentMosaicPage = 1;
-    renderMosaicPage();
+    if (isMosaicSplitScreenActive) {
+        renderMosaicSplitView();
+    } else {
+        renderMosaicPage();
+    }
 }
 window.applyMosaicFilters = applyMosaicFilters;
 
@@ -513,18 +556,28 @@ function renderMosaicCardHtml(s) {
                     </span>
                 </div>
 
-                <!-- Frame de Transmissão / JPEG Real com Micro VU Meter Vertical Embutido -->
-                <div style="position: relative; width: 100%; aspect-ratio: 16 / 9; max-height: 220px; background: #000; border-radius: 6px; overflow: hidden; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,0.12); box-shadow: inset 0 0 10px rgba(0,0,0,0.8);">
+                <!-- Frame de Transmissão / JPEG Real com HUD Overlay Tecnológico Sobreposto -->
+                <div class="mosaic-video-container" style="position: relative; width: 100%; aspect-ratio: 16 / 9; max-height: 220px; background: #070d1e; border-radius: 6px; overflow: hidden; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,0.14); box-shadow: inset 0 0 15px rgba(0,0,0,0.85); cursor: pointer;" onclick="openChannelRfTelemetryModal('${escapeHtml(s.canal)}', '${escapeHtml(s.praca)}')" title="Clique para abrir detalhes completos de sinal, constelação e topologia RF do veículo">
                     <img class="mosaic-live-thumb"
                          data-base-url="${s.jpeg_url || ('/api/fleet/channels/jpeg?canal=' + encodeURIComponent(s.canal) + '&praca=' + encodeURIComponent(s.praca))}"
-                         src="${(s.jpeg_url || ('/api/fleet/channels/jpeg?canal=' + encodeURIComponent(s.canal) + '&praca=' + encodeURIComponent(s.praca))) + '&mode=' + currentMosaicViewMode + '&seq=' + mosaicFrameSeq + '&t=' + Date.now()}"
+                         src="${(s.jpeg_url || ('/api/fleet/channels/jpeg?canal=' + encodeURIComponent(s.canal) + '&praca=' + encodeURIComponent(s.praca))) + '&mode=real&seq=' + mosaicFrameSeq + '&t=' + Date.now()}"
                          alt="${escapeHtml(s.canal)}"
                          style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1;"
                          loading="lazy"
-                         onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';" />
+                         onerror="this.onerror=null; this.src='data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'320\' height=\'240\' viewBox=\'0 0 320 240\'><rect fill=\'%230b1329\' width=\'320\' height=\'240\'/><circle cx=\'160\' cy=\'95\' r=\'36\' fill=\'%231e293b\' stroke=\'%2338bdf8\' stroke-width=\'2\'/><text fill=\'%2338bdf8\' font-family=\'sans-serif\' font-size=\'15\' font-weight=\'bold\' x=\'50%25\' y=\'102\' text-anchor=\'middle\'>${encodeURIComponent(s.canal.substring(0, 10))}</text><text fill=\'%23cbd5e1\' font-family=\'sans-serif\' font-size=\'12\' font-weight=\'bold\' x=\'50%25\' y=\'160\' text-anchor=\'middle\'>${encodeURIComponent(s.canal)}</text><text fill=\'%2364748b\' font-family=\'sans-serif\' font-size=\'10\' x=\'50%25\' y=\'180\' text-anchor=\'middle\'>${encodeURIComponent(s.praca)} • SINAL AO VIVO</text></svg>';" />
                     
+                    <!-- HUD Top Bar Sobreposto ao Vídeo -->
+                    <div style="position: absolute; top: 6px; left: 8px; right: 8px; display: flex; justify-content: space-between; align-items: center; z-index: 5; pointer-events: none;">
+                        <span class="badge" style="background: rgba(15, 23, 42, 0.75); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 4px; backdrop-filter: blur(4px);">
+                            ${isCaboOrIP ? 'CABO / PAYTV' : 'ISDB-Tb DTV'}
+                        </span>
+                        <button type="button" class="btn-sm" onclick="event.stopPropagation(); openChannelRfTelemetryModal('${escapeHtml(s.canal)}', '${escapeHtml(s.praca)}')" style="pointer-events: auto; background: rgba(15, 23, 42, 0.85); color: #7dd3fc; border: 1px solid rgba(56, 189, 248, 0.5); font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px; cursor: pointer; backdrop-filter: blur(4px);" title="Abrir telemetria de sinal RF detalhada">
+                            <i class="fas fa-satellite-dish"></i> Sinal &amp; RF
+                        </button>
+                    </div>
+
                     <!-- Micro VU Meter Estéreo Vertical Overlaid na Lateral Direita do Vídeo -->
-                    <div style="position: absolute; right: 6px; top: 24px; bottom: 24px; width: 12px; background: rgba(0,0,0,0.75); border-radius: 3px; border: 1px solid rgba(255,255,255,0.18); display: flex; gap: 2px; padding: 2px; justify-content: center; align-items: flex-end; z-index: 4;" title="Nível L/R: ${s.audio_db || -14} dB (${audioStat})">
+                    <div style="position: absolute; right: 6px; top: 32px; bottom: 32px; width: 10px; background: rgba(0,0,0,0.75); border-radius: 3px; border: 1px solid rgba(255,255,255,0.18); display: flex; gap: 2px; padding: 2px; justify-content: center; align-items: flex-end; z-index: 4;" title="Nível L/R: ${s.audio_db || -14} dB (${audioStat})">
                         <div style="flex: 1; height: 100%; display: flex; align-items: flex-end; background: rgba(255,255,255,0.06); border-radius: 1px;">
                             <div style="width: 100%; height: ${vuBarH}%; background: linear-gradient(0deg, #10b981 0%, #10b981 70%, #f59e0b 85%, #ef4444 100%); border-radius: 1px; transition: height 0.3s ease;"></div>
                         </div>
@@ -533,24 +586,42 @@ function renderMosaicCardHtml(s) {
                         </div>
                     </div>
 
-                    <div style="display: none; position: absolute; inset: 0; align-items: center; justify-content: center; z-index: 2; background: rgba(10, 15, 29, 0.95);">
-                    ${hasIncident ? `
-                        <div style="text-align: center; padding: 10px;">
-                            <i class="fas fa-exclamation-triangle" style="font-size: 24px; color: ${borderCol}; margin-bottom: 6px;"></i>
-                            <div style="font-size: 11px; font-weight: 700; color: #fff; letter-spacing: 0.5px;">${s.status}</div>
-                            <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">${escapeHtml(s.falha_desc)}</div>
+                    <!-- HUD Bottom Overlay Sobreposto com Gradiente Escuro -->
+                    <div style="position: absolute; bottom: 0; left: 0; right: 0; background: linear-gradient(0deg, rgba(3, 7, 18, 0.95) 0%, rgba(3, 7, 18, 0.8) 70%, transparent 100%); padding: 16px 8px 5px 8px; z-index: 5; pointer-events: none;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;">
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                ${(() => {
+                                    if (isCaboOrIP) {
+                                        const tLower = (s.status_tuner || "").toLowerCase();
+                                        const isDis = tLower.includes("disconnect") || tLower.includes("parado");
+                                        if (isDis) {
+                                            return `<span class="badge" style="background: rgba(239, 68, 68, 0.4); color: #fca5a5; border: 1px solid #ef4444; font-size: 9px; font-weight: 800; padding: 1px 4px; border-radius: 3px;">STB DESCON</span>`;
+                                        }
+                                        return `<span class="badge" style="background: rgba(16, 185, 129, 0.35); color: #34d399; border: 1px solid #10b981; font-weight: 800; font-size: 9px; padding: 1px 4px; border-radius: 3px;">CABO LOCK</span>`;
+                                    }
+                                    const q = parseInt(s.qualidade, 10) || 0;
+                                    if (q > 0) {
+                                        return `<span class="badge" style="background: rgba(16, 185, 129, 0.35); color: #34d399; border: 1px solid #10b981; font-weight: 800; font-size: 9px; padding: 1px 4px; border-radius: 3px;">LOCK</span>`;
+                                    }
+                                    return `<span class="badge" style="background: rgba(239, 68, 68, 0.4); color: #fca5a5; border: 1px solid #ef4444; font-weight: 800; font-size: 9px; padding: 1px 4px; border-radius: 3px;">NO LOCK</span>`;
+                                })()}
+                                
+                                <span style="font-size: 11px; font-family: monospace; font-weight: 700; color: #fff;">
+                                    ${isCaboOrIP ? '<span style="color: #38bdf8;">CABO/IP OK</span>' : `Q: <span style="color: ${parseInt(s.qualidade, 10) >= 50 ? '#34d399' : (parseInt(s.qualidade, 10) > 0 ? '#fbbf24' : '#f87171')};">${s.qualidade}%</span> • F: ${s.forca}%`}
+                                </span>
+                            </div>
+
+                            <div style="display: flex; align-items: center; gap: 4px;">
+                                <span style="font-size: 10px; font-family: monospace; font-weight: 700; color: ${audioStat === 'MUDO' ? '#f87171' : '#34d399'};">
+                                    ${audioStat === 'MUDO' ? '<i class="fas fa-volume-mute"></i> MUDO' : '-14 dB'}
+                                </span>
+                            </div>
                         </div>
-                    ` : `
-                        <div style="text-align: center;">
-                            <div style="font-weight: 800; font-size: 16px; color: rgba(255, 255, 255, 0.85); letter-spacing: 1px;">${escapeHtml(s.canal)}</div>
-                            <div style="font-size: 9px; color: #38bdf8; text-transform: uppercase; margin-top: 2px;">TRANSMISSÃO AO VIVO • ${escapeHtml(s.tipo_sinal)}</div>
+
+                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 9px; font-family: monospace; color: rgba(255,255,255,0.7); border-top: 1px solid rgba(255,255,255,0.08); padding-top: 2px;">
+                            <span class="mosaic-card-timestamp">${s.last_frame_time || "Ao Vivo"} • 320x240</span>
+                            <span style="color: #94a3b8;">${escapeHtml(s.praca)}</span>
                         </div>
-                    `}
-                    </div>
-                    <!-- OSD Inferior -->
-                    <div style="position: absolute; bottom: 4px; left: 8px; right: 24px; display: flex; justify-content: space-between; font-size: 10px; font-family: monospace; color: rgba(255,255,255,0.85); text-shadow: 0 1px 3px rgba(0,0,0,0.9); pointer-events: none; z-index: 3;">
-                        <span class="mosaic-card-timestamp">${s.last_frame_time || "Ao Vivo"} • 320x240</span>
-                        <span>${s.meio}</span>
                     </div>
                 </div>
             </div>
@@ -710,49 +781,95 @@ function updateRotateButtonUI(isPlaying) {
 }
 
 // =========================================================================
-// 4. SUBABA 2: GALERIA FORENSE DE FALHAS & ANOMALIAS
+// 4. SUBABA 2: GALERIA FORENSE DE FALHAS & ANOMALIAS (FILTRO ANTI-FALSO POSITIVO)
 // =========================================================================
 function loadMosaicFailuresGallery() {
     const grid = document.getElementById("mosaicFailuresGrid");
     if (!grid) return;
 
     const filterVal = document.getElementById("mosaicFailureTypeSelect") ? document.getElementById("mosaicFailureTypeSelect").value : "all";
+    
+    // Filtro Estrito Anti-Falso Positivo:
+    // 1. Exclui praças em manutenção programada
+    // 2. Exige confirmação temporal de persistência (>= 5 min ou 3+ ciclos consecutivos)
     const failures = allMosaicSnapshots.filter(s => {
+        if (s.in_maintenance || s.tipo_falha === "maintenance") return false;
         if (s.tipo_falha === "none" || s.tipo_falha === "paused") return false;
+        
+        // Se informado pelo backend, requer confirmação forense temporal
+        if (s.is_forensic_confirmed !== undefined && !s.is_forensic_confirmed) {
+            return false;
+        }
+
         if (filterVal === "all") return true;
+        if (filterVal === "chronic") return Boolean(s.is_chronic);
         return s.tipo_falha === filterVal;
     });
+
+    // Ordenação: Casos Crônicos (>30m) primeiro, seguidos por maior tempo de degradação
+    failures.sort((a, b) => {
+        if (a.is_chronic && !b.is_chronic) return -1;
+        if (!a.is_chronic && b.is_chronic) return 1;
+        return (b.failure_duration_min || 0) - (a.failure_duration_min || 0);
+    });
+
+    // Atualiza contador de anomalias no badge da aba
+    const badge = document.getElementById("mosaic-failure-count-badge");
+    if (badge) {
+        badge.innerText = failures.length;
+        badge.style.background = failures.length > 0 ? "rgba(239, 68, 68, 0.4)" : "rgba(37, 99, 235, 0.3)";
+        badge.style.color = failures.length > 0 ? "#fca5a5" : "#93c5fd";
+    }
 
     if (failures.length === 0) {
         grid.innerHTML = `
             <div style="grid-column: 1/-1; text-align: center; padding: 60px 20px; background: rgba(0,0,0,0.25); border-radius: 8px; border: 1px dashed #10b981;">
                 <span style="font-size: 36px;">🟢</span>
-                <h4 style="margin-top: 10px; color: #10b981;">Nenhuma Anomalia Crítica no Momento</h4>
-                <p style="color: var(--text-muted); font-size: 13px; margin-top: 6px;">Todas as emissoras da frota estão operando com fluxo contínuo de quadros e sincronismo nominal.</p>
+                <h4 style="margin-top: 10px; color: #10b981;">Nenhuma Anomalia Crônica Confirmada</h4>
+                <p style="color: var(--text-muted); font-size: 13px; margin-top: 6px;">Todas as emissoras da frota estão operando com fluxo estável de quadros ou sob filtros transitórios de RF eliminados.</p>
             </div>
         `;
         return;
     }
 
-    grid.innerHTML = failures.map(s => `
-        <div class="panel-card" style="border: 1px solid ${s.status_color}; padding: 14px; background: rgba(239, 68, 68, 0.05); border-radius: 8px;">
-            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+    grid.innerHTML = failures.map(s => {
+        const isChronic = Boolean(s.is_chronic);
+        const cardBg = isChronic ? "rgba(239, 68, 68, 0.12)" : "rgba(239, 68, 68, 0.05)";
+        const cardBorder = isChronic ? "#ef4444" : (s.status_color || "#f59e0b");
+        const chronicBadge = isChronic ? `
+            <span class="badge" style="background: #dc2626; color: #ffffff; font-weight: 800; font-size: 10px; padding: 2px 8px; border-radius: 4px; box-shadow: 0 0 10px rgba(220, 38, 38, 0.6); animation: pulse 2s infinite;">
+                <i class="fas fa-fire"></i> CASO CRÔNICO (&gt;30m)
+            </span>
+        ` : '';
+
+        return `
+        <div class="panel-card" style="border: 1px solid ${cardBorder}; padding: 14px; background: ${cardBg}; border-radius: 8px; position: relative;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; gap: 8px; flex-wrap: wrap;">
                 <div>
                     <strong style="color: #fff; font-size: 15px;">${escapeHtml(s.canal)}</strong>
-                    <div style="font-size: 11px; color: var(--text-muted);">${escapeHtml(s.praca)} • CS ${s.cs}</div>
+                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+                        ${escapeHtml(s.praca)} • CS ${s.cs} • <span style="color: #60a5fa;">${escapeHtml(s.regiao || '')}</span>
+                    </div>
                 </div>
-                <span class="badge" style="background: rgba(239,68,68,0.25); color: #f87171; border: 1px solid #ef4444; font-weight: 700;">
-                    ${s.status}
-                </span>
+                <div style="display: flex; gap: 6px; align-items: center;">
+                    ${chronicBadge}
+                    <span class="badge" style="background: rgba(239,68,68,0.25); color: #f87171; border: 1px solid #ef4444; font-weight: 700; font-size: 11px;">
+                        ${s.status}
+                    </span>
+                </div>
             </div>
             
-            <div style="font-size: 12px; color: #cbd5e1; margin-bottom: 12px; line-height: 1.4;">
-                <i class="fas fa-microchip text-red"></i> <strong>Diagnóstico:</strong> ${escapeHtml(s.falha_desc)}
+            <div style="font-size: 12px; color: #cbd5e1; margin-bottom: 12px; line-height: 1.45; background: rgba(0,0,0,0.3); padding: 8px 10px; border-radius: 6px; border-left: 3px solid ${cardBorder};">
+                <i class="fas fa-microchip text-red"></i> <strong>Diagnóstico Forense:</strong> ${escapeHtml(s.falha_desc)}
+                ${s.failure_duration_min > 0 ? `<div style="margin-top: 4px; font-size: 11px; color: #fca5a5;">⏱️ <strong>Persistência no Ar:</strong> Falha sustentada há ${s.failure_duration_min} minutos contínuos.</div>` : ''}
             </div>
 
-            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--text-muted); padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06);">
-                <span>Qualidade: <strong style="color: ${s.qualidade < 45 ? '#ef4444' : '#10b981'};">${s.qualidade}%</strong></span>
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--text-muted); padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06); flex-wrap: wrap; gap: 8px;">
+                <span>RF Qualidade: <strong style="color: ${s.qualidade < 45 ? '#ef4444' : '#10b981'};">${s.qualidade}%</strong></span>
                 <div style="display: flex; gap: 6px;">
+                    <button class="btn-secondary" style="padding: 4px 8px; font-size: 11px; border-color: #38bdf8; color: #7dd3fc;" onclick="openChannelRfTelemetryModal('${escapeHtml(s.canal)}', '${escapeHtml(s.praca)}')">
+                        <i class="fas fa-satellite-dish"></i> Topologia RF
+                    </button>
                     <button class="btn-secondary" style="padding: 4px 8px; font-size: 11px; border-color: #3b82f6; color: #60a5fa;" onclick="openStoryboardModal('${escapeHtml(s.canal)}', '${escapeHtml(s.praca)}')">
                         <i class="fas fa-film"></i> Storyboard
                     </button>
@@ -762,7 +879,8 @@ function loadMosaicFailuresGallery() {
                 </div>
             </div>
         </div>
-    `).join("");
+        `;
+    }).join("");
 }
 window.loadMosaicFailuresGallery = loadMosaicFailuresGallery;
 window.filterMosaicFailures = loadMosaicFailuresGallery;
@@ -983,6 +1101,7 @@ function switchConfigsSubtab(subtabId) {
     const btnAi = document.getElementById("btn-cfg-subtab-ai");
     const btnTuning = document.getElementById("btn-cfg-subtab-tuning");
     const btnGcp = document.getElementById("btn-cfg-subtab-gcp");
+    const btnMaint = document.getElementById("btn-cfg-subtab-maintenance");
 
     const contentThresh = document.getElementById("configs-content-thresholds");
     const contentFlags = document.getElementById("configs-content-flags");
@@ -990,9 +1109,10 @@ function switchConfigsSubtab(subtabId) {
     const contentAi = document.getElementById("configs-content-ai");
     const contentTuning = document.getElementById("configs-content-tuning");
     const contentGcp = document.getElementById("configs-content-gcp");
+    const contentMaint = document.getElementById("configs-content-maintenance");
 
-    [btnThresh, btnFlags, btnUsers, btnAi, btnTuning, btnGcp].forEach(b => b && b.classList.remove("active"));
-    [contentThresh, contentFlags, contentUsers, contentAi, contentTuning, contentGcp].forEach(c => c && (c.style.display = "none"));
+    [btnThresh, btnFlags, btnUsers, btnAi, btnTuning, btnGcp, btnMaint].forEach(b => b && b.classList.remove("active"));
+    [contentThresh, contentFlags, contentUsers, contentAi, contentTuning, contentGcp, contentMaint].forEach(c => c && (c.style.display = "none"));
 
     if (subtabId === "thresholds") {
         if (btnThresh) btnThresh.classList.add("active");
@@ -1017,9 +1137,93 @@ function switchConfigsSubtab(subtabId) {
         if (btnGcp) btnGcp.classList.add("active");
         if (contentGcp) contentGcp.style.display = "block";
         loadGcpConsumptionUI(false);
+    } else if (subtabId === "maintenance") {
+        if (btnMaint) btnMaint.classList.add("active");
+        if (contentMaint) contentMaint.style.display = "block";
+        renderMaintenanceTable();
     }
 }
 window.switchConfigsSubtab = switchConfigsSubtab;
+
+async function renderMaintenanceTable() {
+    const container = document.getElementById("maintenanceTableContainer");
+    if (!container) return;
+
+    container.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 30px;"><i class="fas fa-spinner fa-spin"></i> Carregando janelas de manutenção...</div>`;
+
+    try {
+        const resp = await fetch("/api/fleet/maintenance");
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const active = data.active_pracas || [];
+
+        if (active.length === 0) {
+            container.innerHTML = `
+                <div style="text-align: center; padding: 40px 20px; background: rgba(16, 185, 129, 0.05); border: 1px dashed rgba(16, 185, 129, 0.3); border-radius: 8px;">
+                    <span style="font-size: 32px;">🟢</span>
+                    <h4 style="color: #34d399; margin: 10px 0 4px 0;">Nenhuma Praça em Manutenção Ativa</h4>
+                    <p style="color: var(--text-muted); font-size: 12px; margin: 0;">Todos os 124 mercados e Capture Sites estão operando e reportando incidentes normalmente.</p>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = `
+            <table class="data-table" style="width: 100%; font-size: 12px;">
+                <thead>
+                    <tr>
+                        <th style="text-align: left;">Praça Alvo</th>
+                        <th style="text-align: left;">Responsável</th>
+                        <th style="text-align: left;">Início</th>
+                        <th style="text-align: left;">Tempo Restante</th>
+                        <th style="text-align: left;">Motivo / Justificativa</th>
+                        <th style="text-align: right;">Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${active.map(m => {
+                        const remText = m.remaining_minutes !== null ? `${m.remaining_minutes} min restantes` : "Manual (Sem expirar)";
+                        const startDt = m.started_at ? new Date(m.started_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "--";
+                        return `
+                        <tr>
+                            <td>
+                                <strong style="color: #f8fafc; font-size: 13px;">${escapeHtml(m.praca_original)}</strong>
+                                <span class="badge" style="background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid #f59e0b; margin-left: 6px; font-size: 9px; font-weight: 800;">EM MANUTENÇÃO</span>
+                            </td>
+                            <td><code style="color: #38bdf8; font-size: 11px;">${escapeHtml(m.user)}</code></td>
+                            <td style="color: var(--text-muted); font-family: monospace;">${startDt}</td>
+                            <td><span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #7dd3fc; font-weight: 700;">⏱️ ${remText}</span></td>
+                            <td style="color: #cbd5e1; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(m.reason)}</td>
+                            <td style="text-align: right;">
+                                <button type="button" class="btn-secondary" style="color: #fca5a5; border-color: rgba(239, 68, 68, 0.4); padding: 4px 10px; font-size: 11px;" onclick="cancelMaintenanceFromTable('${escapeHtml(m.praca_original)}')">
+                                    <i class="fas fa-times-circle"></i> Liberar Praça
+                                </button>
+                            </td>
+                        </tr>
+                        `;
+                    }).join("")}
+                </tbody>
+            </table>
+        `;
+    } catch (e) {
+        container.innerHTML = `<div style="color: #f87171; text-align: center; padding: 20px;">Erro ao carregar dados de manutenção.</div>`;
+    }
+}
+window.renderMaintenanceTable = renderMaintenanceTable;
+
+async function cancelMaintenanceFromTable(praca) {
+    if (!confirm(`Deseja realmente liberar a praça "${praca}" da janela de manutenção? Os alertas de telemetria voltarão ao normal.`)) return;
+    try {
+        await fetch(`/api/fleet/maintenance?praca=${encodeURIComponent(praca)}`, { method: "DELETE" });
+        await renderMaintenanceTable();
+        if (typeof loadActiveMaintenancePracas === "function") loadActiveMaintenancePracas();
+        if (typeof renderNocUnifiedQueue === "function") renderNocUnifiedQueue();
+        if (typeof applyMosaicFilters === "function") applyMosaicFilters();
+    } catch (e) {
+        alert("Erro ao encerrar manutenção.");
+    }
+}
+window.cancelMaintenanceFromTable = cancelMaintenanceFromTable;
 
 async function loadGcpConsumptionUI(force = false) {
     const icon = document.getElementById("iconReloadGcpCost");
@@ -1311,5 +1515,338 @@ window.toggleMosaicVideoWallMode = toggleMosaicVideoWallMode;
 document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && document.body.classList.contains("mosaic-videowall-active")) {
         toggleMosaicVideoWallMode();
+    }
+});
+
+// =========================================================================
+// 6. GERENCIADOR DE GRUPOS PERSONALIZADOS & MODO SPLIT SCREEN (2 GRUPOS)
+// =========================================================================
+
+const DEFAULT_CUSTOM_GROUPS = {
+    "grp_paytv": {
+        "name": "📺 PayTV & Cabo Nacional",
+        "channels": ["combate", "sportv", "telecine", "universal", "globonews", "multishow", "gnt", "viva", "megapix", "paramount", "warner", "hbo", "espn", "discovery", "cartoon", "tnt", "axn"]
+    },
+    "grp_tv_digital": {
+        "name": "📡 TV Digital Aberta (ISDB-Tb)",
+        "channels": ["globo", "sbt", "record", "band", "redetv", "cultura", "tvbrasil", "gazeta", "aparecida", "rbs"]
+    },
+    "grp_globo": {
+        "name": "🌐 Rede Globo (Todas as Praças)",
+        "channels": ["rede globo", "globo", "rbs", "intertv", "vanguarda", "anhanguera", "mirante", "epctv"]
+    },
+    "grp_radios": {
+        "name": "📻 Rádios FM/AM Broadcast",
+        "channels": ["fm", "am", "rádio", "radio", "gfm", "band fm", "93 fm", "jovem pan", "natival"]
+    }
+};
+
+function getCustomGroupsMap() {
+    try {
+        const raw = localStorage.getItem("mosaic_custom_channel_groups");
+        if (raw) {
+            const parsed = jsonParseSafe(raw, null);
+            if (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0) {
+                return parsed;
+            }
+        }
+    } catch (e) {
+        console.warn("[MosaicGroups] Erro ao ler grupos de localStorage:", e);
+    }
+    return JSON.parse(JSON.stringify(DEFAULT_CUSTOM_GROUPS));
+}
+window.getCustomGroupsMap = getCustomGroupsMap;
+
+function jsonParseSafe(str, fallback) {
+    try { return JSON.parse(str); } catch (e) { return fallback; }
+}
+
+function saveCustomGroupsMap(groups) {
+    try {
+        localStorage.setItem("mosaic_custom_channel_groups", JSON.stringify(groups));
+    } catch (e) {
+        console.error("[MosaicGroups] Erro ao salvar grupos no localStorage:", e);
+    }
+    populateCustomGroupSelects();
+}
+window.saveCustomGroupsMap = saveCustomGroupsMap;
+
+function populateCustomGroupSelects() {
+    const groups = getCustomGroupsMap();
+    const selMain = document.getElementById("mosaicSelectCustomGroup");
+    const selLeft = document.getElementById("selectMosaicSplitGroupLeft");
+    const selRight = document.getElementById("selectMosaicSplitGroupRight");
+
+    const buildOptionsHtml = (selectedVal) => {
+        let opts = `<option value="all" ${selectedVal === 'all' ? 'selected' : ''}>🌐 Todos os Canais</option>`;
+        for (const [key, grp] of Object.entries(groups)) {
+            const isSel = selectedVal === key ? 'selected' : '';
+            opts += `<option value="${key}" ${isSel}>${escapeHtml(grp.name)} (${(grp.channels || []).length} canais)</option>`;
+        }
+        return opts;
+    };
+
+    if (selMain) selMain.innerHTML = buildOptionsHtml(currentActiveCustomGroup);
+    if (selLeft) selLeft.innerHTML = buildOptionsHtml(mosaicSplitGroupLeft === "all" ? "grp_tv_digital" : mosaicSplitGroupLeft);
+    if (selRight) selRight.innerHTML = buildOptionsHtml(mosaicSplitGroupRight === "all" ? "grp_paytv" : mosaicSplitGroupRight);
+}
+window.populateCustomGroupSelects = populateCustomGroupSelects;
+
+function onMosaicCustomGroupChange(groupKey) {
+    currentActiveCustomGroup = groupKey || "all";
+    const btnDel = document.getElementById("btnDeleteCustomGroup");
+    if (btnDel) {
+        btnDel.style.display = (groupKey && groupKey !== "all") ? "inline-block" : "none";
+    }
+    applyMosaicFilters();
+}
+window.onMosaicCustomGroupChange = onMosaicCustomGroupChange;
+
+function openCustomChannelGroupsModal() {
+    const modal = document.getElementById("modalCustomMosaicGroups");
+    if (!modal) return;
+    modal.style.display = "flex";
+    populateCustomGroupSelects();
+    renderCustomGroupChannelsList();
+}
+window.openCustomChannelGroupsModal = openCustomChannelGroupsModal;
+
+function closeCustomChannelGroupsModal() {
+    const modal = document.getElementById("modalCustomMosaicGroups");
+    if (modal) modal.style.display = "none";
+}
+window.closeCustomChannelGroupsModal = closeCustomChannelGroupsModal;
+
+function renderCustomGroupChannelsList() {
+    const container = document.getElementById("customGroupChannelsListContainer");
+    if (!container) return;
+
+    if (!allMosaicSnapshots || allMosaicSnapshots.length === 0) {
+        container.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 20px;">Carregando lista de canais da frota...</div>`;
+        return;
+    }
+
+    const groups = getCustomGroupsMap();
+    const activeGrp = groups[currentActiveCustomGroup] || { channels: [] };
+    const selectedSet = new Set((activeGrp.channels || []).map(c => c.toLowerCase().trim()));
+
+    // Ordena canais por Praça e Nome
+    const sortedChannels = [...allMosaicSnapshots].sort((a, b) => {
+        const cmp = (a.praca || "").localeCompare(b.praca || "");
+        return cmp !== 0 ? cmp : (a.canal || "").localeCompare(b.canal || "");
+    });
+
+    container.innerHTML = sortedChannels.map(s => {
+        const chanKey = `${(s.praca || '').toLowerCase().trim()}::${(s.canal || '').toLowerCase().trim()}`;
+        const isChecked = selectedSet.has(chanKey) || selectedSet.has((s.canal || '').toLowerCase().trim());
+        const isRadio = (s.meio === "Rádio");
+
+        return `
+        <label class="custom-grp-chan-item" data-praca="${escapeHtml((s.praca || '').toLowerCase())}" data-canal="${escapeHtml((s.canal || '').toLowerCase())}" data-meio="${escapeHtml(s.meio || '')}" style="display: flex; align-items: center; gap: 8px; background: rgba(15, 23, 42, 0.6); padding: 6px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.06); cursor: pointer; user-select: none;">
+            <input type="checkbox" class="chk-custom-grp-chan" value="${escapeHtml(chanKey)}" ${isChecked ? 'checked' : ''} onchange="updateCustomGroupSelectedCount()" style="accent-color: #38bdf8; width: 16px; height: 16px;">
+            <div style="flex: 1; min-width: 0;">
+                <div style="font-size: 11px; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                    ${isRadio ? '📻' : '📺'} ${escapeHtml(s.canal)}
+                </div>
+                <div style="font-size: 10px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                    ${escapeHtml(s.praca)} • CS ${s.cs}
+                </div>
+            </div>
+        </label>
+        `;
+    }).join("");
+
+    updateCustomGroupSelectedCount();
+}
+
+function updateCustomGroupSelectedCount() {
+    const checked = document.querySelectorAll(".chk-custom-grp-chan:checked");
+    const countEl = document.getElementById("customGroupSelectedCount");
+    if (countEl) countEl.innerText = checked.length;
+}
+window.updateCustomGroupSelectedCount = updateCustomGroupSelectedCount;
+
+function filterCustomGroupChannelList() {
+    const search = (document.getElementById("customGroupSearchChannel")?.value || "").toLowerCase().trim();
+    const meio = document.getElementById("customGroupFilterMeio")?.value || "all";
+    const items = document.querySelectorAll(".custom-grp-chan-item");
+
+    items.forEach(el => {
+        const praca = el.getAttribute("data-praca") || "";
+        const canal = el.getAttribute("data-canal") || "";
+        const m = el.getAttribute("data-meio") || "";
+
+        let match = true;
+        if (search && !praca.includes(search) && !canal.includes(search)) match = false;
+        if (meio !== "all" && m !== meio) match = false;
+
+        el.style.display = match ? "flex" : "none";
+    });
+}
+window.filterCustomGroupChannelList = filterCustomGroupChannelList;
+
+function selectAllCustomGroupChannels(check) {
+    const items = document.querySelectorAll(".custom-grp-chan-item");
+    items.forEach(el => {
+        if (el.style.display !== "none") {
+            const chk = el.querySelector(".chk-custom-grp-chan");
+            if (chk) chk.checked = check;
+        }
+    });
+    updateCustomGroupSelectedCount();
+}
+window.selectAllCustomGroupChannels = selectAllCustomGroupChannels;
+
+function saveCurrentCustomGroup() {
+    const nameInput = document.getElementById("customGroupNameInput");
+    const groupName = (nameInput?.value || "").trim();
+    if (!groupName) {
+        alert("Por favor, digite um nome para o Grupo Personalizado.");
+        if (nameInput) nameInput.focus();
+        return;
+    }
+
+    const checkedBoxes = Array.from(document.querySelectorAll(".chk-custom-grp-chan:checked"));
+    const channelKeys = checkedBoxes.map(chk => chk.value);
+
+    const groups = getCustomGroupsMap();
+    const groupId = "grp_" + groupName.toLowerCase().replace(/[^a-z0-9]/g, "_");
+
+    groups[groupId] = {
+        name: groupName,
+        channels: channelKeys
+    };
+
+    saveCustomGroupsMap(groups);
+    currentActiveCustomGroup = groupId;
+    populateCustomGroupSelects();
+    applyMosaicFilters();
+    closeCustomChannelGroupsModal();
+    alert(`Grupo "${groupName}" salvo com sucesso com ${channelKeys.length} veículos!`);
+}
+window.saveCurrentCustomGroup = saveCurrentCustomGroup;
+
+function deleteSelectedCustomGroup() {
+    if (!currentActiveCustomGroup || currentActiveCustomGroup === "all") return;
+    const groups = getCustomGroupsMap();
+    const grp = groups[currentActiveCustomGroup];
+    if (!grp) return;
+
+    if (!confirm(`Deseja realmente excluir o grupo personalizado "${grp.name}"?`)) return;
+
+    delete groups[currentActiveCustomGroup];
+    saveCustomGroupsMap(groups);
+    currentActiveCustomGroup = "all";
+    populateCustomGroupSelects();
+    applyMosaicFilters();
+    closeCustomChannelGroupsModal();
+}
+window.deleteSelectedCustomGroup = deleteSelectedCustomGroup;
+
+// =========================================================================
+// MODO SPLIT SCREEN (COMPARAÇÃO SIMULTÂNEA DE ATÉ 2 GRUPOS LADO A LADO)
+// =========================================================================
+
+function toggleMosaicSplitScreen() {
+    isMosaicSplitScreenActive = !isMosaicSplitScreenActive;
+    const btn = document.getElementById("btnToggleMosaicSplit");
+    const barControls = document.getElementById("mosaicSplitBarControls");
+    const splitContainer = document.getElementById("mosaicSplitColumnsContainer");
+    const singleGrid = document.getElementById("mosaicLiveGrid");
+
+    if (btn) {
+        if (isMosaicSplitScreenActive) {
+            btn.style.background = "#7c3aed";
+            btn.style.borderColor = "#c084fc";
+            btn.style.color = "#ffffff";
+            btn.innerHTML = `<i class="fas fa-check-circle"></i> Split Ativo`;
+        } else {
+            btn.style.background = "rgba(168, 85, 247, 0.15)";
+            btn.style.borderColor = "rgba(168, 85, 247, 0.4)";
+            btn.style.color = "#d8b4fe";
+            btn.innerHTML = `<i class="fas fa-columns"></i> Split Screen`;
+        }
+    }
+
+    if (isMosaicSplitScreenActive) {
+        if (barControls) barControls.style.display = "flex";
+        if (splitContainer) splitContainer.style.display = "grid";
+        if (singleGrid) singleGrid.style.display = "none";
+        populateCustomGroupSelects();
+        renderMosaicSplitView();
+    } else {
+        if (barControls) barControls.style.display = "none";
+        if (splitContainer) splitContainer.style.display = "none";
+        if (singleGrid) singleGrid.style.display = "grid";
+        applyMosaicFilters();
+    }
+}
+window.toggleMosaicSplitScreen = toggleMosaicSplitScreen;
+
+function renderMosaicSplitView() {
+    if (!isMosaicSplitScreenActive) return;
+
+    const selLeft = document.getElementById("selectMosaicSplitGroupLeft");
+    const selRight = document.getElementById("selectMosaicSplitGroupRight");
+
+    const keyLeft = selLeft?.value || "grp_tv_digital";
+    const keyRight = selRight?.value || "grp_paytv";
+
+    const groups = getCustomGroupsMap();
+    const grpLeft = groups[keyLeft] || { name: "TV Digital", channels: [] };
+    const grpRight = groups[keyRight] || { name: "PayTV", channels: [] };
+
+    const setLeft = new Set((grpLeft.channels || []).map(k => k.toLowerCase().trim()));
+    const setRight = new Set((grpRight.channels || []).map(k => k.toLowerCase().trim()));
+
+    const filterGroupItems = (chanSet, fallbackFilter) => {
+        if (chanSet.size > 0) {
+            return allMosaicSnapshots.filter(s => {
+                const k1 = `${(s.praca || '').toLowerCase().trim()}::${(s.canal || '').toLowerCase().trim()}`;
+                const k2 = (s.canal || '').toLowerCase().trim();
+                for (const item of chanSet) {
+                    if (k1.includes(item) || k2.includes(item) || item.includes(k2)) return true;
+                }
+                return false;
+            });
+        }
+        return allMosaicSnapshots.filter(fallbackFilter);
+    };
+
+    const itemsLeft = filterGroupItems(setLeft, s => s.meio !== "Cabo" && !s.is_radio);
+    const itemsRight = filterGroupItems(setRight, s => s.meio === "Cabo" || String(s.cs) === "3" || (s.praca && s.praca.toLowerCase().includes("nacional")));
+
+    // Atualiza cabeçalhos dos painéis
+    const titleLeft = document.getElementById("splitTitleLeft");
+    const countLeft = document.getElementById("splitCountLeft");
+    const gridLeft = document.getElementById("mosaicSplitGridLeft");
+
+    const titleRight = document.getElementById("splitTitleRight");
+    const countRight = document.getElementById("splitCountRight");
+    const gridRight = document.getElementById("mosaicSplitGridRight");
+
+    if (titleLeft) titleLeft.innerText = grpLeft.name;
+    if (countLeft) countLeft.innerText = `${itemsLeft.length} canais`;
+    if (gridLeft) {
+        gridLeft.innerHTML = itemsLeft.slice(0, 18).map(s => renderMosaicCardHtml(s)).join("");
+    }
+
+    if (titleRight) titleRight.innerText = grpRight.name;
+    if (countRight) countRight.innerText = `${itemsRight.length} canais`;
+    if (gridRight) {
+        gridRight.innerHTML = itemsRight.slice(0, 18).map(s => renderMosaicCardHtml(s)).join("");
+    }
+}
+window.renderMosaicSplitView = renderMosaicSplitView;
+
+// Listener para sincronização automática com o Filtro Global de Praças / Cidades do topo
+document.addEventListener("DOMContentLoaded", () => {
+    populateCustomGroupSelects();
+    const globalPracaSelect = document.getElementById("selectGlobalPraca") || document.getElementById("filterCity");
+    if (globalPracaSelect) {
+        globalPracaSelect.addEventListener("change", () => {
+            console.log("[MosaicWall] Filtro de praça global alterado:", globalPracaSelect.value);
+            applyMosaicFilters();
+        });
     }
 });

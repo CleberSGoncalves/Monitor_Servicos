@@ -15499,6 +15499,7 @@ function renderNocUnifiedQueue() {
                 <td style="width: 140px;">
                     <strong style="color: #f8fafc; font-size: 12px;">${escapeHtml(group.praca)}</strong>
                     <span class="badge" style="background: rgba(59, 130, 246, 0.15); color: #60a5fa; font-size: 9px; padding: 1px 4px; margin-left: 3px;">CS${group.cs}</span>
+                    ${isPracaUnderMaintenance(group.praca) ? `<span class="badge" style="background: rgba(245, 158, 11, 0.25); color: #fbbf24; border: 1px solid #f59e0b; font-size: 9px; padding: 1px 4px; margin-left: 2px;" title="Praça sob janela de manutenção programada">🔧 Maint</span>` : ''}
                 </td>
                 <td style="width: 130px;">
                     <code style="font-size: 11px; color: #94a3b8; font-family: monospace;">${escapeHtml(group.hostname)}</code>
@@ -15544,10 +15545,15 @@ function renderNocUnifiedQueue() {
                         }
                     })()}
                 </td>
-                <td style="width: 160px; text-align: right;">
-                    <button type="button" class="btn-compact-action" style="background: rgba(2, 132, 199, 0.35); border-color: #38bdf8; color: #38bdf8; font-weight: 700; padding: 4px 10px; font-size: 11px;" onclick="openIncidentWarRoomModal('${escapeHtml(mainItem.key)}', '${escapeHtml(group.hostname)}', '${escapeHtml(group.praca)}', ${group.cs || 1}, '${escapeHtml(mainItem.target)}', '${escapeHtml(mainItem.category)}')" title="Abrir Estação de Comando & Soluções Didáticas N1">
-                        <i class="fas fa-bolt"></i> Resolver & Aprender
-                    </button>
+                <td style="width: 200px; text-align: right;">
+                    <div style="display: inline-flex; gap: 4px; align-items: center;">
+                        <button type="button" class="btn-compact-action" style="background: rgba(2, 132, 199, 0.35); border-color: #38bdf8; color: #38bdf8; font-weight: 700; padding: 4px 8px; font-size: 11px;" onclick="openIncidentWarRoomModal('${escapeHtml(mainItem.key)}', '${escapeHtml(group.hostname)}', '${escapeHtml(group.praca)}', ${group.cs || 1}, '${escapeHtml(mainItem.target)}', '${escapeHtml(mainItem.category)}')" title="Abrir Estação de Comando & Soluções Didáticas N1">
+                            <i class="fas fa-bolt"></i> Resolver & Aprender
+                        </button>
+                        <button type="button" class="btn-compact-action" style="background: rgba(245, 158, 11, 0.2); border-color: #f59e0b; color: #fbbf24; font-weight: 700; padding: 4px 7px; font-size: 11px;" onclick="event.stopPropagation(); openPracaMaintenanceModal('${escapeHtml(group.praca)}')" title="Colocar a praça ${escapeHtml(group.praca)} em janela de manutenção local (silencia alarmes)">
+                            <i class="fas fa-wrench"></i>
+                        </button>
+                    </div>
                 </td>
             </tr>`;
         }).join("");
@@ -18291,59 +18297,235 @@ document.addEventListener("DOMContentLoaded", function() {
 
 
 
-        logHostEl.addEventListener("change", function() {
+// =========================================================================
+// GUIA DE INCIDENTES N1 & PLAYBOOK HOW-TO OPERACIONAL
+// =========================================================================
+function toggleNocIncidentGuide() {
+    const panel = document.getElementById("nocIncidentGuidePanel");
+    const btn = document.getElementById("btnToggleNocIncidentGuide");
+    if (!panel) return;
 
+    const isVisible = panel.style.display !== "none";
+    if (isVisible) {
+        panel.style.display = "none";
+        if (btn) {
+            btn.style.background = "linear-gradient(135deg, rgba(124, 58, 237, 0.3) 0%, rgba(59, 130, 246, 0.3) 100%)";
+            btn.innerHTML = `<i class="fas fa-book-open"></i> 📖 Guia de Incidentes &amp; Playbook N1`;
+        }
+    } else {
+        panel.style.display = "block";
+        panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        if (btn) {
+            btn.style.background = "#7c3aed";
+            btn.innerHTML = `<i class="fas fa-chevron-up"></i> Fechar Guia N1`;
+        }
+    }
+}
+window.toggleNocIncidentGuide = toggleNocIncidentGuide;
 
+function switchNocGuideTab(tabKey) {
+    const btnCatalog = document.getElementById("btnNocGuideTabCatalog");
+    const btnPlaybook = document.getElementById("btnNocGuideTabPlaybook");
+    const btnSuggestions = document.getElementById("btnNocGuideTabSuggestions");
 
-            const val = this.value;
+    const contentCatalog = document.getElementById("nocGuideContentCatalog");
+    const contentPlaybook = document.getElementById("nocGuideContentPlaybook");
+    const contentSuggestions = document.getElementById("nocGuideContentSuggestions");
 
+    [btnCatalog, btnPlaybook, btnSuggestions].forEach(b => {
+        if (b) {
+            b.style.background = "transparent";
+            b.style.color = "#cbd5e1";
+            b.style.border = "1px solid rgba(255,255,255,0.2)";
+        }
+    });
 
+    [contentCatalog, contentPlaybook, contentSuggestions].forEach(c => {
+        if (c) c.style.display = "none";
+    });
 
-            if (val && filterCityEl) {
+    if (tabKey === "catalog") {
+        if (btnCatalog) {
+            btnCatalog.style.background = "#7c3aed";
+            btnCatalog.style.color = "#ffffff";
+            btnCatalog.style.border = "none";
+        }
+        if (contentCatalog) contentCatalog.style.display = "block";
+    } else if (tabKey === "playbook") {
+        if (btnPlaybook) {
+            btnPlaybook.style.background = "#7c3aed";
+            btnPlaybook.style.color = "#ffffff";
+            btnPlaybook.style.border = "none";
+        }
+        if (contentPlaybook) contentPlaybook.style.display = "block";
+    } else if (tabKey === "suggestions") {
+        if (btnSuggestions) {
+            btnSuggestions.style.background = "#7c3aed";
+            btnSuggestions.style.color = "#ffffff";
+            btnSuggestions.style.border = "none";
+        }
+        if (contentSuggestions) contentSuggestions.style.display = "block";
+    }
+}
+window.switchNocGuideTab = switchNocGuideTab;
 
+// =========================================================================
+// GESTÃO DE JANELAS DE MANUTENÇÃO POR PRAÇA / HOST (SILENCIAMENTO CIRÚRGICO)
+// =========================================================================
+let cachedActiveMaintenance = [];
 
+async function loadActiveMaintenancePracas() {
+    try {
+        const resp = await fetch("/api/fleet/maintenance");
+        if (!resp.ok) return;
+        const data = await resp.json();
+        cachedActiveMaintenance = data.active_pracas || [];
+        updateMaintenanceDatalist();
+    } catch (e) {
+        console.warn("[Maintenance] Erro ao carregar praças em manutenção:", e);
+    }
+}
+window.loadActiveMaintenancePracas = loadActiveMaintenancePracas;
 
-                for (let i = 0; i < filterCityEl.options.length; i++) {
+function isPracaUnderMaintenance(praca) {
+    if (!praca || !cachedActiveMaintenance || cachedActiveMaintenance.length === 0) return false;
+    const pNorm = praca.toLowerCase().trim();
+    return cachedActiveMaintenance.some(m => {
+        const mNorm = (m.praca_original || m.praca_norm || "").toLowerCase().trim();
+        return mNorm === pNorm || pNorm.includes(mNorm) || mNorm.includes(pNorm);
+    });
+}
+window.isPracaUnderMaintenance = isPracaUnderMaintenance;
 
+function updateMaintenanceDatalist() {
+    const dl = document.getElementById("maintPracaDatalist");
+    if (!dl) return;
+    const pracas = new Set();
+    if (Array.isArray(allHostsData)) {
+        allHostsData.forEach(h => { if (h.praca) pracas.add(h.praca); });
+    }
+    dl.innerHTML = Array.from(pracas).sort().map(p => `<option value="${escapeHtml(p)}"></option>`).join("");
+}
 
+function openPracaMaintenanceModal(praca = "") {
+    const modal = document.getElementById("modalPracaMaintenance");
+    if (!modal) return;
+    const inputPraca = document.getElementById("maintInputPraca");
+    const btnRemove = document.getElementById("btnMaintRemovePraca");
 
-                    if (filterCityEl.options[i].value.toLowerCase().includes(val.toLowerCase()) ||
+    if (inputPraca) inputPraca.value = praca || "";
 
-
-
-                        filterCityEl.options[i].text.toLowerCase().includes(val.toLowerCase())) {
-
-
-
-                        filterCityEl.selectedIndex = i;
-
-
-
-                        break;
-
-
-
-                    }
-
-
-
-                }
-
-
-
-            }
-
-
-
-        });
-
-
-
+    const isAlreadyIn = isPracaUnderMaintenance(praca);
+    if (btnRemove) {
+        btnRemove.style.display = isAlreadyIn ? "inline-flex" : "none";
     }
 
+    updateMaintenanceDatalist();
+    modal.style.display = "flex";
+}
+window.openPracaMaintenanceModal = openPracaMaintenanceModal;
 
+function closePracaMaintenanceModal() {
+    const modal = document.getElementById("modalPracaMaintenance");
+    if (modal) modal.style.display = "none";
+}
+window.closePracaMaintenanceModal = closePracaMaintenanceModal;
 
+function selectMaintDuration(minutes, btn) {
+    document.querySelectorAll(".btn-maint-dur").forEach(b => {
+        b.style.background = "";
+        b.style.color = "";
+        b.style.borderColor = "";
+        b.classList.remove("active");
+    });
+
+    if (btn) {
+        btn.classList.add("active");
+        btn.style.background = "#d97706";
+        btn.style.color = "#fff";
+        btn.style.borderColor = "#f59e0b";
+    }
+
+    const inputHidden = document.getElementById("maintSelectedDurationMin");
+    if (inputHidden) inputHidden.value = minutes;
+}
+window.selectMaintDuration = selectMaintDuration;
+
+async function submitPracaMaintenance() {
+    const pracaInput = document.getElementById("maintInputPraca");
+    const praca = (pracaInput?.value || "").trim();
+    if (!praca) {
+        alert("Por favor, informe a Praça para colocar em manutenção.");
+        if (pracaInput) pracaInput.focus();
+        return;
+    }
+
+    const durationMin = parseInt(document.getElementById("maintSelectedDurationMin")?.value || "60", 10);
+    const reason = (document.getElementById("maintInputReason")?.value || "").trim() || "Tratativa técnica em andamento no CS";
+
+    try {
+        const resp = await fetch("/api/fleet/maintenance", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                praca: praca,
+                duration_minutes: durationMin,
+                reason: reason
+            })
+        });
+
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            alert(`Erro ao ativar manutenção: ${err.detail || 'Falha na comunicação'}`);
+            return;
+        }
+
+        await loadActiveMaintenancePracas();
+        closePracaMaintenanceModal();
+        if (typeof renderNocUnifiedQueue === "function") renderNocUnifiedQueue();
+        if (typeof applyMosaicFilters === "function") applyMosaicFilters();
+        alert(`Praça "${praca}" colocada em janela de manutenção (${durationMin > 0 ? durationMin + ' min' : 'Manual'}) com sucesso!`);
+    } catch (e) {
+        console.error("[Maintenance] Erro ao enviar requisição:", e);
+        alert(`Erro de conexão ao ativar manutenção: ${e.message}`);
+    }
+}
+window.submitPracaMaintenance = submitPracaMaintenance;
+
+async function removeActivePracaMaintenance() {
+    const praca = (document.getElementById("maintInputPraca")?.value || "").trim();
+    if (!praca) return;
+
+    if (!confirm(`Deseja realmente encerrar a janela de manutenção da praça "${praca}"? Os alertas voltarão a ser reportados normalmente.`)) {
+        return;
+    }
+
+    try {
+        const resp = await fetch(`/api/fleet/maintenance?praca=${encodeURIComponent(praca)}`, {
+            method: "DELETE"
+        });
+
+        if (!resp.ok) {
+            alert("Erro ao encerrar manutenção no servidor.");
+            return;
+        }
+
+        await loadActiveMaintenancePracas();
+        closePracaMaintenanceModal();
+        if (typeof renderNocUnifiedQueue === "function") renderNocUnifiedQueue();
+        if (typeof applyMosaicFilters === "function") applyMosaicFilters();
+        alert(`Janela de manutenção da praça "${praca}" encerrada com sucesso.`);
+    } catch (e) {
+        console.error("[Maintenance] Erro ao remover manutenção:", e);
+    }
+}
+window.removeActivePracaMaintenance = removeActivePracaMaintenance;
+
+// Carregamento inicial de manutenção
+document.addEventListener("DOMContentLoaded", () => {
+    loadActiveMaintenancePracas();
 });
+
 
 
 

@@ -2104,6 +2104,43 @@ async def update_feature_flag(req: FeatureFlagUpdateRequest, user: dict = Depend
     return {"success": ok}
 
 # ==========================================
+# Janelas de Manutenção por Praça / Host
+# ==========================================
+from maintenance_manager import (
+    get_active_maintenance_pracas,
+    set_praca_maintenance,
+    remove_praca_maintenance,
+    is_praca_in_maintenance
+)
+
+class MaintenanceRequest(BaseModel):
+    praca: str
+    duration_minutes: int = 60
+    reason: str = "Manutenção local / Tratativa técnica"
+
+@app.get("/api/fleet/maintenance")
+async def list_active_maintenance(user: dict = Depends(get_current_user)):
+    return {
+        "status": "success",
+        "active_pracas": get_active_maintenance_pracas()
+    }
+
+@app.post("/api/fleet/maintenance")
+async def create_maintenance_window(req: MaintenanceRequest, user: dict = Depends(get_current_user)):
+    res = set_praca_maintenance(
+        praca=req.praca,
+        duration_minutes=req.duration_minutes,
+        user=user.get("username", "operador"),
+        reason=req.reason
+    )
+    return res
+
+@app.delete("/api/fleet/maintenance")
+async def cancel_maintenance_window(praca: str, user: dict = Depends(get_current_user)):
+    res = remove_praca_maintenance(praca)
+    return res
+
+# ==========================================
 # Mosaico Visual de Canais (Live Snapshots)
 # ==========================================
 @app.get("/api/fleet/channels/snapshots")

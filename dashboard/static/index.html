@@ -3900,6 +3900,12 @@
               <button type="button" class="btn-secondary" style="font-size: 11px; padding: 4px 10px;" onclick="batchAcknowledgeIncidents()">
                 <i class="fas fa-check-double"></i> Reconhecer
               </button>
+              <button type="button" class="btn-secondary" style="font-size: 11px; padding: 4px 10px; background: rgba(245, 158, 11, 0.15); border-color: rgba(245, 158, 11, 0.4); color: #fbbf24; font-weight: 700;" onclick="openPracaMaintenanceModal()" title="Colocar uma praça inteira em modo de manutenção local e silenciar alarmes">
+                <i class="fas fa-wrench"></i> 🔧 Modo Manutenção
+              </button>
+              <button type="button" id="btnToggleNocIncidentGuide" class="btn-secondary" style="font-size: 11px; padding: 4px 12px; background: linear-gradient(135deg, rgba(124, 58, 237, 0.3) 0%, rgba(59, 130, 246, 0.3) 100%); border: 1px solid rgba(168, 85, 247, 0.5); color: #e9d5ff; font-weight: 800;" onclick="toggleNocIncidentGuide()" title="Abrir Guia Técnico de Incidentes N1, Playbook Operacional e Atuação da IA">
+                <i class="fas fa-book-open"></i> 📖 Guia de Incidentes &amp; Playbook N1
+              </button>
               <span class="badge badge-purple" id="badgeNocTotalIncidents" style="font-size: 11px;">0 Ocorrências</span>
             </div>
 
@@ -3924,6 +3930,221 @@
                 </select>
               </div>
             </div>
+          </div>
+
+          <!-- ============================================================== -->
+          <!-- PAINEL RETRÁTIL: GUIA TÉCNICO DE INCIDENTES N1 & PLAYBOOK HOW-TO -->
+          <!-- ============================================================== -->
+          <div id="nocIncidentGuidePanel" style="display: none; background: #0b1329; border: 1px solid rgba(168, 85, 247, 0.4); border-radius: 12px; padding: 20px; margin-bottom: 22px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+            <!-- Topo do Guia com Alternador de Abas -->
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 14px; margin-bottom: 16px;">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 26px;">🚨</span>
+                <div>
+                  <h4 style="font-size: 16px; font-weight: 800; color: #f8fafc; margin: 0;">Guia de Engenharia de Incidentes N1 &amp; Playbook Operacional</h4>
+                  <div style="font-size: 11px; color: #a78bfa; margin-top: 2px;">
+                    Catálogo de severidades, limiares de acionamento, ações cirúrgicas passo a passo e papel da IA Proativa.
+                  </div>
+                </div>
+              </div>
+
+              <!-- Abas Internas do Guia -->
+              <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                <button type="button" id="btnNocGuideTabCatalog" onclick="switchNocGuideTab('catalog')" style="padding: 6px 14px; font-size: 11px; font-weight: 700; border-radius: 6px; background: #7c3aed; color: #ffffff; border: none; cursor: pointer; transition: all 0.2s;">
+                  📖 Catálogo de Incidentes (P0/P1/P2)
+                </button>
+                <button type="button" id="btnNocGuideTabPlaybook" onclick="switchNocGuideTab('playbook')" style="padding: 6px 14px; font-size: 11px; font-weight: 700; border-radius: 6px; background: transparent; color: #cbd5e1; border: 1px solid rgba(255,255,255,0.2); cursor: pointer; transition: all 0.2s;">
+                  🛠️ Playbook How-To &amp; Papel da IA
+                </button>
+                <button type="button" id="btnNocGuideTabSuggestions" onclick="switchNocGuideTab('suggestions')" style="padding: 6px 14px; font-size: 11px; font-weight: 700; border-radius: 6px; background: transparent; color: #cbd5e1; border: 1px solid rgba(255,255,255,0.2); cursor: pointer; transition: all 0.2s;">
+                  💡 Novos Incidentes &amp; Homologação
+                </button>
+                <button type="button" onclick="toggleNocIncidentGuide()" style="background: none; border: none; color: #94a3b8; font-size: 18px; cursor: pointer; padding: 2px 8px;" title="Fechar Guia">✕</button>
+              </div>
+            </div>
+
+            <!-- ABA 1: CATÁLOGO DE INCIDENTES (P0, P1, P2) -->
+            <div id="nocGuideContentCatalog" style="display: block;">
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 14px;">
+                
+                <!-- Card P0-1: Interrupção de Gravação -->
+                <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 8px; padding: 14px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <span style="font-weight: 800; color: #fca5a5; font-size: 12px;">🔴 P0: GRAVAÇÃO INTERROMPIDA (ATRIA/RECORDER)</span>
+                    <span class="badge" style="background: rgba(239,68,68,0.2); color: #ef4444; border: 1px solid #ef4444; font-size: 10px; font-weight: 800;">Crítico (SLA 100%)</span>
+                  </div>
+                  <div style="font-size: 11px; color: #cbd5e1; line-height: 1.45;">
+                    <strong>O que acontece:</strong> Processo <code>DigitalTVCapture.exe</code> ou <code>MediaRecorder</code> paralisado ou fechado na sessão do CS.<br>
+                    <strong>Impacto Direto:</strong> Perda imediata de comprovantes comerciais em vídeo/áudio gerando quebra de SLA da praça.<br>
+                    <strong>Ação Operacional N1:</strong><br>
+                    1. Clicar em <em>Resolver &amp; Aprender</em> ➔ Executar <code>Reiniciar Atria Capture</code> (Token de Sessão 1).<br>
+                    2. Se processo estiver travado em memória, o agente mata via PID e inicia com flag de auto-recuperação.<br>
+                    3. Validar se pasta <code>D:\MediaDNA_V2\Data\video</code> voltou a gerar arquivos <code>.TMP</code> e <code>.MP4</code>.
+                  </div>
+                </div>
+
+                <!-- Card P0-2: Detecção Paralisada CS01 -->
+                <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 8px; padding: 14px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <span style="font-weight: 800; color: #fca5a5; font-size: 12px;">🔴 P0: DETECÇÃO PARALISADA (CS01 SEM MOTOR ATIVO)</span>
+                    <span class="badge" style="background: rgba(239,68,68,0.2); color: #ef4444; border: 1px solid #ef4444; font-size: 10px; font-weight: 800;">Crítico (Detecção)</span>
+                  </div>
+                  <div style="font-size: 11px; color: #cbd5e1; line-height: 1.45;">
+                    <strong>O que acontece:</strong> O host CS01 da praça não possui nem <code>FastMatchingSvc</code> nem <code>DNA.DetectionSVC</code> ativo em execução.<br>
+                    <strong>Impacto Direto:</strong> Nenhuma veiculação comercial é reconhecida; relatórios de matching ficam congelados.<br>
+                    <strong>Ação Operacional N1:</strong><br>
+                    1. Iniciar serviço homologado da praça via comando rápido.<br>
+                    2. Garantir que nunca rodem ambos simultaneamente (exclusividade mútua para evitar colisão de CPU e buffer).<br>
+                    3. Auditar geração de linhas no <code>fma.log</code>.
+                  </div>
+                </div>
+
+                <!-- Card P0-3: Filetransfer Paralisado -->
+                <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 8px; padding: 14px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <span style="font-weight: 800; color: #fca5a5; font-size: 12px;">🔴 P0: FILETRANSFER / ESCOAMENTO PARADO</span>
+                    <span class="badge" style="background: rgba(239,68,68,0.2); color: #ef4444; border: 1px solid #ef4444; font-size: 10px; font-weight: 800;">Crítico (Transmissão)</span>
+                  </div>
+                  <div style="font-size: 11px; color: #cbd5e1; line-height: 1.45;">
+                    <strong>O que acontece:</strong> Atraso de escoamento &gt; 15 minutos ou serviço <code>DNA.FileTransferSVC</code> paralisado.<br>
+                    <strong>Impacto Direto:</strong> Matriz central não recebe vídeos nem comprovantes; disco D: começa a represamento.<br>
+                    <strong>Ação Operacional N1:</strong><br>
+                    1. Checar conectividade de link e túnel Cloudflare do host.<br>
+                    2. Reiniciar <code>DNA.FileTransferSVC</code> via painel.<br>
+                    3. Acompanhar redução do buffer em <code>D:\MediaDNA_V2\Data\video\registered</code>.
+                  </div>
+                </div>
+
+                <!-- Card P1-1: Congelamento de Vídeo -->
+                <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(245, 158, 11, 0.4); border-radius: 8px; padding: 14px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <span style="font-weight: 800; color: #fde047; font-size: 12px;">🟡 P1: CONGELAMENTO DE VÍDEO (GOP STALL)</span>
+                    <span class="badge" style="background: rgba(245,158,11,0.2); color: #f59e0b; border: 1px solid #f59e0b; font-size: 10px; font-weight: 800;">Preditivo (Qualidade)</span>
+                  </div>
+                  <div style="font-size: 11px; color: #cbd5e1; line-height: 1.45;">
+                    <strong>O que acontece:</strong> Emissora com imagem estática travada no mesmo frame por &gt; 30 segundos enquanto tuner continua sintonizado.<br>
+                    <strong>Causa-Raiz:</strong> Encoders da emissora travados ou decodificador DirectShow em buffer deadlock.<br>
+                    <strong>Ação Operacional N1:</strong><br>
+                    1. Verificar no Mosaico se outros canais do mesmo host estão normais.<br>
+                    2. Se outros estão normais: falha na geração da emissora (notificar contato da filial).<br>
+                    3. Se todos travaram: reiniciar o tuner/demodulador local.
+                  </div>
+                </div>
+
+                <!-- Card P1-2: Queda de Sinal RF / Desarmamento Tuner -->
+                <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(245, 158, 11, 0.4); border-radius: 8px; padding: 14px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <span style="font-weight: 800; color: #fde047; font-size: 12px;">🟡 P1: QUEDA RF / DESARMAMENTO DE LOCK</span>
+                    <span class="badge" style="background: rgba(245,158,11,0.2); color: #f59e0b; border: 1px solid #f59e0b; font-size: 10px; font-weight: 800;">Preditivo (Sinal RF)</span>
+                  </div>
+                  <div style="font-size: 11px; color: #cbd5e1; line-height: 1.45;">
+                    <strong>O que acontece:</strong> Qualidade RF &lt; 45% sustentada por mais de 5 minutos ou tuner em estado <code>No Lock</code>.<br>
+                    <strong>Causa-Raiz:</strong> Fading por chuva intensa, atenuação de cabo coaxial ou pane no transmissor da torre.<br>
+                    <strong>Ação Operacional N1:</strong><br>
+                    1. Consultar correlação de Blecaute de Torre (se todos caíram, torre da cidade está fora).<br>
+                    2. Verificar gráfico de telemetria RF detalhada no botão <em>Sinal &amp; Topologia</em> do Mosaico.
+                  </div>
+                </div>
+
+                <!-- Card P1-3: Sobrecarga Crítica de Hardware -->
+                <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(245, 158, 11, 0.4); border-radius: 8px; padding: 14px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <span style="font-weight: 800; color: #fde047; font-size: 12px;">🟡 P1: HARDWARE SATURADO (CPU/MEM/DISCO)</span>
+                    <span class="badge" style="background: rgba(245,158,11,0.2); color: #f59e0b; border: 1px solid #f59e0b; font-size: 10px; font-weight: 800;">Preditivo (Infra)</span>
+                  </div>
+                  <div style="font-size: 11px; color: #cbd5e1; line-height: 1.45;">
+                    <strong>O que acontece:</strong> CPU sustentada &gt;= 95% por mais de 5 min (limiar de estabilidade), Memória &gt;= 94% ou Disco D: &lt; 15GB livres.<br>
+                    <strong>Ação Operacional N1:</strong><br>
+                    1. Filtrar pelo host na barra de hardware do topo.<br>
+                    2. Executar limpeza de arquivos temporários e verificar processos órfãos.<br>
+                    3. Notificar equipe N2 se houver processo com memory leak.
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            <!-- ABA 2: PLAYBOOK HOW-TO & PAPEL DA IA -->
+            <div id="nocGuideContentPlaybook" style="display: none;">
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 16px;">
+                
+                <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 8px; padding: 16px;">
+                  <h5 style="color: #60a5fa; margin: 0 0 10px 0; font-size: 13px; font-weight: 800;"><i class="fas fa-robot"></i> Como a IA Proativa Auxilia o Operador N1</h5>
+                  <div style="font-size: 12px; color: #cbd5e1; line-height: 1.5;">
+                    • <strong>Correlação Espacial de Falhas:</strong> Quando 4 canais de uma mesma praça caem simultaneamente, a IA cruza com a topologia de transmissores e indica se o problema é da antena local ou um blecaute elétrico geral da torre de transmissão.<br><br>
+                    • <strong>Filtro Anti-Falso Positivo:</strong> Analisa histórico temporal com média móvel para ignorar picos isolados de CPU (ex: compactação de log) e registrar apenas gargalos crônicos sustentados.<br><br>
+                    • <strong>Recomendação Cirúrgica em 1 Clique:</strong> No modal <em>Resolver &amp; Aprender</em>, a IA monta o diagnóstico da causa-raiz, o impacto no cliente e o script de auto-remediação seguro sem afetar outros processos.
+                  </div>
+                </div>
+
+                <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 8px; padding: 16px;">
+                  <h5 style="color: #34d399; margin: 0 0 10px 0; font-size: 13px; font-weight: 800;"><i class="fas fa-clipboard-check"></i> Procedimento Padrão do Operador (SOP)</h5>
+                  <div style="font-size: 12px; color: #cbd5e1; line-height: 1.5;">
+                    1. <strong>Identificar na Fila Unificada:</strong> Priorizar incidentes com tarja vermelha <code>P0</code>.<br>
+                    2. <strong>Assumir o Chamado:</strong> Clicar em <em>Assumir</em> para sinalizar aos outros técnicos que você está na tratativa.<br>
+                    3. <strong>Verificar Manutenção:</strong> Se a praça estiver passando por troca de cabeamento ou antena, clicar em <em>Modo Manutenção</em> (ex: 2 horas) para pausar alertas indevidos.<br>
+                    4. <strong>Executar Ação Segura:</strong> Clicar em <em>Resolver &amp; Aprender</em> e executar o comando validado.<br>
+                    5. <strong>Auditar Pós-Ação:</strong> Aguardar 30 segundos para confirmar se os KPIs voltaram a verde nominal.
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            <!-- ABA 3: SUGESTÕES DE NOVOS INCIDENTES PARA HOMOLOGAÇÃO -->
+            <div id="nocGuideContentSuggestions" style="display: none;">
+              <div style="margin-bottom: 12px; font-size: 12px; color: #94a3b8;">
+                Catálogo de incidentes contextuais propostos pela Engenharia para inclusão no pipeline de telemetria após aprovação do comitê de homologação:
+              </div>
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px;">
+                
+                <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 8px; padding: 14px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <strong style="color: #d8b4fe; font-size: 12px;">⏱️ Desvio de Relógio NTP (Clock Drift)</strong>
+                    <span class="badge" style="background: rgba(168,85,247,0.2); color: #c084fc; font-size: 9px; font-weight: 800;">Proposta P1</span>
+                  </div>
+                  <div style="font-size: 11px; color: #cbd5e1; line-height: 1.4;">
+                    <strong>Gatilho Proposto:</strong> Deriva do relógio do SO Windows &gt; 2.0 segundos em relação ao servidor de tempo central.<br>
+                    <strong>Por que é crítico:</strong> Causa falso alerta de <code>DELAYED CANDIDATE</code> e invalida timestamps de comprovantes comerciais auditados pela Kantar.
+                  </div>
+                </div>
+
+                <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 8px; padding: 14px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <strong style="color: #d8b4fe; font-size: 12px;">💳 Saúde de CAM / CI+ Descrambler (PayTV)</strong>
+                    <span class="badge" style="background: rgba(168,85,247,0.2); color: #c084fc; font-size: 9px; font-weight: 800;">Proposta P1</span>
+                  </div>
+                  <div style="font-size: 11px; color: #cbd5e1; line-height: 1.4;">
+                    <strong>Gatilho Proposto:</strong> Smartcard de acesso condicional de canais a cabo travado ou retornando erro de autorização CA.<br>
+                    <strong>Por que é crítico:</strong> Gera tela azul/preta de "Canal Codificado" nos canais por assinatura antes da falha ser reportada.
+                  </div>
+                </div>
+
+                <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 8px; padding: 14px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <strong style="color: #d8b4fe; font-size: 12px;">🌐 Jitter &amp; Perda de Pacotes RTSP/UDP</strong>
+                    <span class="badge" style="background: rgba(168,85,247,0.2); color: #c084fc; font-size: 9px; font-weight: 800;">Proposta P2</span>
+                  </div>
+                  <div style="font-size: 11px; color: #cbd5e1; line-height: 1.4;">
+                    <strong>Gatilho Proposto:</strong> Jitter de rede &gt; 80ms ou perda de pacotes RTP &gt; 2% nos streams IP dos encoders.<br>
+                    <strong>Por que é crítico:</strong> Antecipa macroblocos, artefatos visuais e descompasso de áudio antes de ocorrer congelamento.
+                  </div>
+                </div>
+
+                <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 8px; padding: 14px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <strong style="color: #d8b4fe; font-size: 12px;">💾 Desgaste de SSD NVMe (SMART Wear Level)</strong>
+                    <span class="badge" style="background: rgba(168,85,247,0.2); color: #c084fc; font-size: 9px; font-weight: 800;">Proposta P2</span>
+                  </div>
+                  <div style="font-size: 11px; color: #cbd5e1; line-height: 1.4;">
+                    <strong>Gatilho Proposto:</strong> Disco D: com vida útil restante SMART &lt; 10% ou contagem elevada de setores realocados.<br>
+                    <strong>Por que é crítico:</strong> Evita parada abrupta de gravação por corrupção de sistema de arquivos NTFS.
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
           </div>
           
 
@@ -4613,8 +4834,24 @@
             </button>
           </div>
 
-          <!-- Bloco Direito: Submenu de Filtros, Resumo Frota e Modo Vídeo Wall -->
+          <!-- Bloco Direito: Submenu de Filtros, Grupos Personalizados, Split Screen, Resumo Frota e Modo Vídeo Wall -->
           <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <!-- Seletor de Grupo Personalizado -->
+            <div style="display: flex; align-items: center; gap: 4px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; padding: 2px 6px;">
+              <span style="font-size: 10px; font-weight: 800; color: #38bdf8;"><i class="fas fa-layer-group"></i> Grupo:</span>
+              <select id="mosaicSelectCustomGroup" class="form-input" onchange="onMosaicCustomGroupChange(this.value)" style="font-size: 11px; padding: 3px 6px; width: 140px; background: rgba(0,0,0,0.5); color: #f8fafc; border: 1px solid rgba(56,189,248,0.35); border-radius: 4px;">
+                <option value="all">🌐 Todos os Canais</option>
+              </select>
+              <button type="button" class="btn-secondary" onclick="openCustomChannelGroupsModal()" style="font-size: 10px; padding: 3px 8px; background: rgba(56,189,248,0.2); border-color: rgba(56,189,248,0.4); color: #38bdf8; font-weight: 700;" title="Criar ou editar grupos personalizados de veículos">
+                <i class="fas fa-folder-plus"></i> Gerenciar
+              </button>
+            </div>
+
+            <!-- Botão Split Screen (Até 2 Grupos Lado a Lado) -->
+            <button type="button" id="btnToggleMosaicSplit" onclick="toggleMosaicSplitScreen()" style="font-size: 11px; font-weight: 700; padding: 5px 11px; background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.4); color: #d8b4fe; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 5px;" title="Dividir a tela em até 2 grupos personalizados simultaneamente (ex: TV Digital Aberta à esquerda vs PayTV à direita)">
+              <i class="fas fa-columns" id="mosaicSplitIcon"></i> <span id="mosaicSplitText">Split Screen</span>
+            </button>
+
             <!-- Botão do Submenu de Filtros com Badge Dinâmico -->
             <button type="button" id="btnToggleMosaicFiltersDrawer" onclick="toggleMosaicFiltersDrawer()" style="font-size: 11px; font-weight: 700; padding: 5px 12px; background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); color: #38bdf8; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 6px;" title="Abrir submenu com filtros avançados de Região, Sinal, CS e Status">
               <i class="fas fa-sliders-h"></i> <span>Filtros da Frota</span> <span id="mosaicFiltersBadge" style="font-size: 10px; background: #0284c7; color: #fff; padding: 1px 7px; border-radius: 10px; font-weight: 800;">Todas as Regiões</span> <i class="fas fa-chevron-down" id="mosaicFiltersChevron" style="font-size: 10px;"></i>
@@ -4634,6 +4871,38 @@
             <button class="btn-secondary" onclick="loadMosaicData(true)" style="padding: 5px 10px; font-size: 11px;" title="Atualizar agora">
               <i class="fas fa-sync-alt"></i>
             </button>
+          </div>
+        </div>
+
+        <!-- BARRA DEDICADA DE SELEÇÃO DUAL DO MODO SPLIT SCREEN (QUANDO ATIVO) -->
+        <div id="mosaicSplitBarControls" style="display: none; background: rgba(11, 19, 41, 0.95); border: 1px solid rgba(168, 85, 247, 0.4); border-radius: 8px; padding: 8px 14px; margin-bottom: 12px; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 11px; font-weight: 800; color: #c084fc;"><i class="fas fa-columns"></i> PAINEL ESQUERDO:</span>
+            <select id="selectMosaicSplitGroupLeft" onchange="renderMosaicSplitView()" class="form-input" style="font-size: 11px; padding: 3px 8px; width: 180px; background: rgba(0,0,0,0.5); color: #fff; border-color: rgba(168,85,247,0.4);"></select>
+          </div>
+          <div style="font-size: 12px; font-weight: 800; color: #94a3b8;">VS</div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 11px; font-weight: 800; color: #38bdf8;"><i class="fas fa-columns"></i> PAINEL DIREITO:</span>
+            <select id="selectMosaicSplitGroupRight" onchange="renderMosaicSplitView()" class="form-input" style="font-size: 11px; padding: 3px 8px; width: 180px; background: rgba(0,0,0,0.5); color: #fff; border-color: rgba(56,189,248,0.4);"></select>
+          </div>
+          <button type="button" class="btn-secondary" onclick="toggleMosaicSplitScreen()" style="font-size: 10px; padding: 3px 8px; color: #cbd5e1;">Fechar Split</button>
+        </div>
+
+        <!-- CONTAINER DO GRID NORMAL VS GRID SPLIT -->
+        <div id="mosaicSplitColumnsContainer" style="display: none; grid-template-columns: 1fr 1fr; gap: 16px;">
+          <div style="background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(168, 85, 247, 0.25); border-radius: 8px; padding: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 6px;">
+              <strong id="splitTitleLeft" style="color: #c084fc; font-size: 13px;">Grupo Esquerdo</strong>
+              <span id="splitCountLeft" class="badge" style="background: rgba(168,85,247,0.2); color: #d8b4fe;">0 canais</span>
+            </div>
+            <div id="mosaicSplitGridLeft" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px;"></div>
+          </div>
+          <div style="background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 6px;">
+              <strong id="splitTitleRight" style="color: #38bdf8; font-size: 13px;">Grupo Direito</strong>
+              <span id="splitCountRight" class="badge" style="background: rgba(56,189,248,0.2); color: #7dd3fc;">0 canais</span>
+            </div>
+            <div id="mosaicSplitGridRight" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px;"></div>
           </div>
         </div>
 
@@ -11633,9 +11902,11 @@
         </button>
 
         <button class="cfg-subtab-btn" id="btn-cfg-subtab-gcp" onclick="switchConfigsSubtab('gcp')">
+          <i class="fas fa-cloud" style="color: #38bdf8;"></i> ☁️ Consumo Google Cloud &amp; Custos
+        </button>
 
-          <i class="fas fa-cloud" style="color: #38bdf8;"></i> ☁️ Consumo Google Cloud & Custos
-
+        <button class="cfg-subtab-btn" id="btn-cfg-subtab-maintenance" onclick="switchConfigsSubtab('maintenance')">
+          <i class="fas fa-wrench" style="color: #fbbf24;"></i> 🔧 Janelas de Manutenção por Praça
         </button>
 
 
@@ -12917,6 +13188,31 @@
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============================================================== -->
+      <!-- SUBTAB: JANELAS DE MANUTENÇÃO POR PRAÇA                        -->
+      <!-- ============================================================== -->
+      <div id="configs-content-maintenance" style="display: none;">
+        <div class="panel-card" style="padding: 20px; margin-bottom: 20px; border: 1px solid rgba(245, 158, 11, 0.35); background: linear-gradient(180deg, rgba(15, 23, 42, 0.9) 0%, rgba(15, 23, 42, 0.98) 100%);">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 12px;">
+            <div>
+              <div class="panel-title" style="font-size: 16px; font-weight: 700; color: #f8fafc; display: flex; align-items: center; gap: 8px;">
+                <span>🔧</span> Gerenciamento de Janelas de Manutenção por Praça
+              </div>
+              <div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">
+                Silencie temporariamente incidentes, alarmes e anomalias na fila N1 e na Galeria Forense quando uma filial estiver em manutenção local de link, antena ou cabeamento.
+              </div>
+            </div>
+            <button class="btn-primary" style="padding: 8px 16px; font-size: 12px; background: linear-gradient(135deg, #d97706, #f59e0b); border: 1px solid #f59e0b; font-weight: 700;" onclick="openPracaMaintenanceModal()">
+              <i class="fas fa-plus-circle"></i> Nova Janela de Manutenção
+            </button>
+          </div>
+
+          <div id="maintenanceTableContainer" style="overflow-x: auto;">
+            <!-- Renderizado dinamicamente via renderMaintenanceTable() -->
           </div>
         </div>
       </div>
@@ -18782,6 +19078,132 @@
         <button type="button" class="btn-primary" id="btnConfirmSafetyModalExec" onclick="confirmFleetSafetyModal()" disabled style="padding: 8px 18px; background: linear-gradient(135deg, #059669, #10b981); border: 1px solid #34d399; font-weight: 700; opacity: 0.5; cursor: not-allowed;">
           <i class="fas fa-check-shield"></i> Confirmar &amp; Executar com Auditoria
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================== -->
+  <!-- MODAL: AGENDAMENTO / ATIVAÇÃO DE MANUTENÇÃO POR PRAÇA          -->
+  <!-- ============================================================== -->
+  <div class="modal-overlay" id="modalPracaMaintenance" style="display: none; align-items: center; justify-content: center; z-index: 10040; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(4px);">
+    <div class="modal-content" style="max-width: 540px; width: 95%; background: #0b1329; border: 1px solid #f59e0b; border-radius: 12px; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.9); padding: 22px;">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid rgba(255, 255, 255, 0.1); padding-bottom: 12px; margin-bottom: 16px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 24px;">🔧</span>
+          <div>
+            <h4 style="margin: 0; font-size: 16px; font-weight: 800; color: #f8fafc;">Janela de Manutenção Operacional</h4>
+            <div style="font-size: 11px; color: #fbbf24; margin-top: 2px;">Silencia incidentes e telemetrias transitórias durante intervenções na praça</div>
+          </div>
+        </div>
+        <button type="button" class="btn-secondary" onclick="closePracaMaintenanceModal()" style="padding: 4px 10px;">✕</button>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <div>
+          <label style="font-size: 12px; font-weight: 700; color: #cbd5e1; display: block; margin-bottom: 6px;">
+            📍 Praça / Região:
+          </label>
+          <input type="text" id="maintInputPraca" class="form-input" placeholder="Ex: Uruguaiana, Vitória, Santos..." list="maintPracaDatalist" style="width: 100%; font-size: 13px; font-weight: 700; background: rgba(0,0,0,0.45); color: #fff;">
+          <datalist id="maintPracaDatalist"></datalist>
+        </div>
+
+        <div>
+          <label style="font-size: 12px; font-weight: 700; color: #cbd5e1; display: block; margin-bottom: 6px;">
+            ⏳ Duração da Janela:
+          </label>
+          <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;">
+            <button type="button" class="btn-secondary btn-maint-dur" data-min="30" onclick="selectMaintDuration(30, this)" style="padding: 6px; font-size: 11px; font-weight: 700;">30 min</button>
+            <button type="button" class="btn-secondary btn-maint-dur active" data-min="60" onclick="selectMaintDuration(60, this)" style="padding: 6px; font-size: 11px; font-weight: 700; background: #d97706; color: #fff; border-color: #f59e0b;">1 hora</button>
+            <button type="button" class="btn-secondary btn-maint-dur" data-min="120" onclick="selectMaintDuration(120, this)" style="padding: 6px; font-size: 11px; font-weight: 700;">2 horas</button>
+            <button type="button" class="btn-secondary btn-maint-dur" data-min="240" onclick="selectMaintDuration(240, this)" style="padding: 6px; font-size: 11px; font-weight: 700;">4 horas</button>
+            <button type="button" class="btn-secondary btn-maint-dur" data-min="480" onclick="selectMaintDuration(480, this)" style="padding: 6px; font-size: 11px; font-weight: 700;">1 Turno (8h)</button>
+            <button type="button" class="btn-secondary btn-maint-dur" data-min="1440" onclick="selectMaintDuration(1440, this)" style="padding: 6px; font-size: 11px; font-weight: 700;">24 horas</button>
+            <button type="button" class="btn-secondary btn-maint-dur" data-min="0" onclick="selectMaintDuration(0, this)" style="grid-column: span 2; padding: 6px; font-size: 11px; font-weight: 700;">Manual (Sem expirar)</button>
+          </div>
+          <input type="hidden" id="maintSelectedDurationMin" value="60">
+        </div>
+
+        <div>
+          <label style="font-size: 12px; font-weight: 700; color: #cbd5e1; display: block; margin-bottom: 6px;">
+            📝 Motivo da Manutenção (Técnico / Tratativa):
+          </label>
+          <input type="text" id="maintInputReason" class="form-input" placeholder="Ex: Troca de cabeamento de antena, manutenção de link, intervenção técnica local..." value="Tratativa técnica em andamento no Capture Site" style="width: 100%; font-size: 12px; background: rgba(0,0,0,0.45); color: #fff;">
+        </div>
+
+        <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 6px; padding: 10px 12px; font-size: 11px; color: #fde68a; line-height: 1.45;">
+          <i class="fas fa-info-circle"></i> <strong>Efeito Operacional:</strong> Os alertas da fila de incidentes e os registros da Galeria Forense serão silenciados para esta praça durante a janela. A telemetria continuará sendo coletada em segundo plano.
+        </div>
+      </div>
+
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 18px; border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 14px;">
+        <button type="button" id="btnMaintRemovePraca" class="btn-secondary" style="color: #fca5a5; border-color: rgba(239, 68, 68, 0.4); display: none;" onclick="removeActivePracaMaintenance()">
+          <i class="fas fa-trash"></i> Encerrar Manutenção
+        </button>
+        <div style="display: flex; gap: 10px; margin-left: auto;">
+          <button type="button" class="btn-secondary" onclick="closePracaMaintenanceModal()">Cancelar</button>
+          <button type="button" class="btn-primary" style="background: linear-gradient(135deg, #d97706, #f59e0b); border: 1px solid #f59e0b; font-weight: 700; color: #fff;" onclick="submitPracaMaintenance()">
+            <i class="fas fa-wrench"></i> Ativar Modo Manutenção
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================== -->
+  <!-- MODAL: GRUPOS PERSONALIZADOS DE VEÍCULOS & CANAIS NO MOSAICO   -->
+  <!-- ============================================================== -->
+  <div class="modal-overlay" id="modalCustomMosaicGroups" style="display: none; align-items: center; justify-content: center; z-index: 10040; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(4px);">
+    <div class="modal-content" style="max-width: 780px; width: 95%; max-height: 90vh; background: #0b1329; border: 1px solid #38bdf8; border-radius: 12px; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.9); padding: 22px; display: flex; flex-direction: column;">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid rgba(255, 255, 255, 0.1); padding-bottom: 12px; margin-bottom: 14px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 24px;">📁</span>
+          <div>
+            <h4 style="margin: 0; font-size: 16px; font-weight: 800; color: #f8fafc;">Gerenciador de Grupos Personalizados de Monitoração</h4>
+            <div style="font-size: 11px; color: #38bdf8; margin-top: 2px;">Crie listas customizadas de canais (ex: PayTV, Futebol, Filiais Sul) e divida a tela em Split Screen</div>
+          </div>
+        </div>
+        <button type="button" class="btn-secondary" onclick="closeCustomChannelGroupsModal()" style="padding: 4px 10px;">✕</button>
+      </div>
+
+      <div style="display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 12px;">
+        <div style="flex: 1; min-width: 240px;">
+          <label style="font-size: 11px; font-weight: 700; color: #cbd5e1; display: block; margin-bottom: 4px;">Nome do Grupo:</label>
+          <input type="text" id="customGroupNameInput" class="form-input" placeholder="Ex: PayTV Nacional, Rede Globo Sul, Rádios SP..." style="width: 100%; font-size: 12px; background: rgba(0,0,0,0.45); color: #fff;">
+        </div>
+        <div style="display: flex; align-items: flex-end; gap: 6px;">
+          <button type="button" class="btn-primary" style="padding: 8px 14px; font-size: 11px; background: #2563eb;" onclick="saveCurrentCustomGroup()">
+            <i class="fas fa-save"></i> Salvar Grupo
+          </button>
+          <button type="button" id="btnDeleteCustomGroup" class="btn-secondary" style="padding: 8px 14px; font-size: 11px; color: #fca5a5; border-color: rgba(239,68,68,0.4); display: none;" onclick="deleteSelectedCustomGroup()">
+            <i class="fas fa-trash"></i> Excluir
+          </button>
+        </div>
+      </div>
+
+      <!-- Barra de Filtros Rápidos na Lista de Canais -->
+      <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 10px; margin-bottom: 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+        <input type="text" id="customGroupSearchChannel" oninput="filterCustomGroupChannelList()" placeholder="🔍 Buscar veículo ou praça..." class="form-input" style="flex: 1; min-width: 160px; font-size: 11px; padding: 5px 10px;">
+        <select id="customGroupFilterMeio" onchange="filterCustomGroupChannelList()" class="form-input" style="font-size: 11px; padding: 5px 8px; width: 110px;">
+          <option value="all">Todos Meios</option>
+          <option value="TV">Apenas TV</option>
+          <option value="Rádio">Apenas Rádio</option>
+        </select>
+        <div style="display: flex; gap: 6px;">
+          <button type="button" class="btn-secondary" style="font-size: 10px; padding: 4px 8px;" onclick="selectAllCustomGroupChannels(true)">Marcar Todos Visíveis</button>
+          <button type="button" class="btn-secondary" style="font-size: 10px; padding: 4px 8px;" onclick="selectAllCustomGroupChannels(false)">Desmarcar Todos</button>
+        </div>
+        <span style="font-size: 11px; font-weight: 700; color: #38bdf8; margin-left: auto;">
+          Selecionados: <strong id="customGroupSelectedCount">0</strong>
+        </span>
+      </div>
+
+      <!-- Lista Rolável de Veículos com Checkboxes -->
+      <div id="customGroupChannelsListContainer" style="flex: 1; overflow-y: auto; max-height: 380px; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 8px; background: rgba(3, 7, 18, 0.6); display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px;">
+        <div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 20px;">Carregando canais...</div>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 12px;">
+        <button type="button" class="btn-secondary" onclick="closeCustomChannelGroupsModal()">Fechar</button>
       </div>
     </div>
   </div>

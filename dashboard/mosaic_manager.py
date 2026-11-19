@@ -1,9 +1,19 @@
 # dashboard/mosaic_manager.py
 import base64
 import random
+import time
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 from feature_flags import is_feature_enabled
+from maintenance_manager import is_praca_in_maintenance
+
+# Rastreamento de Persistência Temporal de Falhas para Eliminação de Falsos Positivos
+# Chave: "praca::canal" -> { "first_seen": timestamp, "samples": int, "tipo_falha": str }
+_CHANNEL_FAILURE_HISTORY: Dict[str, Dict[str, Any]] = {}
+
+def get_channel_failure_stats(praca: str, canal: str) -> Dict[str, Any]:
+    key = f"{praca.strip().lower()}::{canal.strip().lower()}"
+    return _CHANNEL_FAILURE_HISTORY.get(key, {})
 
 REGION_MAPPING = {
     # Sul
@@ -144,18 +154,36 @@ def get_channel_live_snapshots(channels: List[Dict[str, Any]], country: Optional
         status_color = "#10b981"
         tipo_falha = "none"
         falha_desc = "Transmissão com fluxo de quadros contínuo e sincronismo nominal."
+        in_maint = is_praca_in_maintenance(praca_nome)
 
-        if not enabled:
+        if in_maint:
+            visual_status = "🔧 MANUTENÇÃO"
+            status_color = "#f59e0b"
+            tipo_falha = "maintenance"
+            falha_desc = f"Praça '{praca_nome}' sob janela de manutenção programada. Alarmes silenciados."
+        elif not enabled:
             visual_status = "PAUSADO"
             status_color = "#64748b"
             tipo_falha = "paused"
             falha_desc = "Captura de JPEG suspensa pelo Kill-Switch operacional."
+        elif is_radio:
+            # Rádio FM/AM transmite apenas áudio nominal via placa PCIe / streaming
+            if audio_mudo.lower() in ["sim", "mudo"]:
+                visual_status = "ÁUDIO MUDO"
+                status_color = "#ef4444"
+                tipo_falha = "audio_mute"
+                falha_desc = "Ausência de áudio na entrada da emissora de rádio (>30s)."
+            else:
+                visual_status = "ÁUDIO OK"
+                status_color = "#10b981"
+                tipo_falha = "none"
+                falha_desc = "Transmissão contínua de áudio broadcast nominal."
         elif is_color_bars:
             visual_status = "⚠️ Padrão de Teste / Fora do Ar"
             status_color = "#f59e0b"
             tipo_falha = "test_pattern"
             falha_desc = "Emissora fora da grade comercial regular ou gerando Padrão de Barras SMPTE (Color Bars) no ar."
-        elif video_congelado.lower() in ["sim", "congelado"] or ("pelotas" in praca_nome.lower() and qualidade == 0 and "globo" in canal_nome.lower()):
+        elif video_congelado.lower() in ["sim", "congelado"]:
             visual_status = "CONGELADO"
             status_color = "#ef4444"
             tipo_falha = "freeze"
@@ -180,6 +208,42 @@ def get_channel_live_snapshots(channels: List[Dict[str, Any]], country: Optional
             status_color = "#ef4444"
             tipo_falha = "blackout"
             falha_desc = "Perda total de recepção de sinal no sintonizador (Blackout / Tela Preta)."
+
+        # =====================================================================
+        # CALIBRAÇÃO FORENSE TEMPORAL (ELIMINAÇÃO DE FALSOS POSITIVOS & CASOS CRÔNICOS)
+        # =====================================================================
+        chan_key = f"{praca_nome.strip().lower()}::{canal_nome.strip().lower()}"
+        now_ts = time.time()
+        is_forensic_confirmed = False
+        is_chronic = False
+        failure_duration_min = 0
+
+        if tipo_falha not in ["none", "paused", "maintenance"]:
+            if chan_key not in _CHANNEL_FAILURE_HISTORY:
+                _CHANNEL_FAILURE_HISTORY[chan_key] = {
+                    "first_seen": now_ts,
+                    "samples": 1,
+                    "tipo_falha": tipo_falha
+                }
+            else:
+                _CHANNEL_FAILURE_HISTORY[chan_key]["samples"] += 1
+                _CHANNEL_FAILURE_HISTORY[chan_key]["tipo_falha"] = tipo_falha
+
+            hist = _CHANNEL_FAILURE_HISTORY[chan_key]
+            dur_sec = max(0, int(now_ts - hist["first_seen"]))
+            failure_duration_min = dur_sec // 60
+
+            # Requisito de Persistência: >= 3 amostras consecutivas OU >= 5 minutos contínuos
+            if hist["samples"] >= 3 or dur_sec >= 300:
+                is_forensic_confirmed = True
+
+            # Caso Crônico: persistência contínua >= 30 minutos
+            if dur_sec >= 1800:
+                is_chronic = True
+        else:
+            # Se o canal normalizou ou está em manutenção, reseta o histórico
+            if chan_key in _CHANNEL_FAILURE_HISTORY:
+                _CHANNEL_FAILURE_HISTORY.pop(chan_key, None)
 
         # Storyboard de evidência forense (3 quadros)
         storyboard = []
@@ -219,6 +283,10 @@ def get_channel_live_snapshots(channels: List[Dict[str, Any]], country: Optional
             "status_color": status_color,
             "tipo_falha": tipo_falha,
             "falha_desc": falha_desc,
+            "in_maintenance": in_maint,
+            "is_forensic_confirmed": is_forensic_confirmed,
+            "is_chronic": is_chronic,
+            "failure_duration_min": failure_duration_min,
             "last_frame_time": now_str,
             "resolution": ("Áudio 48 kHz" if meio == "Rádio" else "320x240"),
             "is_radio": (meio == "Rádio"),
