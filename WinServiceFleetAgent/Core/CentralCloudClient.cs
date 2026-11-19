@@ -136,11 +136,12 @@ namespace WinServiceFleetAgent.Core
 
             string servicesJson = JsonSerializer.Serialize(srvTelemetryList);
             string currentSvcSig = string.Join("|", services.Select(s => $"{s.NomeServico}:{s.StatusServico}:{s.VersaoInstalada}"));
-            bool svcUnchanged = (currentSvcSig == _lastSvcStateSig) && (DateTime.UtcNow - _lastSvcSentUtc).TotalMinutes < 25.0;
+            // Telemetria em tempo real contínua: garante envio de heartbeat e métricas a cada ciclo (~3 min)
+            bool svcUnchanged = (currentSvcSig == _lastSvcStateSig) && (DateTime.UtcNow - _lastSvcSentUtc).TotalMinutes < 3.0;
 
             if (svcUnchanged)
             {
-                FileLogger.Log($"[GoogleCloud] 🛡️ Smart Delta Free-Tier: Estado dos {services.Count} serviços inalterado (<25m). Escrita Firestore economizada ($0.00).");
+                FileLogger.Log($"[GoogleCloud] 🛡️ Smart Delta: Estado dos {services.Count} serviços inalterado (<3m). Telemetria recente mantida.");
                 gcpSuccess = true;
             }
             else
@@ -243,9 +244,9 @@ namespace WinServiceFleetAgent.Core
             if (channels == null || channels.Count == 0) return false;
             string docHost = ResolveCanonicalHostDocId(cs);
             string currentChSig = string.Join("|", channels.Select(c => $"{c.Title}:{c.StatusTuner}:{c.GravandoMP4}:{c.GravandoMP3}:{c.VideoCongelado}"));
-            if (currentChSig == _lastChStateSig && (DateTime.UtcNow - _lastChSentUtc).TotalMinutes < 25.0)
+            if (currentChSig == _lastChStateSig && (DateTime.UtcNow - _lastChSentUtc).TotalMinutes < 3.0)
             {
-                FileLogger.Log($"[GoogleCloud] 🛡️ Smart Delta Free-Tier: Estado dos {channels.Count} canais inalterado (<25m). Escrita Firestore economizada ($0.00).");
+                FileLogger.Log($"[GoogleCloud] 🛡️ Smart Delta: Estado dos {channels.Count} canais inalterado (<3m). Telemetria recente mantida.");
                 return true;
             }
 

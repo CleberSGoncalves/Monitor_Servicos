@@ -582,7 +582,15 @@ def get_host_service_action_status(host: str, service_name: str, target_version:
     """
     from datetime import datetime, timezone
     from sharepoint_sync import get_cached_data, get_global_cooldown_remain, sanitize_and_recalculate_cache
+    from gcp_sync import merge_firestore_hosts_into_cache
     from version_governance import get_desired_versions, _parse_ver_tuple, _is_version_up_to_date
+
+    # Força a leitura imediata e fresca do Google Cloud Firestore para o modal de acompanhamento ao vivo
+    try:
+        c_temp = get_cached_data()
+        merge_firestore_hosts_into_cache(c_temp.get("services", []), c_temp.get("channels", []), force=True)
+    except Exception:
+        pass
 
     sanitize_and_recalculate_cache()
     c_data = get_cached_data()

@@ -996,7 +996,7 @@ def merge_firestore_hosts_into_cache(
     global _last_firestore_pull_ts, _cached_firestore_hosts
 
     now_ts = _time.time()
-    if not force and _cached_firestore_hosts and (now_ts - _last_firestore_pull_ts) < 180.0:
+    if not force and _cached_firestore_hosts and (now_ts - _last_firestore_pull_ts) < 30.0:
         hosts_map = _cached_firestore_hosts
     else:
         hosts_map = {}
