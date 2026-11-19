@@ -2404,7 +2404,10 @@ async def get_channel_jpeg(canal: str, praca: Optional[str] = None, mode: Option
             v_code_map = {"GLO": "globo", "SBT": "sbt", "REC": "record", "BAND": "band", "REDETV": "redetv", "CULT": "cultura", "TVBR": "tvbrasil"}
             net_dir_name = v_code_map.get(v_code, "cultura")
         
-        cand_dir = Path("dashboard/static/thumbnails/channel_frames") / net_dir_name
+        cand_dir = ROOT_DIR / "static" / "thumbnails" / "channel_frames" / net_dir_name
+        if not cand_dir.exists():
+            cand_dir = Path("dashboard/static/thumbnails/channel_frames") / net_dir_name
+
         if cand_dir.exists():
             frames = sorted(list(cand_dir.glob("*.jpg")))
             if frames:
@@ -2412,6 +2415,13 @@ async def get_channel_jpeg(canal: str, praca: Optional[str] = None, mode: Option
                 seq_val = int(seq or 0) + int(time.time() // 8)
                 frame_idx = (seq_val + hash_offset) % len(frames)
                 real_disk_file = frames[frame_idx]
+
+        if not real_disk_file:
+            alt_file = ROOT_DIR / "static" / "thumbnails" / "real_channels" / f"real_channel_{net_dir_name}.jpg"
+            if not alt_file.exists():
+                alt_file = Path("dashboard/static/thumbnails/real_channels") / f"real_channel_{net_dir_name}.jpg"
+            if alt_file.exists():
+                real_disk_file = alt_file
 
     w, h = 320, 240
     now_dt = datetime.now()

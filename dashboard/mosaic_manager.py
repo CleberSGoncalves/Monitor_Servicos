@@ -2,6 +2,7 @@
 import base64
 import random
 import time
+import urllib.parse
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 from feature_flags import is_feature_enabled
@@ -295,7 +296,7 @@ def get_channel_live_snapshots(channels: List[Dict[str, Any]], country: Optional
             "audio_db": audio_db,
             "audio_bars_pct": audio_bars_pct,
             "lip_sync_delay_ms": lip_sync_delay,
-            "jpeg_url": f"/api/fleet/channels/jpeg?canal={canal_nome}&praca={praca_nome}",
+            "jpeg_url": f"/api/fleet/channels/jpeg?canal={urllib.parse.quote(str(canal_nome))}&praca={urllib.parse.quote(str(praca_nome))}",
             "is_enabled": enabled,
             "has_outage": (tipo_falha not in ["none", "paused"]),
             "storyboard": storyboard
