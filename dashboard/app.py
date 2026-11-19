@@ -2406,7 +2406,7 @@ async def get_channel_jpeg(canal: str, praca: Optional[str] = None, mode: Option
         
         cand_dir = ROOT_DIR / "static" / "thumbnails" / "channel_frames" / net_dir_name
         if not cand_dir.exists():
-            cand_dir = Path("dashboard/static/thumbnails/channel_frames") / net_dir_name
+            cand_dir = Path("static/thumbnails/channel_frames") / net_dir_name
 
         if cand_dir.exists():
             frames = sorted(list(cand_dir.glob("*.jpg")))
@@ -2419,7 +2419,7 @@ async def get_channel_jpeg(canal: str, praca: Optional[str] = None, mode: Option
         if not real_disk_file:
             alt_file = ROOT_DIR / "static" / "thumbnails" / "real_channels" / f"real_channel_{net_dir_name}.jpg"
             if not alt_file.exists():
-                alt_file = Path("dashboard/static/thumbnails/real_channels") / f"real_channel_{net_dir_name}.jpg"
+                alt_file = Path("static/thumbnails/real_channels") / f"real_channel_{net_dir_name}.jpg"
             if alt_file.exists():
                 real_disk_file = alt_file
 
