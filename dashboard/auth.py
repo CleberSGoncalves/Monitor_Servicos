@@ -125,14 +125,15 @@ def verify_password(password: str, stored_hash: str) -> bool:
 
 
 def authenticate_user(username: str, password: str) -> Optional[Dict[str, Any]]:
-    """Autentica o usuário localmente ou via LDAP corporativo."""
+    """Autentica o usuário localmente ou via LDAP corporativo com normalização de UPN/sAMAccountName."""
     clean_user = username.strip().lower()
+    base_user = clean_user.split("@")[0].split("\\")[-1].strip()
     
-    # 1. Tenta autenticação local
+    # 1. Tenta autenticação local (busca por username digitado ou base_user)
     with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM users WHERE LOWER(username) = ? AND is_active = 1", (clean_user,))
+        cursor.execute("SELECT * FROM users WHERE (LOWER(username) = ? OR LOWER(username) = ?) AND is_active = 1", (clean_user, base_user))
         user = cursor.fetchone()
         
         if user:
@@ -143,24 +144,25 @@ def authenticate_user(username: str, password: str) -> Optional[Dict[str, Any]]:
                     return dict(user)
             elif user["auth_type"] == "ldap":
                 # Autentica via LDAP do domínio
-                if authenticate_ldap(clean_user, password):
+                if authenticate_ldap(clean_user, password) or authenticate_ldap(base_user, password):
                     cursor.execute("UPDATE users SET last_login = datetime('now') WHERE id = ?", (user["id"],))
                     conn.commit()
                     return dict(user)
 
     # 2. Se não existir no banco local, tenta autenticar diretamente no LDAP corporativo
-    ldap_info = authenticate_ldap(clean_user, password)
+    ldap_info = authenticate_ldap(clean_user, password) or authenticate_ldap(base_user, password)
     if ldap_info:
+        effective_user = ldap_info.get("username", base_user)
         # Auto-provisiona usuário LDAP como operador ativo no primeiro login
         with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT OR REPLACE INTO users (username, password_hash, full_name, email, role, auth_type, is_active, created_at, last_login)
                 VALUES (?, 'LDAP_AUTH', ?, ?, 'operator', 'ldap', 1, datetime('now'), datetime('now'))
-            """, (clean_user, ldap_info.get("full_name", clean_user), ldap_info.get("email", f"{clean_user}@empresa.com.br")))
+            """, (effective_user, ldap_info.get("full_name", effective_user.title()), ldap_info.get("email", f"{effective_user}@ibope.com")))
             conn.commit()
             
-            cursor.execute("SELECT * FROM users WHERE username = ?", (clean_user,))
+            cursor.execute("SELECT * FROM users WHERE username = ?", (effective_user,))
             conn.row_factory = sqlite3.Row
             return dict(cursor.fetchone())
 

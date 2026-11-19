@@ -258,62 +258,97 @@ def search_ldap_directory(query: str) -> List[Dict[str, str]]:
 
 
 def authenticate_ldap_user(username: str, password: str) -> Optional[Dict[str, Any]]:
-    """Autentica o operador contra o servidor Active Directory."""
+    """Autentica o operador contra o servidor Active Directory com normalização de domínio e fallback."""
     if not username or not password:
         return None
 
     cfg = get_ldap_config(mask_password=False)
-    server_host = cfg.get("server", "10.1.0.1")
+    primary_server = cfg.get("server", "10.1.0.1")
     port = int(cfg.get("port", 389))
     use_ssl = bool(cfg.get("use_ssl", False))
     timeout = int(cfg.get("timeout_sec", 4))
 
-    clean_user = username.strip()
-    user_principal = f"{clean_user}@grupoibope.corp" if "@" not in clean_user else clean_user
+    raw_user = username.strip()
+    
+    # Normalização inteligente de username corporativo:
+    # Se o usuário digitou cleber.goncalves@ibope.com ou GRUPOIBOPE\cleber.goncalves,
+    # extrai o login puro (sAMAccountName)
+    user_base = raw_user.split("@")[0].split("\\")[-1].strip()
+
+    # Formatos de UPN aceitos pelo Active Directory da Kantar/IBOPE
+    domain_candidates = [
+        f"{user_base}@grupoibope.corp",
+        f"GRUPOIBOPE\\{user_base}",
+        raw_user
+    ]
+    # Remove duplicatas preservando ordem
+    seen = set()
+    principals_to_try = []
+    for p in domain_candidates:
+        if p.lower() not in seen:
+            seen.add(p.lower())
+            principals_to_try.append(p)
+
+    # Servidores de autenticação a consultar (DC primário + fallbacks de domínio)
+    servers_to_try = [primary_server]
+    for alt_srv in ["grupoibope.corp", "10.1.0.10", "10.1.0.11", "10.1.0.2"]:
+        if alt_srv not in servers_to_try:
+            servers_to_try.append(alt_srv)
 
     try:
         import ldap3
-        server = ldap3.Server(
-            server_host,
-            port=port,
-            use_ssl=use_ssl,
-            get_info=ldap3.ALL,
-            connect_timeout=timeout
-        )
+    except ImportError:
+        logger.error("[LDAP Auth] Biblioteca ldap3 não instalada.")
+        return None
 
-        conn = ldap3.Connection(
-            server,
-            user=user_principal,
-            password=password,
-            auto_bind=True,
-            receive_timeout=timeout
-        )
+    for server_host in servers_to_try:
+        try:
+            server = ldap3.Server(
+                server_host,
+                port=port,
+                use_ssl=use_ssl,
+                get_info=ldap3.ALL,
+                connect_timeout=timeout
+            )
 
-        if conn.bound:
-            # Busca nome e email
-            full_name = clean_user.title()
-            email = f"{clean_user}@ibope.com"
-            try:
-                base_dn = cfg.get("base_dn", "OU=Users Accounts,OU=KIM Users,DC=grupoibope,DC=corp")
-                user_attr = cfg.get("user_attr", "sAMAccountName")
-                conn.search(base_dn, f"({user_attr}={clean_user})", attributes=["displayName", "mail", "givenName", "sn"])
-                if conn.entries:
-                    e = conn.entries[0]
-                    first = str(e.givenName.value if "givenName" in e else "")
-                    last = str(e.sn.value if "sn" in e else "")
-                    full_name = f"{first} {last}".strip() or str(e.displayName.value if "displayName" in e else full_name)
-                    if "mail" in e and e.mail.value:
-                        email = str(e.mail.value)
-            except Exception:
-                pass
+            for user_principal in principals_to_try:
+                try:
+                    conn = ldap3.Connection(
+                        server,
+                        user=user_principal,
+                        password=password,
+                        auto_bind=True,
+                        receive_timeout=timeout
+                    )
 
-            return {
-                "username": clean_user,
-                "full_name": full_name,
-                "email": email,
-                "auth_type": "ldap"
-            }
-    except Exception as e:
-        logger.warning(f"[LDAP Auth] Tentativa de bind falhou para {clean_user}: {e}")
+                    if conn.bound:
+                        full_name = user_base.title()
+                        email = f"{user_base}@ibope.com"
+                        try:
+                            base_dn = cfg.get("base_dn", "OU=Users Accounts,OU=KIM Users,DC=grupoibope,DC=corp")
+                            user_attr = cfg.get("user_attr", "sAMAccountName")
+                            conn.search(base_dn, f"({user_attr}={user_base})", attributes=["displayName", "mail", "givenName", "sn"])
+                            if conn.entries:
+                                e = conn.entries[0]
+                                first = str(e.givenName.value if "givenName" in e else "")
+                                last = str(e.sn.value if "sn" in e else "")
+                                full_name = f"{first} {last}".strip() or str(e.displayName.value if "displayName" in e else full_name)
+                                if "mail" in e and e.mail.value:
+                                    email = str(e.mail.value)
+                        except Exception:
+                            pass
+
+                        logger.info(f"[LDAP Auth] ✅ Autenticação LDAP bem-sucedida para '{user_base}' via {server_host} ({user_principal})")
+                        return {
+                            "username": user_base,
+                            "full_name": full_name,
+                            "email": email,
+                            "auth_type": "ldap"
+                        }
+                except Exception as ex_bind:
+                    logger.debug(f"[LDAP Auth] Tentativa {user_principal} em {server_host} falhou: {ex_bind}")
+
+        except Exception as ex_srv:
+            logger.debug(f"[LDAP Auth] Conexão com DC {server_host} falhou: {ex_srv}")
 
     return None
