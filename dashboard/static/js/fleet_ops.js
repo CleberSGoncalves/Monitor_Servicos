@@ -2040,3 +2040,476 @@ window.filterFleetBatchList = filterFleetBatchList;
 window.onFleetBatchSearchInput = onFleetBatchSearchInput;
 window.copyFleetBatchSummaryToClipboard = copyFleetBatchSummaryToClipboard;
 
+// ==============================================================================
+// REPOSITÓRIO OFICIAL DE PACOTES, AUDITORIA BINÁRIA E DISTRIBUIÇÃO DA FROTA
+// ==============================================================================
+let cachedPackageRepoData = null;
+let currentPackageRepoFilter = "all";
+let currentPackageRepoSearch = "";
+
+function switchFleetSubtab(subtab) {
+    const btnGov = document.getElementById("btn-fleet-subtab-governance");
+    const btnRepo = document.getElementById("btn-fleet-subtab-repository");
+    const containerGov = document.getElementById("fleetSubtabGovernanceContainer");
+    const containerRepo = document.getElementById("fleetSubtabRepositoryContainer");
+
+    if (subtab === "repository") {
+        if (btnGov) btnGov.classList.remove("active");
+        if (btnRepo) btnRepo.classList.add("active");
+        if (containerGov) containerGov.style.display = "none";
+        if (containerRepo) containerRepo.style.display = "block";
+        loadPackageRepository();
+    } else {
+        if (btnGov) btnGov.classList.add("active");
+        if (btnRepo) btnRepo.classList.remove("active");
+        if (containerGov) containerGov.style.display = "block";
+        if (containerRepo) containerRepo.style.display = "none";
+    }
+}
+
+function togglePackageGuidePanel() {
+    const panel = document.getElementById("panelPackagingGuide");
+    if (!panel) return;
+    panel.style.display = (panel.style.display === "none" || !panel.style.display) ? "block" : "none";
+}
+
+async function loadPackageRepository(force = false) {
+    const icon = document.getElementById("iconReloadPackagesRepo");
+    if (icon) icon.classList.add("fa-spin");
+
+    try {
+        const resp = await fetch("/api/fleet/packages/summary");
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        cachedPackageRepoData = data;
+
+        // Atualiza Métricas
+        const metricTotal = document.getElementById("repoMetricTotalOfficial");
+        const metricGcsStatus = document.getElementById("repoMetricGcsStatus");
+        const metricGcsDate = document.getElementById("repoMetricGcsDate");
+        const metricLocal = document.getElementById("repoMetricLocalCount");
+        const badgeRepoCount = document.getElementById("badgeRepoPackageCount");
+
+        if (metricTotal) metricTotal.innerText = data.total_official_services || 12;
+        if (badgeRepoCount) badgeRepoCount.innerText = `${data.total_official_services || 12} Serviços`;
+        if (metricGcsStatus) {
+            metricGcsStatus.innerText = data.gcs_manifest_available ? "Sincronizado" : "Disponível";
+            metricGcsStatus.style.color = data.gcs_manifest_available ? "#34d399" : "#fbbf24";
+        }
+        if (metricGcsDate) {
+            metricGcsDate.innerText = data.gcs_updated_at ? `Última sincronização: ${formatFleetRelativeTime(data.gcs_updated_at)}` : "gs://kantar-fleet-releases/manifest.json";
+        }
+        if (metricLocal) metricLocal.innerText = `${data.total_local_packages} / ${data.total_official_services}`;
+
+        renderPackageRepoTable();
+        if (force && typeof showToast === "function") {
+            showToast("Inventário do repositório de pacotes atualizado com sucesso!", "success");
+        }
+    } catch (err) {
+        console.error("[PackageRepo] Erro ao carregar pacotes:", err);
+        const tbody = document.getElementById("packageRepoTableBody");
+        if (tbody) {
+            tbody.innerHTML = `<tr><td colspan="8" style="padding: 24px; text-align: center; color: #ef4444;"><i class="fas fa-exclamation-triangle"></i> Erro ao carregar pacotes do repositório: ${err.message}</td></tr>`;
+        }
+    } finally {
+        if (icon) icon.classList.remove("fa-spin");
+    }
+}
+
+function filterPackageRepoTable(category) {
+    currentPackageRepoFilter = category;
+    ["btnRepoFilterAll", "btnRepoFilterAgent", "btnRepoFilterBroadcast", "btnRepoFilterDetection"].forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) btn.classList.remove("active");
+    });
+
+    if (category === "agente") {
+        document.getElementById("btnRepoFilterAgent")?.classList.add("active");
+    } else if (category === "captura") {
+        document.getElementById("btnRepoFilterBroadcast")?.classList.add("active");
+    } else if (category === "deteccao") {
+        document.getElementById("btnRepoFilterDetection")?.classList.add("active");
+    } else {
+        document.getElementById("btnRepoFilterAll")?.classList.add("active");
+    }
+    renderPackageRepoTable();
+}
+
+function handlePackageRepoSearch(query) {
+    currentPackageRepoSearch = (query || "").trim().toLowerCase();
+    renderPackageRepoTable();
+}
+
+function renderPackageRepoTable() {
+    const tbody = document.getElementById("packageRepoTableBody");
+    if (!tbody || !cachedPackageRepoData || !cachedPackageRepoData.services) return;
+
+    let services = cachedPackageRepoData.services;
+
+    // Filtro por Categoria
+    if (currentPackageRepoFilter === "agente") {
+        services = services.filter(s => s.category.toLowerCase().includes("agente"));
+    } else if (currentPackageRepoFilter === "captura") {
+        services = services.filter(s => s.category.toLowerCase().includes("captura") || s.category.toLowerCase().includes("gravação"));
+    } else if (currentPackageRepoFilter === "deteccao") {
+        services = services.filter(s => s.category.toLowerCase().includes("detecção") || s.category.toLowerCase().includes("ia"));
+    }
+
+    // Filtro por Busca
+    if (currentPackageRepoSearch) {
+        services = services.filter(s => 
+            s.service_name.toLowerCase().includes(currentPackageRepoSearch) ||
+            s.display_name.toLowerCase().includes(currentPackageRepoSearch) ||
+            s.primary_exe.toLowerCase().includes(currentPackageRepoSearch) ||
+            s.governed_version.toLowerCase().includes(currentPackageRepoSearch)
+        );
+    }
+
+    if (services.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" style="padding: 24px; text-align: center; color: #94a3b8; font-style: italic;">Nenhum serviço ou pacote localizado com os filtros atuais.</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = services.map(s => {
+        let statusBadge = "";
+        if (s.is_gcs_synced) {
+            statusBadge = `<span class="badge badge-green" style="font-size: 10.5px; display: inline-flex; align-items: center; gap: 4px;"><i class="fas fa-check-circle"></i> Homologado &amp; GCS</span>`;
+        } else if (s.has_local_file) {
+            statusBadge = `<span class="badge badge-yellow" style="font-size: 10.5px; display: inline-flex; align-items: center; gap: 4px;"><i class="fas fa-hdd"></i> Local (Pendente GCS)</span>`;
+        } else if (s.gcs_version && s.gcs_version !== "--") {
+            statusBadge = `<span class="badge badge-blue" style="font-size: 10.5px; display: inline-flex; align-items: center; gap: 4px;"><i class="fas fa-cloud"></i> Apenas em Nuvem</span>`;
+        } else {
+            statusBadge = `<span class="badge" style="background: rgba(148, 163, 184, 0.2); color: #cbd5e1; font-size: 10.5px;"><i class="fas fa-clock"></i> Pendente Upload</span>`;
+        }
+
+        const shaDisplay = (s.sha256 && s.sha256 !== "--") 
+            ? `<div style="display: flex; align-items: center; justify-content: center; gap: 6px;">
+                 <span style="font-family: monospace; font-size: 10.5px; color: #38bdf8;" title="${s.sha256}">${s.sha256.substring(0, 10)}...</span>
+                 <button class="btn-sm btn-secondary" onclick="copyRepoShaToClipboard('${s.sha256}')" style="padding: 2px 6px; font-size: 10px;" title="Copiar Hash SHA-256"><i class="fas fa-copy"></i></button>
+               </div>`
+            : `<span style="color: #64748b;">--</span>`;
+
+        const downloadBtn = s.has_local_file
+            ? `<button class="btn-sm btn-secondary" onclick="downloadPackageFile('${s.service_name}')" style="padding: 3px 8px; font-size: 11px; display: inline-flex; align-items: center; gap: 4px; color: #38bdf8;" title="Baixar pacote .zip local"><i class="fas fa-download"></i> ZIP</button>`
+            : `<button class="btn-sm btn-secondary" disabled style="padding: 3px 8px; font-size: 11px; opacity: 0.4; cursor: not-allowed;" title="Pacote não disponível localmente"><i class="fas fa-download"></i> ZIP</button>`;
+
+        return `
+            <tr style="border-bottom: 1px solid rgba(148, 163, 184, 0.1); transition: background 0.15s ease;" onmouseover="this.style.background='rgba(51,65,85,0.25)'" onmouseout="this.style.background='transparent'">
+                <td style="padding: 10px 14px;">
+                    <div style="font-weight: 700; color: #f8fafc; display: flex; align-items: center; gap: 8px;">
+                        <i class="fas ${s.icon}" style="color: ${s.color};"></i>
+                        <span>${s.display_name}</span>
+                    </div>
+                    <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">${s.category} • ${s.description}</div>
+                </td>
+                <td style="padding: 10px 14px; text-align: center; font-family: monospace; font-weight: 700; color: #34d399; font-size: 12px;">
+                    v${s.governed_version}
+                </td>
+                <td style="padding: 10px 14px; text-align: center; font-family: monospace; font-size: 11.5px; color: ${s.gcs_version === s.governed_version ? '#38bdf8' : '#fbbf24'};">
+                    ${s.gcs_version !== '--' ? 'v' + s.gcs_version : '--'}
+                </td>
+                <td style="padding: 10px 14px; font-size: 11px;">
+                    <div style="color: #cbd5e1; font-family: monospace; font-weight: 600;">${s.primary_exe}</div>
+                    <div style="color: #64748b; font-size: 10.5px; margin-top: 1px;" title="${s.default_dir}">${s.default_dir}</div>
+                </td>
+                <td style="padding: 10px 14px; font-size: 11.5px;">
+                    <div style="color: #f8fafc; font-family: monospace;">${s.filename}</div>
+                    <div style="color: #94a3b8; font-size: 10.5px;">${s.file_size_mb > 0 ? s.file_size_mb + ' MB' : (s.has_local_file ? '< 1 MB' : 'Sem arquivo local')}</div>
+                </td>
+                <td style="padding: 10px 14px; text-align: center;">
+                    ${shaDisplay}
+                </td>
+                <td style="padding: 10px 14px; text-align: center;">
+                    ${statusBadge}
+                </td>
+                <td style="padding: 10px 14px; text-align: center;">
+                    <div style="display: inline-flex; gap: 6px; align-items: center;">
+                        <button class="btn-sm btn-primary" onclick="openUploadPackageModal('${s.service_name}', '${s.governed_version}')" style="padding: 4px 10px; font-size: 11px; display: inline-flex; align-items: center; gap: 4px; background: linear-gradient(135deg, #0284c7, #0369a1); border: 1px solid #38bdf8;" title="Fazer upload de nova versão para este serviço">
+                            <i class="fas fa-upload"></i> Upload
+                        </button>
+                        ${downloadBtn}
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join("");
+}
+
+function copyRepoShaToClipboard(sha) {
+    if (!sha || sha === "--") return;
+    navigator.clipboard.writeText(sha).then(() => {
+        if (typeof showToast === "function") showToast("Hash SHA-256 copiado para a área de transferência!", "success");
+    }).catch(() => {
+        const ta = document.createElement("textarea");
+        ta.value = sha;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        if (typeof showToast === "function") showToast("Hash SHA-256 copiado para a área de transferência!", "success");
+    });
+}
+
+function downloadPackageFile(serviceName) {
+    window.open(`/api/fleet/packages/download/${encodeURIComponent(serviceName)}`, "_blank");
+}
+
+function openUploadPackageModal(preselectedService = "", preselectedVersion = "") {
+    const modal = document.getElementById("modalUploadPackage");
+    if (!modal) return;
+
+    const selectSvc = document.getElementById("modalUploadSelectService");
+    const inputVer = document.getElementById("modalUploadInputVersion");
+    const inputFile = document.getElementById("modalUploadInputFile");
+    const labelDrop = document.getElementById("labelDropzoneFile");
+    const containerAudit = document.getElementById("containerAuditResult");
+    const inputJust = document.getElementById("modalUploadInputJustification");
+
+    if (selectSvc && preselectedService) selectSvc.value = preselectedService;
+    if (inputVer && preselectedVersion) inputVer.value = preselectedVersion;
+    if (inputFile) inputFile.value = "";
+    if (labelDrop) labelDrop.innerHTML = "Clique para selecionar ou arraste o arquivo <strong>.ZIP</strong>";
+    if (containerAudit) containerAudit.style.display = "none";
+    if (inputJust) inputJust.value = "";
+
+    modal.style.display = "flex";
+}
+
+function closeUploadPackageModal() {
+    const modal = document.getElementById("modalUploadPackage");
+    if (modal) modal.style.display = "none";
+}
+
+function handleModalServiceChange(svcName) {
+    if (!svcName || !cachedPackageRepoData || !cachedPackageRepoData.services) return;
+    const item = cachedPackageRepoData.services.find(s => s.service_name === svcName);
+    const inputVer = document.getElementById("modalUploadInputVersion");
+    if (item && inputVer && !inputVer.value) {
+        inputVer.value = item.governed_version;
+    }
+}
+
+function handleModalFileSelected(input) {
+    const labelDrop = document.getElementById("labelDropzoneFile");
+    if (!input.files || input.files.length === 0) return;
+    const file = input.files[0];
+    const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
+    if (labelDrop) {
+        labelDrop.innerHTML = `<strong>${file.name}</strong> (${sizeMb} MB)`;
+    }
+
+    // Auto-preenchimento inteligente de serviço e versão a partir do nome do arquivo
+    // Ex: "Atria Capture_v2.0.0.2.zip" ou "DNA.MonitorServiceSVC_v1.0.21.6.zip"
+    const m = file.name.match(/^(.+?)_v([\d\.]+)\.zip$/i);
+    if (m) {
+        const guessedSvc = m[1].trim();
+        const guessedVer = m[2].trim();
+        const selectSvc = document.getElementById("modalUploadSelectService");
+        const inputVer = document.getElementById("modalUploadInputVersion");
+
+        if (selectSvc) {
+            for (let opt of selectSvc.options) {
+                if (opt.value.toLowerCase() === guessedSvc.toLowerCase()) {
+                    selectSvc.value = opt.value;
+                    break;
+                }
+            }
+        }
+        if (inputVer && !inputVer.value) {
+            inputVer.value = guessedVer;
+        }
+    }
+}
+
+async function runPackagePreAudit() {
+    const selectSvc = document.getElementById("modalUploadSelectService");
+    const inputVer = document.getElementById("modalUploadInputVersion");
+    const inputFile = document.getElementById("modalUploadInputFile");
+    const btnAudit = document.getElementById("btnRunAuditModal");
+    const containerResult = document.getElementById("containerAuditResult");
+    const listChecks = document.getElementById("listAuditChecks");
+    const badgeVerdict = document.getElementById("badgeAuditVerdict");
+    const textSha = document.getElementById("textAuditSha256");
+
+    if (!selectSvc.value) {
+        if (typeof showToast === "function") showToast("Selecione o serviço alvo antes de auditar!", "warning");
+        selectSvc.focus();
+        return;
+    }
+    if (!inputVer.value) {
+        if (typeof showToast === "function") showToast("Informe a versão homologada do pacote!", "warning");
+        inputVer.focus();
+        return;
+    }
+    if (!inputFile.files || inputFile.files.length === 0) {
+        if (typeof showToast === "function") showToast("Selecione um arquivo .ZIP para auditar!", "warning");
+        return;
+    }
+
+    if (btnAudit) {
+        btnAudit.disabled = true;
+        btnAudit.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Auditando Pacote...`;
+    }
+
+    const formData = new FormData();
+    formData.append("package_file", inputFile.files[0]);
+    formData.append("service_name", selectSvc.value);
+    formData.append("target_version", inputVer.value.trim());
+
+    try {
+        const resp = await fetch("/api/fleet/packages/audit", {
+            method: "POST",
+            body: formData
+        });
+
+        if (!resp.ok) {
+            const errJson = await resp.json().catch(() => ({}));
+            throw new Error(errJson.message || `HTTP ${resp.status}`);
+        }
+
+        const res = await resp.json();
+        const audit = res.audit;
+
+        if (containerResult) containerResult.style.display = "block";
+
+        if (badgeVerdict) {
+            if (audit.valid) {
+                badgeVerdict.style.background = "rgba(16, 185, 129, 0.2)";
+                badgeVerdict.style.color = "#34d399";
+                badgeVerdict.style.border = "1px solid rgba(16, 185, 129, 0.4)";
+                badgeVerdict.innerText = "APROVADO NA AUDITORIA";
+            } else {
+                badgeVerdict.style.background = "rgba(239, 68, 68, 0.2)";
+                badgeVerdict.style.color = "#f87171";
+                badgeVerdict.style.border = "1px solid rgba(239, 68, 68, 0.4)";
+                badgeVerdict.innerText = "REJEITADO COM PENDÊNCIAS";
+            }
+        }
+
+        if (textSha) {
+            textSha.innerText = audit.sha256 || "--";
+        }
+
+        if (listChecks && audit.checks) {
+            listChecks.innerHTML = audit.checks.map(c => {
+                let iconHtml = "";
+                let color = "#cbd5e1";
+                if (c.status === "passed") {
+                    iconHtml = `<i class="fas fa-check-circle" style="color: #34d399;"></i>`;
+                    color = "#34d399";
+                } else if (c.status === "warning") {
+                    iconHtml = `<i class="fas fa-exclamation-triangle" style="color: #fbbf24;"></i>`;
+                    color = "#fbbf24";
+                } else if (c.status === "failed") {
+                    iconHtml = `<i class="fas fa-times-circle" style="color: #f87171;"></i>`;
+                    color = "#f87171";
+                } else {
+                    iconHtml = `<i class="fas fa-info-circle" style="color: #38bdf8;"></i>`;
+                    color = "#38bdf8";
+                }
+
+                return `
+                    <div style="background: rgba(30, 41, 59, 0.5); border: 1px solid rgba(148, 163, 184, 0.15); border-radius: 6px; padding: 6px 10px; display: flex; align-items: flex-start; gap: 8px;">
+                        <span style="margin-top: 2px;">${iconHtml}</span>
+                        <div>
+                            <strong style="color: ${color};">${c.label}</strong>:
+                            <span style="color: #cbd5e1; margin-left: 4px;">${c.details}</span>
+                        </div>
+                    </div>
+                `;
+            }).join("");
+        }
+
+        if (typeof showToast === "function") {
+            if (audit.valid) {
+                showToast("Auditoria concluída: Pacote 100% válido!", "success");
+            } else {
+                showToast("Atenção: O pacote possui inconsistências apontadas pelo auditor.", "warning");
+            }
+        }
+    } catch (err) {
+        console.error("[PackageRepo] Falha ao auditar:", err);
+        if (typeof showToast === "function") showToast(`Falha na auditoria: ${err.message}`, "error");
+    } finally {
+        if (btnAudit) {
+            btnAudit.disabled = false;
+            btnAudit.innerHTML = `<i class="fas fa-stethoscope"></i> Executar Auditoria Prévia do Pacote`;
+        }
+    }
+}
+
+async function submitPublishPackage() {
+    const selectSvc = document.getElementById("modalUploadSelectService");
+    const inputVer = document.getElementById("modalUploadInputVersion");
+    const inputFile = document.getElementById("modalUploadInputFile");
+    const inputJust = document.getElementById("modalUploadInputJustification");
+    const btnSubmit = document.getElementById("btnConfirmPublishPackage");
+
+    if (!selectSvc.value || !inputVer.value || !inputFile.files || inputFile.files.length === 0 || !inputJust.value) {
+        if (typeof showToast === "function") showToast("Preencha todos os campos obrigatórios e a justificativa RBAC!", "warning");
+        return;
+    }
+
+    if (!confirm(`Confirma a homologação e publicação do pacote para ${selectSvc.value} v${inputVer.value}?\n\nEsta ação irá atualizar o repositório local, o manifest.json do Google Cloud Storage e a Matriz de Governança Central.`)) {
+        return;
+    }
+
+    if (btnSubmit) {
+        btnSubmit.disabled = true;
+        btnSubmit.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Homologando &amp; Publicando...`;
+    }
+
+    const formData = new FormData();
+    formData.append("package_file", inputFile.files[0]);
+    formData.append("service_name", selectSvc.value);
+    formData.append("target_version", inputVer.value.trim());
+    formData.append("justification", inputJust.value.trim());
+
+    try {
+        const resp = await fetch("/api/fleet/packages/publish", {
+            method: "POST",
+            body: formData
+        });
+
+        const res = await resp.json();
+        if (!resp.ok) {
+            throw new Error(res.error || res.message || `HTTP ${resp.status}`);
+        }
+
+        if (typeof showToast === "function") {
+            showToast(`Sucesso! Pacote ${res.filename} homologado e sincronizado no ecossistema!`, "success");
+        }
+
+        closeUploadPackageModal();
+        loadPackageRepository(true);
+        if (typeof loadFleetGovernanceSummary === "function") {
+            loadFleetGovernanceSummary(true);
+        }
+    } catch (err) {
+        console.error("[PackageRepo] Falha ao publicar pacote:", err);
+        if (typeof showToast === "function") {
+            showToast(`Erro na homologação do pacote: ${err.message}`, "error");
+        }
+    } finally {
+        if (btnSubmit) {
+            btnSubmit.disabled = false;
+            btnSubmit.innerHTML = `<i class="fas fa-check-circle"></i> Aprovar, Homologar &amp; Repercutir no Ecossistema`;
+        }
+    }
+}
+
+window.switchFleetSubtab = switchFleetSubtab;
+window.togglePackageGuidePanel = togglePackageGuidePanel;
+window.loadPackageRepository = loadPackageRepository;
+window.filterPackageRepoTable = filterPackageRepoTable;
+window.handlePackageRepoSearch = handlePackageRepoSearch;
+window.openUploadPackageModal = openUploadPackageModal;
+window.closeUploadPackageModal = closeUploadPackageModal;
+window.handleModalServiceChange = handleModalServiceChange;
+window.handleModalFileSelected = handleModalFileSelected;
+window.runPackagePreAudit = runPackagePreAudit;
+window.submitPublishPackage = submitPublishPackage;
+window.copyRepoShaToClipboard = copyRepoShaToClipboard;
+window.downloadPackageFile = downloadPackageFile;
+
+

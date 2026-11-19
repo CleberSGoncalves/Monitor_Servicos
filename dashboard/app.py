@@ -3137,3 +3137,91 @@ async def recycle_tracking_endpoint(payload: RecycleTrackingRequest, user: dict 
     except Exception as e:
         logger.error(f"[AutoHealing] Erro ao reciclar TrackingSVC: {e}", exc_info=True)
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
+# ==============================================================================
+# REPOSITÓRIO OFICIAL DE PACOTES, AUDITORIA BINÁRIA E DISTRIBUIÇÃO DA FROTA
+# ==============================================================================
+from package_repository_manager import (
+    get_repository_summary,
+    audit_package_zip,
+    publish_service_package,
+    RELEASES_DIR
+)
+from fastapi import UploadFile, File, Form
+
+@app.get("/api/fleet/packages/summary")
+async def get_packages_summary_endpoint(user: dict = Depends(get_current_user)):
+    """Retorna o inventário completo do repositório de pacotes oficiais, versões, hashes e status."""
+    try:
+        return get_repository_summary()
+    except Exception as e:
+        logger.error(f"[PackageRepo] Erro ao obter summary: {e}", exc_info=True)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+@app.post("/api/fleet/packages/audit")
+async def audit_package_endpoint(
+    package_file: UploadFile = File(...),
+    service_name: str = Form(...),
+    target_version: str = Form(...),
+    user: dict = Depends(get_current_user)
+):
+    """Executa auditoria automatizada do pacote ZIP sem gravá-lo no repositório."""
+    try:
+        content = await package_file.read()
+        res = audit_package_zip(content, service_name, target_version)
+        return {"status": "success", "audit": res}
+    except Exception as e:
+        logger.error(f"[PackageRepo] Erro na auditoria do pacote: {e}", exc_info=True)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+@app.post("/api/fleet/packages/publish")
+async def publish_package_endpoint(
+    package_file: UploadFile = File(...),
+    service_name: str = Form(...),
+    target_version: str = Form(...),
+    justification: str = Form("Publicação homologada via Painel do Repositório"),
+    user: dict = Depends(get_current_user)
+):
+    """Audita, homologa e publica o novo pacote de serviço no ecossistema (local, GCS e governança)."""
+    try:
+        content = await package_file.read()
+        operator = user.get("username", "Operador")
+        res = publish_service_package(
+            zip_bytes=content,
+            service_name=service_name,
+            target_version=target_version,
+            operator=operator,
+            justification=justification
+        )
+        if not res.get("success"):
+            return JSONResponse(status_code=400, content=res)
+        return res
+    except Exception as e:
+        logger.error(f"[PackageRepo] Erro ao publicar pacote: {e}", exc_info=True)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+@app.get("/api/fleet/packages/download/{service_name}")
+async def download_package_endpoint(service_name: str, version: Optional[str] = None, user: dict = Depends(get_current_user)):
+    """Permite download do pacote binário oficial do repositório local."""
+    try:
+        s_clean = service_name.strip()
+        matched = []
+        if version:
+            v_clean = version.strip().lstrip("vV")
+            f_exact = RELEASES_DIR / f"{s_clean}_v{v_clean}.zip"
+            if f_exact.exists():
+                matched = [f_exact]
+        if not matched:
+            matched = sorted(RELEASES_DIR.glob(f"{s_clean}_v*.zip"), key=os.path.getmtime, reverse=True)
+        if not matched:
+            return JSONResponse(status_code=404, content={"status": "error", "message": f"Nenhum pacote local encontrado para '{service_name}'."})
+        target_file = matched[0]
+        return FileResponse(
+            path=str(target_file),
+            filename=target_file.name,
+            media_type="application/zip"
+        )
+    except Exception as e:
+        logger.error(f"[PackageRepo] Erro no download do pacote: {e}", exc_info=True)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})

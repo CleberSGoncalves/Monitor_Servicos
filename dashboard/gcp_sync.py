@@ -1286,7 +1286,8 @@ def merge_firestore_hosts_into_cache(
             continue
 
         agent_ver = str(h_doc.get("agent_version") or "").strip()
-        hb = str(h_doc.get("last_heartbeat") or h_doc.get("updated_at") or "").strip()
+        hb_candidates = [str(x).strip() for x in [h_doc.get("channels_updated_at"), h_doc.get("last_heartbeat"), h_doc.get("updated_at")] if x and str(x).strip()]
+        hb = max(hb_candidates) if hb_candidates else ""
         s_name = str(s.get("nome_servico") or "").strip()
         s_low = s_name.lower()
         s_id = str(s.get("id") or "")
@@ -1361,8 +1362,9 @@ def merge_firestore_hosts_into_cache(
                     s["uptime"] = str(h_doc.get("uptime"))
                 updated_hosts_count += 1
 
-            if hb:
-                s["ultima_atualizacao"] = hb
+        # O heartbeat e telemetria viva do host se aplicam a todos os serviços monitorados
+        if hb:
+            s["ultima_atualizacao"] = hb
 
         # Sanitiza picos de CPU congelados do SharePoint legado (>= 80%, ex: Vitória CS2 95%, Goiânia CS1 95%)
         # quando o agente no Firestore NÃO reportou pico real de CPU no heartbeat atual

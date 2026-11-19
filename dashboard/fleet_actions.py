@@ -650,12 +650,35 @@ def get_host_service_action_status(host: str, service_name: str, target_version:
     agent_installed = str(agent_srv.get("versao_instalada", "1.0.21.2")).strip() if agent_srv else "1.0.21.2"
     agent_up_str = str(agent_srv.get("ultima_atualizacao", "")).strip() if agent_srv else last_up_str
     
-    # Cálculo de idade da telemetria
+    # Cálculo de idade da telemetria (consolidação multi-fonte: agente, canais DTV e Firestore)
     now_utc = datetime.now(timezone.utc)
     age_seconds = 999999.0
     telemetria_label = "Desconhecido"
     
-    ref_ts = agent_up_str or last_up_str
+    host_ts_candidates = []
+    if agent_up_str:
+        host_ts_candidates.append(agent_up_str)
+    if last_up_str:
+        host_ts_candidates.append(last_up_str)
+    for s in services:
+        if str(s.get("hostname", "")).strip().lower() == h_clean:
+            u_ts = str(s.get("ultima_atualizacao", "")).strip()
+            if u_ts:
+                host_ts_candidates.append(u_ts)
+
+    try:
+        from gcp_sync import _fetch_firestore_hosts_rest
+        docs = _fetch_firestore_hosts_rest()
+        for doc_k, doc_v in docs.items():
+            if doc_k.strip().lower() == h_clean or h_clean in doc_k.strip().lower() or doc_k.strip().lower() in h_clean:
+                for f_field in ["channels_updated_at", "last_heartbeat", "updated_at"]:
+                    val = str(doc_v.get(f_field) or "").strip()
+                    if val:
+                        host_ts_candidates.append(val)
+    except Exception:
+        pass
+
+    ref_ts = max(host_ts_candidates) if host_ts_candidates else (agent_up_str or last_up_str)
     if ref_ts:
         try:
             ts_clean = ref_ts.replace("Z", "+00:00")
