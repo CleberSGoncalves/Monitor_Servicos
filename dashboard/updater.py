@@ -163,46 +163,67 @@ def apply_update() -> Dict[str, Any]:
     local_info = get_local_version_info()
     git_bin = shutil.which("git")
 
+    git_env = os.environ.copy()
+    git_env["GIT_TERMINAL_PROMPT"] = "0"
+    git_env["GIT_ASKPASS"] = "echo"
+
     # 1. Tentativa via Git se repositório .git existir
     if git_bin and (ROOT_DIR / ".git").exists():
         try:
-            subprocess.run(["git", "fetch", "origin", "main"], cwd=str(ROOT_DIR), capture_output=True, timeout=45, creationflags=SUBPROCESS_FLAGS)
-            res = subprocess.run(
-                ["git", "reset", "--hard", "origin/main"],
+            print("[Updater] Executando git fetch origin main...")
+            fetch_res = subprocess.run(
+                ["git", "fetch", "origin", "main"],
                 cwd=str(ROOT_DIR),
                 capture_output=True,
                 text=True,
-                timeout=45,
+                timeout=15,
+                env=git_env,
                 creationflags=SUBPROCESS_FLAGS
             )
-            if res.returncode == 0:
-                new_sha = subprocess.check_output(
-                    ["git", "rev-parse", "--short", "HEAD"],
+            if fetch_res.returncode == 0:
+                print("[Updater] Executando git reset --hard origin/main...")
+                res = subprocess.run(
+                    ["git", "reset", "--hard", "origin/main"],
                     cwd=str(ROOT_DIR),
+                    capture_output=True,
                     text=True,
+                    timeout=15,
+                    env=git_env,
                     creationflags=SUBPROCESS_FLAGS
-                ).strip()
-                save_local_version_info(new_sha)
-                updated_info = get_local_version_info()
-                return {
-                    "status": "success",
-                    "method": "git",
-                    "version": updated_info.get("version", DEFAULT_VERSION),
-                    "message": f"Atualizado com sucesso via Git para {updated_info.get('version', DEFAULT_VERSION)} (Commit: {new_sha})!",
-                    "details": res.stdout,
-                    "commit_sha": new_sha
-                }
+                )
+                if res.returncode == 0:
+                    new_sha = subprocess.check_output(
+                        ["git", "rev-parse", "--short", "HEAD"],
+                        cwd=str(ROOT_DIR),
+                        text=True,
+                        creationflags=SUBPROCESS_FLAGS
+                    ).strip()
+                    save_local_version_info(new_sha)
+                    updated_info = get_local_version_info()
+                    return {
+                        "status": "success",
+                        "method": "git",
+                        "version": updated_info.get("version", DEFAULT_VERSION),
+                        "message": f"Atualizado com sucesso via Git para {updated_info.get('version', DEFAULT_VERSION)} (Commit: {new_sha})!",
+                        "details": res.stdout,
+                        "commit_sha": new_sha
+                    }
+                else:
+                    print(f"[Updater] git reset falhou ({res.returncode}): {res.stderr}")
+            else:
+                print(f"[Updater] git fetch falhou ({fetch_res.returncode}): {fetch_res.stderr}")
         except Exception as git_err:
-            print(f"[Updater] git update falhou: {git_err}. Prosseguindo com fallback universal zip.")
+            print(f"[Updater] git update falhou ou deu timeout: {git_err}. Prosseguindo com fallback universal zip.")
 
     # 2. Fallback universal via ZIP GitHub
     temp_zip = ROOT_DIR / "temp_update.zip"
     temp_extract = ROOT_DIR / "temp_update_extracted"
 
     try:
+        print("[Updater] Baixando pacote mais recente via GitHub Zipball...")
         headers = get_auth_headers()
         req = urllib.request.Request(GITHUB_ZIPBALL_URL, headers=headers)
-        with urllib.request.urlopen(req, timeout=120) as resp, open(temp_zip, "wb") as out_f:
+        with urllib.request.urlopen(req, timeout=25) as resp, open(temp_zip, "wb") as out_f:
             shutil.copyfileobj(resp, out_f)
 
         if temp_extract.exists():
