@@ -18274,22 +18274,27 @@ document.addEventListener("DOMContentLoaded", function() {
 
 
             const activeTab = document.querySelector(".nav-btn.active")?.getAttribute("data-tab");
-
-
-
             if (activeTab === "logs") {
-
-
-
                 loadFleetLogs();
-
-
-
             }
-
-
-
         });
+
+        if (typeof logHostEl !== "undefined" && logHostEl) {
+            logHostEl.addEventListener("change", function() {
+                const val = this.value;
+                if (val && filterCityEl) {
+                    for (let i = 0; i < filterCityEl.options.length; i++) {
+                        if (filterCityEl.options[i].value.toLowerCase().includes(val.toLowerCase()) ||
+                            filterCityEl.options[i].text.toLowerCase().includes(val.toLowerCase())) {
+                            filterCityEl.selectedIndex = i;
+                            break;
+                        }
+                    }
+                }
+            });
+        }
+    }
+});
 
 
 
