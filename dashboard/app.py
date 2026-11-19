@@ -2659,7 +2659,7 @@ async def get_execution_status(exec_id: str, user: dict = Depends(get_current_us
     return details
 
 @app.get("/api/remote-commands/executions/{exec_id}/export")
-async def export_execution(exec_id: str, format: str = Query("txt", regex="^(txt|csv)$"), user: dict = Depends(get_current_user)):
+async def export_execution(exec_id: str, format: str = Query("txt", pattern="^(txt|csv)$"), user: dict = Depends(get_current_user)):
     details = get_execution_details(exec_id)
     if not details:
         raise HTTPException(status_code=404, detail="Execução não encontrada")
@@ -3157,7 +3157,17 @@ from package_repository_manager import (
     publish_service_package,
     RELEASES_DIR
 )
-from fastapi import UploadFile, File, Form
+
+HAS_MULTIPART = False
+try:
+    import multipart
+    HAS_MULTIPART = True
+except ImportError:
+    try:
+        import python_multipart
+        HAS_MULTIPART = True
+    except ImportError:
+        HAS_MULTIPART = False
 
 @app.get("/api/fleet/packages/summary")
 async def get_packages_summary_endpoint(user: dict = Depends(get_current_user)):
@@ -3168,47 +3178,70 @@ async def get_packages_summary_endpoint(user: dict = Depends(get_current_user)):
         logger.error(f"[PackageRepo] Erro ao obter summary: {e}", exc_info=True)
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
-@app.post("/api/fleet/packages/audit")
-async def audit_package_endpoint(
-    package_file: UploadFile = File(...),
-    service_name: str = Form(...),
-    target_version: str = Form(...),
-    user: dict = Depends(get_current_user)
-):
-    """Executa auditoria automatizada do pacote ZIP sem gravá-lo no repositório."""
-    try:
-        content = await package_file.read()
-        res = audit_package_zip(content, service_name, target_version)
-        return {"status": "success", "audit": res}
-    except Exception as e:
-        logger.error(f"[PackageRepo] Erro na auditoria do pacote: {e}", exc_info=True)
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+if HAS_MULTIPART:
+    from fastapi import UploadFile, File, Form
 
-@app.post("/api/fleet/packages/publish")
-async def publish_package_endpoint(
-    package_file: UploadFile = File(...),
-    service_name: str = Form(...),
-    target_version: str = Form(...),
-    justification: str = Form("Publicação homologada via Painel do Repositório"),
-    user: dict = Depends(get_current_user)
-):
-    """Audita, homologa e publica o novo pacote de serviço no ecossistema (local, GCS e governança)."""
-    try:
-        content = await package_file.read()
-        operator = user.get("username", "Operador")
-        res = publish_service_package(
-            zip_bytes=content,
-            service_name=service_name,
-            target_version=target_version,
-            operator=operator,
-            justification=justification
+    @app.post("/api/fleet/packages/audit")
+    async def audit_package_endpoint(
+        package_file: UploadFile = File(...),
+        service_name: str = Form(...),
+        target_version: str = Form(...),
+        user: dict = Depends(get_current_user)
+    ):
+        """Executa auditoria automatizada do pacote ZIP sem gravá-lo no repositório."""
+        try:
+            content = await package_file.read()
+            res = audit_package_zip(content, service_name, target_version)
+            return {"status": "success", "audit": res}
+        except Exception as e:
+            logger.error(f"[PackageRepo] Erro na auditoria do pacote: {e}", exc_info=True)
+            return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+    @app.post("/api/fleet/packages/publish")
+    async def publish_package_endpoint(
+        package_file: UploadFile = File(...),
+        service_name: str = Form(...),
+        target_version: str = Form(...),
+        justification: str = Form("Publicação homologada via Painel do Repositório"),
+        user: dict = Depends(get_current_user)
+    ):
+        """Audita, homologa e publica o novo pacote de serviço no ecossistema (local, GCS e governança)."""
+        try:
+            content = await package_file.read()
+            operator = user.get("username", "Operador")
+            res = publish_service_package(
+                zip_bytes=content,
+                service_name=service_name,
+                target_version=target_version,
+                operator=operator,
+                justification=justification
+            )
+            if not res.get("success"):
+                return JSONResponse(status_code=400, content=res)
+            return res
+        except Exception as e:
+            logger.error(f"[PackageRepo] Erro ao publicar pacote: {e}", exc_info=True)
+            return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+else:
+    @app.post("/api/fleet/packages/audit")
+    async def audit_package_endpoint(request: Request, user: dict = Depends(get_current_user)):
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "error",
+                "message": "Upload e auditoria de pacotes requer o pacote 'python-multipart'. Instale com: pip install python-multipart"
+            }
         )
-        if not res.get("success"):
-            return JSONResponse(status_code=400, content=res)
-        return res
-    except Exception as e:
-        logger.error(f"[PackageRepo] Erro ao publicar pacote: {e}", exc_info=True)
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+    @app.post("/api/fleet/packages/publish")
+    async def publish_package_endpoint(request: Request, user: dict = Depends(get_current_user)):
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "error",
+                "message": "Publicação de pacotes requer o pacote 'python-multipart'. Instale com: pip install python-multipart"
+            }
+        )
 
 @app.get("/api/fleet/packages/download/{service_name}")
 async def download_package_endpoint(service_name: str, version: Optional[str] = None, user: dict = Depends(get_current_user)):

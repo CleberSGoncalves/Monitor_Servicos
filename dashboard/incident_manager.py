@@ -626,17 +626,17 @@ def diagnose_incident_with_ai(incident_code: str) -> Dict[str, Any]:
         )
         fallback_steps = [
             f"Executar 'net start {target}' via aba de Comandos Remotos.",
-            "Verificar integridade do arquivo binário na pasta D:\MediaDNA_V2\applications.",
+            r"Verificar integridade do arquivo binário na pasta D:\MediaDNA_V2\applications.",
             "Consultar Event Viewer (Application log) para obter o código de saída (ExitCode)."
         ]
         fallback_geo = f"Falha de infraestrutura interna do Capture Site ({praca}). Sem impacto no caminho de RF."
     elif itype == "disk_space_low":
         fallback_root_cause = (
-            f"Volume D:\ atingiu nível crítico devido à retenção de arquivos de vídeo MP4 e arquivos temporários de indexação."
+            r"Volume D:\ atingiu nível crítico devido à retenção de arquivos de vídeo MP4 e arquivos temporários de indexação."
         )
         fallback_steps = [
             "Executar expurgo de arquivos .ts e .mp4 com mais de 30 dias de idade.",
-            "Limpar arquivos temporários do diretório D:\MediaDNA_V2\Data\Temp.",
+            r"Limpar arquivos temporários do diretório D:\MediaDNA_V2\Data\Temp.",
             "Verificar se há arquivos de despejo de memória (.dmp) ocupando espaço."
         ]
         fallback_geo = f"Problema de governança de armazenamento local no host de {praca}."
