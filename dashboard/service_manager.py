@@ -169,13 +169,13 @@ def start_service():
     if task_res.returncode == 0:
         print(f"[*] Disparando via Tarefa Agendada do Windows '{TASK_NAME}'...")
         subprocess.run(f'schtasks /Run /TN "{TASK_NAME}"', shell=True, capture_output=True, text=True, creationflags=SUBPROCESS_FLAGS)
-        for _ in range(3):
+        for _ in range(4):
             time.sleep(1)
-            if get_running_service_pid():
+            if is_port_listening(PORT):
                 started = True
                 break
 
-    if not started and not get_running_service_pid():
+    if not started and not is_port_listening(PORT):
         # Fallback Popen desacoplado
         detached_flag = getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
         creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP | detached_flag | SUBPROCESS_FLAGS
@@ -197,9 +197,9 @@ def start_service():
             print(f"[!] Erro ao disparar servico: {e}")
             return False
 
-    # Aguarda inicialização
+    # Aguarda inicialização e porta ativa
     print(f"[*] Aguardando inicializacao e porta {PORT}...")
-    for _ in range(45):
+    for _ in range(25):
         time.sleep(1)
         if is_port_listening(PORT):
             break
@@ -215,7 +215,19 @@ def start_service():
         print(f"     Acesso Externo: https://{DOMAIN}")
         return True
     else:
-        print(f"[ERRO] Falha ao confirmar abertura da porta {PORT}. Verifique o log em {LOG_FILE}")
+        print(f"\n[ERRO] Falha ao confirmar abertura da porta {PORT}.")
+        if LOG_FILE.exists():
+            try:
+                raw_lines = LOG_FILE.read_text(encoding="utf-8", errors="replace").splitlines()
+                recent_lines = [l for l in raw_lines if l.strip()][-20:]
+                if recent_lines:
+                    print("\n--- ÚLTIMOS LOGS DO DASHBOARD (dashboard.log) ---")
+                    for rl in recent_lines:
+                        print(f"  {rl}")
+                    print("-------------------------------------------------")
+            except Exception:
+                pass
+        print(f"Verifique o arquivo completo em: {LOG_FILE}\n")
         return False
 
 

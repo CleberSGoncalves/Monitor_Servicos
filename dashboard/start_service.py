@@ -10,6 +10,7 @@ import os
 import sys
 import time
 import signal
+import traceback
 import uvicorn
 from pathlib import Path
 
@@ -22,37 +23,31 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 PID_FILE = DATA_DIR / "service.pid"
 LOG_FILE = DATA_DIR / "dashboard.log"
 
-# Garante compatibilidade total com pythonw.exe
+# Garante compatibilidade total e incondicional com pythonw.exe e consoles
 _log_out = open(LOG_FILE, "a", encoding="utf-8", buffering=1)
-
-if sys.stdout is None or getattr(sys.stdout, "closed", False):
+try:
     sys.stdout = _log_out
-else:
-    try:
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    except Exception:
-        pass
-
-if sys.stderr is None or getattr(sys.stderr, "closed", False):
     sys.stderr = _log_out
-else:
-    try:
-        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
-    except Exception:
-        pass
+except Exception:
+    pass
 
 if sys.stdin is None or getattr(sys.stdin, "closed", False):
-    sys.stdin = open(os.devnull, "r", encoding="utf-8")
+    try:
+        sys.stdin = open(os.devnull, "r", encoding="utf-8")
+    except Exception:
+        pass
 
 
 def write_pid():
     pid = os.getpid()
     PID_FILE.write_text(str(pid), encoding="utf-8")
-    print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] [FleetService] Iniciado com PID: {pid}")
+    _log_out.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] [FleetService] Iniciado com PID: {pid}\n")
+    _log_out.flush()
 
 
 def cleanup(*args):
-    print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] [FleetService] Finalizando serviço...")
+    _log_out.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] [FleetService] Finalizando serviço...\n")
+    _log_out.flush()
     if PID_FILE.exists():
         try:
             PID_FILE.unlink(missing_ok=True)
@@ -67,10 +62,13 @@ signal.signal(signal.SIGTERM, cleanup)
 if __name__ == "__main__":
     write_pid()
     from config import PORT, HOST
-    print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] [FleetService] Subindo FastAPI em {HOST}:{PORT}")
+    _log_out.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] [FleetService] Subindo FastAPI em {HOST}:{PORT}\n")
+    _log_out.flush()
     try:
         uvicorn.run("app:app", host=HOST, port=PORT, log_level="info", access_log=True)
     except Exception as e:
-        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] [FleetService] Erro fatal: {e}")
+        _log_out.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] [FleetService] Erro fatal: {e}\n")
+        traceback.print_exc(file=_log_out)
+        _log_out.flush()
     finally:
         cleanup()

@@ -577,23 +577,12 @@ def publish_service_package(
 
     # 5. Registra na Trilha de Auditoria RBAC
     try:
-        from fleet_rbac import record_audit_action
-        record_audit_action(
+        from version_governance import record_fleet_audit_event
+        record_fleet_audit_event(
             username=operator,
-            role="ADMIN",
-            operation="PUBLISH_PACKAGE",
-            service_name=service_name,
-            target_hosts=["REPOSITORIO_CENTRAL"],
-            justification=f"[REPOSITÓRIO] Publicação do pacote {package_filename} (SHA256: {sha256_hash[:12]}...). {justification}",
-            status="SUCCESS",
-            details={
-                "filename": package_filename,
-                "version": clean_ver,
-                "sha256": sha256_hash,
-                "file_size_mb": audit_res["file_size_mb"],
-                "gcs_synced": gcs_manifest_ok,
-                "governance_synced": gov_ok
-            }
+            action="PUBLISH_PACKAGE",
+            target_host="REPOSITORIO_CENTRAL",
+            details=f"[REPOSITÓRIO] Publicação do pacote {package_filename} (SHA256: {sha256_hash[:12]}...). {justification}"
         )
     except Exception:
         pass
