@@ -10,6 +10,7 @@ import json
 import shutil
 import zipfile
 import urllib.request
+import ssl
 import subprocess
 from pathlib import Path
 from datetime import datetime
@@ -28,6 +29,18 @@ DEFAULT_VERSION = "v3.9.61"
 SUBPROCESS_FLAGS = 0
 if sys.platform == "win32":
     SUBPROCESS_FLAGS = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+
+
+def get_ssl_context() -> ssl.SSLContext:
+    """Cria contexto SSL resiliente para Windows/ambientes corporativos."""
+    try:
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where())
+    except Exception:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        return ctx
 
 
 def get_token() -> str:
@@ -121,9 +134,10 @@ def check_for_updates() -> Dict[str, Any]:
 
     headers = get_auth_headers()
     req = urllib.request.Request(GITHUB_API_URL, headers=headers)
+    ssl_ctx = get_ssl_context()
 
     try:
-        with urllib.request.urlopen(req, timeout=12) as resp:
+        with urllib.request.urlopen(req, context=ssl_ctx, timeout=12) as resp:
             if resp.status == 200:
                 data = json.loads(resp.read().decode("utf-8"))
                 remote_sha = data.get("sha", "")[:7]
@@ -237,7 +251,8 @@ def apply_update() -> Dict[str, Any]:
         print("[Updater] Baixando pacote mais recente via GitHub Zipball...")
         headers = get_auth_headers()
         req = urllib.request.Request(GITHUB_ZIPBALL_URL, headers=headers)
-        with urllib.request.urlopen(req, timeout=25) as resp, open(temp_zip, "wb") as out_f:
+        ssl_ctx = get_ssl_context()
+        with urllib.request.urlopen(req, context=ssl_ctx, timeout=25) as resp, open(temp_zip, "wb") as out_f:
             shutil.copyfileobj(resp, out_f)
 
         if temp_extract.exists():
