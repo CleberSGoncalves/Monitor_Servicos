@@ -336,6 +336,8 @@ function renderPracaAuditAndSolutions(audit, sol) {
                     : `<span class="badge" style="background:#10b98122; color:#34d399; border:1px solid #10b981; font-size:9px;">Lock OK (TV)</span>`;
             }
 
+            const csLabel = ch.cs || ch.cs_origin || (isRadio ? 'CS03' : 'CS01');
+            const csBadgeColor = csLabel.includes('03') ? '#c084fc' : (csLabel.includes('02') ? '#818cf8' : '#38bdf8');
             html += `
                 <div style="background: rgba(0,0,0,0.3); border: 1px solid ${borderCol}44; border-left: 3px solid ${borderCol}; border-radius: 6px; padding: 8px 10px; font-size: 11px;">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px;">
@@ -345,7 +347,7 @@ function renderPracaAuditAndSolutions(audit, sol) {
                         ${statusBadge}
                     </div>
                     <div style="display: flex; justify-content: space-between; color: #94a3b8; font-size: 10px;">
-                        <span>CS: <strong style="color: #cbd5e1;">${escapeHtml(ch.cs || 'CS01')}</strong></span>
+                        <span>CS: <strong style="color: ${csBadgeColor}; font-weight: 700;">${escapeHtml(csLabel)}</strong></span>
                         <span>${isRadio ? 'Áudio' : 'Q'}: <strong style="color: ${isRadio ? (isRec ? '#34d399' : '#f87171') : (ch.qualidade >= 50 ? '#34d399' : '#f87171')};">${isRadio ? (isRec ? 'Nominal' : 'Mudo') : ch.qualidade + '%'}</strong></span>
                         <span>Grav: <strong style="color: ${isRec ? '#34d399' : '#f87171'};">${escapeHtml(ch.gravando || 'Não')}</strong></span>
                     </div>

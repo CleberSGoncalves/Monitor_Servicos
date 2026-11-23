@@ -177,16 +177,21 @@ def audit_praca_ecosystem(praca_name: str, selected_cs: Optional[str] = "ALL") -
         seen_channels.add(c_name)
 
         # Identifica CS do canal
-        c_tier = 1
-        is_rad = any(w in c_name.lower() for w in ["fm", "am", "radio", "rádio"]) or c.get("meio") == "Radio"
-        if is_rad:
+        cs_val = c.get("cs") or c.get("id_cs")
+        is_rad = any(w in c_name.lower() for w in ["fm", "am", "radio", "rádio"]) or c.get("meio") == "Radio" or "stream" in str(c.get("meio", "")).lower()
+        if cs_val in (1, 2, 3, 1.0, 2.0, 3.0):
+            c_tier = int(cs_val)
+        elif is_rad:
             # Se ha host CS03 na praca, o canal de radio pertence ao CS03
             c_tier = 3 if any(info["cs_tier"] == 3 for info in hosts_dict.values()) else 1
         elif "02" in c_host or "cs2" in c_host.lower():
             c_tier = 2
+        else:
+            c_tier = 1
 
         c["cs_tier"] = c_tier
         c["cs_origin"] = f"CS0{c_tier}"
+        c["cs"] = f"CS0{c_tier}"
 
         # Se houver filtro ativo de CS, inclui apenas os canais daquela maquina
         if is_single_cs_focus and active_cs_tier is not None:
@@ -323,7 +328,9 @@ def audit_praca_ecosystem(praca_name: str, selected_cs: Optional[str] = "ALL") -
                 "canal": canal_nome,
                 "meio": "Radio",
                 "is_radio": True,
+                "cs": c.get("cs", c.get("cs_origin", "CS03")),
                 "cs_origin": c.get("cs_origin", "CS03"),
+                "host": c.get("host") or c.get("hostname") or "",
                 "qualidade": display_qualidade,
                 "qualidade_str": qualidade_label if mp3_rec else "Sem Áudio",
                 "status_tuner": "Áudio OK (Sonifex/Stream)" if mp3_rec else "Sem Gravação",
@@ -366,7 +373,9 @@ def audit_praca_ecosystem(praca_name: str, selected_cs: Optional[str] = "ALL") -
                 "canal": canal_nome,
                 "meio": "TV",
                 "is_radio": False,
+                "cs": c.get("cs", c.get("cs_origin", "CS01")),
                 "cs_origin": c.get("cs_origin", "CS01"),
+                "host": c.get("host") or c.get("hostname") or "",
                 "qualidade": qualidade,
                 "qualidade_str": f"{qualidade}%",
                 "status_tuner": tuner_stat,
