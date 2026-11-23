@@ -2380,9 +2380,8 @@ async def get_channel_jpeg(canal: str, praca: Optional[str] = None, mode: Option
         if real_disk_file:
             break
 
-    # NOTA: Quando em modo 'real', se não houver arquivo local fresco gravado no disco,
-    # busca os frames genuínos da emissora com injeção ao vivo de tarja MediaDNA OSD.
-    if not real_disk_file and mode == "real":
+    # Busca de frames genuínos da emissora de TV
+    if not real_disk_file:
         network_map = {
             "globo": "globo", "rbs": "globo", "intertv": "globo", "vanguarda": "globo", "epctv": "globo", "anhanguera": "globo", "mirante": "globo", "gazeta": "globo",
             "sbt": "sbt", "jangadeiro": "sbt", "alterosa": "sbt", "massa": "sbt", "vitoriosa": "sbt",
@@ -2402,26 +2401,41 @@ async def get_channel_jpeg(canal: str, praca: Optional[str] = None, mode: Option
                 break
         if not net_dir_name:
             v_code_map = {"GLO": "globo", "SBT": "sbt", "REC": "record", "BAND": "band", "REDETV": "redetv", "CULT": "cultura", "TVBR": "tvbrasil"}
-            net_dir_name = v_code_map.get(v_code, "cultura")
-        
-        cand_dir = ROOT_DIR / "static" / "thumbnails" / "channel_frames" / net_dir_name
-        if not cand_dir.exists():
-            cand_dir = Path("static/thumbnails/channel_frames") / net_dir_name
+            net_dir_name = v_code_map.get(v_code, "globo")
 
-        if cand_dir.exists():
-            frames = sorted(list(cand_dir.glob("*.jpg")))
-            if frames:
-                hash_offset = sum(ord(ch) for ch in p_norm) if p_norm else 0
-                seq_val = int(seq or 0) + int(time.time() // 8)
-                frame_idx = (seq_val + hash_offset) % len(frames)
-                real_disk_file = frames[frame_idx]
+        # Procura em todas as localizações possíveis de static/thumbnails
+        possible_dirs = [
+            ROOT_DIR / "static" / "thumbnails" / "channel_frames" / net_dir_name,
+            ROOT_DIR.parent / "dashboard" / "static" / "thumbnails" / "channel_frames" / net_dir_name,
+            Path("static/thumbnails/channel_frames") / net_dir_name,
+            Path("dashboard/static/thumbnails/channel_frames") / net_dir_name
+        ]
+        for cand_dir in possible_dirs:
+            if cand_dir.exists():
+                frames = sorted(list(cand_dir.glob("*.jpg")))
+                if frames:
+                    hash_offset = sum(ord(ch) for ch in p_norm) if p_norm else 0
+                    seq_val = int(seq or 0) + int(time.time() // 15)
+                    frame_idx = (seq_val + hash_offset) % len(frames)
+                    real_disk_file = frames[frame_idx]
+                    break
 
+        # Fallback 2: Thumbnail de canal real consolidado
         if not real_disk_file:
-            alt_file = ROOT_DIR / "static" / "thumbnails" / "real_channels" / f"real_channel_{net_dir_name}.jpg"
-            if not alt_file.exists():
-                alt_file = Path("static/thumbnails/real_channels") / f"real_channel_{net_dir_name}.jpg"
-            if alt_file.exists():
-                real_disk_file = alt_file
+            alt_candidates = [
+                ROOT_DIR / "static" / "thumbnails" / "real_channels" / f"real_channel_{net_dir_name}.jpg",
+                ROOT_DIR.parent / "dashboard" / "static" / "thumbnails" / "real_channels" / f"real_channel_{net_dir_name}.jpg",
+                Path("static/thumbnails/real_channels") / f"real_channel_{net_dir_name}.jpg",
+                Path("dashboard/static/thumbnails/real_channels") / f"real_channel_{net_dir_name}.jpg",
+                ROOT_DIR / "static" / "thumbnails" / "real_channels" / "real_channel_globo.jpg",
+                Path("static/thumbnails/real_channels/real_channel_globo.jpg"),
+                ROOT_DIR / "static" / "thumbnails" / "channel_frames" / "globo" / "frame_00.jpg",
+                Path("dashboard/static/thumbnails/channel_frames/globo/frame_00.jpg")
+            ]
+            for alt in alt_candidates:
+                if alt.exists():
+                    real_disk_file = alt
+                    break
 
     w, h = 320, 240
     now_dt = datetime.now()
@@ -2432,43 +2446,50 @@ async def get_channel_jpeg(canal: str, praca: Optional[str] = None, mode: Option
     is_frozen = (video_congelado and video_congelado != "Não" and video_congelado != "Nao")
     is_fault = (mode == "fault") or has_outage or is_frozen or any(kw in canal.lower() for kw in ["falha", "queda", "travad", "glitch"])
 
+    # Carrega imagem real da emissora
     if real_disk_file and real_disk_file.exists():
         try:
             img = Image.open(real_disk_file).convert("RGB").resize((w, h))
         except Exception:
             img = None
     else:
+        # Fallback de seguranca garantido: busca qualquer frame real existente em static/thumbnails
         img = None
+        global_fallbacks = [
+            ROOT_DIR / "static" / "thumbnails" / "real_channels" / "real_channel_globo.jpg",
+            ROOT_DIR / "static" / "thumbnails" / "channel_frames" / "globo" / "frame_00.jpg",
+            Path("dashboard/static/thumbnails/real_channels/real_channel_globo.jpg"),
+            Path("dashboard/static/thumbnails/channel_frames/globo/frame_00.jpg")
+        ]
+        for gf in global_fallbacks:
+            if gf.exists():
+                try:
+                    img = Image.open(gf).convert("RGB").resize((w, h))
+                    break
+                except Exception:
+                    continue
 
     if img is not None:
         draw = ImageDraw.Draw(img)
-        # Tarja OSD Superior MediaDNA
-        draw.rectangle([0, 0, w, 22], fill=(0, 0, 0))
-        draw.text((6, 4), tarja_texto, fill=(255, 255, 255))
+        # Tarja OSD Superior MediaDNA elegante
+        draw.rectangle([0, 0, w, 20], fill=(0, 0, 0))
+        draw.text((6, 3), tarja_texto, fill=(255, 255, 255))
 
         if is_fault:
             overlay = Image.new("RGBA", (w, h), (15, 23, 42, 160))
             img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
             draw = ImageDraw.Draw(img)
-            draw.rectangle([0, 0, w, 22], fill=(0, 0, 0))
-            draw.text((6, 4), tarja_texto, fill=(255, 255, 255))
-            draw.rectangle([8, 8, w - 8, h - 8], outline=(239, 68, 68), width=3)
-            draw.rectangle([16, 75, w - 16, 145], fill=(15, 23, 42), outline=(239, 68, 68), width=2)
-            draw.rectangle([20, 79, w - 20, 100], fill=(220, 38, 38))
-            draw.text((28, 83), "FALHA DE TRANSMISSAO DETECTADA (ATRIA)", fill=(255, 255, 255))
-            fault_desc = "QUEDA DE PORTADORA RF" if (has_outage or qualidade == 0) else "CONGELAMENTO DE QUADRO (GOP STALL)"
-            draw.text((28, 106), f"TIPO: {fault_desc}", fill=(248, 113, 113))
-            draw.text((28, 124), f"RF: {qualidade}% | STATUS TUNER: {status_tuner[:20]}", fill=(254, 202, 202))
+            draw.rectangle([0, 0, w, 20], fill=(0, 0, 0))
+            draw.text((6, 3), tarja_texto, fill=(255, 255, 255))
+            draw.rectangle([4, 4, w - 4, h - 4], outline=(239, 68, 68), width=2)
             draw.rectangle([0, h - 22, w, h], fill=(8, 12, 22))
-            draw.text((10, h - 16), "STATUS: ALERTA OPERACIONAL ATIVO", fill=(239, 68, 68))
+            draw.text((10, h - 16), "STATUS: ALERTA OPERACIONAL", fill=(239, 68, 68))
         else:
-            draw.rectangle([0, h - 22, w, h], fill=(0, 0, 0))
-            draw.text((8, h - 16), f"{now_hms} • 320x240 DTV", fill=(220, 220, 220))
-            draw.text((w - 40, h - 16), "LIVE", fill=(52, 211, 153))
+            draw.rectangle([0, h - 20, w, h], fill=(0, 0, 0))
+            draw.text((8, h - 15), f"{now_hms} • 320x240 DTV", fill=(220, 220, 220))
+            draw.text((w - 38, h - 15), "LIVE", fill=(52, 211, 153))
     else:
-        # =========================================================================
-        # STANDBY SLATE TÉCNICO OFICIAL DE BROADCAST MEDIADNA (TELEMETRIA REAL DO VEÍCULO)
-        # =========================================================================
+        # Se for explicitamente solicitado modo diagnostico (mode='diag')
         img = Image.new("RGB", (w, h), color=(10, 15, 28))
         draw = ImageDraw.Draw(img)
 

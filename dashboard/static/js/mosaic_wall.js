@@ -35,9 +35,9 @@ let mosaicPageSize = 30; // NUNCA carrega todos ao mesmo tempo para suportar +10
 let mosaicQuickOnlyFailures = false; // Filtro de alta severidade (Apenas falhas/degradação)
 let mosaicAutoRotateTimer = null;
 let mosaicProgressTimer = null;
-let mosaicRotateIntervalSec = 10;
+let mosaicRotateIntervalSec = 15;
 let mosaicRotateSecondsElapsed = 0;
-let isMosaicRotatePlaying = true;
+let isMosaicRotatePlaying = false; // Inicia pausado por padrão (sem troca involuntária de páginas)
 let mosaicFrameSeq = Math.floor(Date.now() / 5000);
 let mosaicFrameRefreshTimer = null;
 
@@ -48,22 +48,8 @@ function alternateMosaicVisibleFrames() {
 
     const now = new Date();
     const nowStr = now.toTimeString().split(" ")[0];
-    const t = now.getTime();
 
-    // 1. Atualiza frames das emissoras de TV (refresh a cada 5~10 segundos)
-    const imgs = grid.querySelectorAll(".mosaic-live-thumb");
-    imgs.forEach((img, i) => {
-        const base = img.getAttribute("data-base-url");
-        if (base) {
-            const nextSrc = `${base}&mode=${currentMosaicViewMode}&seq=${mosaicFrameSeq + i}&t=${t}`;
-            const preload = new Image();
-            preload.onload = () => { img.src = nextSrc; };
-            preload.onerror = () => { img.src = nextSrc; };
-            preload.src = nextSrc;
-        }
-    });
-
-    // 2. Anima barras de VU Meter e telemetria de Áudio das emissoras de RÁDIO (Sem imagens de TV)
+    // Atualiza VU meters de rádios e timestamps sem recarregar imagens para evitar piscar de tela
     const vuPanels = grid.querySelectorAll(".mosaic-audio-panel");
     vuPanels.forEach((panel, idx) => {
         const barL = panel.querySelector(".vu-bar-l");
@@ -80,7 +66,6 @@ function alternateMosaicVisibleFrames() {
         if (valR) valR.innerText = `${dbR} dB`;
     });
 
-    // 3. Atualiza timestamps em todos os cards visíveis
     const timeSpans = grid.querySelectorAll(".mosaic-card-timestamp");
     timeSpans.forEach(sp => {
         const isAud = sp.closest(".mosaic-audio-panel");
@@ -117,6 +102,8 @@ function initMosaicTab() {
     loadMosaicAnalyticalProblems();
     if (isMosaicRotatePlaying) {
         startMosaicAutoRotation();
+    } else {
+        updateRotateButtonUI(false);
     }
 }
 window.initMosaicTab = initMosaicTab;
@@ -556,7 +543,7 @@ function renderMosaicCardHtml(s) {
                     </span>
                 </div>
 
-                <!-- Frame de Transmissão / JPEG Real com HUD Overlay Tecnológico Sobreposto -->
+                <!-- Frame de Transmissao / JPEG Real 100% Limpo (Sem poluicao sobreposta) -->
                 <div class="mosaic-video-container" style="position: relative; width: 100%; aspect-ratio: 16 / 9; max-height: 220px; background: #070d1e; border-radius: 6px; overflow: hidden; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,0.14); box-shadow: inset 0 0 15px rgba(0,0,0,0.85); cursor: pointer;" onclick="openChannelRfTelemetryModal('${escapeHtml(s.canal)}', '${escapeHtml(s.praca)}')" title="Clique para abrir detalhes completos de sinal, constelação e topologia RF do veículo">
                     <img class="mosaic-live-thumb"
                          data-base-url="${s.jpeg_url || ('/api/fleet/channels/jpeg?canal=' + encodeURIComponent(s.canal) + '&praca=' + encodeURIComponent(s.praca))}"
@@ -566,79 +553,25 @@ function renderMosaicCardHtml(s) {
                          loading="lazy"
                          onerror="this.onerror=null; this.src='data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'320\' height=\'240\' viewBox=\'0 0 320 240\'><rect fill=\'%230b1329\' width=\'320\' height=\'240\'/><circle cx=\'160\' cy=\'95\' r=\'36\' fill=\'%231e293b\' stroke=\'%2338bdf8\' stroke-width=\'2\'/><text fill=\'%2338bdf8\' font-family=\'sans-serif\' font-size=\'15\' font-weight=\'bold\' x=\'50%25\' y=\'102\' text-anchor=\'middle\'>${encodeURIComponent(s.canal.substring(0, 10))}</text><text fill=\'%23cbd5e1\' font-family=\'sans-serif\' font-size=\'12\' font-weight=\'bold\' x=\'50%25\' y=\'160\' text-anchor=\'middle\'>${encodeURIComponent(s.canal)}</text><text fill=\'%2364748b\' font-family=\'sans-serif\' font-size=\'10\' x=\'50%25\' y=\'180\' text-anchor=\'middle\'>${encodeURIComponent(s.praca)} • SINAL AO VIVO</text></svg>';" />
                     
-                    <!-- HUD Top Bar Sobreposto ao Vídeo -->
+                    <!-- Badges discretos no topo (Sem cobrir o conteudo) -->
                     <div style="position: absolute; top: 6px; left: 8px; right: 8px; display: flex; justify-content: space-between; align-items: center; z-index: 5; pointer-events: none;">
-                        <span class="badge" style="background: rgba(15, 23, 42, 0.75); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 4px; backdrop-filter: blur(4px);">
+                        <span class="badge" style="background: rgba(15, 23, 42, 0.8); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 4px; backdrop-filter: blur(4px);">
                             ${isCaboOrIP ? 'CABO / PAYTV' : 'ISDB-Tb DTV'}
                         </span>
-                        <button type="button" class="btn-sm" onclick="event.stopPropagation(); openChannelRfTelemetryModal('${escapeHtml(s.canal)}', '${escapeHtml(s.praca)}')" style="pointer-events: auto; background: rgba(15, 23, 42, 0.85); color: #7dd3fc; border: 1px solid rgba(56, 189, 248, 0.5); font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px; cursor: pointer; backdrop-filter: blur(4px);" title="Abrir telemetria de sinal RF detalhada">
-                            <i class="fas fa-satellite-dish"></i> Sinal &amp; RF
-                        </button>
-                    </div>
-
-                    <!-- Micro VU Meter Estéreo Vertical Overlaid na Lateral Direita do Vídeo -->
-                    <div style="position: absolute; right: 6px; top: 32px; bottom: 32px; width: 10px; background: rgba(0,0,0,0.75); border-radius: 3px; border: 1px solid rgba(255,255,255,0.18); display: flex; gap: 2px; padding: 2px; justify-content: center; align-items: flex-end; z-index: 4;" title="Nível L/R: ${s.audio_db || -14} dB (${audioStat})">
-                        <div style="flex: 1; height: 100%; display: flex; align-items: flex-end; background: rgba(255,255,255,0.06); border-radius: 1px;">
-                            <div style="width: 100%; height: ${vuBarH}%; background: linear-gradient(0deg, #10b981 0%, #10b981 70%, #f59e0b 85%, #ef4444 100%); border-radius: 1px; transition: height 0.3s ease;"></div>
-                        </div>
-                        <div style="flex: 1; height: 100%; display: flex; align-items: flex-end; background: rgba(255,255,255,0.06); border-radius: 1px;">
-                            <div style="width: 100%; height: ${Math.max(4, vuBarH - 3)}%; background: linear-gradient(0deg, #10b981 0%, #10b981 70%, #f59e0b 85%, #ef4444 100%); border-radius: 1px; transition: height 0.3s ease;"></div>
-                        </div>
-                    </div>
-
-                    <!-- HUD Bottom Overlay Sobreposto com Gradiente Escuro -->
-                    <div style="position: absolute; bottom: 0; left: 0; right: 0; background: linear-gradient(0deg, rgba(3, 7, 18, 0.95) 0%, rgba(3, 7, 18, 0.8) 70%, transparent 100%); padding: 16px 8px 5px 8px; z-index: 5; pointer-events: none;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;">
-                            <div style="display: flex; align-items: center; gap: 6px;">
-                                ${(() => {
-                                    if (isCaboOrIP) {
-                                        const tLower = (s.status_tuner || "").toLowerCase();
-                                        const isDis = tLower.includes("disconnect") || tLower.includes("parado");
-                                        if (isDis) {
-                                            return `<span class="badge" style="background: rgba(239, 68, 68, 0.4); color: #fca5a5; border: 1px solid #ef4444; font-size: 9px; font-weight: 800; padding: 1px 4px; border-radius: 3px;">STB DESCON</span>`;
-                                        }
-                                        return `<span class="badge" style="background: rgba(16, 185, 129, 0.35); color: #34d399; border: 1px solid #10b981; font-weight: 800; font-size: 9px; padding: 1px 4px; border-radius: 3px;">CABO LOCK</span>`;
-                                    }
-                                    const q = parseInt(s.qualidade, 10) || 0;
-                                    if (q > 0) {
-                                        return `<span class="badge" style="background: rgba(16, 185, 129, 0.35); color: #34d399; border: 1px solid #10b981; font-weight: 800; font-size: 9px; padding: 1px 4px; border-radius: 3px;">LOCK</span>`;
-                                    }
-                                    return `<span class="badge" style="background: rgba(239, 68, 68, 0.4); color: #fca5a5; border: 1px solid #ef4444; font-weight: 800; font-size: 9px; padding: 1px 4px; border-radius: 3px;">NO LOCK</span>`;
-                                })()}
-                                
-                                <span style="font-size: 11px; font-family: monospace; font-weight: 700; color: #fff;">
-                                    ${isCaboOrIP ? '<span style="color: #38bdf8;">CABO/IP OK</span>' : `Q: <span style="color: ${parseInt(s.qualidade, 10) >= 50 ? '#34d399' : (parseInt(s.qualidade, 10) > 0 ? '#fbbf24' : '#f87171')};">${s.qualidade}%</span> • F: ${s.forca}%`}
-                                </span>
-                            </div>
-
-                            <div style="display: flex; align-items: center; gap: 4px;">
-                                <span style="font-size: 10px; font-family: monospace; font-weight: 700; color: ${audioStat === 'MUDO' ? '#f87171' : '#34d399'};">
-                                    ${audioStat === 'MUDO' ? '<i class="fas fa-volume-mute"></i> MUDO' : '-14 dB'}
-                                </span>
-                            </div>
-                        </div>
-
-                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 9px; font-family: monospace; color: rgba(255,255,255,0.7); border-top: 1px solid rgba(255,255,255,0.08); padding-top: 2px;">
-                            <span class="mosaic-card-timestamp">${s.last_frame_time || "Ao Vivo"} • 320x240</span>
-                            <span style="color: #94a3b8;">${escapeHtml(s.praca)}</span>
-                        </div>
+                        <span class="mosaic-card-timestamp badge" style="background: rgba(15, 23, 42, 0.8); color: #cbd5e1; border: 1px solid rgba(255, 255, 255, 0.15); font-size: 9px; font-family: monospace; padding: 2px 6px; border-radius: 4px; backdrop-filter: blur(4px);">
+                            ${s.last_frame_time || "Ao Vivo"}
+                        </span>
                     </div>
                 </div>
             </div>
 
-            ${currentMosaicViewMode === 'diag' ? `
-                <div style="margin-top: 6px; padding: 4px 8px; background: rgba(0,0,0,0.35); border-radius: 4px; border: 1px solid rgba(255,255,255,0.06); font-size: 10px; font-family: monospace; display: flex; justify-content: space-between; color: #94a3b8;">
-                    <span>MER: <strong style="color: #6ee7b7;">31.4 dB</strong></span>
-                    <span>BER: <strong style="color: #38bdf8;">&lt; 1e-7</strong></span>
-                    <span>TS: <strong style="color: #facc15;">14.2 Mbps</strong></span>
-                </div>
-            ` : ''}
-            <!-- Rodapé e Ações do Card -->
-            <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06); display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
-                <div style="display: flex; align-items: center; gap: 6px;">
-                    ${signalBars}
+            <!-- Rodape e Acoes do Card: Metricas de Sinal e Botoes Abaixo da Imagem -->
+            <div style="margin-top: 8px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.06); display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap;">
+                <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                    <button type="button" class="btn-sm" onclick="event.stopPropagation(); openChannelRfTelemetryModal('${escapeHtml(s.canal)}', '${escapeHtml(s.praca)}')" style="background: rgba(15, 23, 42, 0.85); color: #7dd3fc; border: 1px solid rgba(56, 189, 248, 0.4); font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px; cursor: pointer;" title="Clique para abrir detalhes completos de sinal RF e telemetria">
+                        <i class="fas fa-satellite-dish"></i> Sinal &amp; RF: <span style="color: ${parseInt(s.qualidade, 10) >= 50 ? '#34d399' : (parseInt(s.qualidade, 10) > 0 ? '#fbbf24' : '#f87171')};">Q: ${s.qualidade}%</span> • F: ${s.forca}%
+                    </button>
                     ${audioBadge}
-                    ${correlationBadge}
                 </div>
                 
                 <div style="display: flex; gap: 6px;">
@@ -719,14 +652,6 @@ function startMosaicAutoRotation() {
             secText.innerText = `${rem}s`;
         }
     }, 100);
-
-    // Timer continuo de alternancia de frames em tempo real (a cada 5 segundos)
-    const frameIntervalMs = Math.min(4000, Math.max(2500, Math.floor((mosaicRotateIntervalSec * 1000) / 2)));
-    mosaicFrameRefreshTimer = setInterval(() => {
-        if (isMosaicRotatePlaying && currentMosaicSubtab === "live") {
-            alternateMosaicVisibleFrames();
-        }
-    }, frameIntervalMs);
 }
 
 function stopMosaicAutoRotation() {
