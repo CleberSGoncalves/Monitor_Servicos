@@ -15,6 +15,34 @@ from sharepoint_sync import get_cached_data
 
 logger = logging.getLogger("PracaAnalyzer")
 
+def is_radio_channel_healthy(c: Dict[str, Any]) -> tuple[bool, str]:
+    """
+    Avalia com rigor técnico e determinismo se um canal de Rádio (Sonifex ou Streaming RTSP) está saudável.
+    Evita falsos positivos decorrentes de colunas GravandoMP3 não populadas no SharePoint
+    quando o encoder/tuner reporta status ativo ('WORKING' / 'READY TO WORK') e telemetria nominal.
+    """
+    if bool(c.get("has_outage", False)):
+        return False, "Queda Detectada (Outage)"
+
+    tuner_stat = str(c.get("status_tuner", "")).lower()
+    if any(w in tuner_stat for w in ["disconnect", "parado", "falha", "timeout", "error", "desconectado"]):
+        return False, "Sintonizador/Stream Desconectado"
+
+    # Confirmação explícita de gravação MP3
+    mp3_rec = any(w in str(c.get("gravando_mp3", "")).lower() for w in ["sim", "gravando", "ativo", "mp3"])
+    if mp3_rec:
+        return True, "Áudio OK (Sonifex/Stream)"
+
+    # Se o sintonizador/streamer virtual do Atria Capture está ativo
+    tuner_active = any(w in tuner_stat for w in ["working", "ready", "connected", "lock", "ok"])
+    motivo = str(c.get("motivo", "")).lower()
+    is_cloud_nominal = "operando normalmente" in motivo or "estável" in motivo or "estavel" in motivo
+
+    if tuner_active and (is_cloud_nominal or not c.get("is_degraded")):
+        return True, "Stream Conectado (Working)"
+
+    return False, "Sem Gravação / Fluxo Interrompido"
+
 def list_active_pracas() -> List[Dict[str, Any]]:
     """Retorna lista consolidada de todas as pracas ativas com contagem de hosts e canais."""
     data = get_cached_data()
@@ -33,10 +61,10 @@ def list_active_pracas() -> List[Dict[str, Any]]:
         
         # Canal com falha apenas se houver outage real ou TV sem lock (ignora SNR em radio)
         canal_nome = c.get("canal", "").lower()
-        is_rad = any(w in canal_nome for w in ["fm", "am", "radio", "rádio"]) or c.get("meio") == "Radio"
+        is_rad = any(w in canal_nome for w in ["fm", "am", "radio", "rádio"]) or c.get("meio") == "Radio" or "stream" in str(c.get("meio", "")).lower()
         if is_rad:
-            rec_mp3 = "sim" in str(c.get("gravando_mp3", "")).lower()
-            if not rec_mp3 or c.get("has_outage"):
+            is_ok, _ = is_radio_channel_healthy(c)
+            if not is_ok:
                 praca_map[p_norm]["canais_com_falha"] += 1
         else:
             if c.get("has_outage") or c.get("qualidade_sinal") == "0":
@@ -305,21 +333,21 @@ def audit_praca_ecosystem(praca_name: str, selected_cs: Optional[str] = "ALL") -
         # REGRAS RÍGIDAS DE RÁDIO VS TV DIGITAL:
         if is_radio:
             # Rádio (Sonifex FM / Streaming IP): NUNCA exige Lock RF nem SNR 0%!
-            # Se gravando_mp3 == 'Sim', o canal está 100% NOMINAL!
-            rec_nominal = mp3_rec
-            qualidade_label = "Áudio OK (Sonifex)" if not "stream" in str(c.get("placa", "")).lower() else "Stream Conectado"
-            display_qualidade = 100 if mp3_rec else 0
-            is_nominal = mp3_rec and not has_outage
+            # Validação contextual anti-falso positivo (WORKING/READY TO WORK + Telemetria Nominal)
+            is_ok, status_desc = is_radio_channel_healthy(c)
+            qualidade_label = status_desc
+            display_qualidade = 100 if is_ok else 0
+            is_nominal = is_ok
 
-            if not mp3_rec:
+            if not is_ok:
                 problems.append({
                     "code": "RADIO_AUDIO_RECORDING_FAULT",
                     "severity": "ALERTA",
                     "category": f"Gravação Rádio ({c.get('cs_origin', 'CS03')})",
                     "host": c.get("host") or focused_host or "CS",
                     "canal": canal_nome,
-                    "title": f"Rádio sem Gravação MP3: {canal_nome}",
-                    "detail": f"O canal de rádio {canal_nome} não está gerando arquivos MP3 contínuos no disco.",
+                    "title": f"Rádio com Falha de Áudio / Stream: {canal_nome}",
+                    "detail": f"O canal de rádio {canal_nome} reporta: {status_desc}.",
                     "recommended_action": "restart_atria_capture",
                     "action_label": "Reiniciar Captura de Rádio"
                 })
@@ -332,9 +360,9 @@ def audit_praca_ecosystem(praca_name: str, selected_cs: Optional[str] = "ALL") -
                 "cs_origin": c.get("cs_origin", "CS03"),
                 "host": c.get("host") or c.get("hostname") or "",
                 "qualidade": display_qualidade,
-                "qualidade_str": qualidade_label if mp3_rec else "Sem Áudio",
-                "status_tuner": "Áudio OK (Sonifex/Stream)" if mp3_rec else "Sem Gravação",
-                "gravando": "Sim" if mp3_rec else "Nao",
+                "qualidade_str": qualidade_label,
+                "status_tuner": status_desc,
+                "gravando": "Sim" if is_ok else "Nao",
                 "is_nominal": is_nominal,
                 "has_outage": has_outage
             })
@@ -772,10 +800,10 @@ def get_fleet_machines_overview() -> Dict[str, Any]:
         rec_faults = 0
         for c in chans:
             c_name = c.get("canal", "")
-            is_rad = any(w in c_name.lower() for w in ["fm", "am", "radio", "rádio"]) or c.get("meio") == "Radio"
+            is_rad = any(w in c_name.lower() for w in ["fm", "am", "radio", "rádio"]) or c.get("meio") == "Radio" or "stream" in str(c.get("meio", "")).lower()
             if is_rad:
-                mp3 = "sim" in str(c.get("gravando_mp3", "")).lower() or "gravando" in str(c.get("gravando_mp3", "")).lower()
-                if not mp3:
+                is_ok, _ = is_radio_channel_healthy(c)
+                if not is_ok:
                     rec_faults += 1
             else:
                 mp4 = "sim" in str(c.get("gravando_video", c.get("gravando", ""))).lower() or "sim" in str(c.get("gravando_mp4", "")).lower()

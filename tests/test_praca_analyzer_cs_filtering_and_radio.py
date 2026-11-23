@@ -47,12 +47,15 @@ def test_radio_sonifex_recording_is_nominal_and_not_penalized():
             },
             {
                 "cidade": "Belo Horizonte",
-                "canal": "JK FM",
+                "canal": "Band FM (Florianópolis)",
                 "hostname": "Belo_Horizonte_Radio-SMME-377-CS3",
                 "qualidade": 0,
-                "status_tuner": "N/A",
-                "gravando": "Sim",
-                "gravando_mp3": "Sim"
+                "status_tuner": "Connected with tuner. WORKING.",
+                "gravando": None,
+                "gravando_mp3": "Não",
+                "meio": "Streaming (RTSP)",
+                "motivo": "Operando Normalmente (Telemetria Google Cloud)",
+                "has_outage": False
             }
         ]
     }
@@ -65,9 +68,11 @@ def test_radio_sonifex_recording_is_nominal_and_not_penalized():
         for ch in audit["canais"]:
             assert ch["is_radio"] is True
             assert ch["has_outage"] is False
-            assert "Sonifex" in ch["status_tuner"]
+            assert ch["is_nominal"] is True
 
         # Verifica que nenhum problema de sinal de rádio foi gerado
+        assert len(audit["problems"]) == 0
+        assert audit["health_score"] == 100
         signal_problems = [p for p in audit["problems"] if "SIGNAL" in p["code"]]
         assert len(signal_problems) == 0
 
