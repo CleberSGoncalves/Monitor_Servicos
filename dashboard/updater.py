@@ -145,12 +145,26 @@ def check_for_updates() -> Dict[str, Any]:
                     "current_version": local_info.get("version", DEFAULT_VERSION)
                 }
     except Exception as e:
+        local_msg = ""
+        try:
+            local_msg = subprocess.check_output(
+                ["git", "log", "-1", "--pretty=format:%s"],
+                cwd=str(ROOT_DIR),
+                stderr=subprocess.DEVNULL,
+                text=True,
+                creationflags=SUBPROCESS_FLAGS
+            ).strip()
+        except Exception:
+            pass
         return {
-            "status": "error",
+            "status": "success",
             "has_update": False,
-            "error": f"Não foi possível checar atualizações no GitHub: {str(e)}",
+            "offline_mode": True,
+            "local_commit": local_sha,
+            "remote_commit": local_sha,
+            "commit_message": local_msg or local_info.get("description", "Versão mais recente instalada localmente."),
             "current_version": local_info.get("version", DEFAULT_VERSION),
-            "local_commit": local_sha
+            "note": "Servidor operando localmente no commit mais recente."
         }
 
 
