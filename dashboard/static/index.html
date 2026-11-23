@@ -4835,6 +4835,20 @@
             <button type="button" id="btnMosaicQuickSeverityFilter" onclick="toggleMosaicQuickSeverityFilter()" style="padding: 4px 10px; font-size: 11px; font-weight: 700; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #fca5a5; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 6px;" title="Filtrar instantaneamente apenas canais com falhas ou degradação">
               <i class="fas fa-exclamation-circle text-red"></i> <span>Falhas (<span id="mosaicQuickFailureCount">0</span>)</span>
             </button>
+
+            <!-- Seletor de Densidade / Tamanho dos Cards (Alta Densidade) -->
+            <div style="display: flex; align-items: center; gap: 3px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; padding: 2px 4px;">
+              <span style="font-size: 10px; font-weight: 800; color: #94a3b8; padding: 0 4px;"><i class="fas fa-th"></i> Grade:</span>
+              <button type="button" id="btnDensityCompact" onclick="setMosaicDensity('compact')" style="padding: 3px 8px; font-size: 10px; font-weight: 700; border-radius: 4px; border: 1px solid #38bdf8; background: #0284c7; color: #fff; cursor: pointer;" title="Modo Alta Densidade: Ícones menores para ver mais canais ao mesmo tempo (6 a 10 canais por linha)">
+                <i class="fas fa-th"></i> Mini
+              </button>
+              <button type="button" id="btnDensityMedium" onclick="setMosaicDensity('medium')" style="padding: 3px 8px; font-size: 10px; font-weight: 700; border-radius: 4px; border: 1px solid rgba(255,255,255,0.15); background: transparent; color: #cbd5e1; cursor: pointer;" title="Modo Padrão: 4 a 5 canais por linha">
+                <i class="fas fa-th-large"></i> Padrão
+              </button>
+              <button type="button" id="btnDensityLarge" onclick="setMosaicDensity('large')" style="padding: 3px 8px; font-size: 10px; font-weight: 700; border-radius: 4px; border: 1px solid rgba(255,255,255,0.15); background: transparent; color: #cbd5e1; cursor: pointer;" title="Modo Ampliado: 3 a 4 canais por linha">
+                <i class="fas fa-square"></i> Grande
+              </button>
+            </div>
           </div>
 
           <!-- Bloco Direito: Submenu de Filtros, Grupos Personalizados, Split Screen, Resumo Frota e Modo Vídeo Wall -->
@@ -4991,8 +5005,10 @@
             <div>
               <label style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;">Canais por Página</label>
               <select id="mosaicPageSizeSelect" class="form-input" style="width: 100%;" onchange="changeMosaicPageSize(this.value)">
-                <option value="30" selected>30 / página (Anti-Crash)</option>
-                <option value="24">24 / página</option>
+                <option value="60">60 / página (Alta Densidade)</option>
+                <option value="90">90 / página (Visão Panorâmica)</option>
+                <option value="30" selected>30 / página (Padrão)</option>
+                <option value="120">120 / página (Frota Completa)</option>
                 <option value="15">15 / página</option>
               </select>
             </div>
@@ -18402,7 +18418,7 @@
 
   <script src="/static/js/signals_analysis.js?v=3.9.85"></script>
 
-  <script src="/static/js/mosaic_wall.js?v=3.9.87"></script>
+  <script src="/static/js/mosaic_wall.js?v=3.9.89"></script>
 
   <script src="/static/js/topology_map.js?v=3.9.85"></script>
 

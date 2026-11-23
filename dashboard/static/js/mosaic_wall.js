@@ -40,6 +40,48 @@ let mosaicRotateSecondsElapsed = 0;
 let isMosaicRotatePlaying = false; // Inicia pausado por padrão (sem troca involuntária de páginas)
 let mosaicFrameSeq = Math.floor(Date.now() / 5000);
 let mosaicFrameRefreshTimer = null;
+let currentMosaicDensity = localStorage.getItem("mosaic_density") || "compact";
+
+function setMosaicDensity(density) {
+    if (!["compact", "medium", "large"].includes(density)) density = "compact";
+    currentMosaicDensity = density;
+    try { localStorage.setItem("mosaic_density", density); } catch(e){}
+
+    const grid = document.getElementById("mosaicLiveGrid");
+    if (grid) {
+        if (density === "compact") {
+            grid.style.setProperty("grid-template-columns", "repeat(auto-fill, minmax(200px, 1fr))", "important");
+            grid.style.setProperty("gap", "10px", "important");
+        } else if (density === "medium") {
+            grid.style.setProperty("grid-template-columns", "repeat(auto-fill, minmax(280px, 1fr))", "important");
+            grid.style.setProperty("gap", "14px", "important");
+        } else {
+            grid.style.setProperty("grid-template-columns", "repeat(auto-fill, minmax(360px, 1fr))", "important");
+            grid.style.setProperty("gap", "18px", "important");
+        }
+    }
+
+    // Atualiza botões da UI
+    ["compact", "medium", "large"].forEach(d => {
+        const btnId = `btnDensity${d.charAt(0).toUpperCase() + d.slice(1)}`;
+        const btn = document.getElementById(btnId);
+        if (!btn) return;
+        if (d === density) {
+            btn.style.border = "1px solid #38bdf8";
+            btn.style.background = "#0284c7";
+            btn.style.color = "#ffffff";
+            btn.style.boxShadow = "0 0 8px rgba(56, 189, 248, 0.4)";
+        } else {
+            btn.style.border = "1px solid rgba(255,255,255,0.15)";
+            btn.style.background = "transparent";
+            btn.style.color = "#cbd5e1";
+            btn.style.boxShadow = "none";
+        }
+    });
+
+    renderMosaicPage();
+}
+window.setMosaicDensity = setMosaicDensity;
 
 function alternateMosaicVisibleFrames() {
     mosaicFrameSeq++;
@@ -48,8 +90,9 @@ function alternateMosaicVisibleFrames() {
 
     const now = new Date();
     const nowStr = now.toTimeString().split(" ")[0];
+    const cacheBuster = Date.now();
 
-    // Atualiza VU meters de rádios e timestamps sem recarregar imagens para evitar piscar de tela
+    // Atualiza VU meters de rádios e timestamps
     const vuPanels = grid.querySelectorAll(".mosaic-audio-panel");
     vuPanels.forEach((panel, idx) => {
         const barL = panel.querySelector(".vu-bar-l");
@@ -70,6 +113,15 @@ function alternateMosaicVisibleFrames() {
     timeSpans.forEach(sp => {
         const isAud = sp.closest(".mosaic-audio-panel");
         sp.innerText = isAud ? `${nowStr} • Sem Vídeo` : `${nowStr} • 320x240`;
+    });
+
+    // Atualização em tempo real das imagens visíveis nos cards
+    const liveThumbs = grid.querySelectorAll(".mosaic-live-thumb");
+    liveThumbs.forEach(img => {
+        const baseUrl = img.getAttribute("data-base-url");
+        if (baseUrl) {
+            img.src = `${baseUrl}&mode=${currentMosaicViewMode}&seq=${mosaicFrameSeq}&t=${cacheBuster}`;
+        }
     });
 }
 window.alternateMosaicVisibleFrames = alternateMosaicVisibleFrames;
@@ -98,12 +150,20 @@ function initMosaicTab() {
     if (kpi) { kpi.classList.add('mosaic-view-collapsed'); kpi.style.display = 'none'; }
     updateMosaicFilterBadge();
     console.log("[MosaicWall] Inicializando aba dedicada Monitoração das Imagens...");
+
+    // Aplica a densidade configurada (Compacto / Médio / Grande)
+    setMosaicDensity(currentMosaicDensity);
+
     loadMosaicData();
     loadMosaicAnalyticalProblems();
     if (isMosaicRotatePlaying) {
         startMosaicAutoRotation();
     } else {
         updateRotateButtonUI(false);
+    }
+
+    if (!mosaicFrameRefreshTimer) {
+        mosaicFrameRefreshTimer = setInterval(alternateMosaicVisibleFrames, 12000);
     }
 }
 window.initMosaicTab = initMosaicTab;
@@ -441,24 +501,31 @@ function renderMosaicCardHtml(s) {
     // Renderiza painel gráfico profissional de Áudio Broadcast com VU Meter
     // =========================================================================
     if (isRadio) {
+        const isCompact = currentMosaicDensity === "compact";
+        const cardPad = isCompact ? "7px" : "12px";
+        const cardMinH = isCompact ? "180px" : "250px";
+        const titleFs = isCompact ? "12px" : "15px";
+        const subFs = isCompact ? "10px" : "11px";
+        const vidMaxH = isCompact ? "130px" : "220px";
+
         return `
-        <div class="panel-card mosaic-card" style="border: 1px solid ${borderCol}; padding: 12px; position: relative; display: flex; flex-direction: column; justify-content: space-between; min-height: 250px; background: rgba(13, 19, 33, 0.95); box-shadow: 0 4px 14px rgba(0,0,0,0.4); border-radius: 8px;">
+        <div class="panel-card mosaic-card" style="border: 1px solid ${borderCol}; padding: ${cardPad}; position: relative; display: flex; flex-direction: column; justify-content: space-between; min-height: ${cardMinH}; background: rgba(13, 19, 33, 0.95); box-shadow: 0 4px 14px rgba(0,0,0,0.4); border-radius: 8px;">
             <div>
                 <!-- Header do Card -->
-                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
-                    <div>
-                        <div style="font-weight: 800; font-size: 15px; color: #fff; line-height: 1.2;">${escapeHtml(s.canal)}</div>
-                        <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: ${isCompact ? '4px' : '8px'};">
+                    <div style="overflow: hidden; max-width: 70%;">
+                        <div style="font-weight: 800; font-size: ${titleFs}; color: #fff; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; overflow: hidden;" title="${escapeHtml(s.canal)}">${escapeHtml(s.canal)}</div>
+                        <div style="font-size: ${subFs}; color: var(--text-muted); margin-top: 1px; text-overflow: ellipsis; white-space: nowrap; overflow: hidden;">
                             ${escapeHtml(s.praca)} • CS ${s.cs} • <span style="color: #60a5fa;">${escapeHtml(s.regiao)}</span>
                         </div>
                     </div>
-                    <span class="badge" style="background: ${bgBadge}; color: ${borderCol}; border: 1px solid ${borderCol}; font-weight: 700; font-size: 10px; padding: 2px 8px; border-radius: 4px;">
+                    <span class="badge" style="background: ${bgBadge}; color: ${borderCol}; border: 1px solid ${borderCol}; font-weight: 700; font-size: ${isCompact ? '9px' : '10px'}; padding: 1px 6px; border-radius: 4px;">
                         ${s.status}
                     </span>
                 </div>
 
                 <!-- Painel de Áudio Broadcast (Sem Imagem Falsa de TV) -->
-                <div class="mosaic-audio-panel" style="position: relative; width: 100%; aspect-ratio: 16 / 9; max-height: 220px; background: radial-gradient(circle at center, #0f172a 0%, #030712 100%); border-radius: 6px; overflow: hidden; display: flex; flex-direction: column; justify-content: space-between; padding: 12px 14px; border: 1px solid rgba(56, 189, 248, 0.25); box-shadow: inset 0 0 15px rgba(0,0,0,0.85);">
+                <div class="mosaic-audio-panel" style="position: relative; width: 100%; aspect-ratio: 16 / 9; max-height: ${vidMaxH}; background: radial-gradient(circle at center, #0f172a 0%, #030712 100%); border-radius: 6px; overflow: hidden; display: flex; flex-direction: column; justify-content: space-between; padding: ${isCompact ? '8px 10px' : '12px 14px'}; border: 1px solid rgba(56, 189, 248, 0.25); box-shadow: inset 0 0 15px rgba(0,0,0,0.85);">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <span style="font-size: 11px; font-weight: 800; color: #38bdf8; display: flex; align-items: center; gap: 6px;">
                             <i class="fas fa-broadcast-tower" style="color: #06b6d4;"></i> MONITOR DE ÁUDIO FM/AM
@@ -527,24 +594,31 @@ function renderMosaicCardHtml(s) {
 
     const vuBarH = audioStat === 'MUDO' ? 4 : (s.audio_bars_pct || 72);
 
+    const isCompact = currentMosaicDensity === "compact";
+    const cardPad = isCompact ? "7px" : "12px";
+    const cardMinH = isCompact ? "180px" : "250px";
+    const titleFs = isCompact ? "12px" : "15px";
+    const subFs = isCompact ? "10px" : "11px";
+    const vidMaxH = isCompact ? "130px" : "220px";
+
     return `
-        <div class="panel-card mosaic-card" style="border: 1px solid ${borderCol}; padding: 12px; position: relative; display: flex; flex-direction: column; justify-content: space-between; min-height: 250px; background: rgba(13, 19, 33, 0.95); box-shadow: 0 4px 14px rgba(0,0,0,0.4); border-radius: 8px;">
+        <div class="panel-card mosaic-card" style="border: 1px solid ${borderCol}; padding: ${cardPad}; position: relative; display: flex; flex-direction: column; justify-content: space-between; min-height: ${cardMinH}; background: rgba(13, 19, 33, 0.95); box-shadow: 0 4px 14px rgba(0,0,0,0.4); border-radius: 8px;">
             <div>
                 <!-- Header do Card -->
-                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
-                    <div>
-                        <div style="font-weight: 800; font-size: 15px; color: #fff; line-height: 1.2;">${escapeHtml(s.canal)}</div>
-                        <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: ${isCompact ? '4px' : '8px'};">
+                    <div style="overflow: hidden; max-width: 70%;">
+                        <div style="font-weight: 800; font-size: ${titleFs}; color: #fff; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; overflow: hidden;" title="${escapeHtml(s.canal)}">${escapeHtml(s.canal)}</div>
+                        <div style="font-size: ${subFs}; color: var(--text-muted); margin-top: 1px; text-overflow: ellipsis; white-space: nowrap; overflow: hidden;">
                             ${escapeHtml(s.praca)} • CS ${s.cs} • <span style="color: #60a5fa;">${escapeHtml(s.regiao)}</span>
                         </div>
                     </div>
-                    <span class="badge" style="background: ${bgBadge}; color: ${borderCol}; border: 1px solid ${borderCol}; font-weight: 700; font-size: 10px; padding: 2px 8px; border-radius: 4px;">
+                    <span class="badge" style="background: ${bgBadge}; color: ${borderCol}; border: 1px solid ${borderCol}; font-weight: 700; font-size: ${isCompact ? '9px' : '10px'}; padding: 1px 6px; border-radius: 4px;">
                         ${s.status}
                     </span>
                 </div>
 
                 <!-- Frame de Transmissao / JPEG Real 100% Limpo (Sem poluicao sobreposta) -->
-                <div class="mosaic-video-container" style="position: relative; width: 100%; aspect-ratio: 16 / 9; max-height: 220px; background: #070d1e; border-radius: 6px; overflow: hidden; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,0.14); box-shadow: inset 0 0 15px rgba(0,0,0,0.85); cursor: pointer;" onclick="openChannelRfTelemetryModal('${escapeHtml(s.canal)}', '${escapeHtml(s.praca)}')" title="Clique para abrir detalhes completos de sinal, constelação e topologia RF do veículo">
+                <div class="mosaic-video-container" style="position: relative; width: 100%; aspect-ratio: 16 / 9; max-height: ${vidMaxH}; background: #070d1e; border-radius: 6px; overflow: hidden; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,0.14); box-shadow: inset 0 0 15px rgba(0,0,0,0.85); cursor: pointer;" onclick="openChannelRfTelemetryModal('${escapeHtml(s.canal)}', '${escapeHtml(s.praca)}')" title="Clique para abrir detalhes completos de sinal, constelação e topologia RF do veículo">
                     <img class="mosaic-live-thumb"
                          data-base-url="${s.jpeg_url || ('/api/fleet/channels/jpeg?canal=' + encodeURIComponent(s.canal) + '&praca=' + encodeURIComponent(s.praca))}"
                          src="${(s.jpeg_url || ('/api/fleet/channels/jpeg?canal=' + encodeURIComponent(s.canal) + '&praca=' + encodeURIComponent(s.praca))) + '&mode=real&seq=' + mosaicFrameSeq + '&t=' + Date.now()}"
@@ -566,21 +640,21 @@ function renderMosaicCardHtml(s) {
             </div>
 
             <!-- Rodape e Acoes do Card: Metricas de Sinal e Botoes Abaixo da Imagem -->
-            <div style="margin-top: 8px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.06); display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap;">
+            <div style="margin-top: ${isCompact ? '4px' : '8px'}; padding-top: ${isCompact ? '4px' : '6px'}; border-top: 1px solid rgba(255,255,255,0.06); display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap;">
                 <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                    <button type="button" class="btn-sm" onclick="event.stopPropagation(); openChannelRfTelemetryModal('${escapeHtml(s.canal)}', '${escapeHtml(s.praca)}')" style="background: rgba(15, 23, 42, 0.85); color: #7dd3fc; border: 1px solid rgba(56, 189, 248, 0.4); font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px; cursor: pointer;" title="Clique para abrir detalhes completos de sinal RF e telemetria">
-                        <i class="fas fa-satellite-dish"></i> Sinal &amp; RF: <span style="color: ${parseInt(s.qualidade, 10) >= 50 ? '#34d399' : (parseInt(s.qualidade, 10) > 0 ? '#fbbf24' : '#f87171')};">Q: ${s.qualidade}%</span> • F: ${s.forca}%
+                    <button type="button" class="btn-sm" onclick="event.stopPropagation(); openChannelRfTelemetryModal('${escapeHtml(s.canal)}', '${escapeHtml(s.praca)}')" style="background: rgba(15, 23, 42, 0.85); color: #7dd3fc; border: 1px solid rgba(56, 189, 248, 0.4); font-size: ${isCompact ? '9px' : '10px'}; font-weight: 700; padding: ${isCompact ? '1px 5px' : '2px 7px'}; border-radius: 4px; cursor: pointer;" title="Clique para abrir detalhes completos de sinal RF e telemetria">
+                        <i class="fas fa-satellite-dish"></i> Sinal: <span style="color: ${parseInt(s.qualidade, 10) >= 50 ? '#34d399' : (parseInt(s.qualidade, 10) > 0 ? '#fbbf24' : '#f87171')};">Q:${s.qualidade}%</span> F:${s.forca}%
                     </button>
                     ${audioBadge}
                 </div>
                 
-                <div style="display: flex; gap: 6px;">
+                <div style="display: flex; gap: 4px;">
                     ${hasIncident ? `
-                        <button class="btn-secondary" style="padding: 3px 8px; font-size: 10px; border-color: ${borderCol}; color: #38bdf8;" onclick="openStoryboardModal('${escapeHtml(s.canal)}', '${escapeHtml(s.praca)}')">
+                        <button class="btn-secondary" style="padding: 2px 6px; font-size: 9px; border-color: ${borderCol}; color: #38bdf8;" onclick="openStoryboardModal('${escapeHtml(s.canal)}', '${escapeHtml(s.praca)}')">
                             <i class="fas fa-film"></i> Storyboard
                         </button>
                     ` : `
-                        <button class="btn-secondary" style="padding: 3px 8px; font-size: 10px; border-color: rgba(255,255,255,0.1); color: var(--text-muted);" onclick="openStoryboardModal('${escapeHtml(s.canal)}', '${escapeHtml(s.praca)}')">
+                        <button class="btn-secondary" style="padding: 2px 6px; font-size: 9px; border-color: rgba(255,255,255,0.1); color: var(--text-muted);" onclick="openStoryboardModal('${escapeHtml(s.canal)}', '${escapeHtml(s.praca)}')">
                             <i class="fas fa-history"></i> Forense
                         </button>
                     `}

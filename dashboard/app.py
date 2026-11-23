@@ -2356,7 +2356,8 @@ async def get_channel_jpeg(canal: str, praca: Optional[str] = None, mode: Option
             tarja_code = praca[:3].upper()
 
     # Busca estrita de JPEGs reais gravados em disco nas pastas do MediaDNA
-    # REGRA ANTI-ALUCINAÇÃO: Somente arquivos genuínos com mtime <= 900 segundos (15 min) são aceitos.
+    # REGRA ANTI-ALUCINAÇÃO OPERACIONAL: Somente arquivos genuínos com mtime <= 900 segundos (15 min) são aceitos.
+    # NUNCA utilizar frames estáticos de banco antigo para não enganar a operação com imagens defasadas.
     real_disk_file = None
     search_dirs = [
         Path(r"D:\MediaDNA_V2\data\jpeg\control"),
@@ -2385,63 +2386,6 @@ async def get_channel_jpeg(canal: str, praca: Optional[str] = None, mode: Option
         if real_disk_file:
             break
 
-    # Busca de frames genuínos da emissora de TV
-    if not real_disk_file:
-        network_map = {
-            "globo": "globo", "rbs": "globo", "intertv": "globo", "vanguarda": "globo", "epctv": "globo", "anhanguera": "globo", "mirante": "globo", "gazeta": "globo",
-            "sbt": "sbt", "jangadeiro": "sbt", "alterosa": "sbt", "massa": "sbt", "vitoriosa": "sbt",
-            "record": "record", "rec": "record", "ric": "record",
-            "band": "band", "bandeirantes": "band", "taroba": "band",
-            "redetv": "redetv", "rede tv": "redetv",
-            "cultura": "cultura",
-            "brasil": "tvbrasil", "tvbr": "tvbrasil", "ebc": "tvbrasil",
-            "cnt": "cnt",
-            "diario": "diario",
-            "uniao": "uniao"
-        }
-        net_dir_name = None
-        for k, v in network_map.items():
-            if k in c_lower:
-                net_dir_name = v
-                break
-        if not net_dir_name:
-            v_code_map = {"GLO": "globo", "SBT": "sbt", "REC": "record", "BAND": "band", "REDETV": "redetv", "CULT": "cultura", "TVBR": "tvbrasil"}
-            net_dir_name = v_code_map.get(v_code, "globo")
-
-        # Procura em todas as localizações possíveis de static/thumbnails
-        possible_dirs = [
-            ROOT_DIR / "static" / "thumbnails" / "channel_frames" / net_dir_name,
-            ROOT_DIR.parent / "dashboard" / "static" / "thumbnails" / "channel_frames" / net_dir_name,
-            Path("static/thumbnails/channel_frames") / net_dir_name,
-            Path("dashboard/static/thumbnails/channel_frames") / net_dir_name
-        ]
-        for cand_dir in possible_dirs:
-            if cand_dir.exists():
-                frames = sorted(list(cand_dir.glob("*.jpg")))
-                if frames:
-                    hash_offset = sum(ord(ch) for ch in p_norm) if p_norm else 0
-                    seq_val = int(seq or 0) + int(time.time() // 15)
-                    frame_idx = (seq_val + hash_offset) % len(frames)
-                    real_disk_file = frames[frame_idx]
-                    break
-
-        # Fallback 2: Thumbnail de canal real consolidado
-        if not real_disk_file:
-            alt_candidates = [
-                ROOT_DIR / "static" / "thumbnails" / "real_channels" / f"real_channel_{net_dir_name}.jpg",
-                ROOT_DIR.parent / "dashboard" / "static" / "thumbnails" / "real_channels" / f"real_channel_{net_dir_name}.jpg",
-                Path("static/thumbnails/real_channels") / f"real_channel_{net_dir_name}.jpg",
-                Path("dashboard/static/thumbnails/real_channels") / f"real_channel_{net_dir_name}.jpg",
-                ROOT_DIR / "static" / "thumbnails" / "real_channels" / "real_channel_globo.jpg",
-                Path("static/thumbnails/real_channels/real_channel_globo.jpg"),
-                ROOT_DIR / "static" / "thumbnails" / "channel_frames" / "globo" / "frame_00.jpg",
-                Path("dashboard/static/thumbnails/channel_frames/globo/frame_00.jpg")
-            ]
-            for alt in alt_candidates:
-                if alt.exists():
-                    real_disk_file = alt
-                    break
-
     w, h = 320, 240
     now_dt = datetime.now()
     now_str = now_dt.strftime("%d/%m/%Y %H:%M:%S")
@@ -2451,28 +2395,15 @@ async def get_channel_jpeg(canal: str, praca: Optional[str] = None, mode: Option
     is_frozen = (video_congelado and video_congelado != "Não" and video_congelado != "Nao")
     is_fault = (mode == "fault") or has_outage or is_frozen or any(kw in canal.lower() for kw in ["falha", "queda", "travad", "glitch"])
 
-    # Carrega imagem real da emissora
+    # Carrega imagem real da emissora SOMENTE se o arquivo for genuíno e fresco do CS (mtime <= 15m)
+    img = None
     if real_disk_file and real_disk_file.exists():
         try:
             img = Image.open(real_disk_file).convert("RGB").resize((w, h))
         except Exception:
             img = None
-    else:
-        # Fallback de seguranca garantido: busca qualquer frame real existente em static/thumbnails
-        img = None
-        global_fallbacks = [
-            ROOT_DIR / "static" / "thumbnails" / "real_channels" / "real_channel_globo.jpg",
-            ROOT_DIR / "static" / "thumbnails" / "channel_frames" / "globo" / "frame_00.jpg",
-            Path("dashboard/static/thumbnails/real_channels/real_channel_globo.jpg"),
-            Path("dashboard/static/thumbnails/channel_frames/globo/frame_00.jpg")
-        ]
-        for gf in global_fallbacks:
-            if gf.exists():
-                try:
-                    img = Image.open(gf).convert("RGB").resize((w, h))
-                    break
-                except Exception:
-                    continue
+    # Se não houver arquivo real recente no CS, NUNCA usar imagem de arquivo antigo/novela:
+    # img permanece None e gera o Slate Técnico Oficial de Telemetria do Veículo em tempo real.
 
     if img is not None:
         draw = ImageDraw.Draw(img)
