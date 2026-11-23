@@ -944,6 +944,18 @@ function openFleetSafetyModal(config) {
     const inpReason = document.getElementById("safetyConfirmReasonInput");
     if (inpReason) inpReason.value = config.defaultReason || "Atualização homologada de rotina";
 
+    // Exibe ou oculta a chave de migração FastMatching/FileCleaner para Atria Capture / FastMatching
+    const svcForMig = (config.serviceName || (typeof currentGovernanceService !== "undefined" ? currentGovernanceService : "") || "").toLowerCase();
+    const isAtriaOrFma = svcForMig.includes("atria") || svcForMig.includes("dtvcapture") || svcForMig.includes("fastmatch");
+    const migContainer = document.getElementById("safetyModalAtriaMigrationContainer");
+    const chkMigrate = document.getElementById("chkMigrateFastMatchingAndCleaner");
+    if (migContainer) {
+        migContainer.style.display = isAtriaOrFma ? "block" : "none";
+    }
+    if (chkMigrate) {
+        chkMigrate.checked = false;
+    }
+
     const chk = document.getElementById("safetyConfirmCheckbox");
     if (chk) chk.checked = false;
     onSafetyConfirmCheckboxChange();
@@ -981,9 +993,11 @@ async function confirmFleetSafetyModal() {
     if (!pendingFleetSafetyAction) return;
     const actionObj = pendingFleetSafetyAction;
     const reason = (document.getElementById("safetyConfirmReasonInput")?.value || "Operação autorizada pelo operador").trim();
+    const chkMig = document.getElementById("chkMigrateFastMatchingAndCleaner");
+    const migrateToFma = chkMig ? chkMig.checked : false;
     closeFleetSafetyModal();
     if (typeof actionObj.onConfirm === "function") {
-        await actionObj.onConfirm(reason);
+        await actionObj.onConfirm(reason, migrateToFma);
     }
 }
 
@@ -998,13 +1012,14 @@ window.confirmFleetSafetyModal = confirmFleetSafetyModal;
 async function dispatchSingleHostUpdate(hostname, serviceName, targetVersion) {
     openFleetSafetyModal({
         actionType: "UPDATE_SINGLE",
+        serviceName: serviceName,
         title: `Confirmar Atualização Individual — ${hostname}`,
         badgeText: "⚡ ATUALIZAÇÃO INDIVIDUAL DE CAPTURE SITE",
         hosts: [hostname],
         summaryText: `Disparar atualização do serviço ${serviceName} para a versão v${targetVersion} via Google Cloud Firestore.`,
         impactWarning: "O agente no Capture Site fará o download silencioso do pacote no Google Cloud Storage, validará o hash SHA-256 e reiniciará apenas o serviço selecionado.",
         defaultReason: `Atualização homologada de ${serviceName} para v${targetVersion}`,
-        onConfirm: async (reason) => {
+        onConfirm: async (reason, migrateToFma = false) => {
             try {
                 const resp = await fetch("/api/fleet/governance/dispatch-update", {
                     method: "POST",
@@ -1016,7 +1031,8 @@ async function dispatchSingleHostUpdate(hostname, serviceName, targetVersion) {
                         service_name: serviceName,
                         target_version: targetVersion,
                         hosts: [hostname],
-                        reason: reason
+                        reason: reason,
+                        migrate_to_fastmatching: !!migrateToFma
                     })
                 });
                 const data = await resp.json();
@@ -1058,13 +1074,14 @@ async function dispatchBatchPendingUpdate() {
 
     openFleetSafetyModal({
         actionType: "UPDATE_BATCH",
+        serviceName: svc,
         title: `Confirmar Atualização em Lote (${count} Capture Sites)`,
         badgeText: "🚀 ATUALIZAÇÃO EM LOTE NA FROTA",
         hosts: pendingHosts,
         summaryText: `Disparar atualização em lote de ${svc} para a versão v${ver} em todos os ${count} Capture Sites pendentes online.`,
         impactWarning: "⚠️ Atenção: Esta operação enviará a ordem de atualização simultaneamente para as máquinas listadas acima e ficará registrada em seu usuário.",
         defaultReason: `Rollout em lote homologado de ${svc} v${ver}`,
-        onConfirm: async (reason) => {
+        onConfirm: async (reason, migrateToFma = false) => {
             try {
                 const resp = await fetch("/api/fleet/governance/dispatch-update", {
                     method: "POST",
@@ -1076,7 +1093,8 @@ async function dispatchBatchPendingUpdate() {
                         service_name: svc,
                         target_version: ver,
                         hosts: pendingHosts,
-                        reason: reason
+                        reason: reason,
+                        migrate_to_fastmatching: !!migrateToFma
                     })
                 });
                 const data = await resp.json();

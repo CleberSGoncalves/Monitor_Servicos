@@ -149,11 +149,13 @@ class FleetActionRequest(BaseModel):
     service_name: Optional[str] = None
     channel_id: Optional[str] = None
     target_version: Optional[str] = None
+    migrate_to_fastmatching: Optional[bool] = False
 
 class ForceExecuteRequest(BaseModel):
     host: str
     service_name: str
     target_version: Optional[str] = None
+    migrate_to_fastmatching: Optional[bool] = False
 
 class ThresholdUpdateRequest(BaseModel):
     key: str
@@ -206,6 +208,7 @@ class DispatchServiceUpdateRequest(BaseModel):
     hosts: Optional[List[str]] = None
     target_version: Optional[str] = None
     reason: Optional[str] = ""
+    migrate_to_fastmatching: Optional[bool] = False
 
 class RemoveHostRequest(BaseModel):
     hostname: str
@@ -648,7 +651,8 @@ async def trigger_action(req: FleetActionRequest, user: dict = Depends(get_curre
         channel_id=req.channel_id,
         target_version=req.target_version,
         operator_username=user["username"],
-        operator_name=user.get("full_name", user["username"])
+        operator_name=user.get("full_name", user["username"]),
+        migrate_to_fastmatching=bool(req.migrate_to_fastmatching)
     )
     if not res.get("success"):
         raise HTTPException(status_code=400, detail=res.get("error", "Erro ao executar ação"))
@@ -664,7 +668,8 @@ async def force_execute_action_endpoint(req: ForceExecuteRequest, user: dict = D
         host=req.host,
         service_name=req.service_name,
         target_version=req.target_version,
-        requested_by=user.get("full_name", user.get("username", "Operador NOC"))
+        requested_by=user.get("full_name", user.get("username", "Operador NOC")),
+        migrate_to_fastmatching=bool(req.migrate_to_fastmatching)
     )
     if not res.get("success"):
         raise HTTPException(status_code=400, detail=res.get("error", "Erro ao executar ação direta"))
@@ -947,7 +952,7 @@ async def dispatch_governance_update_endpoint(
         # Garante que o manifest.json no GCS está alinhado com a versão alvo
         update_gcs_manifest_version(req.service_name, target_v)
 
-        raw_script = build_service_raw_script(req.service_name, target_v)
+        raw_script = build_service_raw_script(req.service_name, target_v, migrate_to_fastmatching=bool(req.migrate_to_fastmatching))
         operator = f"{user.get('full_name') or user.get('username') or 'Operador NOC'} ({user.get('username', 'admin')})"
 
         def _dispatch_one(h: str):

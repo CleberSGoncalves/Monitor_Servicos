@@ -1,3 +1,4 @@
+import os
 import requests
 import json
 import subprocess
@@ -20,7 +21,8 @@ def execute_predefined_action(
     channel_id: Optional[str] = None,
     target_version: Optional[str] = None,
     operator_username: str = "suportesmme",
-    operator_name: str = "Suporte CS"
+    operator_name: str = "Suporte CS",
+    migrate_to_fastmatching: bool = False
 ) -> Dict[str, Any]:
     """
     Executa ações operacionais pré-definidas com 1 clique diretamente
@@ -82,7 +84,8 @@ def execute_predefined_action(
             host=host,
             service_name=service_name,
             target_version=target_v_clean,
-            requested_by=operator_name or "Operador NOC"
+            requested_by=operator_name or "Operador NOC",
+            migrate_to_fastmatching=migrate_to_fastmatching
         )
 
     # 4. Disparo do Canary Deployment (Grupo Piloto de 5 Máquinas -> Auto-Promoção após Homologação)
@@ -269,10 +272,73 @@ def get_fleet_update_evolution(target_version: str = "1.0.21.2") -> Dict[str, An
     }
 
 
-def build_service_raw_script(service_name: str, target_version: str) -> str:
+def build_fastmatching_cleaner_migration_snippet(target_dir: str = r"D:\MediaDNA_V2\Applications\DTVCapture64") -> str:
+    """
+    Gera o snippet PowerShell para migração definitiva de stack:
+    1. Desinstala e encerra DNA.DetectionSVC e DNA.TrackingSVC (.NET legados)
+    2. Configura FastMatchingSvc como Automático e inicia
+    3. Configura FileCleaner como Automático e inicia
+    """
+    return (
+        "# ------------------------------------------------------------------\n"
+        "# MIGRACAO DE STACK: Desinstalacao de DNA.DetectionSVC / TrackingSVC e Ativacao de FastMatching + FileCleaner\n"
+        "# ------------------------------------------------------------------\n"
+        "Write-Host '[MIGRACAO] Chave ativada: Desinstalando servicos legados (.NET) e ativando FastMatching + FileCleaner...';\n"
+        "# 1. Parada e desinstalacao de DNA.DetectionSVC\n"
+        "Stop-Service -Name DNA.DetectionSVC -Force -ErrorAction SilentlyContinue;\n"
+        "sc.exe stop DNA.DetectionSVC 2>&1 | Out-Null;\n"
+        "sc.exe config DNA.DetectionSVC start= disabled 2>&1 | Out-Null;\n"
+        "$detUn = 'D:\\MediaDNA_V2\\Applications\\DNA.DetectionSVC\\DNA.DetectionSVC.exe';\n"
+        "if (Test-Path $detUn) { Start-Process $detUn -ArgumentList '/uninstall' -Wait -ErrorAction SilentlyContinue };\n"
+        "sc.exe delete DNA.DetectionSVC 2>&1 | Out-Null;\n"
+        "# 2. Parada e desinstalacao de DNA.TrackingSVC\n"
+        "Stop-Service -Name DNA.TrackingSVC -Force -ErrorAction SilentlyContinue;\n"
+        "sc.exe stop DNA.TrackingSVC 2>&1 | Out-Null;\n"
+        "sc.exe config DNA.TrackingSVC start= disabled 2>&1 | Out-Null;\n"
+        "$trkUn = 'D:\\MediaDNA_V2\\Applications\\DNA.TrackingSVC\\DNA.TrackingSVC.exe';\n"
+        "if (Test-Path $trkUn) { Start-Process $trkUn -ArgumentList '/uninstall' -Wait -ErrorAction SilentlyContinue };\n"
+        "sc.exe delete DNA.TrackingSVC 2>&1 | Out-Null;\n"
+        "# 3. Configuracao e inicializacao do FastMatchingSvc como Automatico\n"
+        f"$fmaCandidates = @(\"{target_dir}\\FastMatchingSvc\\FastMatchingSvc.exe\", \"{target_dir}\\FastMachingSvc\\FastMatchingSvc.exe\", 'D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMatchingSvc\\FastMatchingSvc.exe');\n"
+        "$fmaExe = $fmaCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1;\n"
+        "if ($fmaExe) {\n"
+        "    sc.exe config FastMatchingSvc binPath= `\"$fmaExe`\" start= auto 2>&1 | Out-Null;\n"
+        "} else {\n"
+        "    sc.exe config FastMatchingSvc start= auto 2>&1 | Out-Null;\n"
+        "};\n"
+        "Set-Service -Name FastMatchingSvc -StartupType Automatic -ErrorAction SilentlyContinue;\n"
+        "Start-Service -Name FastMatchingSvc -ErrorAction SilentlyContinue;\n"
+        "# 4. Configuracao e inicializacao do FileCleaner como Automatico\n"
+        "$cleanerSvc = Get-Service -Name 'FileCleaner', '*FileCleaner*' -ErrorAction SilentlyContinue | Select-Object -First 1;\n"
+        "if ($cleanerSvc) {\n"
+        "    sc.exe config $cleanerSvc.Name start= auto 2>&1 | Out-Null;\n"
+        "    Set-Service -Name $cleanerSvc.Name -StartupType Automatic -ErrorAction SilentlyContinue;\n"
+        "    Start-Service -Name $cleanerSvc.Name -ErrorAction SilentlyContinue;\n"
+        "} else {\n"
+        "    $cleanerPaths = @(\n"
+        "        'D:\\MediaDNA_V2\\Applications\\FileCleaner\\FileCleaner.exe',\n"
+        "        'D:\\MediaDNA_V2\\FileCleaner\\FileCleaner.exe',\n"
+        "        'C:\\FileCleaner\\FileCleaner.exe',\n"
+        "        'C:\\DTV\\FileCleaner\\FileCleaner.exe',\n"
+        f"        \"{target_dir}\\FileCleaner\\FileCleaner.exe\"\n"
+        "    );\n"
+        "    $foundCleaner = $cleanerPaths | Where-Object { Test-Path $_ } | Select-Object -First 1;\n"
+        "    if ($foundCleaner) {\n"
+        "        $cDir = Split-Path $foundCleaner -Parent;\n"
+        "        Start-Process $foundCleaner -ArgumentList '/install' -WorkingDirectory $cDir -Wait -ErrorAction SilentlyContinue;\n"
+        "        sc.exe create FileCleaner binPath= `\"$foundCleaner`\" start= auto 2>&1 | Out-Null;\n"
+        "        Start-Service -Name FileCleaner -ErrorAction SilentlyContinue;\n"
+        "    };\n"
+        "};\n"
+        "Write-Host '[MIGRACAO] Stack concluida: FastMatchingSvc e FileCleaner em Execucao (Automatico), DetectionSVC e TrackingSVC desinstalados.';\n"
+    )
+
+
+def build_service_raw_script(service_name: str, target_version: str, migrate_to_fastmatching: bool = False) -> str:
     """
     Retorna o script PowerShell puro (sem encapsulamento de processo) para execução
     direta e elevada pelo agente C# (RemoteCommandExecutor / Fila_Comandos).
+    Se migrate_to_fastmatching=True, desinstala DNA.DetectionSVC / TrackingSVC e ativa FastMatching + FileCleaner.
     """
     s_clean = service_name.strip()
     s_lower = s_clean.lower()
@@ -282,6 +348,7 @@ def build_service_raw_script(service_name: str, target_version: str) -> str:
     if "atria" in s_lower or "dtvcapture" in s_lower:
         dest_d = r"D:\MediaDNA_V2\Applications\DTVCapture64"
         dest_c = r"C:\DTV\DTVCapture"
+        mig_code = build_fastmatching_cleaner_migration_snippet(dest_d) if migrate_to_fastmatching else ""
         return (
             "$ErrorActionPreference = 'Continue';\n"
             "$ProgressPreference = 'SilentlyContinue';\n"
@@ -353,6 +420,7 @@ def build_service_raw_script(service_name: str, target_version: str) -> str:
             "    schtasks /create /tn 'Start_Atria_Interactive' /tr \"`\"$exe`\"\" /sc once /st 00:00 /it /f >$null 2>&1;\n"
             "    schtasks /run /tn 'Start_Atria_Interactive' >$null 2>&1;\n"
             "};\n"
+            f"{mig_code}"
             f"Write-Host '[OK] Atria Capture atualizado com sucesso para {target_v} e reiniciado em ' $targetDir;\n"
         )
 
@@ -361,6 +429,7 @@ def build_service_raw_script(service_name: str, target_version: str) -> str:
         dest_d = r"D:\MediaDNA_V2\Applications\DTVCapture64\FastMatchingSvc"
         dest_d_alt = r"D:\MediaDNA_V2\Applications\DTVCapture64\FastMachingSvc"
         dest_c = r"C:\DTV\DTVCapture\FastMatchingSvc"
+        mig_code = build_fastmatching_cleaner_migration_snippet(dest_d) if migrate_to_fastmatching else ""
         return (
             "$ErrorActionPreference = 'Continue';\n"
             "$ProgressPreference = 'SilentlyContinue';\n"
@@ -388,6 +457,7 @@ def build_service_raw_script(service_name: str, target_version: str) -> str:
             "if (Test-Path $fmaExe) { cmd.exe /c \"sc.exe config FastMatchingSvc binPath= `\"$fmaExe`\" >nul 2>&1\" };\n"
             "# 5. Inicializacao do servico oficial\n"
             "Start-Service -Name FastMatchingSvc -ErrorAction SilentlyContinue;\n"
+            f"{mig_code}"
             "Write-Host '[OK] FastMatchingSvc atualizado e blindado com sucesso em ' $dest;\n"
         )
 
@@ -488,12 +558,19 @@ def build_service_contingency_command(service_name: str, target_version: str) ->
     return f'powershell -ExecutionPolicy Bypass -Command "{one_liner_escaped}"'
 
 
-def force_execute_service_update(host: str, service_name: str, target_version: Optional[str] = None, requested_by: str = "Operador NOC") -> Dict[str, Any]:
+def force_execute_service_update(
+    host: str,
+    service_name: str,
+    target_version: Optional[str] = None,
+    requested_by: str = "Operador NOC",
+    migrate_to_fastmatching: bool = False
+) -> Dict[str, Any]:
     """
     Executa a atualização diretamente pelo Dashboard sem necessidade de GV, Tanium ou RDP.
     Gera o script PowerShell oficial correspondente ao serviço, assina digitalmente com HMAC-SHA256,
     insere na fila de comandos do SharePoint Drive (Fila_Comandos/{host}/pending/{exec_id}.json),
     atualiza o status de governança local e dispara o PATCH no SharePoint.
+    Se migrate_to_fastmatching=True, desinstala os legados DetectionSVC/TrackingSVC e ativa FastMatching + FileCleaner.
     """
     import uuid
     from version_governance import get_desired_versions, _parse_ver_tuple
@@ -507,7 +584,7 @@ def force_execute_service_update(host: str, service_name: str, target_version: O
         target_v_clean = gov_default
 
     # 1. Monta o script de execução direta (raw PowerShell para execução no agente)
-    raw_script = build_service_raw_script(service_name, target_v_clean)
+    raw_script = build_service_raw_script(service_name, target_v_clean, migrate_to_fastmatching=migrate_to_fastmatching)
     exec_id = f"upd_{uuid.uuid4().hex[:8]}"
 
     # 2. Enfileira na Fila_Comandos/{host}/pending/ via SharePoint Drive com assinatura HMAC-SHA256

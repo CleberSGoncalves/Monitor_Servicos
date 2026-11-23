@@ -19208,6 +19208,21 @@
           <div id="safetyModalImpactWarning" style="margin-top: 8px; font-size: 11px; color: #fca5a5; line-height: 1.4;"></div>
         </div>
 
+        <!-- Opção de Migração de Stack (Exclusiva para Atria Capture / FastMatching) -->
+        <div id="safetyModalAtriaMigrationContainer" style="display: none; background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 8px; padding: 12px 14px;">
+          <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer; margin: 0;">
+            <input type="checkbox" id="chkMigrateFastMatchingAndCleaner" style="width: 18px; height: 18px; margin-top: 2px; accent-color: #38bdf8; cursor: pointer;">
+            <div>
+              <div style="font-size: 12px; font-weight: 800; color: #38bdf8; display: flex; align-items: center; gap: 6px;">
+                <i class="fas fa-layer-group"></i> Ativar Migração para FastMatching &amp; FileCleaner
+              </div>
+              <div style="font-size: 11px; color: #cbd5e1; margin-top: 3px; line-height: 1.4;">
+                Desinstala e encerra os serviços legados <strong style="color: #f87171;">DNA.DetectionSVC</strong> e <strong style="color: #f87171;">DNA.TrackingSVC</strong> e configura o <strong style="color: #34d399;">FastMatchingSvc</strong> e o <strong style="color: #34d399;">FileCleaner</strong> como Automáticos e em Execução.
+              </div>
+            </div>
+          </label>
+        </div>
+
         <!-- Motivo / Justificativa para o Log de Auditoria -->
         <div>
           <label style="font-size: 12px; font-weight: 700; color: #cbd5e1; display: block; margin-bottom: 6px;">
