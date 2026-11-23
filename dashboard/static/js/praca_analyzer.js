@@ -14,7 +14,7 @@ async function openPracaAuditModal(preSelectedPraca = "", preSelectedCs = "") {
 
     currentPracaAuditTargetCs = preSelectedCs || "";
 
-    await populatePracasDropdown();
+    await populatePracasDropdown(true);
 
     const input = document.getElementById("pracaAuditSelect");
     if (input && preSelectedPraca) {
@@ -30,12 +30,14 @@ function closePracaAuditModal() {
 }
 window.closePracaAuditModal = closePracaAuditModal;
 
-async function populatePracasDropdown() {
+async function populatePracasDropdown(force = false) {
     const sel = document.getElementById("pracaAuditSelect");
-    if (!sel || sel.options.length > 1) return;
+    if (!sel) return;
+    if (!force && sel.options.length > 1) return;
 
+    const currentVal = sel.value;
     try {
-        const resp = await fetch("/api/fleet/praca/list");
+        const resp = await fetch("/api/fleet/praca/list?_=" + Date.now());
         if (!resp.ok) return;
         const pracas = await resp.json();
         sel.innerHTML = '<option value="">-- Selecione a Praça / Filial --</option>';
@@ -46,6 +48,7 @@ async function populatePracasDropdown() {
             opt.textContent = badge;
             sel.appendChild(opt);
         });
+        if (currentVal) sel.value = currentVal;
     } catch (err) {
         console.error("[PracaAnalyzer] Erro ao carregar praças:", err);
     }
@@ -313,27 +316,40 @@ function renderPracaAuditAndSolutions(audit, sol) {
             const isRadio = !!ch.is_radio;
             const isRec = (ch.gravando || "").toUpperCase() === "SIM";
             
-            // Regra Ferrea: Radio gravando == nominal verde! TV avalia outage / qualidade
-            let hasOut = false;
-            let statusBadge = "";
-            let borderCol = "#10b981";
-
+            // Regra Férrea Anti-Falso Positivo:
+            // Se o backend marcou is_nominal === true, ou se gravando == 'Sim', ou se status_tuner indica working/ready/ok/conectado:
+            // O canal é 100% NOMINAL VERDE!
+            let isNominal = false;
             if (isRadio) {
-                if (isRec) {
-                    hasOut = false;
-                    statusBadge = `<span class="badge" style="background:#10b98122; color:#34d399; border:1px solid #10b981; font-size:9px;">Áudio OK (Sonifex)</span>`;
-                    borderCol = "#10b981";
+                if (ch.is_nominal !== undefined) {
+                    isNominal = Boolean(ch.is_nominal);
                 } else {
-                    hasOut = true;
-                    statusBadge = `<span class="badge" style="background:#ef444422; color:#f87171; border:1px solid #ef4444; font-size:9px;">Sem Gravação Áudio</span>`;
-                    borderCol = "#ef4444";
+                    const tStat = (ch.status_tuner || "").toLowerCase();
+                    const isWorking = tStat.includes("working") || tStat.includes("ready") || tStat.includes("conectado") || tStat.includes("connected") || tStat.includes("ok");
+                    isNominal = isRec || isWorking;
                 }
             } else {
-                hasOut = !!ch.has_outage;
-                borderCol = hasOut ? "#ef4444" : "#10b981";
-                statusBadge = hasOut 
-                    ? `<span class="badge" style="background:#ef444422; color:#f87171; border:1px solid #ef4444; font-size:9px;">Queda Sinal/Lock</span>`
-                    : `<span class="badge" style="background:#10b98122; color:#34d399; border:1px solid #10b981; font-size:9px;">Lock OK (TV)</span>`;
+                if (ch.is_nominal !== undefined) {
+                    isNominal = Boolean(ch.is_nominal);
+                } else {
+                    isNominal = !ch.has_outage && (ch.qualidade > 0) && isRec;
+                }
+            }
+
+            let borderCol = isNominal ? "#10b981" : "#ef4444";
+            let statusBadge = "";
+
+            if (isRadio) {
+                if (isNominal) {
+                    const badgeText = escapeHtml(ch.status_tuner || (isRec ? 'Áudio OK (Sonifex)' : 'Stream Conectado'));
+                    statusBadge = `<span class="badge" style="background:#10b98122; color:#34d399; border:1px solid #10b981; font-size:9px;">${badgeText}</span>`;
+                } else {
+                    statusBadge = `<span class="badge" style="background:#ef444422; color:#f87171; border:1px solid #ef4444; font-size:9px;">Sem Gravação Áudio</span>`;
+                }
+            } else {
+                statusBadge = isNominal 
+                    ? `<span class="badge" style="background:#10b98122; color:#34d399; border:1px solid #10b981; font-size:9px;">Lock OK (TV)</span>`
+                    : `<span class="badge" style="background:#ef444422; color:#f87171; border:1px solid #ef4444; font-size:9px;">Queda Sinal/Lock</span>`;
             }
 
             const csLabel = ch.cs || ch.cs_origin || (isRadio ? 'CS03' : 'CS01');
@@ -348,8 +364,8 @@ function renderPracaAuditAndSolutions(audit, sol) {
                     </div>
                     <div style="display: flex; justify-content: space-between; color: #94a3b8; font-size: 10px;">
                         <span>CS: <strong style="color: ${csBadgeColor}; font-weight: 700;">${escapeHtml(csLabel)}</strong></span>
-                        <span>${isRadio ? 'Áudio' : 'Q'}: <strong style="color: ${isRadio ? (isRec ? '#34d399' : '#f87171') : (ch.qualidade >= 50 ? '#34d399' : '#f87171')};">${isRadio ? (isRec ? 'Nominal' : 'Mudo') : ch.qualidade + '%'}</strong></span>
-                        <span>Grav: <strong style="color: ${isRec ? '#34d399' : '#f87171'};">${escapeHtml(ch.gravando || 'Não')}</strong></span>
+                        <span>${isRadio ? 'Áudio' : 'Q'}: <strong style="color: ${isNominal ? '#34d399' : '#f87171'};">${isRadio ? (isNominal ? 'Nominal' : 'Mudo') : ch.qualidade + '%'}</strong></span>
+                        <span>Grav: <strong style="color: ${isNominal ? '#34d399' : '#f87171'};">${escapeHtml(ch.gravando || (isNominal ? 'Sim' : 'Não'))}</strong></span>
                     </div>
                 </div>
             `;
