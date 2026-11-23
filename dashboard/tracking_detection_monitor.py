@@ -344,6 +344,8 @@ def parse_fma_log_content(lines: List[str]) -> Dict[str, Any]:
         "last_detection": None,
         "delayed_candidates_count": 0,
         "has_delayed_warning": False,
+        "catalog_recon_zero": False,
+        "has_recon_zero_warning": False,
         "delayed_candidates": [],
         "catalog_reload": None,
         "search_stats": None,
@@ -357,7 +359,7 @@ def parse_fma_log_content(lines: List[str]) -> Dict[str, Any]:
     re_search = re.compile(r"""(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}):.*?SearchStats\s+.*?:.*?(\d+)\s+ccd packets.*?(\d+)ms of content in\s+([\d\.]+)ms.*?NumFingers=(\d+)""", re.IGNORECASE)
     re_ram_priv = re.compile(r"""(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}):\s+RAM usage\.\s+Private Working Set:\s+(\d+)Mb""", re.IGNORECASE)
     re_ram_work = re.compile(r"""(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}):\s+RAM usage\.\s+Working Set:\s+(\d+)Mb""", re.IGNORECASE)
-    re_cat_update = re.compile(r"""(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}):\s+XmlUpdate:\s+Updated\s+'(\d+)'\s+spots.*?in\s+(\d+)\s+seconds""", re.IGNORECASE)
+    re_cat_update = re.compile(r"""(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}):\s+XmlUpdate:\s+Updated\s+'(\d+)'\s+spots.*?in\s+(\d+)\s+seconds(?:\.\s*\(recon=(\d+)\))?""", re.IGNORECASE)
     re_cat_loaded = re.compile(r"""(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}):\s+DNAConfigXmlProvider\.\s+Loaded spots\s+['\"](.*?)['\"]""", re.IGNORECASE)
 
     current_ram = {}
@@ -455,8 +457,22 @@ def parse_fma_log_content(lines: List[str]) -> Dict[str, Any]:
             if not res["catalog_reload"]:
                 res["catalog_reload"] = {}
             res["catalog_reload"]["timestamp"] = m_cat_up.group(1)
-            res["catalog_reload"]["spots_count"] = int(m_cat_up.group(2))
+            spots_c = int(m_cat_up.group(2))
+            res["catalog_reload"]["spots_count"] = spots_c
             res["catalog_reload"]["duration_sec"] = int(m_cat_up.group(3))
+            recon_c = int(m_cat_up.group(4)) if m_cat_up.group(4) is not None else None
+            res["catalog_reload"]["recon_count"] = recon_c
+
+            if recon_c == 0 or (spots_c == 0 and res["catalog_reload"].get("loaded_spots")):
+                res["catalog_recon_zero"] = True
+                res["has_recon_zero_warning"] = True
+                res["events"].append({
+                    "type": "ERROR",
+                    "badge": "RECON ZERO",
+                    "color": "red",
+                    "timestamp": m_cat_up.group(1),
+                    "summary": f"Falha de catálogo: Updated '{spots_c}' spots (recon={recon_c}). 0 spots carregados na memória do FastMatching!"
+                })
 
         m_cat_load = re_cat_loaded.search(l)
         if m_cat_load:
@@ -908,8 +924,36 @@ def get_fastmatching_node_telemetry(hostname: str = "", praca: str = "", force_r
                 "timestamp": last_update or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
                 "summary": f"Agente v{agent_ver} | Disco D Livre: {agent_disk} | Uptime: {agent_uptime} | CPU Host: {agent_cpu}"
             }
-        ],
-        "playbook": {
+        ]
+    }
+
+    # Checagem de RAM atipicamente baixa (< 50MB), sintoma de catálogo não carregado (recon=0)
+    low_ram_flag = False
+    try:
+        import re
+        r_val = float(re.sub(r"[^\d\.]", "", ram_raw)) if ram_raw else 0
+        if 0 < r_val < 50:
+            low_ram_flag = True
+    except Exception:
+        pass
+
+    if low_ram_flag:
+        res["catalog_recon_zero"] = True
+        res["playbook"] = {
+            "problem_title": f"FastMatching Ocioso / Falha de Spots ({matched_praca} - RAM {ram_raw})",
+            "severity": "CRITICAL",
+            "impact": "Consumo de RAM atipicamente baixo (< 50MB). O motor não carregou os spots na memória (recon=0).",
+            "root_cause": f"Telemetria reporta FastMatching ativo com apenas {ram_raw}. Provável pasta data\\sgg vazia ou IdCanal incorreto no FastMatchingSvc.ini.",
+            "steps": [
+                "1. [Auditar fma.log] Verificar se o log reporta 'Updated 0 spots ... (recon=0)'.",
+                "2. [Auditar Pasta SGG] Checar templates .mdna em 'D:\\MediaDNA_V2\\Data\\sgg'.",
+                "3. [Auto-Cura Remota] Clicar em 'Auto-Cura FastMatching' para forçar recarga do catálogo e reiniciar os serviços.",
+                "4. [Validação] Acompanhar a subida de RAM para o patamar nominal (> 150 MB)."
+            ],
+            "quick_action": "safe_heal_fastmatching_recon"
+        }
+    else:
+        res["playbook"] = {
             "problem_title": f"FastMatching Em Execução Nominal ({matched_praca})",
             "severity": "NOMINAL",
             "impact": "Motor ativo processando no Capture Site físico.",
@@ -921,7 +965,6 @@ def get_fastmatching_node_telemetry(hostname: str = "", praca: str = "", force_r
             ],
             "quick_action": "none"
         }
-    }
     _FASTMATCHING_FLEET_CACHE[h_str] = (time.time(), res)
     return res
 
@@ -1009,6 +1052,27 @@ def generate_fastmatching_playbook(parsed: Dict[str, Any], hostname: str = "", e
                 "3. [Limpeza de Arquivos Temporários] Verificar espaço livre na unidade D: e conferir se não há dumps na pasta de logs."
             ],
             "quick_action": "restart_fastmatching"
+        }
+
+    # 4. CASO CRÍTICO: Falha de Catálogo / recon=0 / RAM Ociosa (< 50MB)
+    cat_rel = parsed.get("catalog_reload") or {}
+    recon_val = cat_rel.get("recon_count")
+    spots_cnt = cat_rel.get("spots_count")
+    has_loaded_spots = bool(cat_rel.get("loaded_spots"))
+
+    if parsed.get("catalog_recon_zero") or (recon_val is not None and recon_val == 0) or (spots_cnt == 0 and has_loaded_spots) or (0 < priv_mb < 50 and not parsed.get("has_detections")):
+        return {
+            "problem_title": "Falha de Carregamento de Fingerprints no FastMatching (recon=0 / RAM Ociosa)",
+            "severity": "CRITICAL",
+            "impact": "Paralisação total do matching: o motor FastMatching está rodando ocioso (RAM ~22MB) sem carregar nenhum spot comercial na memória.",
+            "root_cause": "O FastMatching identificou a lista de spots no ConfigXml.xml mas não converteu nenhum em huellas (recon=0). Causa provável: Templates .mdna ausentes na pasta SGG ou divergência de IdCanal no FastMatchingSvc.ini.",
+            "steps": [
+                "1. [Auditar Pasta SGG] Verificar se os templates .mdna estão presentes em 'D:\\MediaDNA_V2\\Data\\sgg'. Se a pasta estiver vazia, o DNA.ConfigMonitorSVC precisa sincronizar os spots.",
+                "2. [Auditar FastMatchingSvc.ini] Conferir se o 'IdCanal' no arquivo 'FastMatchingSvc.ini' bate com o canal do Capture Site e se 'SggPath' aponta para a pasta correta.",
+                "3. [Acionar Auto-Cura / Safe-Heal] Executar a Correção de FastMatching (recon=0) para sincronizar o catálogo SGG, forçar releitura do ConfigXml e reciclar o FastMatchingSvc com segurança.",
+                "4. [Validação Pós-Cura] Acompanhar no fma.log se 'XmlUpdate' reporta recon > 0 e se a memória Private Working Set sobe para o patamar nominal (> 150 MB)."
+            ],
+            "quick_action": "safe_heal_fastmatching_recon"
         }
 
     return {

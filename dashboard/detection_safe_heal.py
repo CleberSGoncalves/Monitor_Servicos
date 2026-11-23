@@ -19,11 +19,13 @@ def build_safe_detection_heal_script(mode: str = "safe_cascade_restart") -> str:
     4. Exclusividade mutua estrita: nunca inicia FastMatchingSvc e DNA.DetectionSVC juntos.
     5. Modo sgg_resync_safe: quarentena da base data\\sgg com backup temporal, sem perder dados.
     """
-    resync_sgg_flag = "$true" if mode == "sgg_resync_safe" else "$false"
+    resync_sgg_flag = "$true" if mode in ("sgg_resync_safe", "fastmatching_recon_fix") else "$false"
+    is_recon_fix_flag = "$true" if mode == "fastmatching_recon_fix" else "$false"
     return rf"""
 $ErrorActionPreference = 'Continue'
 $ProgressPreference = 'SilentlyContinue'
 $resyncSgg = {resync_sgg_flag}
+$isReconFix = {is_recon_fix_flag}
 $stamp = Get-Date -Format 'yyyyMMdd_HHmmss'
 
 $baseData = @('D:\MediaDNA_V2\data','D:\mediadna_V2\data','C:\MediaDNA_V2\data','C:\DTV\data') | Where-Object {{ Test-Path $_ }} | Select-Object -First 1
@@ -121,9 +123,40 @@ if ($resyncSgg -and (Test-Path $sggDir)) {{
     Write-Output "[SGG_RESYNC] Base SGG movida para backup seguro e recriada limpa."
 }}
 
+# 5.1 Auto-Cura de Catálogo FastMatching (recon=0 / Ponta Porã Fix)
+if ($isReconFix -or $useFastMatching) {{
+    $cfgXmlPath = @(
+        Join-Path $baseData 'config\configxml.xml',
+        Join-Path $baseData 'Config\ConfigXml.xml',
+        'D:\MediaDNA_V2\Data\Config\ConfigXml.xml',
+        'D:\mediadna_V2\data\config\configxml.xml',
+        'C:\MediaDNA_V2\Data\Config\ConfigXml.xml'
+    ) | Where-Object {{ Test-Path $_ }} | Select-Object -First 1
+
+    if ($cfgXmlPath) {{
+        (Get-Item $cfgXmlPath).LastWriteTime = Get-Date
+        Write-Output "[FASTMATCHING_FIX] Timestamp do ConfigXml.xml atualizado para forçar recarga de spots."
+    }}
+
+    $fmIniPaths = @(
+        'D:\MediaDNA_V2\Applications\DTVCapture64\FastMatchingSvc\FastMatchingSvc.ini',
+        'D:\MediaDNA_V2\Applications\DTVCapture64\FastMachingSvc\FastMachingSvc.ini',
+        'C:\DTV\DTVCapture\FastMatchingSvc\FastMatchingSvc.ini',
+        'C:\MediaDNA_V2\Applications\DTVCapture64\FastMatchingSvc\FastMatchingSvc.ini'
+    )
+    $fmIni = $fmIniPaths | Where-Object {{ Test-Path $_ }} | Select-Object -First 1
+    if ($fmIni) {{
+        Write-Output "[FASTMATCHING_FIX] FastMatchingSvc.ini localizado em: $fmIni"
+        $iniTxt = Get-Content $fmIni -Raw -ErrorAction SilentlyContinue
+        if ($iniTxt -match 'IdCanal\s*=\s*(\d+)') {{
+            Write-Output "[FASTMATCHING_FIX] Canal configurado no INI: $($Matches[1])"
+        }}
+    }}
+}}
+
 # 6. Start em cascata direta com exclusividade mutua
 if ($cfgSvc) {{ Start-Service -Name $cfgSvc.Name -ErrorAction SilentlyContinue }}
-Start-Sleep -Seconds 2
+Start-Sleep -Seconds 4
 if ($useFastMatching -and $fmSvc) {{
     if ($detSvc) {{ Set-Service -Name $detSvc.Name -StartupType Manual -ErrorAction SilentlyContinue }}
     if ($trkSvc) {{ Set-Service -Name $trkSvc.Name -StartupType Manual -ErrorAction SilentlyContinue }}
@@ -144,7 +177,19 @@ $trkAfter = Get-SafeCount $trkDir '*.xml'
 $sggAfter = Get-SafeCount $sggDir '*.*'
 $cfgState = (Get-Service -Name 'DNA.ConfigMonitorSVC' -ErrorAction SilentlyContinue).Status
 
+$fmaRecent = $fmaLogPaths | Where-Object {{ Test-Path $_ }} | Select-Object -First 1
+$reconAudit = "N/A"
+$fmaRamAudit = "N/A"
+if ($fmaRecent) {{
+    $lastLines = Get-Content $fmaRecent -Tail 30 -ErrorAction SilentlyContinue
+    $xmlLine = $lastLines | Where-Object {{ $_ -match 'XmlUpdate' }} | Select-Object -Last 1
+    if ($xmlLine) {{ $reconAudit = $xmlLine.Trim() }}
+    $ramLine = $lastLines | Where-Object {{ $_ -match 'RAM usage' }} | Select-Object -Last 1
+    if ($ramLine) {{ $fmaRamAudit = $ramLine.Trim() }}
+}}
+
 Write-Output "[POST_CHECK] Engine=$activeEngine | ConfigMonitor=$cfgState | Quarantined=$movedCount | FmaRotated=$fmaRotated"
+Write-Output "[FASTMATCHING_AUDIT] XML_STATUS=$reconAudit | RAM_STATUS=$fmaRamAudit"
 Write-Output "[EMU_INTEGRITY] EMU_BEFORE=$emuBefore | EMU_AFTER=$emuAfter | SGG_AFTER=$sggAfter | TRK_AFTER=$trkAfter"
 Write-Output "[RESULT] Auto-Cura executada com sucesso. Fila EMU preservada."
 """
@@ -159,7 +204,7 @@ def execute_safe_detection_heal(
     Despacha a Auto-Cura Segura para o Capture Site via Firestore e RemoteCommands.
     """
     user = user or {"username": "n1_operator", "full_name": "Operador N1", "role": "n1"}
-    allowed_modes = {"safe_cascade_restart", "sgg_resync_safe"}
+    allowed_modes = {"safe_cascade_restart", "sgg_resync_safe", "fastmatching_recon_fix"}
     if mode not in allowed_modes:
         raise HTTPException(status_code=400, detail=f"Modo de auto-cura invalido: {mode}. Use {allowed_modes}")
 

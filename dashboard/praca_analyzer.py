@@ -129,6 +129,23 @@ def audit_praca_ecosystem(praca_name: str) -> Dict[str, Any]:
             })
         elif fm_run:
             active_engine = "FastMatchingSvc (Moderno C++)"
+            # Auditoria de Recon / Fingerprints em memória no FastMatching (Ponta Porã recon=0)
+            try:
+                from tracking_detection_monitor import get_fastmatching_node_telemetry
+                fm_telemetry = get_fastmatching_node_telemetry(cs01_host, praca_name)
+                if fm_telemetry.get("catalog_recon_zero"):
+                    problems.append({
+                        "code": "FASTMATCHING_CATALOG_RECON_ZERO",
+                        "severity": "CRITICO",
+                        "category": "Deteccao Comercial",
+                        "host": cs01_host,
+                        "title": "FastMatching Ocioso / Falha de Carregamento de Spots (recon=0)",
+                        "detail": "O FastMatchingSvc identificou o catálogo ConfigXml.xml mas carregou 0 spots (recon=0, RAM ociosa). Causa provável: Templates .mdna ausentes em data\\sgg ou IdCanal incorreto no FastMatchingSvc.ini.",
+                        "recommended_action": "fastmatching_recon_fix",
+                        "action_label": "Auto-Cura FastMatching (recon=0 Fix)"
+                    })
+            except Exception as e:
+                logger.warning(f"Erro ao checar telemetria FastMatching em {cs01_host}: {e}")
         elif det_run:
             active_engine = "DNA.DetectionSVC + TrackingSVC (Legado .NET)"
         else:
@@ -261,6 +278,21 @@ def generate_ai_solutions_plan(audit_data: Dict[str, Any]) -> Dict[str, Any]:
             "action_payload": {"hostname": cs01_host, "mode": "safe_cascade_restart"},
             "btn_label": "⚡ Executar Auto-Cura Segura no CS01",
             "btn_style": "btn-primary",
+            "estimated_time": "30 segundos"
+        })
+        step_num += 1
+
+    # Passo A1: Correção Específica de FastMatching recon=0 / Ponta Porã
+    has_recon_zero = any(p["code"] == "FASTMATCHING_CATALOG_RECON_ZERO" for p in problems)
+    if has_recon_zero and cs01_host:
+        steps.append({
+            "step": step_num,
+            "title": "Recuperar Base de Fingerprints do FastMatching (Fix recon=0 & Resync SGG)",
+            "why": "O FastMatchingSvc está ativo mas operando ocioso (RAM ~22MB) com 'recon=0' (nenhum spot comercial em memória). Esta ação audita o FastMatchingSvc.ini, força o download de templates .mdna via ConfigMonitorSVC e recarrega os spots no motor.",
+            "action_type": "safe_heal",
+            "action_payload": {"hostname": cs01_host, "mode": "fastmatching_recon_fix"},
+            "btn_label": "⚡ Executar Correção FastMatching (recon=0)",
+            "btn_style": "btn-danger",
             "estimated_time": "30 segundos"
         })
         step_num += 1

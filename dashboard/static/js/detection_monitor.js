@@ -2425,6 +2425,44 @@ function openFmHowToModal(hostname, condition) {
             </button>
         `;
     }
+    // 1.5. CASO FALHA DE CATÁLOGO / RECON ZERO / RAM OCIOSA (< 50MB) (Caso Ponta Porã)
+    else if (cond === "RECON_ZERO" || item.catalogReconZero || (ramMb !== null && ramMb > 0 && ramMb < 50)) {
+        specificPlaybookSteps = `
+            <div style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+                <div style="font-weight: 800; color: #fca5a5; font-size: 13px; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                    <span>🚨</span> Diagnóstico Crítico: Falha de Catálogo / recon=0 / RAM Ociosa (~${ramMb || 22}MB)
+                </div>
+                <div style="font-size: 11px; color: #cbd5e1; line-height: 1.45;">
+                    <strong>Causa-Raiz:</strong> O FastMatching C++ leu os spots no <code>ConfigXml.xml</code> mas não carregou nenhum na memória (<code>recon=0</code>). Isto ocorre quando os templates <code>.mdna</code> estão ausentes em <code>D:\\MediaDNA_V2\\Data\\sgg</code> ou quando o <code>IdCanal</code> no <code>FastMatchingSvc.ini</code> diverge do catálogo.<br>
+                    <strong>Impacto Operacional:</strong> Paralisação total do matching comercial. O processo roda ocioso e nenhum comercial será reconhecido até que a base de spots seja recarregada.
+                </div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                <div style="background: #1e293b; padding: 12px 14px; border-radius: 6px; font-size: 11.5px; color: #e2e8f0; line-height: 1.4;">
+                    <strong style="color: #f87171;">Passo 1 (Auditoria da Pasta SGG):</strong> Conferir se os arquivos <code>.mdna</code> existem em <code>D:\\MediaDNA_V2\\Data\\sgg</code>. Se a pasta estiver vazia, o <code>DNA.ConfigMonitorSVC</code> precisa baixar os templates da central.
+                </div>
+                <div style="background: #1e293b; padding: 12px 14px; border-radius: 6px; font-size: 11.5px; color: #e2e8f0; line-height: 1.4;">
+                    <strong style="color: #f87171;">Passo 2 (Auditoria do INI):</strong> Validar se <code>IdCanal</code> no arquivo <code>FastMatchingSvc.ini</code> corresponde ao canal da praça.
+                </div>
+                <div style="background: #1e293b; padding: 12px 14px; border-radius: 6px; font-size: 11.5px; color: #e2e8f0; line-height: 1.4;">
+                    <strong style="color: #f87171;">Passo 3 (Auto-Cura Remota):</strong> Disparar a Auto-Cura de Catálogo para atualizar o timestamp do <code>ConfigXml.xml</code>, forçar sincronismo do <code>ConfigMonitorSVC</code> e reiniciar o <code>FastMatchingSvc</code>.
+                </div>
+                <div style="background: #1e293b; padding: 12px 14px; border-radius: 6px; font-size: 11.5px; color: #e2e8f0; line-height: 1.4;">
+                    <strong style="color: #f87171;">Passo 4 (Validação Pós-Ação):</strong> Confirmar no <code>fma.log</code> se <code>XmlUpdate</code> reporta <code>recon &gt; 0</code> e se a memória Private Working Set sobe acima de 150 MB.
+                </div>
+            </div>
+        `;
+        primaryActionBtn = `
+            <button type="button" onclick="triggerFmRemoteRemediation('${hostname}', 'safe_heal_fastmatching_recon', this)" style="background: linear-gradient(135deg, #dc2626, #ef4444); color: #fff; border: none; padding: 9px 18px; border-radius: 6px; font-weight: 700; font-size: 11px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 14px rgba(239, 68, 68, 0.4);">
+                <span>⚡</span> Executar Auto-Cura FastMatching (Fix recon=0)
+            </button>
+        `;
+        secondaryActionBtn = `
+            <button type="button" onclick="triggerFmRemoteRemediation('${hostname}', 'sync_sgg', this)" style="background: rgba(147, 51, 234, 0.2); color: #c084fc; border: 1px solid rgba(147, 51, 234, 0.4); padding: 8px 14px; border-radius: 6px; font-weight: 700; font-size: 11px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;">
+                <span>🔄</span> Forçar Sincronismo SGG
+            </button>
+        `;
+    }
     // 2. CASO CRÍTICO: Sobrecarga de CPU / Varredura Lenta (ProcTimeMs >= 3000ms ou cond == "CRITICAL")
     else if (cond === "CRITICAL" || (procMs !== null && procMs >= 3000)) {
         specificPlaybookSteps = `
@@ -2672,7 +2710,50 @@ async function triggerFmRemoteRemediation(hostname, actionType, btnEl) {
 
     let script = "";
     let title = "";
-    if (actionType === "restart_fastmatching") {
+    if (actionType === "safe_heal_fastmatching_recon" || actionType === "resolve_fastmatching_recon") {
+        if (execStatus) {
+            execStatus.innerHTML = `
+                <div style="width: 14px; height: 14px; border: 2px solid #ef4444; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite;"></div>
+                <span>Disparando Auto-Cura Segura FastMatching (Fix recon=0 & Resync SGG) em <strong>${hostname}</strong>...</span>
+            `;
+        }
+        if (execOutput) {
+            execOutput.textContent = `[Auto-Cura FastMatching] Despachando safe-heal (mode: fastmatching_recon_fix)...\nDestino: ${hostname}\nHorário: ${new Date().toLocaleTimeString('pt-BR')}`;
+        }
+        try {
+            const resp = await fetch("/api/fleet/detection/safe-heal", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ hostname: hostname, mode: "fastmatching_recon_fix" })
+            });
+            const data = await resp.json();
+            if (resp.ok) {
+                if (execStatus) {
+                    execStatus.innerHTML = `
+                        <span style="color: #86efac; font-weight: 800;">✅ Auto-Cura FastMatching #${data.execution_id ? data.execution_id.substring(0,8) : 'OK'} iniciada com sucesso!</span>
+                        <span style="color: #94a3b8; font-size: 10px;">Monitorando resultado do nó...</span>
+                    `;
+                }
+                if (execOutput) {
+                    execOutput.textContent += `\n\n[Sucesso]: ${data.message || 'Auto-cura despachada com sucesso ao nó.'}\nExecution ID: ${data.execution_id || 'N/A'}\nO script irá reajustar o ConfigXml, sincronizar o SGG e reciclar o FastMatchingSvc.`;
+                }
+                const footerStatus = document.getElementById("fmHowToModalFooterStatus");
+                if (footerStatus) {
+                    footerStatus.innerHTML = `<span style="color: #86efac; font-weight: 700;">✅ Auto-Cura FastMatching executada para ${hostname}</span>`;
+                }
+            } else {
+                throw new Error(data.detail || data.message || "Falha na requisição de auto-cura");
+            }
+        } catch (err) {
+            if (execStatus) {
+                execStatus.innerHTML = `<span style="color: #f87171; font-weight: 800;">❌ Falha na execução da auto-cura: ${err.message}</span>`;
+            }
+            if (execOutput) {
+                execOutput.textContent += `\n\n[ERRO]: ${err.message}`;
+            }
+        }
+        return;
+    } else if (actionType === "restart_fastmatching") {
         script = "Restart-Service -Name FastMatchingSvc -Force; Start-Sleep -Seconds 2; Get-Service -Name FastMatchingSvc | Select-Object Name, Status, StartType | Format-Table -AutoSize";
         title = `Reiniciar FastMatchingSvc em ${hostname}`;
     } else if (actionType === "reset_buffers") {
