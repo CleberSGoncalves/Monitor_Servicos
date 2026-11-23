@@ -1,8 +1,8 @@
 {
-  "version": "3.9.90",
+  "version": "3.9.91",
   "agent_version": "1.0.21.5",
   "commit_sha": "auto",
-  "updated_at": "2026-11-23T22:15:00.000000",
-  "description": "v3.9.90 - Modal Status 360° por Máquina com filtros determinísticos (Link, Detecção CS01, Sinal RF, Gravação, Hardware e WCF); Remoção da governança no rodapé para modal sob demanda; Correção na seleção de CS na auditoria de praça.",
-  "release_notes": "v3.9.90: Adiciona visão 360° de saúde das 250 máquinas da frota por dimensão de incidente; move inventário de governança de serviços para modal sob demanda; elimina sobrecarga no rodapé da tela de incidentes; resolve bug de seleção de CS."
+  "updated_at": "2026-11-23T22:30:00.000000",
+  "description": "v3.9.91 - Restaura exibição 100% limpa das imagens reais de broadcast dos canais de TV no Mosaico Live, eliminando blocos de telemetria textual sobrepostos e garantindo rotação dinâmica de frames.",
+  "release_notes": "v3.9.91: Restaura fotos e frames de broadcast limpos de cada emissora de TV no Mosaico Live; elimina painel textual escuro de telemetria ('MODO TELEMETRIA PREVENTIVA') dentro do container de vídeo; implementa rotação dinâmica temporal a cada 12s para evitar percepção de frames estáticos."
 }

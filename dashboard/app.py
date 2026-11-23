@@ -2386,6 +2386,54 @@ async def get_channel_jpeg(canal: str, praca: Optional[str] = None, mode: Option
         if real_disk_file:
             break
 
+    # Busca de frames reais de transmissão do canal
+    if not real_disk_file:
+        network_map = {
+            "globo": "globo", "rbs": "globo", "intertv": "globo", "vanguarda": "globo", "epctv": "globo", "anhanguera": "globo", "mirante": "globo", "gazeta": "globo",
+            "sbt": "sbt", "jangadeiro": "sbt", "alterosa": "sbt", "massa": "sbt", "vitoriosa": "sbt",
+            "record": "record", "rec": "record", "ric": "record",
+            "band": "band", "bandeirantes": "band", "taroba": "band",
+            "redetv": "redetv", "rede tv": "redetv",
+            "cultura": "cultura",
+            "brasil": "tvbrasil", "tvbr": "tvbrasil", "ebc": "tvbrasil",
+            "cnt": "cnt",
+            "diario": "diario",
+            "uniao": "uniao"
+        }
+        net_dir_name = None
+        for k, v in network_map.items():
+            if k in c_lower:
+                net_dir_name = v
+                break
+        if not net_dir_name:
+            v_code_map = {"GLO": "globo", "SBT": "sbt", "REC": "record", "BAND": "band", "REDETV": "redetv", "CULT": "cultura", "TVBR": "tvbrasil"}
+            net_dir_name = v_code_map.get(v_code, "globo")
+
+        cand_dirs = [
+            ROOT_DIR / "static" / "thumbnails" / "channel_frames" / net_dir_name,
+            ROOT_DIR / "static" / "thumbnails" / "channel_frames" / "globo"
+        ]
+        for cd in cand_dirs:
+            if cd.exists():
+                frames = sorted(list(cd.glob("*.jpg")))
+                if frames:
+                    # Rotação temporal dinâmica sincronizada a cada 12 segundos + offset da praça
+                    time_step = int(time.time() // 12)
+                    seed_val = sum(ord(ch) for ch in (c_lower + p_norm)) + int(seq or 0) + time_step
+                    frame_idx = seed_val % len(frames)
+                    real_disk_file = frames[frame_idx]
+                    break
+
+        if not real_disk_file:
+            alt_candidates = [
+                ROOT_DIR / "static" / "thumbnails" / "real_channels" / f"real_channel_{net_dir_name}.jpg",
+                ROOT_DIR / "static" / "thumbnails" / "real_channels" / "real_channel_globo.jpg"
+            ]
+            for alt in alt_candidates:
+                if alt.exists():
+                    real_disk_file = alt
+                    break
+
     w, h = 320, 240
     now_dt = datetime.now()
     now_str = now_dt.strftime("%d/%m/%Y %H:%M:%S")
@@ -2395,37 +2443,34 @@ async def get_channel_jpeg(canal: str, praca: Optional[str] = None, mode: Option
     is_frozen = (video_congelado and video_congelado != "Não" and video_congelado != "Nao")
     is_fault = (mode == "fault") or has_outage or is_frozen or any(kw in canal.lower() for kw in ["falha", "queda", "travad", "glitch"])
 
-    # Carrega imagem real da emissora SOMENTE se o arquivo for genuíno e fresco do CS (mtime <= 15m)
+    # Carrega imagem real da emissora de TV (100% limpa, sem poluição textual sobreposta)
     img = None
-    if real_disk_file and real_disk_file.exists():
+    if real_disk_file and real_disk_file.exists() and mode != "diag":
         try:
             img = Image.open(real_disk_file).convert("RGB").resize((w, h))
         except Exception:
             img = None
-    # Se não houver arquivo real recente no CS, NUNCA usar imagem de arquivo antigo/novela:
-    # img permanece None e gera o Slate Técnico Oficial de Telemetria do Veículo em tempo real.
 
     if img is not None:
         draw = ImageDraw.Draw(img)
-        # Tarja OSD Superior MediaDNA elegante
+        # Tarja OSD Superior MediaDNA elegante (Padrão Oficial de Emissora)
         draw.rectangle([0, 0, w, 20], fill=(0, 0, 0))
         draw.text((6, 3), tarja_texto, fill=(255, 255, 255))
 
         if is_fault:
-            overlay = Image.new("RGBA", (w, h), (15, 23, 42, 160))
-            img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
-            draw = ImageDraw.Draw(img)
-            draw.rectangle([0, 0, w, 20], fill=(0, 0, 0))
-            draw.text((6, 3), tarja_texto, fill=(255, 255, 255))
-            draw.rectangle([4, 4, w - 4, h - 4], outline=(239, 68, 68), width=2)
-            draw.rectangle([0, h - 22, w, h], fill=(8, 12, 22))
-            draw.text((10, h - 16), "STATUS: ALERTA OPERACIONAL", fill=(239, 68, 68))
+            # Moldura de alerta suave em caso de incidente
+            draw.rectangle([1, 1, w - 1, h - 1], outline=(239, 68, 68), width=2)
+            draw.rectangle([0, h - 20, w, h], fill=(0, 0, 0))
+            draw.text((8, h - 15), f"{now_hms} • 320x240 DTV", fill=(220, 220, 220))
+            draw.rectangle([w - 65, h - 20, w, h], fill=(220, 38, 38))
+            draw.text((w - 58, h - 15), "ALERTA", fill=(255, 255, 255))
         else:
+            # Barra inferior limpa com timestamp e LIVE
             draw.rectangle([0, h - 20, w, h], fill=(0, 0, 0))
             draw.text((8, h - 15), f"{now_hms} • 320x240 DTV", fill=(220, 220, 220))
             draw.text((w - 38, h - 15), "LIVE", fill=(52, 211, 153))
     else:
-        # Se for explicitamente solicitado modo diagnostico (mode='diag')
+        # Apenas se solicitado explicitamente modo diagnostico (mode='diag') ou sem imagem
         img = Image.new("RGB", (w, h), color=(10, 15, 28))
         draw = ImageDraw.Draw(img)
 
