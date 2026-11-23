@@ -60,9 +60,23 @@ def init_incidents_db():
                 azimuth_deg REAL,
                 operator_assigned TEXT,
                 created_at DATETIME,
-                resolved_at DATETIME
+                resolved_at DATETIME,
+                signal_recovered_at DATETIME,
+                detection_gate_status TEXT DEFAULT 'pending',
+                linked_cs01_host TEXT
             )
         """)
+
+        # Migracoes idempotentes de colunas do Gate Anti-Itumbiara
+        for col_def in [
+            ("signal_recovered_at", "DATETIME"),
+            ("detection_gate_status", "TEXT DEFAULT 'pending'"),
+            ("linked_cs01_host", "TEXT")
+        ]:
+            try:
+                cursor.execute(f"ALTER TABLE incident_events ADD COLUMN {col_def[0]} {col_def[1]}")
+            except Exception:
+                pass
 
         # Verifica se já temos dados na tabela de eventos
         cursor.execute("SELECT COUNT(*) FROM incident_events")
@@ -351,24 +365,120 @@ def sync_live_fleet_to_incident_events() -> int:
                         impact_summary = excluded.impact_summary
                 """, (code, praca, h, "DNA.FiletransferSVC", "Serviço DNA.FiletransferSVC parado. Mídias e comprovantes retidos sem envio à matriz.", f"Parada do serviço de transferência em {h}", f"Capture Site {praca}", now_str))
 
-        # 3. Auto-resolução de incidentes corrigidos (inclusive quando todos foram resolvidos e active_codes está vazio)
+        # 3. Auto-resolucao de incidentes de servico e Gate Anti-Itumbiara para canais (Sinal x Deteccao)
+        # Servicos (INC-SRV-%) normalizados fecham diretamente
         if active_codes:
             placeholders = ",".join("?" for _ in active_codes)
             cursor.execute(f"""
                 UPDATE incident_events
                 SET status = 'resolvido', resolved_at = ?
-                WHERE status = 'aberto' AND (incident_code LIKE 'INC-CH-%' OR incident_code LIKE 'INC-SRV-%')
+                WHERE status IN ('aberto', 'em_tratamento') AND incident_code LIKE 'INC-SRV-%'
                   AND incident_code NOT IN ({placeholders})
             """, [now_str] + list(active_codes))
         else:
             cursor.execute("""
                 UPDATE incident_events
                 SET status = 'resolvido', resolved_at = ?
-                WHERE status = 'aberto' AND (incident_code LIKE 'INC-CH-%' OR incident_code LIKE 'INC-SRV-%')
+                WHERE status IN ('aberto', 'em_tratamento') AND incident_code LIKE 'INC-SRV-%'
             """, [now_str])
+
+        # Canais (INC-CH-%): Aplicacao da Regra Anti-Itumbiara
+        # Quando o sinal/gravacao volta (nao esta mais em active_codes), transita primeiro para 'aguardando_validacao_deteccao'
+        if active_codes:
+            cursor.execute(f"""
+                UPDATE incident_events
+                SET status = 'aguardando_validacao_deteccao',
+                    signal_recovered_at = COALESCE(signal_recovered_at, ?)
+                WHERE status = 'aberto' AND incident_code LIKE 'INC-CH-%'
+                  AND incident_code NOT IN ({placeholders})
+            """, [now_str] + list(active_codes))
+        else:
+            cursor.execute("""
+                UPDATE incident_events
+                SET status = 'aguardando_validacao_deteccao',
+                    signal_recovered_at = COALESCE(signal_recovered_at, ?)
+                WHERE status = 'aberto' AND incident_code LIKE 'INC-CH-%'
+            """, [now_str])
+
+        # Avalia os canais em 'aguardando_validacao_deteccao'
+        cursor.execute("""
+            SELECT id, incident_code, praca, host, target_name, signal_recovered_at
+            FROM incident_events
+            WHERE status = 'aguardando_validacao_deteccao'
+        """)
+        pending_channels = cursor.fetchall()
+
+        for p_id, p_code, p_praca, p_host, p_target, p_sig_time in pending_channels:
+            gate_res = evaluate_post_signal_detection_gate(p_praca, hosts_svcs)
+            passed = gate_res.get("passed", False)
+            cs01_host = gate_res.get("cs01_host", "")
+
+            # Calcula tempo decorrido desde a recuperacao do sinal
+            rec_dt = datetime.strptime(p_sig_time, "%Y-%m-%d %H:%M:%S") if p_sig_time else now_dt
+            mins_since_rec = (now_dt - rec_dt).total_seconds() / 60.0
+
+            if passed:
+                cursor.execute("""
+                    UPDATE incident_events
+                    SET status = 'resolvido', resolved_at = ?, detection_gate_status = 'passed',
+                        linked_cs01_host = ?
+                    WHERE id = ?
+                """, (now_str, cs01_host, p_id))
+            elif mins_since_rec >= 15.0:
+                # Regra Anti-Itumbiara disparada: sinal voltou ha >15 min mas deteccao comercial do CS01 continua parada!
+                cursor.execute("""
+                    UPDATE incident_events
+                    SET status = 'aberto', severity = 'critico', detection_gate_status = 'failed_detection_stalled',
+                        linked_cs01_host = ?,
+                        impact_summary = 'ALERTA ANTI-ITUMBIARA: Sinal recuperado no CS, mas motor de detecção comercial do CS01 (' || ? || ') está travado ou sem escoamento WCF.',
+                        root_cause = ?
+                    WHERE id = ?
+                """, (cs01_host, cs01_host, gate_res.get("message", "Falha na esteira de detecção após recuperação de sinal"), p_id))
 
         conn.commit()
         return len(active_codes)
+
+
+def evaluate_post_signal_detection_gate(praca: str, hosts_svcs: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """
+    Regra de Ouro Anti-Itumbiara:
+    Comprova se o CS01 da praca esta com esteira de deteccao ativa e saudável
+    antes de permitir que o incidente de sinal/canal seja considerado normalizado.
+    """
+    from sharepoint_sync import get_cached_data
+    p_norm = (praca or "").strip().lower()
+    data = get_cached_data()
+    services = data.get("services", [])
+
+    # Localiza o host CS01 da praca
+    cs01_host = None
+    cs01_svcs = []
+    for s in services:
+        sp_p = (s.get("praca") or "").strip().lower()
+        sp_h = s.get("hostname", "")
+        # CS01 tipicamente tem 'DT01', 'CS1' ou '01' no hostname
+        if sp_p == p_norm or p_norm in sp_p:
+            if "01" in sp_h or "dt01" in sp_h.lower() or "cs1" in sp_h.lower() or not cs01_host:
+                cs01_host = sp_h
+                cs01_svcs.append(s)
+
+    if not cs01_svcs:
+        return {"passed": True, "cs01_host": cs01_host or "N/D", "message": "Praça sem host CS01 específico cadastrado."}
+
+    fm_running = any("fastmatch" in (s.get("nome_servico") or "").lower() and s.get("status_servico") == "Em Execução" for s in cs01_svcs)
+    det_running = any("detectionsvc" in (s.get("nome_servico") or "").lower() and s.get("status_servico") == "Em Execução" for s in cs01_svcs)
+    cfg_running = any("configmonitorsvc" in (s.get("nome_servico") or "").lower() and s.get("status_servico") == "Em Execução" for s in cs01_svcs)
+
+    # Motor de matching ativo (FastMatching OU DetectionSVC) e ConfigMonitor rodando
+    engine_ok = (fm_running or det_running)
+    if not engine_ok or not cfg_running:
+        return {
+            "passed": False,
+            "cs01_host": cs01_host,
+            "message": f"CS01 ({cs01_host}) com motor={'OK' if engine_ok else 'PARADO'} e ConfigMonitor={'OK' if cfg_running else 'PARADO'}."
+        }
+
+    return {"passed": True, "cs01_host": cs01_host, "message": "Motor de detecção e ConfigMonitor ativos e saudáveis no CS01."}
 
 def get_incident_history(
     incident_key: Optional[str] = None,

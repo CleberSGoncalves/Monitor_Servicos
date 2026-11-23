@@ -973,7 +973,7 @@ def validate_script_syntax(shell_type: str, script: str) -> Dict[str, Any]:
     if double_quotes % 2 != 0:
         errors.append("Aspas duplas desbalanceadas (abertas sem fechamento correspondente).")
 
-    # 1.5 Bloqueio estrito de Segurança SOC/EDR (Zero GitHub em CS, Zero Invoke-Expression, Zero Base64 EncodedCommand)
+    # 1.5 Bloqueio estrito de Segurança SOC/EDR e Integridade de Mídia / Detecção (Regra Anti-Perda de Dados)
     s_lower_sec = s.lower()
     if "raw.githubusercontent.com" in s_lower_sec or "api.github.com" in s_lower_sec:
         errors.append("Violação SOC/EDR: Conexões diretas ao GitHub são proibidas nos Capture Sites. Utilize exclusivamente o repositório homologado no SharePoint Corporativo.")
@@ -981,6 +981,13 @@ def validate_script_syntax(shell_type: str, script: str) -> Dict[str, Any]:
         errors.append("Violação SOC/EDR: Uso de Invoke-Expression (| iex) em memória é bloqueado pela política de segurança corporativa.")
     if "-encodedcommand" in s_lower_sec:
         errors.append("Violação SOC/EDR: Uso de -EncodedCommand (Base64 ofuscado) não é permitido.")
+
+    # Guardrail Anti-EMU Rígido: Proibição de Exclusão de Amostras de Áudio / Detecções Retroativas
+    import re
+    if re.search(r"(?i)\b(remove-item|del|erase|rmdir|rd|ri|rm|clear-content)\b.*?(data\\+emu|\.emu\b)", s):
+        errors.append("BLOQUEIO DE INTEGRIDADE OPERACIONAL: É expressamente proibido excluir arquivos da pasta data\\emu. Apagar arquivos .EMU destrói as evidências retroativas e causa perda irrecuperável de detecções comerciais. Utilize a rotina homologada 'Auto-Cura Segura de Detecção'.")
+    if re.search(r"(?i)\b(remove-item|del|erase|rmdir|rd|ri|rm)\b.*?(data\\+(video|audio)\b|\.mp4\b|\.mp3\b)", s) and not re.search(r"(?i)\.tmp", s):
+        errors.append("BLOQUEIO DE SEGURANÇA: Exclusão de arquivos de gravação (.MP4/.MP3) é bloqueada pelo guardrail de integridade.")
 
     # 2. Parênteses, chaves e colchetes (especialmente para PowerShell)
     if shell_type.lower() == "powershell":

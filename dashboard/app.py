@@ -3180,6 +3180,86 @@ async def recycle_tracking_endpoint(payload: RecycleTrackingRequest, user: dict 
 
 
 # ==============================================================================
+# FASE 1: AUTO-CURA SEGURA DE DETECÇÃO (ZERO EXCLUSÃO DE .EMU / BLINDAGEM OPERACIONAL)
+# ==============================================================================
+class SafeHealRequest(BaseModel):
+    hostname: str
+    mode: Optional[str] = "safe_cascade_restart"
+    incident_key: Optional[str] = None
+
+@app.post("/api/fleet/detection/safe-heal")
+async def safe_heal_endpoint(payload: SafeHealRequest, user: dict = Depends(get_current_user)):
+    """
+    Executa Auto-Cura Segura de Detecção Comercial:
+    - Preserva 100% dos arquivos .EMU em data\\emu.
+    - Aplica quarentena de temporários.
+    - Rotaciona fma.log preventivamente se >= 250 MB.
+    - Garante exclusividade mútua entre FastMatching e DetectionSVC.
+    """
+    try:
+        from detection_safe_heal import execute_safe_detection_heal
+        res = execute_safe_detection_heal(
+            hostname=payload.hostname,
+            mode=payload.mode or "safe_cascade_restart",
+            user=user,
+            incident_key=payload.incident_key
+        )
+        return res
+    except Exception as e:
+        logger.error(f"[SafeHeal] Erro ao executar auto-cura segura em {payload.hostname}: {e}", exc_info=True)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
+# ==============================================================================
+# FASE 2: AUDITORIA DE PRAÇA & CENTRAL DE SOLUÇÕES INTELIGENTE (PLAYBOOKS N1)
+# ==============================================================================
+@app.get("/api/fleet/praca/list")
+async def praca_list_endpoint(user: dict = Depends(get_current_user)):
+    """Retorna a lista consolidada de todas as praças ativas na frota com status geral."""
+    try:
+        from praca_analyzer import list_active_pracas
+        return list_active_pracas()
+    except Exception as e:
+        logger.error(f"[PracaAnalyzer] Erro ao listar praças: {e}", exc_info=True)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
+@app.get("/api/fleet/praca/audit/{praca_nome}")
+async def praca_audit_endpoint(praca_nome: str, user: dict = Depends(get_current_user)):
+    """
+    Executa o Raio-X forense determinístico de todos os Capture Sites da praça
+    (CS01, CS02, CS03, canais, tuners, esteira de detecção, base SGG e WCF).
+    """
+    try:
+        from praca_analyzer import audit_praca_ecosystem
+        res = audit_praca_ecosystem(praca_nome)
+        return res
+    except Exception as e:
+        logger.error(f"[PracaAnalyzer] Erro ao auditar praça {praca_nome}: {e}", exc_info=True)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
+class PracaAiSolutionRequest(BaseModel):
+    praca: str
+
+@app.post("/api/fleet/praca/ai-solution")
+async def praca_ai_solution_endpoint(payload: PracaAiSolutionRequest, user: dict = Depends(get_current_user)):
+    """
+    Central de Soluções Inteligente:
+    Analisa os problemas da praça e gera o pipeline guiado de passos explicativos
+    com botões de ação de 1 clique integrados para o operador N1.
+    """
+    try:
+        from praca_analyzer import audit_praca_ecosystem, generate_ai_solutions_plan
+        audit_res = audit_praca_ecosystem(payload.praca)
+        solutions_plan = generate_ai_solutions_plan(audit_res)
+        return solutions_plan
+    except Exception as e:
+        logger.error(f"[PracaAnalyzer] Erro ao gerar soluções para praça {payload.praca}: {e}", exc_info=True)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
+# ==============================================================================
 # REPOSITÓRIO OFICIAL DE PACOTES, AUDITORIA BINÁRIA E DISTRIBUIÇÃO DA FROTA
 # ==============================================================================
 from package_repository_manager import (
