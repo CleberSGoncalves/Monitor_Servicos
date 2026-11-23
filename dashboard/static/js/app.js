@@ -18863,3 +18863,230 @@ function renderCpuSvgChart(history, limitThreshold = 90) {
 
 
 
+
+
+// ==============================================================================
+// GESTÃO DE MODAIS: STATUS 360° DA FROTA POR MÁQUINA & GOVERNANÇA DE SERVIÇOS
+// ==============================================================================
+
+let _fleetMachinesData = null;
+let _currentFleetDimFilter = "all";
+
+function openServicesInventoryModal() {
+    const modal = document.getElementById("modalServicesInventory");
+    if (modal) {
+        modal.style.display = "flex";
+        if (typeof filterServicesTable === "function") {
+            filterServicesTable();
+        }
+    }
+}
+window.openServicesInventoryModal = openServicesInventoryModal;
+
+function closeServicesInventoryModal() {
+    const modal = document.getElementById("modalServicesInventory");
+    if (modal) modal.style.display = "none";
+}
+window.closeServicesInventoryModal = closeServicesInventoryModal;
+
+async function openFleetMachinesOverviewModal() {
+    const modal = document.getElementById("modalFleetMachinesOverview");
+    if (modal) {
+        modal.style.display = "flex";
+        if (!_fleetMachinesData) {
+            await loadFleetMachinesOverview();
+        } else {
+            renderFleetMachinesGrid();
+        }
+    }
+}
+window.openFleetMachinesOverviewModal = openFleetMachinesOverviewModal;
+
+function closeFleetMachinesOverviewModal() {
+    const modal = document.getElementById("modalFleetMachinesOverview");
+    if (modal) modal.style.display = "none";
+}
+window.closeFleetMachinesOverviewModal = closeFleetMachinesOverviewModal;
+
+async function loadFleetMachinesOverview() {
+    const grid = document.getElementById("fleetMachinesOverviewGrid");
+    if (grid) {
+        grid.innerHTML = `
+            <div style="color: #94a3b8; padding: 40px; text-align: center; grid-column: 1 / -1;">
+                <i class="fas fa-spinner fa-spin" style="font-size: 26px; color: #38bdf8; margin-bottom: 10px;"></i>
+                <div style="font-size: 13px;">Carregando status das máquinas da frota (Pipeline 6 Estágios)...</div>
+            </div>
+        `;
+    }
+    try {
+        const resp = await fetch("/api/fleet/machines/overview");
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        const data = await resp.json();
+        _fleetMachinesData = data;
+
+        const counts = data.tag_counts || {};
+        const setVal = (id, val) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = val !== undefined ? val : 0;
+        };
+        setVal("countFleetAll", counts.all || (data.machines || []).length);
+        setVal("countFleetAlert", counts.alert || 0);
+        setVal("countFleetLink", counts.link || 0);
+        setVal("countFleetDetection", counts.detection || 0);
+        setVal("countFleetSignal", counts.signal || 0);
+        setVal("countFleetRecording", counts.recording || 0);
+        setVal("countFleetHardware", counts.hardware || 0);
+        setVal("countFleetDispatch", counts.dispatch || 0);
+
+        renderFleetMachinesGrid();
+    } catch (err) {
+        console.error("Erro ao carregar visão 360 da frota:", err);
+        if (grid) {
+            grid.innerHTML = `
+                <div style="color: #ef4444; padding: 30px; text-align: center; grid-column: 1 / -1;">
+                    <i class="fas fa-exclamation-triangle" style="font-size: 24px; margin-bottom: 8px;"></i>
+                    <div style="font-size: 13px;">Falha ao carregar status das máquinas: ${escapeHtml(err.message)}</div>
+                    <button type="button" class="btn-secondary" onclick="loadFleetMachinesOverview()" style="margin-top: 10px; padding: 5px 12px; font-size: 11px;">Tentar Novamente</button>
+                </div>
+            `;
+        }
+    }
+}
+window.loadFleetMachinesOverview = loadFleetMachinesOverview;
+
+function setFleetMachinesDimFilter(dim) {
+    _currentFleetDimFilter = dim;
+    const btns = document.querySelectorAll("#fleetMachinesFilterButtons .fleet-filter-btn");
+    btns.forEach(b => {
+        if (b.getAttribute("data-dim") === dim) {
+            b.classList.add("active");
+        } else {
+            b.classList.remove("active");
+        }
+    });
+    renderFleetMachinesGrid();
+}
+window.setFleetMachinesDimFilter = setFleetMachinesDimFilter;
+
+function filterFleetMachinesOverview() {
+    renderFleetMachinesGrid();
+}
+window.filterFleetMachinesOverview = filterFleetMachinesOverview;
+
+function renderFleetMachinesGrid() {
+    const grid = document.getElementById("fleetMachinesOverviewGrid");
+    if (!grid || !_fleetMachinesData || !_fleetMachinesData.machines) return;
+
+    const query = (document.getElementById("fleetMachinesSearchInput")?.value || "").trim().toLowerCase();
+    const dim = _currentFleetDimFilter;
+
+    const filtered = _fleetMachinesData.machines.filter(m => {
+        if (query) {
+            const h = (m.hostname || "").toLowerCase();
+            const p = (m.praca || "").toLowerCase();
+            const cs = (m.cs_label || "").toLowerCase();
+            if (!h.includes(query) && !p.includes(query) && !cs.includes(query)) {
+                return false;
+            }
+        }
+        if (dim === "all") return true;
+        if (dim === "alert") return m.has_incident;
+        return (m.incident_tags || []).includes(dim);
+    });
+
+    if (filtered.length === 0) {
+        grid.innerHTML = `
+            <div style="color: #94a3b8; padding: 50px 20px; text-align: center; grid-column: 1 / -1; background: rgba(15, 23, 42, 0.4); border-radius: 8px; border: 1px dashed rgba(255, 255, 255, 0.1);">
+                <i class="fas fa-check-circle" style="font-size: 28px; color: #10b981; margin-bottom: 10px;"></i>
+                <div style="font-size: 14px; font-weight: 700; color: #f8fafc;">Nenhuma máquina com o filtro selecionado</div>
+                <div style="font-size: 12px; color: #64748b; margin-top: 4px;">Filtro atual: <strong>${dim.toUpperCase()}</strong> | Busca: "${escapeHtml(query)}"</div>
+            </div>
+        `;
+        return;
+    }
+
+    const stageColors = {
+        "NOMINAL": { bg: "rgba(16, 185, 129, 0.12)", border: "#10b981", color: "#34d399" },
+        "ALERTA": { bg: "rgba(245, 158, 11, 0.15)", border: "#f59e0b", color: "#fbbf24" },
+        "CRITICO": { bg: "rgba(239, 68, 68, 0.2)", border: "#ef4444", color: "#f87171" },
+        "NA": { bg: "rgba(100, 116, 139, 0.15)", border: "#475569", color: "#94a3b8" }
+    };
+
+    let html = "";
+    filtered.forEach(m => {
+        const isCrit = m.status_geral === "CRITICO";
+        const isAlert = m.status_geral === "ALERTA";
+        const cardBorder = isCrit ? "#ef4444" : (isAlert ? "#f59e0b" : "rgba(255, 255, 255, 0.1)");
+        const cardBg = isCrit ? "rgba(30, 15, 20, 0.85)" : "rgba(15, 23, 42, 0.85)";
+
+        const stages = m.stages || {};
+        const renderBadge = (key, label, iconClass) => {
+            const st = stages[key] || { status: "NOMINAL", badge: "OK", detail: "" };
+            const cfg = stageColors[st.status] || stageColors["NOMINAL"];
+            return `
+                <div style="display: flex; align-items: center; justify-content: space-between; background: ${cfg.bg}; border: 1px solid ${cfg.border}; border-radius: 5px; padding: 4px 8px; font-size: 11px;" title="${escapeHtml(st.detail || label)}">
+                    <span style="color: #94a3b8; display: flex; align-items: center; gap: 5px;">
+                        <i class="${iconClass}" style="font-size: 10px;"></i>
+                        <span>${label}:</span>
+                    </span>
+                    <span style="font-weight: 700; color: ${cfg.color}; font-family: monospace;">${escapeHtml(st.badge)}</span>
+                </div>
+            `;
+        };
+
+        const statusBadge = isCrit
+            ? `<span class="badge" style="background: rgba(239, 68, 68, 0.25); border: 1px solid #ef4444; color: #f87171; font-weight: 800; font-size: 10px;">🔴 CRÍTICO</span>`
+            : (isAlert
+                ? `<span class="badge" style="background: rgba(245, 158, 11, 0.25); border: 1px solid #f59e0b; color: #fbbf24; font-weight: 800; font-size: 10px;">⚠️ ALERTA</span>`
+                : `<span class="badge" style="background: rgba(16, 185, 129, 0.2); border: 1px solid #10b981; color: #34d399; font-weight: 800; font-size: 10px;">✅ 100% OK</span>`);
+
+        const csTagColor = m.cs_tier === 1 ? "#38bdf8" : (m.cs_tier === 2 ? "#818cf8" : "#c084fc");
+
+        html += `
+            <div style="background: ${cardBg}; border: 1px solid ${cardBorder}; border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.4); transition: transform 0.15s ease;" onmouseenter="this.style.transform='translateY(-2px)'" onmouseleave="this.style.transform='translateY(0)'">
+                <!-- Cabeçalho do Card -->
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
+                    <div style="flex: 1; min-width: 0;">
+                        <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                            <span style="font-size: 11px; font-weight: 800; padding: 2px 6px; border-radius: 4px; background: rgba(255, 255, 255, 0.08); border: 1px solid ${csTagColor}; color: ${csTagColor};">
+                                ${escapeHtml(m.cs_label)}
+                            </span>
+                            <span style="font-size: 13px; font-weight: 800; color: #f8fafc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(m.hostname)}">
+                                ${escapeHtml(m.hostname)}
+                            </span>
+                        </div>
+                        <div style="font-size: 11px; color: #94a3b8; margin-top: 3px; display: flex; align-items: center; gap: 6px;">
+                            <span>🏢 <strong>${escapeHtml(m.praca)}</strong></span>
+                            <span>•</span>
+                            <span>📡 ${m.channels_count} canal(is)</span>
+                        </div>
+                    </div>
+                    <div>${statusBadge}</div>
+                </div>
+
+                <!-- 6 Estágios em Mini-Grid -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+                    ${renderBadge("link", "Link", "fas fa-network-wired")}
+                    ${renderBadge("detection", "Detecção", "fas fa-search")}
+                    ${renderBadge("signal", "Sinal", "fas fa-broadcast-tower")}
+                    ${renderBadge("recording", "Gravação", "fas fa-video")}
+                    ${renderBadge("hardware", "Hardware", "fas fa-microchip")}
+                    ${renderBadge("dispatch", "WCF", "fas fa-paper-plane")}
+                </div>
+
+                <!-- Ações Rápidas no Rodapé -->
+                <div style="display: flex; align-items: center; justify-content: flex-end; gap: 8px; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 8px; margin-top: 2px;">
+                    <button type="button" class="btn-secondary" onclick="openCpuHistoryModal('${escapeHtml(m.hostname)}', '${escapeHtml(m.praca)}')" style="padding: 4px 10px; font-size: 11px; display: inline-flex; align-items: center; gap: 5px;" title="Ver Gráfico e Histórico de CPU">
+                        <i class="fas fa-chart-line" style="color: #38bdf8;"></i> Gráfico CPU
+                    </button>
+                    <button type="button" class="btn-primary" onclick="openPracaAuditModal('${escapeHtml(m.praca)}', 'CS0${m.cs_tier}')" style="padding: 4px 12px; font-size: 11px; font-weight: 700; background: linear-gradient(135deg, #2563eb, #0284c7); border: 1px solid #38bdf8; display: inline-flex; align-items: center; gap: 5px;" title="Abrir Raio-X Forense e Central de Soluções Inteligente da Praça">
+                        <i class="fas fa-stethoscope"></i> Raio-X Praça
+                    </button>
+                </div>
+            </div>
+        `;
+    });
+
+    grid.innerHTML = html;
+}
+window.renderFleetMachinesGrid = renderFleetMachinesGrid;

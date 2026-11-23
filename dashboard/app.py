@@ -3235,6 +3235,21 @@ async def praca_ai_solution_endpoint(payload: PracaAiSolutionRequest, user: dict
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 
+@app.get("/api/fleet/machines/overview")
+async def fleet_machines_overview_endpoint(user: dict = Depends(get_current_user)):
+    """
+    Retorna a Visão Geral 360° de todas as máquinas da frota.
+    Consolida status dos 6 estágios (Link, Detecção, Sinal, Gravação, Hardware, Despacho)
+    permitindo filtros rápidos por dimensão de incidente.
+    """
+    try:
+        from praca_analyzer import get_fleet_machines_overview
+        return get_fleet_machines_overview()
+    except Exception as e:
+        logger.error(f"[FleetMachinesOverview] Erro ao consolidar visão geral: {e}", exc_info=True)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
 @app.get("/api/fleet/host/cpu-history/{hostname}")
 async def host_cpu_history_endpoint(hostname: str, period: str = "24h", user: dict = Depends(get_current_user)):
     """

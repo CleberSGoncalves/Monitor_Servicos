@@ -1,8 +1,8 @@
 {
-  "version": "3.9.86",
+  "version": "3.9.90",
   "agent_version": "1.0.21.5",
-  "commit_sha": "a3ba950",
-  "updated_at": "2026-11-23T16:45:00.000000",
-  "description": "v3.9.86 - Chave de Migração FastMatching & FileCleaner no update do Atria Capture, Diagnóstico de Praça & Soluções IA, Auto-Cura Segura anti-EMU e Gate Anti-Itumbiara.",
-  "release_notes": "v3.9.86: Adiciona opção de migração de stack na aba Frota (desinstalação de DetectionSVC/TrackingSVC legados e ativação de FastMatching + FileCleaner); Auditoria de Praça com pipeline IA; Bloqueio definitivo de scripts destrutivos de EMU."
+  "commit_sha": "auto",
+  "updated_at": "2026-11-23T22:15:00.000000",
+  "description": "v3.9.90 - Modal Status 360° por Máquina com filtros determinísticos (Link, Detecção CS01, Sinal RF, Gravação, Hardware e WCF); Remoção da governança no rodapé para modal sob demanda; Correção na seleção de CS na auditoria de praça.",
+  "release_notes": "v3.9.90: Adiciona visão 360° de saúde das 250 máquinas da frota por dimensão de incidente; move inventário de governança de serviços para modal sob demanda; elimina sobrecarga no rodapé da tela de incidentes; resolve bug de seleção de CS."
 }

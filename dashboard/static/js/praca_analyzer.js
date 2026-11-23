@@ -128,17 +128,19 @@ function renderPracaAuditAndSolutions(audit, sol) {
             </button>
     `;
 
-    availableCs.forEach(csKey => {
-        const isSelected = currentCs.toUpperCase() === csKey.toUpperCase();
+    availableCs.forEach(csItem => {
+        const csCode = (typeof csItem === "object" && csItem !== null) ? (csItem.code || csItem.hostname || "") : String(csItem || "");
+        const csLabel = (typeof csItem === "object" && csItem !== null) ? (csItem.label || csItem.code || csItem.hostname || "") : String(csItem || "");
+        const isSelected = currentCs.toUpperCase() === csCode.toUpperCase();
         let icon = "🖥️";
-        if (csKey.includes("03") || csKey.includes("RADIO")) icon = "📻";
-        else if (csKey.includes("02")) icon = "🖥️";
+        if (csCode.includes("03") || csCode.includes("RADIO")) icon = "📻";
+        else if (csCode.includes("02")) icon = "🖥️";
 
         csButtonsHtml += `
             <button type="button" 
-                    onclick="runPracaAudit('${escapeHtml(audit.praca)}', '${csKey}')" 
-                    style="padding: 5px 12px; font-size: 11px; font-weight: 700; border-radius: 6px; cursor: pointer; transition: all 0.2s; border: 1px solid ${isSelected ? '#38bdf8' : 'rgba(255, 255, 255, 0.15)'}; background: ${isSelected ? 'linear-gradient(135deg, #2563eb, #0284c7)' : 'rgba(30, 41, 59, 0.7)'}; color: ${isSelected ? '#fff' : '#cbd5e1'}; box-shadow: ${isSelected ? '0 0 10px rgba(56, 189, 248, 0.3)' : 'none'};">
-                ${icon} ${csKey}
+                    onclick="runPracaAudit('${escapeHtml(audit.praca)}', '${escapeHtml(csCode)}')" 
+                    style="padding: 5px 12px; font-size: 11px; font-weight: 700; border-radius: 6px; cursor: pointer; transition: all 0.2s; border: 1px solid ${isSelected ? '#38bdf8' : 'rgba(255, 255, 255, 0.15)'}; background: ${isSelected ? 'linear-gradient(135deg, #2563eb, #0284c7)' : 'rgba(30, 41, 59, 0.7)'}; color: ${isSelected ? '#fff' : '#cbd5e1'}; box-shadow: ${isSelected ? '0 0 10px rgba(56, 189, 248, 0.3)' : 'none'};" title="${escapeHtml(csLabel)}">
+                ${icon} ${escapeHtml(csCode)}
             </button>
         `;
     });
