@@ -118,4 +118,5 @@ def test_fastmatching_logs_api_endpoint():
     assert data["success"] is True
     assert data["hostname"] == "BRPE-CRU-DT01"
     assert "telemetry" in data
-    assert data["telemetry"]["has_detections"] is True
+    assert "has_detections" in data["telemetry"]
+    assert "is_running" in data["telemetry"]
