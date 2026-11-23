@@ -14707,7 +14707,7 @@ function renderNocCockpit() {
 
 
 
-                     onclick="toggleNocHostFilter('${h.hostname}')" title="Clique para filtrar apenas incidentes de ${h.hostname}">
+                     onclick="openCpuHistoryModal('${escapeHtml(h.hostname)}', '${escapeHtml(h.praca)}')" title="Clique para abrir análise forense de CPU e Hardware (24h/7d/30d) de ${escapeHtml(h.hostname)}">
 
 
 
@@ -14728,6 +14728,18 @@ function renderNocCockpit() {
 
 
                     </div>
+
+
+
+                    <span style="margin-left: auto; font-size: 10px; color: #38bdf8; background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 4px; padding: 2px 6px;">
+
+
+
+                        <i class="fas fa-chart-area"></i> Gráfico
+
+
+
+                    </span>
 
 
 
@@ -18530,6 +18542,323 @@ window.removeActivePracaMaintenance = removeActivePracaMaintenance;
 document.addEventListener("DOMContentLoaded", () => {
     loadActiveMaintenancePracas();
 });
+
+// ==============================================================================
+// ANÁLISE FORENSE DE CPU & RECURSOS DE HARDWARE (24h / 7d / 30d)
+// ==============================================================================
+let currentCpuHistoryHost = "";
+let currentCpuHistoryPraca = "";
+let currentCpuHistoryPeriod = "24h";
+
+async function openCpuHistoryModal(hostname, praca = "") {
+    const modal = document.getElementById("modalCpuHistory");
+    if (!modal) return;
+    modal.style.display = "flex";
+
+    currentCpuHistoryHost = hostname || "";
+    currentCpuHistoryPraca = praca || "";
+    currentCpuHistoryPeriod = "24h";
+
+    const badge = document.getElementById("cpuHistoryModalHostBadge");
+    if (badge) badge.textContent = `${hostname} (${praca || 'CS'})`;
+
+    const sub = document.getElementById("cpuHistoryModalSub");
+    if (sub) sub.innerHTML = `Curva temporal de CPU, limites de sobrecarga sustentada e saúde do host <strong style="color:#fff;">${escapeHtml(hostname)}</strong>`;
+
+    updateCpuPeriodButtonsVisual();
+    await fetchAndRenderCpuHistory();
+}
+window.openCpuHistoryModal = openCpuHistoryModal;
+
+function closeCpuHistoryModal() {
+    const modal = document.getElementById("modalCpuHistory");
+    if (modal) modal.style.display = "none";
+}
+window.closeCpuHistoryModal = closeCpuHistoryModal;
+
+async function changeCpuHistoryPeriod(period) {
+    if (!["24h", "7d", "30d"].includes(period)) return;
+    currentCpuHistoryPeriod = period;
+    updateCpuPeriodButtonsVisual();
+    await fetchAndRenderCpuHistory();
+}
+window.changeCpuHistoryPeriod = changeCpuHistoryPeriod;
+
+function updateCpuPeriodButtonsVisual() {
+    ["24h", "7d", "30d"].forEach(p => {
+        const btn = document.getElementById(`btnPeriod${p}`);
+        if (!btn) return;
+        if (p === currentCpuHistoryPeriod) {
+            btn.style.border = "1px solid #38bdf8";
+            btn.style.background = "linear-gradient(135deg, #2563eb, #0284c7)";
+            btn.style.color = "#fff";
+            btn.style.boxShadow = "0 0 10px rgba(56, 189, 248, 0.3)";
+        } else {
+            btn.style.border = "1px solid rgba(255, 255, 255, 0.15)";
+            btn.style.background = "rgba(30, 41, 59, 0.7)";
+            btn.style.color = "#cbd5e1";
+            btn.style.boxShadow = "none";
+        }
+    });
+}
+
+async function fetchAndRenderCpuHistory() {
+    const container = document.getElementById("cpuHistoryContainer");
+    if (!container || !currentCpuHistoryHost) return;
+
+    container.innerHTML = `
+        <div style="text-align: center; padding: 50px 20px; color: #38bdf8;">
+            <i class="fas fa-spinner fa-spin fa-2x"></i>
+            <div style="margin-top: 12px; font-weight: 700; font-size: 13px;">Carregando métricas temporais de CPU para ${escapeHtml(currentCpuHistoryHost)} (${currentCpuHistoryPeriod})...</div>
+        </div>
+    `;
+
+    try {
+        const resp = await fetch(`/api/fleet/host/cpu-history/${encodeURIComponent(currentCpuHistoryHost)}?period=${currentCpuHistoryPeriod}`);
+        if (!resp.ok) throw new Error("Erro ao obter telemetria de CPU");
+        const data = await resp.json();
+        renderCpuHistoryData(data);
+    } catch (err) {
+        container.innerHTML = `<div style="color: #ef4444; padding: 30px; text-align: center;">Erro: ${escapeHtml(err.message)}</div>`;
+    }
+}
+
+function renderCpuHistoryData(data) {
+    const container = document.getElementById("cpuHistoryContainer");
+    if (!container) return;
+
+    const s = data.summary || {};
+    const curCpu = s.current_cpu || 0;
+    const avgCpu = s.avg_cpu || 0;
+    const maxCpu = s.max_cpu || 0;
+    const spikes90 = s.spikes_over_90 || 0;
+    const limitThresh = data.limit_threshold || 90;
+
+    const curCol = curCpu >= 90 ? "#ef4444" : (curCpu >= 75 ? "#fbbf24" : "#34d399");
+    const spikeCol = spikes90 > 0 ? "#ef4444" : "#34d399";
+
+    // 1. Cards de Resumo Forense
+    let html = `
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 16px;">
+            <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 12px; text-align: center;">
+                <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 700;">Uso Atual Real</div>
+                <div style="font-size: 22px; font-weight: 800; color: ${curCol}; margin-top: 4px;">${curCpu}%</div>
+                <div style="font-size: 9px; color: #64748b; margin-top: 2px;">${curCpu <= 70 ? '🟢 Nominal / Estável' : (curCpu < 90 ? '🟡 Carga Intermediária' : '🔴 Sobrecarga')}</div>
+            </div>
+
+            <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 12px; text-align: center;">
+                <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 700;">Média no Período</div>
+                <div style="font-size: 22px; font-weight: 800; color: #38bdf8; margin-top: 4px;">${avgCpu}%</div>
+                <div style="font-size: 9px; color: #64748b; margin-top: 2px;">Média histórica ${data.period}</div>
+            </div>
+
+            <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 12px; text-align: center;">
+                <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 700;">Pico Máximo</div>
+                <div style="font-size: 22px; font-weight: 800; color: ${maxCpu >= 90 ? '#ef4444' : '#f8fafc'}; margin-top: 4px;">${maxCpu}%</div>
+                <div style="font-size: 9px; color: #64748b; margin-top: 2px;">Maior amostra registrada</div>
+            </div>
+
+            <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 12px; text-align: center;">
+                <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 700;">Picos &gt; 90% (>5m)</div>
+                <div style="font-size: 22px; font-weight: 800; color: ${spikeCol}; margin-top: 4px;">${spikes90}</div>
+                <div style="font-size: 9px; color: ${spikes90 === 0 ? '#34d399' : '#ef4444'}; margin-top: 2px;">${spikes90 === 0 ? '✅ Zero Estouro' : '⚠️ Sobrecargas'}</div>
+            </div>
+
+            <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 12px; text-align: center;">
+                <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 700;">Memória RAM</div>
+                <div style="font-size: 16px; font-weight: 800; color: #cbd5e1; margin-top: 8px;">${escapeHtml(data.ram_uso || 'N/A')}</div>
+                <div style="font-size: 9px; color: #64748b; margin-top: 2px;">Consumo de memória</div>
+            </div>
+
+            <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 12px; text-align: center;">
+                <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 700;">Disco D: Livre</div>
+                <div style="font-size: 16px; font-weight: 800; color: #cbd5e1; margin-top: 8px;">${escapeHtml(data.disco_d_livre || 'N/A')}</div>
+                <div style="font-size: 9px; color: #64748b; margin-top: 2px;">Gravação de streams</div>
+            </div>
+        </div>
+
+        <!-- 2. Gráfico Temporal SVG -->
+        <div style="background: rgba(15, 23, 42, 0.9); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <div style="font-size: 12px; font-weight: 700; color: #fff;">
+                    <i class="fas fa-chart-line" style="color: #38bdf8;"></i> Evolução Temporal do Uso de CPU (%)
+                </div>
+                <div style="font-size: 10px; color: #94a3b8; display: flex; align-items: center; gap: 12px;">
+                    <span><span style="display:inline-block; width:10px; height:10px; background:#38bdf8; border-radius:2px; margin-right:4px;"></span>Uso Real</span>
+                    <span><span style="display:inline-block; width:10px; height:2px; background:#ef4444; margin-right:4px;"></span>Limiar 90%</span>
+                </div>
+            </div>
+
+            <div style="width: 100%; overflow-x: auto;">
+                ${renderCpuSvgChart(data.history || [], limitThresh)}
+            </div>
+        </div>
+
+        <!-- 3. Veredito Técnico de Engenharia -->
+        <div style="background: ${spikes90 === 0 ? 'rgba(16, 185, 129, 0.08)' : 'rgba(239, 68, 68, 0.08)'}; border: 1px solid ${spikes90 === 0 ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}; border-left: 4px solid ${spikes90 === 0 ? '#10b981' : '#ef4444'}; border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+            <div style="font-weight: 800; font-size: 12px; color: ${spikes90 === 0 ? '#34d399' : '#f87171'}; margin-bottom: 4px;">
+                <i class="fas ${spikes90 === 0 ? 'fa-check-circle' : 'fa-exclamation-triangle'}"></i> Veredito Forense: ${spikes90 === 0 ? 'Operação de Hardware Nominal (Sem Sobrecarga)' : 'Atenção Operacional na Carga de CPU'}
+            </div>
+            <div style="font-size: 11px; color: #cbd5e1; line-height: 1.5;">
+                ${escapeHtml(data.verdict || '')}
+            </div>
+        </div>
+
+        <!-- 4. Top Processos do Capture Site -->
+        <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 14px;">
+            <div style="font-size: 12px; font-weight: 700; color: #fff; margin-bottom: 10px;">
+                <i class="fas fa-tasks" style="color: #818cf8;"></i> Processos do Capture Site &amp; Distribuição de Carga
+            </div>
+            <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 11px; color: #cbd5e1;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.1); text-align: left; color: #94a3b8;">
+                            <th style="padding: 6px 8px;">Processo</th>
+                            <th style="padding: 6px 8px; text-align: center;">CPU Real</th>
+                            <th style="padding: 6px 8px; text-align: center;">Memória</th>
+                            <th style="padding: 6px 8px;">Função Operacional</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+    `;
+
+    if (data.processes && data.processes.length > 0) {
+        data.processes.forEach(proc => {
+            html += `
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">
+                    <td style="padding: 6px 8px; font-weight: 700; color: #fff;">
+                        <span style="font-family: monospace;">${escapeHtml(proc.name)}</span>
+                    </td>
+                    <td style="padding: 6px 8px; text-align: center;">
+                        <span class="badge" style="background: rgba(56,189,248,0.1); color: #38bdf8; border: 1px solid rgba(56,189,248,0.3); font-size: 10px;">
+                            ${escapeHtml(proc.cpu)}
+                        </span>
+                    </td>
+                    <td style="padding: 6px 8px; text-align: center; font-family: monospace;">
+                        ${escapeHtml(proc.mem)}
+                    </td>
+                    <td style="padding: 6px 8px; color: #94a3b8; font-size: 10px;">
+                        ${escapeHtml(proc.desc)}
+                    </td>
+                </tr>
+            `;
+        });
+    }
+
+    html += `
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+
+    container.innerHTML = html;
+}
+
+function renderCpuSvgChart(history, limitThreshold = 90) {
+    if (!history || history.length === 0) {
+        return '<div style="color: #94a3b8; text-align: center; padding: 30px;">Sem dados de telemetria histórica disponíveis.</div>';
+    }
+
+    const W = 800;
+    const H = 220;
+    const padL = 40;
+    const padR = 20;
+    const padT = 20;
+    const padB = 30;
+
+    const plotW = W - padL - padR;
+    const plotH = H - padT - padB;
+
+    const n = history.length;
+    const getX = (idx) => padL + (idx / Math.max(1, n - 1)) * plotW;
+    const getY = (val) => padT + (1 - (val / 100)) * plotH;
+
+    const limitY = getY(limitThreshold);
+
+    // Linhas de Grade (0, 25, 50, 75, 100%)
+    let gridHtml = "";
+    [0, 25, 50, 75, 100].forEach(pct => {
+        const y = getY(pct);
+        gridHtml += `
+            <line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="rgba(255,255,255,0.06)" stroke-width="1" />
+            <text x="${padL - 6}" y="${y + 3}" fill="#64748b" font-size="9" text-anchor="end" font-family="monospace">${pct}%</text>
+        `;
+    });
+
+    // Curva de Pontos e Área
+    let pathD = "";
+    let areaD = `M ${padL} ${getY(0)}`;
+    let pointsHtml = "";
+
+    history.forEach((pt, i) => {
+        const x = getX(i);
+        const y = getY(pt.cpu);
+
+        if (i === 0) {
+            pathD = `M ${x} ${y}`;
+            areaD = `M ${x} ${getY(0)} L ${x} ${y}`;
+        } else {
+            pathD += ` L ${x} ${y}`;
+            areaD += ` L ${x} ${y}`;
+        }
+
+        const isSpike = pt.cpu >= limitThreshold;
+        const ptCol = isSpike ? "#ef4444" : "#38bdf8";
+        const ptRadius = isSpike ? 4.5 : 2.5;
+
+        pointsHtml += `
+            <circle cx="${x}" cy="${y}" r="${ptRadius}" fill="${ptCol}" stroke="#070d1e" stroke-width="1.5">
+                <title>${escapeHtml(pt.timestamp)}: ${pt.cpu}% CPU</title>
+            </circle>
+        `;
+    });
+
+    const lastX = getX(n - 1);
+    areaD += ` L ${lastX} ${getY(0)} Z`;
+
+    // Labels de Horário no Eixo X (amostradas)
+    let timeLabelsHtml = "";
+    const step = Math.max(1, Math.floor(n / 6));
+    for (let i = 0; i < n; i += step) {
+        const x = getX(i);
+        const pt = history[i];
+        let label = pt.timestamp.split(" ")[1] || pt.timestamp;
+        if (label.length > 5) label = label.substring(0, 5);
+        timeLabelsHtml += `
+            <text x="${x}" y="${H - 10}" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="monospace">${escapeHtml(label)}</text>
+        `;
+    }
+
+    return `
+        <svg viewBox="0 0 ${W} ${H}" style="width: 100%; height: auto; display: block; overflow: visible;">
+            <defs>
+                <linearGradient id="cpuAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.35"/>
+                    <stop offset="100%" stop-color="#38bdf8" stop-opacity="0.0"/>
+                </linearGradient>
+            </defs>
+            ${gridHtml}
+
+            <!-- Linha Limiar Critico 90% -->
+            <line x1="${padL}" y1="${limitY}" x2="${W - padR}" y2="${limitY}" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="4,4" />
+            <text x="${W - padR}" y="${limitY - 4}" fill="#ef4444" font-size="9" text-anchor="end" font-weight="700">Limiar 90%</text>
+
+            <!-- Área sob a curva -->
+            <path d="${areaD}" fill="url(#cpuAreaGrad)" />
+
+            <!-- Linha principal da série -->
+            <path d="${pathD}" fill="none" stroke="#38bdf8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+
+            <!-- Pontos -->
+            ${pointsHtml}
+
+            <!-- Eixo X labels -->
+            ${timeLabelsHtml}
+        </svg>
+    `;
+}
+
 
 
 

@@ -1,20 +1,25 @@
 /**
  * praca_analyzer.js - Auditoria de Praca por Capture Site & Central de Solucoes Inteligente (N1 / N2)
+ * Suporte a selecao especifica de CS01, CS02, CS03, pipeline forense de 6 estagios e blindagem de radio Sonifex/Stream.
  */
 
 let currentPracaAuditData = null;
+let currentPracaAuditTargetCs = ""; // "" = Praca Completa, ou "CS01", "CS02", "CS03"
+let currentPracaName = "";
 
-async function openPracaAuditModal(preSelectedPraca = "") {
+async function openPracaAuditModal(preSelectedPraca = "", preSelectedCs = "") {
     const modal = document.getElementById("modalPracaAudit");
     if (!modal) return;
     modal.style.display = "flex";
+
+    currentPracaAuditTargetCs = preSelectedCs || "";
 
     await populatePracasDropdown();
 
     const input = document.getElementById("pracaAuditSelect");
     if (input && preSelectedPraca) {
         input.value = preSelectedPraca;
-        await runPracaAudit();
+        await runPracaAudit(null, currentPracaAuditTargetCs);
     }
 }
 window.openPracaAuditModal = openPracaAuditModal;
@@ -46,32 +51,44 @@ async function populatePracasDropdown() {
     }
 }
 
-async function runPracaAudit() {
+async function runPracaAudit(pracaOverride = null, csOverride = null) {
     const sel = document.getElementById("pracaAuditSelect");
-    const praca = sel ? sel.value.trim() : "";
+    const praca = (pracaOverride !== null ? pracaOverride : (sel ? sel.value.trim() : "")).trim();
     if (!praca) {
         alert("Por favor, selecione uma praça para auditar.");
         return;
     }
+    currentPracaName = praca;
+
+    if (csOverride !== null) {
+        currentPracaAuditTargetCs = csOverride;
+    }
 
     const container = document.getElementById("pracaAuditResultContainer");
+    const csLabel = currentPracaAuditTargetCs ? ` (${currentPracaAuditTargetCs})` : " (Praça Completa)";
     if (container) {
         container.innerHTML = `
-            <div style="text-align: center; padding: 40px; color: #38bdf8;">
+            <div style="text-align: center; padding: 45px 20px; color: #38bdf8;">
                 <i class="fas fa-spinner fa-spin fa-2x"></i>
-                <div style="margin-top: 12px; font-weight: 700;">Executando Raio-X forense determinístico do Capture Site ${escapeHtml(praca)}...</div>
-                <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Auditando CS01, CS02, CS03, tuners, esteira de detecção, base SGG e WCF...</div>
+                <div style="margin-top: 14px; font-weight: 700; font-size: 14px;">Executando Raio-X forense determinístico do Capture Site ${escapeHtml(praca)}${escapeHtml(csLabel)}...</div>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 5px;">Analisando pipeline de 6 estágios, tuners de TV, áudio de rádios, motor de detecção e telemetria...</div>
             </div>
         `;
     }
 
     try {
+        const auditUrl = `/api/fleet/praca/audit/${encodeURIComponent(praca)}` + 
+                         (currentPracaAuditTargetCs ? `?cs=${encodeURIComponent(currentPracaAuditTargetCs)}` : "");
+        
         const [auditResp, solResp] = await Promise.all([
-            fetch(`/api/fleet/praca/audit/${encodeURIComponent(praca)}`),
+            fetch(auditUrl),
             fetch("/api/fleet/praca/ai-solution", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ praca: praca })
+                body: JSON.stringify({
+                    praca: praca,
+                    selected_cs: currentPracaAuditTargetCs || null
+                })
             })
         ]);
 
@@ -82,7 +99,7 @@ async function runPracaAudit() {
         renderPracaAuditAndSolutions(audit, sol);
     } catch (err) {
         if (container) {
-            container.innerHTML = `<div style="color: #ef4444; padding: 20px;">Erro na auditoria: ${escapeHtml(err.message)}</div>`;
+            container.innerHTML = `<div style="color: #ef4444; padding: 25px; text-align: center;">Erro na auditoria: ${escapeHtml(err.message)}</div>`;
         }
     }
 }
@@ -95,13 +112,118 @@ function renderPracaAuditAndSolutions(audit, sol) {
     const score = audit.health_score || 0;
     const scoreCol = score >= 85 ? "#34d399" : (score >= 50 ? "#fbbf24" : "#ef4444");
 
+    // Botões de Seleção de CS
+    const availableCs = audit.available_cs_options || ["CS01", "CS02", "CS03"];
+    const currentCs = currentPracaAuditTargetCs || "";
+
+    let csButtonsHtml = `
+        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; background: rgba(15, 23, 42, 0.6); padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.08);">
+            <span style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-right: 4px;">
+                <i class="fas fa-layer-group"></i> Escopo:
+            </span>
+            <button type="button" 
+                    onclick="runPracaAudit('${escapeHtml(audit.praca)}', '')" 
+                    style="padding: 5px 12px; font-size: 11px; font-weight: 700; border-radius: 6px; cursor: pointer; transition: all 0.2s; border: 1px solid ${currentCs === '' ? '#38bdf8' : 'rgba(255, 255, 255, 0.15)'}; background: ${currentCs === '' ? 'linear-gradient(135deg, #2563eb, #0284c7)' : 'rgba(30, 41, 59, 0.7)'}; color: ${currentCs === '' ? '#fff' : '#cbd5e1'}; box-shadow: ${currentCs === '' ? '0 0 10px rgba(56, 189, 248, 0.3)' : 'none'};">
+                🏢 Praça Geral (${audit.total_hosts || 0} nós)
+            </button>
+    `;
+
+    availableCs.forEach(csKey => {
+        const isSelected = currentCs.toUpperCase() === csKey.toUpperCase();
+        let icon = "🖥️";
+        if (csKey.includes("03") || csKey.includes("RADIO")) icon = "📻";
+        else if (csKey.includes("02")) icon = "🖥️";
+
+        csButtonsHtml += `
+            <button type="button" 
+                    onclick="runPracaAudit('${escapeHtml(audit.praca)}', '${csKey}')" 
+                    style="padding: 5px 12px; font-size: 11px; font-weight: 700; border-radius: 6px; cursor: pointer; transition: all 0.2s; border: 1px solid ${isSelected ? '#38bdf8' : 'rgba(255, 255, 255, 0.15)'}; background: ${isSelected ? 'linear-gradient(135deg, #2563eb, #0284c7)' : 'rgba(30, 41, 59, 0.7)'}; color: ${isSelected ? '#fff' : '#cbd5e1'}; box-shadow: ${isSelected ? '0 0 10px rgba(56, 189, 248, 0.3)' : 'none'};">
+                ${icon} ${csKey}
+            </button>
+        `;
+    });
+
+    csButtonsHtml += `</div>`;
+
+    // Aviso informativo de escopo
+    let scopeNoticeHtml = "";
+    if (audit.is_single_cs_focus) {
+        const isCs1 = audit.active_cs_tier === 1;
+        scopeNoticeHtml = `
+            <div style="background: rgba(56, 189, 248, 0.08); border-left: 3px solid #38bdf8; padding: 8px 12px; border-radius: 0 6px 6px 0; font-size: 11px; color: #bae6fd; margin-bottom: 14px; display: flex; align-items: center; gap: 8px;">
+                <i class="fas fa-info-circle" style="color: #38bdf8;"></i>
+                <span>Visualizando estritamente <strong>${escapeHtml(audit.selected_cs)}</strong> (${escapeHtml(audit.focused_host)}). ${isCs1 ? 'Motor de Detecção analisado ativamente.' : 'Detecção Comercial é exclusiva do CS01; este host analisa gravação de mídia, sintonizadores e hardware.'}</span>
+            </div>
+        `;
+    }
+
+    // 6 Estágios do Pipeline Forense
+    let pipelineHtml = "";
+    if (audit.pipeline_stages && audit.pipeline_stages.length > 0) {
+        pipelineHtml = `
+            <div style="margin-bottom: 16px;">
+                <h4 style="margin: 0 0 8px 0; font-size: 12px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">
+                    Pipeline de Saúde do Nó (6 Estágios de Confiabilidade)
+                </h4>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 8px;">
+        `;
+
+        audit.pipeline_stages.forEach(st => {
+            let stColor = "#34d399";
+            let stBg = "rgba(16, 185, 129, 0.1)";
+            let stBorder = "rgba(16, 185, 129, 0.3)";
+            let icon = "fa-check-circle";
+
+            if (st.status === "CRITICO") {
+                stColor = "#ef4444";
+                stBg = "rgba(239, 68, 68, 0.1)";
+                stBorder = "rgba(239, 68, 68, 0.4)";
+                icon = "fa-times-circle";
+            } else if (st.status === "ALERTA") {
+                stColor = "#fbbf24";
+                stBg = "rgba(251, 191, 36, 0.1)";
+                stBorder = "rgba(251, 191, 36, 0.4)";
+                icon = "fa-exclamation-triangle";
+            } else if (st.status === "NA") {
+                stColor = "#94a3b8";
+                stBg = "rgba(148, 163, 184, 0.08)";
+                stBorder = "rgba(148, 163, 184, 0.2)";
+                icon = "fa-shield-alt";
+            }
+
+            pipelineHtml += `
+                <div style="background: ${stBg}; border: 1px solid ${stBorder}; border-radius: 6px; padding: 10px 12px; display: flex; flex-direction: column; justify-content: space-between;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
+                        <span style="font-size: 11px; font-weight: 700; color: #f8fafc;">
+                            <i class="fas ${icon}" style="color: ${stColor}; margin-right: 4px;"></i> ${escapeHtml(st.title)}
+                        </span>
+                        <span class="badge" style="background: ${stColor}22; color: ${stColor}; border: 1px solid ${stColor}; font-size: 9px; font-weight: 700; padding: 2px 6px;">
+                            ${escapeHtml(st.badge || st.status)}
+                        </span>
+                    </div>
+                    <div style="font-size: 10px; color: #cbd5e1; margin-top: 6px; line-height: 1.35;">
+                        ${escapeHtml(st.detail || '')}
+                    </div>
+                </div>
+            `;
+        });
+
+        pipelineHtml += `
+                </div>
+            </div>
+        `;
+    }
+
     let html = `
+        ${csButtonsHtml}
+        ${scopeNoticeHtml}
+
         <!-- Topo: Score e Diagnostico -->
         <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;">
                 <div>
                     <h3 style="margin: 0; color: #fff; font-size: 16px; font-weight: 800;">
-                        🏢 Capture Site ${escapeHtml(audit.praca)} • Raio-X Forense
+                        🏢 Capture Site ${escapeHtml(audit.praca)} ${audit.selected_cs ? `• <span style="color: #38bdf8;">${escapeHtml(audit.selected_cs)}</span>` : ''} • Raio-X Forense
                     </h3>
                     <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">
                         Auditoria concluída em ${escapeHtml(audit.timestamp_auditoria)} • ${audit.total_hosts} hosts • ${audit.total_canais} canais
@@ -122,10 +244,12 @@ function renderPracaAuditAndSolutions(audit, sol) {
                 </div>
                 <div>
                     <span style="color: #94a3b8;">Motor de Detecção:</span>
-                    <strong style="color: ${audit.engine_conflict ? '#ef4444' : '#38bdf8'};">${escapeHtml(audit.active_engine)}</strong>
+                    <strong style="color: ${audit.engine_conflict ? '#ef4444' : (audit.active_engine.includes('N/A') ? '#94a3b8' : '#38bdf8')};">${escapeHtml(audit.active_engine)}</strong>
                 </div>
             </div>
         </div>
+
+        ${pipelineHtml}
 
         <!-- Central de Solucoes Inteligente (Pipeline Guiado) -->
         <div style="background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.3); border-left: 4px solid #6366f1; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
@@ -171,27 +295,67 @@ function renderPracaAuditAndSolutions(audit, sol) {
 
         <!-- Grade de Canais e Tuners da Praca -->
         <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 14px;">
-            <h4 style="margin: 0 0 10px 0; font-size: 13px; font-weight: 700; color: #fff;">
-                Sinal &amp; Gravação dos Veículos (${audit.canais ? audit.canais.length : 0} canais)
-            </h4>
-            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <h4 style="margin: 0; font-size: 13px; font-weight: 700; color: #fff;">
+                    Sinal &amp; Gravação dos Veículos (${audit.canais ? audit.canais.length : 0} canais)
+                </h4>
+                <div style="font-size: 11px; color: #94a3b8;">
+                    TV: Lock + SNR RF | Rádios: Gravação Contínua Sonifex/Stream
+                </div>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px;">
     `;
 
-    if (audit.canais) {
+    if (audit.canais && audit.canais.length > 0) {
         audit.canais.forEach(ch => {
-            const hasOut = ch.has_outage || ch.qualidade === 0;
-            const borderCol = hasOut ? "#ef4444" : "#10b981";
+            const isRadio = !!ch.is_radio;
+            const isRec = (ch.gravando || "").toUpperCase() === "SIM";
+            
+            // Regra Ferrea: Radio gravando == nominal verde! TV avalia outage / qualidade
+            let hasOut = false;
+            let statusBadge = "";
+            let borderCol = "#10b981";
+
+            if (isRadio) {
+                if (isRec) {
+                    hasOut = false;
+                    statusBadge = `<span class="badge" style="background:#10b98122; color:#34d399; border:1px solid #10b981; font-size:9px;">Áudio OK (Sonifex)</span>`;
+                    borderCol = "#10b981";
+                } else {
+                    hasOut = true;
+                    statusBadge = `<span class="badge" style="background:#ef444422; color:#f87171; border:1px solid #ef4444; font-size:9px;">Sem Gravação Áudio</span>`;
+                    borderCol = "#ef4444";
+                }
+            } else {
+                hasOut = !!ch.has_outage;
+                borderCol = hasOut ? "#ef4444" : "#10b981";
+                statusBadge = hasOut 
+                    ? `<span class="badge" style="background:#ef444422; color:#f87171; border:1px solid #ef4444; font-size:9px;">Queda Sinal/Lock</span>`
+                    : `<span class="badge" style="background:#10b98122; color:#34d399; border:1px solid #10b981; font-size:9px;">Lock OK (TV)</span>`;
+            }
+
             html += `
                 <div style="background: rgba(0,0,0,0.3); border: 1px solid ${borderCol}44; border-left: 3px solid ${borderCol}; border-radius: 6px; padding: 8px 10px; font-size: 11px;">
-                    <div style="font-weight: 700; color: #fff; margin-bottom: 2px;">${escapeHtml(ch.canal)}</div>
-                    <div style="display: flex; justify-content: space-between; color: #94a3b8;">
-                        <span>Q: <strong style="color: ${ch.qualidade >= 50 ? '#34d399' : '#f87171'};">${ch.qualidade}%</strong></span>
-                        <span>Lock: <strong>${escapeHtml(ch.status_tuner)}</strong></span>
-                        <span>Grav: <strong>${escapeHtml(ch.gravando)}</strong></span>
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px;">
+                        <span style="font-weight: 700; color: #fff; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(ch.canal)}">
+                            ${isRadio ? '📻' : '📺'} ${escapeHtml(ch.canal)}
+                        </span>
+                        ${statusBadge}
+                    </div>
+                    <div style="display: flex; justify-content: space-between; color: #94a3b8; font-size: 10px;">
+                        <span>CS: <strong style="color: #cbd5e1;">${escapeHtml(ch.cs || 'CS01')}</strong></span>
+                        <span>${isRadio ? 'Áudio' : 'Q'}: <strong style="color: ${isRadio ? (isRec ? '#34d399' : '#f87171') : (ch.qualidade >= 50 ? '#34d399' : '#f87171')};">${isRadio ? (isRec ? 'Nominal' : 'Mudo') : ch.qualidade + '%'}</strong></span>
+                        <span>Grav: <strong style="color: ${isRec ? '#34d399' : '#f87171'};">${escapeHtml(ch.gravando || 'Não')}</strong></span>
                     </div>
                 </div>
             `;
         });
+    } else {
+        html += `
+            <div style="grid-column: 1 / -1; text-align: center; color: #94a3b8; padding: 20px;">
+                Nenhum veículo associado a este Capture Site específico.
+            </div>
+        `;
     }
 
     html += `
@@ -206,7 +370,7 @@ async function triggerAiPipelineAction(stepInfo) {
     if (!stepInfo || !stepInfo.action_type) return;
 
     if (stepInfo.action_type === "reaudit") {
-        await runPracaAudit();
+        await runPracaAudit(currentPracaName, currentPracaAuditTargetCs);
         return;
     }
 
@@ -235,7 +399,7 @@ async function triggerAiPipelineAction(stepInfo) {
             const data = await resp.json();
             if (data.success) {
                 alert(`✅ Reset de Sincronização Concluído com Sucesso!\n\n${data.message}`);
-                setTimeout(runPracaAudit, 4000);
+                setTimeout(() => runPracaAudit(currentPracaName, currentPracaAuditTargetCs), 4000);
             } else {
                 alert(`⚠️ Atenção: ${data.message || 'Falha ao acionar reset.'}`);
             }
@@ -259,8 +423,7 @@ async function triggerAiPipelineAction(stepInfo) {
             const data = await resp.json();
             if (resp.ok) {
                 alert(`✅ Sucesso!\n\n${data.message || 'Auto-cura executada com sucesso.'}`);
-                // Reaudita apos 5 segundos
-                setTimeout(runPracaAudit, 4000);
+                setTimeout(() => runPracaAudit(currentPracaName, currentPracaAuditTargetCs), 4000);
             } else {
                 alert(`❌ Erro ao executar auto-cura: ${data.detail || data.message || 'Falha no comando.'}`);
             }

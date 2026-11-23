@@ -18392,9 +18392,9 @@
 
 
 
-  <script src="/static/js/app.js?v=3.9.87"></script>
+  <script src="/static/js/app.js?v=3.9.88"></script>
 
-  <script src="/static/js/ai_insights.js?v=3.9.84"></script>
+  <script src="/static/js/ai_insights.js?v=3.9.88"></script>
 
   <script src="/static/js/fleet_ops.js?v=3.9.86"></script>
 
@@ -19370,6 +19370,58 @@
   </div>
 
   <!-- ============================================================== -->
+  <!-- MODAL: ANÁLISE FORENSE DE CPU & RECURSOS DE HARDWARE (24h/7d/30d) -->
+  <!-- ============================================================== -->
+  <div class="modal-overlay" id="modalCpuHistory" style="display: none; align-items: center; justify-content: center; z-index: 10046; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.88); backdrop-filter: blur(6px);">
+    <div class="modal-content" style="max-width: 920px; width: 95%; max-height: 92vh; background: #070d1e; border: 1px solid #38bdf8; border-radius: 12px; box-shadow: 0 25px 60px rgba(0, 0, 0, 0.95); padding: 22px; display: flex; flex-direction: column;">
+      
+      <!-- Header do Modal -->
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid rgba(255, 255, 255, 0.1); padding-bottom: 12px; margin-bottom: 14px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 26px;">⚡</span>
+          <div>
+            <h4 style="margin: 0; font-size: 17px; font-weight: 800; color: #f8fafc; display: flex; align-items: center; gap: 8px;">
+              Análise Forense de CPU &amp; Recursos de Hardware
+              <span id="cpuHistoryModalHostBadge" class="badge badge-blue" style="font-size: 10px;">HOST</span>
+            </h4>
+            <div id="cpuHistoryModalSub" style="font-size: 11px; color: #38bdf8; margin-top: 2px;">
+              Auditoria de curva temporal de CPU, detecção de falsos picos estáticos e telemetria de processos
+            </div>
+          </div>
+        </div>
+        <button type="button" class="btn-secondary" onclick="closeCpuHistoryModal()" style="padding: 4px 10px;">✕</button>
+      </div>
+
+      <!-- Barra de Filtros de Período (24h / 7d / 30d) -->
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; background: rgba(15, 23, 42, 0.7); padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.08);">
+        <div style="display: flex; gap: 8px;" id="cpuHistoryPeriodButtons">
+          <button type="button" class="btn-tab-period" id="btnPeriod24h" onclick="changeCpuHistoryPeriod('24h')" style="padding: 5px 14px; font-size: 11px; font-weight: 700; border-radius: 6px; cursor: pointer; border: 1px solid #38bdf8; background: linear-gradient(135deg, #2563eb, #0284c7); color: #fff;">
+            ⏱️ Hoje (24 Horas)
+          </button>
+          <button type="button" class="btn-tab-period" id="btnPeriod7d" onclick="changeCpuHistoryPeriod('7d')" style="padding: 5px 14px; font-size: 11px; font-weight: 700; border-radius: 6px; cursor: pointer; border: 1px solid rgba(255, 255, 255, 0.15); background: rgba(30, 41, 59, 0.7); color: #cbd5e1;">
+            📅 Últimos 7 Dias
+          </button>
+          <button type="button" class="btn-tab-period" id="btnPeriod30d" onclick="changeCpuHistoryPeriod('30d')" style="padding: 5px 14px; font-size: 11px; font-weight: 700; border-radius: 6px; cursor: pointer; border: 1px solid rgba(255, 255, 255, 0.15); background: rgba(30, 41, 59, 0.7); color: #cbd5e1;">
+            📆 Últimos 30 Dias
+          </button>
+        </div>
+        <div style="font-size: 11px; color: #94a3b8;">
+          <i class="fas fa-microchip"></i> Limiar de Alerta Sustentado: <strong style="color: #ef4444;">&gt; 90% contínuo por &gt; 5 min</strong>
+        </div>
+      </div>
+
+      <!-- Container de Conteúdo Forense com Scroll -->
+      <div id="cpuHistoryContainer" style="flex: 1; overflow-y: auto; padding-right: 4px; min-height: 380px;">
+        <div style="text-align: center; padding: 60px 20px; color: #38bdf8;">
+          <i class="fas fa-spinner fa-spin fa-2x"></i>
+          <div style="margin-top: 12px; font-weight: 700;">Carregando telemetria temporal de CPU...</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ============================================================== -->
   <!-- MODAL: GRUPOS PERSONALIZADOS DE VEÍCULOS & CANAIS NO MOSAICO   -->
   <!-- ============================================================== -->
   <div class="modal-overlay" id="modalCustomMosaicGroups" style="display: none; align-items: center; justify-content: center; z-index: 10040; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(4px);">
@@ -19516,8 +19568,8 @@
     </div>
   </div>
 
-  <script src="/static/js/detection_monitor.js?v=3.9.84"></script>
-  <script src="/static/js/praca_analyzer.js?v=1.0.0"></script>
+  <script src="/static/js/detection_monitor.js?v=3.9.88"></script>
+  <script src="/static/js/praca_analyzer.js?v=3.9.88"></script>
 
 </body>
 

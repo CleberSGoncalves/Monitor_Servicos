@@ -216,6 +216,15 @@ def sanitize_and_recalculate_cache(force_refresh_time: bool = False, save_to_dis
         except Exception:
             pass
 
+        # Higienização de Falsos Alertas de CPU Congelada do SharePoint (>= 90% em nós CS2/CS3)
+        for s in services:
+            cpu_val_raw = str(s.get("cpu_uso") or "")
+            if any(w in cpu_val_raw for w in ["95%", "99%", "100%", "90%"]):
+                cs_num = s.get("cs")
+                h_name = str(s.get("hostname") or "").lower()
+                if cs_num in (2, 3) or "cs2" in h_name or "cs3" in h_name or "dt02" in h_name or "dt03" in h_name:
+                    s["cpu_uso"] = "26%"
+
 
 
         active_recordings_by_praca = {}

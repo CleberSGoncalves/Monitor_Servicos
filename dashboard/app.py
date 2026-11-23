@@ -3268,14 +3268,15 @@ async def praca_list_endpoint(user: dict = Depends(get_current_user)):
 
 
 @app.get("/api/fleet/praca/audit/{praca_nome}")
-async def praca_audit_endpoint(praca_nome: str, user: dict = Depends(get_current_user)):
+async def praca_audit_endpoint(praca_nome: str, cs: Optional[str] = "ALL", user: dict = Depends(get_current_user)):
     """
     Executa o Raio-X forense determinístico de todos os Capture Sites da praça
     (CS01, CS02, CS03, canais, tuners, esteira de detecção, base SGG e WCF).
+    Permite filtrar por nó específico: cs=CS01, cs=CS02, cs=CS03 ou cs=ALL.
     """
     try:
         from praca_analyzer import audit_praca_ecosystem
-        res = audit_praca_ecosystem(praca_nome)
+        res = audit_praca_ecosystem(praca_nome, selected_cs=cs)
         return res
     except Exception as e:
         logger.error(f"[PracaAnalyzer] Erro ao auditar praça {praca_nome}: {e}", exc_info=True)
@@ -3284,6 +3285,7 @@ async def praca_audit_endpoint(praca_nome: str, user: dict = Depends(get_current
 
 class PracaAiSolutionRequest(BaseModel):
     praca: str
+    selected_cs: Optional[str] = "ALL"
 
 @app.post("/api/fleet/praca/ai-solution")
 async def praca_ai_solution_endpoint(payload: PracaAiSolutionRequest, user: dict = Depends(get_current_user)):
@@ -3294,11 +3296,25 @@ async def praca_ai_solution_endpoint(payload: PracaAiSolutionRequest, user: dict
     """
     try:
         from praca_analyzer import audit_praca_ecosystem, generate_ai_solutions_plan
-        audit_res = audit_praca_ecosystem(payload.praca)
+        audit_res = audit_praca_ecosystem(payload.praca, selected_cs=payload.selected_cs or "ALL")
         solutions_plan = generate_ai_solutions_plan(audit_res)
         return solutions_plan
     except Exception as e:
         logger.error(f"[PracaAnalyzer] Erro ao gerar soluções para praça {payload.praca}: {e}", exc_info=True)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
+@app.get("/api/fleet/host/cpu-history/{hostname}")
+async def host_cpu_history_endpoint(hostname: str, period: str = "24h", user: dict = Depends(get_current_user)):
+    """
+    Retorna telemetria histórica de CPU, RAM e processos para análise forense no modal de Hardware.
+    Permite filtrar por: 24h, 7d, 30d.
+    """
+    try:
+        from cpu_history_service import get_host_cpu_history
+        return get_host_cpu_history(hostname, period)
+    except Exception as e:
+        logger.error(f"[CpuHistory] Erro ao obter histórico de {hostname}: {e}", exc_info=True)
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 
