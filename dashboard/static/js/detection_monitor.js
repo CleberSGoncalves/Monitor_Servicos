@@ -2458,8 +2458,11 @@ function openFmHowToModal(hostname, condition) {
             </button>
         `;
         secondaryActionBtn = `
+            <button type="button" onclick="triggerFmRemoteRemediation('${hostname}', 'mediadna_reset_sync', this)" style="background: linear-gradient(135deg, #0284c7, #0ea5e9); color: #fff; border: none; padding: 8px 14px; border-radius: 6px; font-weight: 700; font-size: 11px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; box-shadow: 0 2px 8px rgba(14, 165, 233, 0.4);">
+                <span>🌐</span> Reset Portal MediaDNA
+            </button>
             <button type="button" onclick="triggerFmRemoteRemediation('${hostname}', 'sync_sgg', this)" style="background: rgba(147, 51, 234, 0.2); color: #c084fc; border: 1px solid rgba(147, 51, 234, 0.4); padding: 8px 14px; border-radius: 6px; font-weight: 700; font-size: 11px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;">
-                <span>🔄</span> Forçar Sincronismo SGG
+                <span>🔄</span> Forçar Sincronismo SGG Local
             </button>
         `;
     }
@@ -2747,6 +2750,57 @@ async function triggerFmRemoteRemediation(hostname, actionType, btnEl) {
         } catch (err) {
             if (execStatus) {
                 execStatus.innerHTML = `<span style="color: #f87171; font-weight: 800;">❌ Falha na execução da auto-cura: ${err.message}</span>`;
+            }
+            if (execOutput) {
+                execOutput.textContent += `\n\n[ERRO]: ${err.message}`;
+            }
+        }
+        return;
+    } else if (actionType === "mediadna_reset_sync") {
+        const userPrompt = prompt(`Reset de Sincronização no Portal MediaDNA para ${hostname}.\n\nInforme o usuário de login no portal (necessário perfil de acesso ao menu Hosts, ex: Cleber Gonçalves):`, "svc.captacao");
+        if (!userPrompt) return;
+        const passPrompt = prompt(`Informe a senha do usuário ${userPrompt}:`, "Acount@!2026");
+        if (!passPrompt) return;
+
+        if (execStatus) {
+            execStatus.innerHTML = `
+                <div style="width: 14px; height: 14px; border: 2px solid #38bdf8; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite;"></div>
+                <span>Executando automação Playwright no portal MediaDNA...</span>
+            `;
+        }
+        if (execOutput) {
+            execOutput.textContent = `[MediaDNA Spot Sync] Conectando a https://mediadna.ibope.com...\nHost: ${hostname}\nUsuário: ${userPrompt}\nHorário: ${new Date().toLocaleTimeString('pt-BR')}`;
+        }
+        try {
+            const resp = await fetch("/api/fleet/mediadna/reset-sync", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    host_query: hostname,
+                    cs_hostname: hostname,
+                    username: userPrompt,
+                    password: passPrompt,
+                    trigger_remote_heal: true
+                })
+            });
+            const data = await resp.json();
+            if (data.success) {
+                if (execStatus) {
+                    execStatus.innerHTML = `<span style="color: #86efac; font-weight: 800;">✅ Reset MediaDNA executado com sucesso!</span>`;
+                }
+                if (execOutput) {
+                    execOutput.textContent = `[Sucesso]: ${data.message}\n\nLogs de Execução:\n` + (data.logs || []).join("\n");
+                }
+                const footerStatus = document.getElementById("fmHowToModalFooterStatus");
+                if (footerStatus) {
+                    footerStatus.innerHTML = `<span style="color: #86efac; font-weight: 700;">✅ Reset MediaDNA executado para ${hostname}</span>`;
+                }
+            } else {
+                throw new Error(data.message || "Erro na automação do portal");
+            }
+        } catch (err) {
+            if (execStatus) {
+                execStatus.innerHTML = `<span style="color: #f87171; font-weight: 800;">❌ Falha no Reset MediaDNA: ${err.message}</span>`;
             }
             if (execOutput) {
                 execOutput.textContent += `\n\n[ERRO]: ${err.message}`;

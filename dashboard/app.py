@@ -3215,6 +3215,44 @@ async def safe_heal_endpoint(payload: SafeHealRequest, user: dict = Depends(get_
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 
+class MediaDNAResetSyncRequest(BaseModel):
+    host_query: str
+    cs_hostname: Optional[str] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
+    trigger_remote_heal: Optional[bool] = True
+
+@app.post("/api/fleet/mediadna/reset-sync")
+async def mediadna_reset_sync_endpoint(payload: MediaDNAResetSyncRequest, user: dict = Depends(get_current_user)):
+    """
+    Executa a automação headless no portal MediaDNA para acionar 'Reset Sincronização'
+    e opcionalmente despacha a auto-cura no CS01 para re-sincronizar os spots via WCF.
+    """
+    try:
+        from mediadna_spot_sync import run_mediadna_reset_sync
+        res = run_mediadna_reset_sync(
+            host_query=payload.host_query,
+            username=payload.username,
+            password=payload.password
+        )
+        
+        # Se teve sucesso no portal e foi solicitado disparo remoto no CS01:
+        if res.get("success") and payload.trigger_remote_heal and payload.cs_hostname:
+            from detection_safe_heal import execute_safe_detection_heal
+            heal_res = execute_safe_detection_heal(
+                hostname=payload.cs_hostname,
+                mode="fastmatching_recon_fix",
+                user=user
+            )
+            res["remote_heal"] = heal_res
+            res["message"] += f" Auto-Cura remota acionada no CS01 ({payload.cs_hostname}) para download dos novos spots via ConfigMonitorSVC."
+        
+        return res
+    except Exception as e:
+        logger.error(f"[MediaDNASpotSync] Erro ao executar reset de sincronização: {e}", exc_info=True)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
 # ==============================================================================
 # FASE 2: AUDITORIA DE PRAÇA & CENTRAL DE SOLUÇÕES INTELIGENTE (PLAYBOOKS N1)
 # ==============================================================================

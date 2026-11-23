@@ -210,6 +210,41 @@ async function triggerAiPipelineAction(stepInfo) {
         return;
     }
 
+    if (stepInfo.action_type === "mediadna_reset_sync") {
+        const payload = stepInfo.action_payload || {};
+        const hostQuery = payload.host_query || payload.praca || "";
+        const csHost = payload.cs_hostname || payload.hostname || "";
+
+        const userPrompt = prompt(`Reset de Sincronização no Portal MediaDNA para '${hostQuery}'.\n\nInforme o usuário de login no portal (com perfil de acesso ao menu Hosts, ex: Cleber Gonçalves):`, "svc.captacao");
+        if (!userPrompt) return;
+        const passPrompt = prompt(`Informe a senha do usuário ${userPrompt}:`, "Acount@!2026");
+        if (!passPrompt) return;
+
+        try {
+            const resp = await fetch("/api/fleet/mediadna/reset-sync", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    host_query: hostQuery,
+                    cs_hostname: csHost,
+                    username: userPrompt,
+                    password: passPrompt,
+                    trigger_remote_heal: true
+                })
+            });
+            const data = await resp.json();
+            if (data.success) {
+                alert(`✅ Reset de Sincronização Concluído com Sucesso!\n\n${data.message}`);
+                setTimeout(runPracaAudit, 4000);
+            } else {
+                alert(`⚠️ Atenção: ${data.message || 'Falha ao acionar reset.'}`);
+            }
+        } catch (err) {
+            alert(`Erro na requisição MediaDNA: ${err.message}`);
+        }
+        return;
+    }
+
     if (stepInfo.action_type === "safe_heal") {
         const payload = stepInfo.action_payload || {};
         const conf = confirm(`Deseja executar a ação:\n"${stepInfo.title}" no host ${payload.hostname}?\n\nEsta ação preserva 100% dos arquivos de áudio (.EMU).`);

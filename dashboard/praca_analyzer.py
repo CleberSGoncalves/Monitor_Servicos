@@ -287,12 +287,24 @@ def generate_ai_solutions_plan(audit_data: Dict[str, Any]) -> Dict[str, Any]:
     if has_recon_zero and cs01_host:
         steps.append({
             "step": step_num,
+            "title": "Reset de Sincronização no Portal MediaDNA (Reset Sincronização)",
+            "why": "Reinicializa o ponteiro de sincronização de spots no servidor central da Kantar IBOPE (https://mediadna.ibope.com). Ao reiniciar o ConfigMonitorSVC, o CS01 recebe o catálogo completo de spots .mdna do zero.",
+            "action_type": "mediadna_reset_sync",
+            "action_payload": {"praca": praca, "host_query": praca, "cs_hostname": cs01_host},
+            "btn_label": "🌐 Resetar Sincronização no Portal MediaDNA",
+            "btn_style": "btn-danger",
+            "estimated_time": "25 segundos"
+        })
+        step_num += 1
+
+        steps.append({
+            "step": step_num,
             "title": "Recuperar Base de Fingerprints do FastMatching (Fix recon=0 & Resync SGG)",
             "why": "O FastMatchingSvc está ativo mas operando ocioso (RAM ~22MB) com 'recon=0' (nenhum spot comercial em memória). Esta ação audita o FastMatchingSvc.ini, força o download de templates .mdna via ConfigMonitorSVC e recarrega os spots no motor.",
             "action_type": "safe_heal",
             "action_payload": {"hostname": cs01_host, "mode": "fastmatching_recon_fix"},
-            "btn_label": "⚡ Executar Correção FastMatching (recon=0)",
-            "btn_style": "btn-danger",
+            "btn_label": "⚡ Executar Correção FastMatching Local",
+            "btn_style": "btn-primary",
             "estimated_time": "30 segundos"
         })
         step_num += 1
