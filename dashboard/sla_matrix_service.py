@@ -109,6 +109,14 @@ def get_fleet_sla_matrix(
     # 2. Agrupa serviços e canais por host
     hosts_dict: Dict[str, Dict[str, Any]] = {}
 
+    # Carrega mapa de heartbeats frescos do Firestore para enriquecer telemetria ao vivo
+    gcp_hosts_map = {}
+    try:
+        from gcp_sync import _cached_firestore_hosts, _fetch_firestore_hosts_rest
+        gcp_hosts_map = _cached_firestore_hosts or _fetch_firestore_hosts_rest() or {}
+    except Exception:
+        pass
+
     for s in services:
         h = s.get("hostname")
         if not h or h == "N/A":
@@ -160,12 +168,13 @@ def get_fleet_sla_matrix(
             except Exception:
                 pass
 
-    # Associa canais ao host
+    # Associa canais ao host e aproveita frescor de telemetria dos tuners
     for c in channels:
         ch_h = (c.get("hostname") or c.get("host") or "").strip()
         ch_p = (c.get("cidade") or c.get("praca") or "").strip().lower()
+        target_info = None
         if ch_h and ch_h in hosts_dict:
-            hosts_dict[ch_h]["channels"].append(c)
+            target_info = hosts_dict[ch_h]
         else:
             # Fallback por praça e tier
             c_name = c.get("canal", "")
@@ -173,8 +182,37 @@ def get_fleet_sla_matrix(
             target_cs = 3 if is_rad else (2 if ("02" in ch_h or "cs2" in ch_h.lower()) else 1)
             for h_k, info in hosts_dict.items():
                 if info["praca"].strip().lower() == ch_p and info["cs"] == target_cs:
-                    info["channels"].append(c)
+                    target_info = info
                     break
+        if target_info:
+            target_info["channels"].append(c)
+            up_ch = str(c.get("atualizacao") or c.get("ultima_atualizacao") or "").strip()
+            if up_ch:
+                try:
+                    dt_ch = datetime.fromisoformat(up_ch.replace("Z", "+00:00"))
+                    if dt_ch.tzinfo is None:
+                        dt_ch = dt_ch.replace(tzinfo=timezone.utc)
+                    if target_info["latest_keepalive_dt"] is None or dt_ch > target_info["latest_keepalive_dt"]:
+                        target_info["latest_keepalive_dt"] = dt_ch
+                        target_info["latest_keepalive_str"] = up_ch
+                except Exception:
+                    pass
+
+    # Enriquece com telemetria viva do Firestore se disponível
+    for h, info in hosts_dict.items():
+        doc = gcp_hosts_map.get(h.upper()) or gcp_hosts_map.get(info.get("raw_hostname", "").upper())
+        if doc and isinstance(doc, dict):
+            hb_doc = str(doc.get("last_heartbeat") or doc.get("updated_at") or doc.get("channels_updated_at") or "").strip()
+            if hb_doc:
+                try:
+                    dt_gcp = datetime.fromisoformat(hb_doc.replace("Z", "+00:00"))
+                    if dt_gcp.tzinfo is None:
+                        dt_gcp = dt_gcp.replace(tzinfo=timezone.utc)
+                    if info["latest_keepalive_dt"] is None or dt_gcp > info["latest_keepalive_dt"]:
+                        info["latest_keepalive_dt"] = dt_gcp
+                        info["latest_keepalive_str"] = hb_doc
+                except Exception:
+                    pass
 
     # 3. Constrói linhas da matriz
     rows = []
@@ -200,11 +238,17 @@ def get_fleet_sla_matrix(
         # A) KA - KeepAlive Delay (minutos)
         # ---------------------------------------------------------
         ka_delay = 0
+        raw_ka_delay = 0
         if info["latest_keepalive_dt"]:
             diff_sec = (now_dt - info["latest_keepalive_dt"]).total_seconds()
-            ka_delay = max(0, int(diff_sec / 60))
+            raw_ka_delay = max(0, int(diff_sec / 60))
         else:
-            ka_delay = 9999
+            raw_ka_delay = 9999
+
+        # Tolerância Operacional de Heartbeat:
+        # O agente local possui ciclo normal de dirty check de 15 a 18 min para atualizar a lista do SharePoint.
+        # Logo, qualquer intervalo <= 25 min é nominal (renderizado como '-' sem alerta).
+        ka_delay = raw_ka_delay if raw_ka_delay > 25 else 0
 
         # ---------------------------------------------------------
         # B) MP3 ARC (Áudio: Atraso Real no Recebimento de Arquivos de 30min)
@@ -354,7 +398,7 @@ def get_fleet_sla_matrix(
         # H) Determina Criticidade / Status Global (C)
         # ---------------------------------------------------------
         operational_delays = []
-        if ka_delay > 15:
+        if ka_delay > 0:
             operational_delays.append(ka_delay)
         if mp3_arc_delay > 15:
             operational_delays.append(mp3_arc_delay)
@@ -413,7 +457,7 @@ def get_fleet_sla_matrix(
             "max_delay_min": max_delay,
             "has_delays": max_delay > 15,
             # Métricas numéricas de arquivos (0 = nominal / sem atraso, renderizado como '-' limpo)
-            "ka_delay_min": ka_delay if ka_delay > 15 else 0,
+            "ka_delay_min": ka_delay,
             "mp3_arc_min": mp3_arc_delay if mp3_arc_delay > 15 else 0,
             "asf_arc_min": asf_arc_delay if asf_arc_delay > 15 else 0,
             "mp4_arc_min": mp4_arc_delay if mp4_arc_delay > 15 else 0,
@@ -452,7 +496,7 @@ def get_fleet_sla_matrix(
         elif filter_category == "media":
             filtered = [r for r in filtered if any(r[k] > 15 for k in ("mp3_arc_min", "asf_arc_min", "mp4_arc_min"))]
         elif filter_category == "wan":
-            filtered = [r for r in filtered if r["wan"]["status"] != "Estável" or r["ka_delay_min"] > 15]
+            filtered = [r for r in filtered if r["wan"]["status"] != "Estável" or r["ka_delay_min"] > 0]
 
     if search:
         s_term = search.strip().lower()

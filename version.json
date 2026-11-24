@@ -1,8 +1,8 @@
 {
-  "version": "3.9.99",
+  "version": "3.9.100",
   "agent_version": "1.0.21.5",
   "commit_sha": "auto",
-  "updated_at": "2026-11-24T03:00:00.000000",
-  "description": "v3.9.99 - Inferência dinâmica e determinística de PayTV / Cabo vs Rádio para CS03; blindagem de canais analógicos TW6802 PCI e erradicação de falsos alertas de sinal RF.",
-  "release_notes": "v3.9.99: Elimina a suposição hardcoded de que todo CS03 é rádio Sonifex. Implementa a inferência operacional dinâmica que classifica com precisão nós dedicados a canais por assinatura como 'PayTV / Cabo' (ex: Nacional CS03 e São Paulo com Telecine, ESPN, etc.) exibindo badge 'CS 3 (PayTV)'. Blinda canais de placas analógicas TW6802 PCI com gravação ativa (.ASF/.MP4) considerando-os 100% saudáveis sem penalização por 'status_tuner = Disconnected' do driver sem BDA. Adiciona proteção contra falso match de rádio AM em nomes de canais como 'AMC'."
+  "updated_at": "2026-11-24T03:45:00.000000",
+  "description": "v3.9.100 - Cria coluna oficial VOL (30m) na Matriz de SLA eliminando coluna sem nome; alinha limiar operacional de Keepalive ao ciclo de dirty check de 15-25m com telemetria viva do Firestore.",
+  "release_notes": "v3.9.100: Cria formalmente a coluna oficial 'VOL (30m)' no thead e nas linhas da Matriz de SLA para abrigar com clareza o volume de mídia gerado por ciclo de 30 minutos (MB/30m) e o tempo de escoamento WAN, erradicando a sensação visual de 'coluna sem nome'. Corrige a causa raiz das oscilações em amarelo no Keepalive (KA): integra o timestamp fresco em tempo real do Google Cloud Firestore e dos sintonizadores, e ajusta a tolerância operacional para <=25 minutos, respeitando fielmente o ciclo de Dirty Check de 15 a 18 minutos do agente C# no SharePoint e evitando falsos alarmes transitórios em máquinas nominais."
 }

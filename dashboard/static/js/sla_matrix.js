@@ -66,7 +66,7 @@ function renderSlaMatrixTable(rows, totalFiltered) {
     if (!rows || rows.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="12" style="text-align: center; padding: 40px; color: #94a3b8;">
+                <td colspan="15" style="text-align: center; padding: 40px; color: #94a3b8;">
                     <i class="fas fa-check-circle" style="color: #34d399; font-size: 24px; margin-bottom: 8px; display: block;"></i>
                     Nenhum host com anomalia para o filtro selecionado. Todos os nós operando dentro do SLA!
                 </td>
@@ -110,7 +110,7 @@ function renderSlaMatrixTable(rows, totalFiltered) {
             cBadge = `<div style="width: 6px; height: 32px; background: #10b981; border-radius: 3px; opacity: 0.5;" title="Nominal"></div>`;
         }
 
-        // Link WAN: Operadora, Volume em MB a cada 30m, Ping e Velocidade de Upload
+        // Link WAN: Operadora, Ping e Velocidade de Upload
         const wan = r.wan || {};
         let wanColor = "#34d399";
         if (wan.status === "Crítico" || wan.status === "critico") wanColor = "#ef4444";
@@ -121,14 +121,20 @@ function renderSlaMatrixTable(rows, totalFiltered) {
 
         const wanHtml = `
             <div style="font-size: 11px; line-height: 1.3;" title="${escapeHtml(wan.operadora || '')} • ${drainTxt}">
-                <div style="display: flex; justify-content: space-between; align-items: center; gap: 4px;">
-                    <span style="color: #cbd5e1; font-weight: 700;">${escapeHtml(wan.operadora || 'Link')}</span>
-                    <span style="color: #38bdf8; font-size: 10px; font-weight: 700; background: rgba(56, 189, 248, 0.12); padding: 1px 5px; border-radius: 4px; border: 1px solid rgba(56, 189, 248, 0.25);" title="Tamanho de arquivos a transmitir a cada bloco de 30 minutos">${vol30m}</span>
-                </div>
+                <div style="color: #cbd5e1; font-weight: 700;">${escapeHtml(wan.operadora || 'Link')}</div>
                 <div style="font-size: 10px; margin-top: 2px;">
                     <span style="color: ${wanColor}; font-weight: 700;">${wan.ping_ms || 25}ms</span> • <span style="color: #94a3b8;">${wan.upload_mbps || 20}M</span>
-                    ${wan.drain_time_min ? ` • <span style="color: #64748b;" title="Tempo estimado de escoamento WAN">${wan.drain_time_min}m</span>` : ''}
                 </div>
+            </div>
+        `;
+
+        // Coluna Dedicada: Volume de Arquivos gerados por ciclo de 30min
+        const volBadge = `
+            <div style="text-align: center; line-height: 1.2;" title="Volume de mídia (MP4/MP3/JPEG) gerado a cada ciclo de 30 minutos • ${drainTxt}">
+                <span style="color: #38bdf8; font-size: 10px; font-weight: 700; background: rgba(56, 189, 248, 0.12); padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(56, 189, 248, 0.25); display: inline-block;">
+                    ${vol30m}
+                </span>
+                ${wan.drain_time_min ? `<div style="font-size: 9px; color: #64748b; margin-top: 2px;" title="Tempo estimado de escoamento WAN">${wan.drain_time_min}m escoam.</div>` : ''}
             </div>
         `;
 
@@ -196,6 +202,7 @@ function renderSlaMatrixTable(rows, totalFiltered) {
                 <td style="padding: 6px 8px; text-align: center; vertical-align: middle;">${fmtDelay(r.mp4_arc_min)}</td>
                 <td style="padding: 6px 8px; text-align: center; vertical-align: middle;">${fmtDelay(r.dt_delay_min, true)}</td>
                 <td style="padding: 6px 8px; vertical-align: middle;">${wanHtml}</td>
+                <td style="padding: 6px 8px; text-align: center; vertical-align: middle;">${volBadge}</td>
                 <td style="padding: 6px 8px; text-align: center; vertical-align: middle;">${cpuBadge}</td>
                 <td style="padding: 6px 8px; text-align: center; vertical-align: middle;">${ramBadge}</td>
                 <td style="padding: 6px 8px; text-align: center; vertical-align: middle;">${discoBadge}</td>
