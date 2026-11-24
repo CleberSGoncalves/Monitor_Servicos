@@ -1,8 +1,8 @@
 {
-  "version": "3.9.102",
+  "version": "3.9.103",
   "agent_version": "1.0.21.5",
   "commit_sha": "auto",
-  "updated_at": "2026-11-24T05:00:00.000000",
-  "description": "v3.9.102 - Alinha auditoria forense do Raio-X com o Keepalive real; penaliza nós desconectados (Vitória da Conquista) e elimina inconsistência com a Matriz de SLA.",
-  "release_notes": "v3.9.102: Erradica a inconsistência gritante entre a Matriz de SLA e o Raio-X Forense de Praças. Corrige a causa raiz em praca_analyzer.py onde o Estágio 1 avaliava apenas a presença estática da versão do agente em vez da idade real da telemetria. Agora, nós sem heartbeat há mais de 1 hora (ex: Vitória da Conquista com KA=625m) têm o Estágio 1 marcado imediatamente como CRÍTICO ('Desconectado Xm'), o problema HOST_TELEMETRY_DISCONNECTED injetado formalmente, as métricas de hardware suspensas e o Health Score penalizado para o teto crítico (<= 20%)."
+  "updated_at": "2026-11-24T05:30:00.000000",
+  "description": "v3.9.103 - Auditoria e correção definitiva dos incidentes de Detecção Comercial e Esteira de Matching/WCF; higienização de seeds legados (INC-2026-0011), sincronização canônica com tracking_detection_monitor e erradicação de atrasos sintéticos de 320 min.",
+  "release_notes": "v3.9.103: Overhaul definitivo da Central de Incidentes e Matriz de SLA para Detecção Comercial (DT AT). Higieniza incidentes estáticos de seed em incident_manager.py (INC-2026-0011 com menção indevida a CS 3 e INC-2026-0013 congelados em aberto). Conecta a geração e auto-resolução de incidentes diretamente à autoridade canônica tracking_detection_monitor.build_detection_fleet_snapshot(), garantindo que incidentes de STALLED (despacho WCF represado), CRITICAL (motores inoperantes em CS01) e CONFLICT reflitam métricas de tempo real sem discrepâncias com a Matriz de SLA. Erradica contaminação de keepalive que gerava 320 min sintéticos e corrige a resolução de Uruguaiana CS01 (FastMatching nominal)."
 }

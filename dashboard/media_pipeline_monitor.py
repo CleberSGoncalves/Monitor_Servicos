@@ -78,11 +78,13 @@ def scan_local_pipeline_media(threshold_sent_delay_min: float = 10.0) -> List[Di
 
                         is_sent = "_sent" in lower_name
                         
-                        # Extrai PV (Código do canal) e CS do padrão MediaDNA: H{Host}_PV{Canal}_{DataInicio}_{Slot}_{DataFim}_{Flags}_SZ{Size}_{CS}.ext
+                        # Extrai PV (Código do canal), CS e HostID do padrão MediaDNA: H{Host}_PV{Canal}_{DataInicio}_{Slot}_{DataFim}_{Flags}_SZ{Size}_{CS}.ext
                         pv_match = re.search(r'(?:PV|V)(\d+)', name, re.IGNORECASE)
                         cs_match = re.search(r'CS(\d+)', name, re.IGNORECASE)
+                        h_match = re.search(r'(?:^|[_\W])H(\d+)', name, re.IGNORECASE)
                         pv_code = pv_match.group(1) if pv_match else "N/A"
                         cs_id = int(cs_match.group(1)) if cs_match else 1
+                        host_id = h_match.group(1) if h_match else None
 
                         # Identifica se o arquivo está com atraso de transmissão (não mudou para .SENT após o limiar)
                         is_delayed = (not is_sent) and (age_min > threshold_sent_delay_min)
@@ -98,6 +100,7 @@ def scan_local_pipeline_media(threshold_sent_delay_min: float = 10.0) -> List[Di
                             "media_type": effective_media_type,
                             "pv_code": pv_code,
                             "cs_id": cs_id,
+                            "host_id": host_id,
                             "size_mb": size_mb,
                             "mtime": mtime,
                             "age_minutes": age_min,
@@ -108,6 +111,69 @@ def scan_local_pipeline_media(threshold_sent_delay_min: float = 10.0) -> List[Di
                 print(f"[MediaPipelineScanner] Aviso ao escanear {folder}: {e}")
 
     return results
+
+
+def resolve_pipeline_file_location(f: Dict[str, Any], services: list = None, channels: list = None) -> tuple[str, str]:
+    """
+    Determina dinamicamente a praça e o hostname reais de um arquivo local de pipeline de mídia.
+    Elimina a atribuição errônea fixa a 'Pelotas' (BRRS-PLT-DT01), inspecionando:
+    1. host_id extraído do prefixo H{HostID} do arquivo MediaDNA.
+    2. pv_code mapeado contra a lista oficial de canais da frota.
+    3. Hostname local do sistema operacional como fallback inteligente.
+    """
+    import socket
+    local_host = socket.gethostname()
+    host_id = f.get("host_id")
+    pv_code = f.get("pv_code")
+    cs_id = f.get("cs_id", 1)
+
+    # 1. Busca por host_id nos serviços
+    if host_id and services:
+        for s in services:
+            s_hid = str(s.get("id_host") or "").split(".")[0]
+            s_name = s.get("hostname") or ""
+            if s_hid == str(host_id) or f"-{host_id}-" in s_name or f"_{host_id}_" in s_name:
+                p = s.get("praca") or ""
+                if p:
+                    return p, s_name
+
+    # 2. Busca por host_id nos canais
+    if host_id and channels:
+        for c in channels:
+            c_hid = str(c.get("id_host") or "").split(".")[0]
+            if c_hid == str(host_id):
+                p = c.get("cidade") or c.get("praca") or ""
+                h = c.get("host") or c.get("hostname") or ""
+                if p:
+                    if not h:
+                        h = f"CS-{p[:3].upper()}-0{cs_id}"
+                    return p, h
+
+    # 3. Busca por pv_code nos canais
+    if pv_code and pv_code != "N/A" and channels:
+        for c in channels:
+            cid = str(c.get("id") or "")
+            c_pv = str(c.get("id_canal") or "")
+            t_id = str(c.get("tuner_id") or "")
+            ch_name = str(c.get("canal") or "")
+            if pv_code in (cid, c_pv, t_id) or f"PV{pv_code}" in ch_name or f"V{pv_code}" in ch_name:
+                p = c.get("cidade") or c.get("praca") or ""
+                h = c.get("host") or c.get("hostname") or ""
+                if p:
+                    if not h:
+                        h = f"CS-{p[:3].upper()}-0{cs_id}"
+                    return p, h
+
+    # 4. Busca por hostname local nos serviços
+    if services:
+        for s in services:
+            if (s.get("hostname") or "").lower() == local_host.lower():
+                p = s.get("praca") or ""
+                if p:
+                    return p, s.get("hostname")
+
+    # 5. Fallback seguro e transparente
+    return "Local", local_host
 
 
 def get_fleet_pipeline_incidents(services: list = None, channels: list = None, threshold_delay_min: float = 10.0, force_refresh: bool = False) -> List[Dict[str, Any]]:
@@ -139,6 +205,9 @@ def get_fleet_pipeline_incidents(services: list = None, channels: list = None, t
         is_asf = f["filename"].lower().endswith(".asf")
         media_desc = "ASF (DNA.MediaConverter BKP)" if is_asf else f["media_type"]
         delay_min_rounded = round(f["age_minutes"])
+        
+        praca_real, host_real = resolve_pipeline_file_location(f, services, channels)
+
         incidents.append({
             "id": f"delay_local_{f['filename']}",
             "type": "atraso_envio_sent",
@@ -147,8 +216,8 @@ def get_fleet_pipeline_incidents(services: list = None, channels: list = None, t
             "severity": severity,
             "badge_label": f"ATRASO .SENT ({delay_min_rounded}min)",
             "title": f"Atraso de Transmissão .SENT • {media_desc}",
-            "praca": "Pelotas",
-            "hostname": "BRRS-PLT-DT01" if f["cs_id"] == 1 else "BRRS-PLT-DT02",
+            "praca": praca_real,
+            "hostname": host_real,
             "cs": f["cs_id"],
             "canal": f"PV{f['pv_code']}",
             "media_type": media_desc,
@@ -162,7 +231,7 @@ def get_fleet_pipeline_incidents(services: list = None, channels: list = None, t
             "description": f"Arquivo de gravação de 30 minutos gerado com {f['size_mb']} MB há {delay_min_rounded} min ainda não foi marcado como .SENT pelo FileTransferSVC.",
             "recommended_action": "Verificar serviço DNA.MediaConverter / FileTransferSVC e rota de upload.",
             "how_to_steps": [
-                "1. [Auditoria de Pastas] Inspecionar 'D:\\MediaDNA_V2\\Data\\video' e 'audio' no host e conferir o arquivo pendente.",
+                f"1. [Auditoria de Pastas] Inspecionar 'D:\\MediaDNA_V2\\Data\\video' e 'audio' no host {host_real} e conferir o arquivo pendente.",
                 "2. [Serviço de Conversão] Confirmar se DNA.MediaConverterSVC está ativo processando os blocos de mídia.",
                 "3. [Despacho WAN] Verificar se DNA.FileTransferSVC está em execução e conectado à rota de upload.",
                 "4. [Link de Internet] Testar a estabilidade e taxa de upload da conexão WAN do parceiro local no CS."
@@ -258,7 +327,7 @@ def get_fleet_pipeline_incidents(services: list = None, channels: list = None, t
                     ]
                 })
 
-            if "mediarecorder" in svc_name and any(w in svc_status for w in ["parado", "stopped", "erro"]) and int(float(cs_id or 1)) != 2:
+            if "mediarecorder" in svc_name and any(w in svc_status for w in ["parado", "stopped", "erro"]) and int(float(cs_id or 1)) not in [2, 3]:
                 # Se o Atria Capture estiver ativo e gravando, MediaRecorder parado é o comportamento nominal esperado!
                 if is_atria_running:
                     continue

@@ -9,6 +9,7 @@ Validação automatizada das regras férreas:
 
 import sys
 from pathlib import Path
+from datetime import datetime, timezone
 sys.path.insert(0, "dashboard")
 
 import pytest
@@ -21,18 +22,22 @@ def test_radio_sonifex_recording_is_nominal_and_not_penalized():
     Rádios não possuem tuner RF digital. qualidade_sinal == 0 é normal.
     Se gravando_mp3 == 'Sim', deve ser classificado como NOMINAL verde e NÃO gerar problema de queda.
     """
+    now_iso = datetime.now(timezone.utc).isoformat()
     mock_cache = {
         "services": [
             {
                 "hostname": "Belo_Horizonte_Radio-SMME-377-CS3",
                 "praca": "Belo Horizonte",
                 "cs": 3,
+                "nome_servico": "DNA.ConfigMonitorSVC",
                 "service_name": "DNA.ConfigMonitorSVC",
                 "status": "Running",
+                "status_servico": "Em Execução",
                 "cpu_uso": "26%",
                 "ram_uso": "4.2 GB",
                 "disco_d_livre": "120 GB",
-                "versao_agente": "1.0.20.0"
+                "versao_agente": "1.0.20.0",
+                "ultima_atualizacao": now_iso
             }
         ],
         "channels": [
@@ -136,29 +141,36 @@ def test_pipeline_stages_integrity():
     """
     Verifica a presença e consistência dos 7 estágios do pipeline forense (incluindo Link WAN).
     """
+    now_iso = datetime.now(timezone.utc).isoformat()
     mock_cache = {
         "services": [
             {
                 "hostname": "Aracaju-SMME-101-CS1",
                 "praca": "Aracaju",
                 "cs": 1,
+                "nome_servico": "FastMatchingSvc",
                 "service_name": "Fast Matching Service",
                 "status": "Running",
+                "status_servico": "Em Execução",
                 "cpu_uso": "35%",
                 "ram_uso": "8.0 GB",
                 "disco_d_livre": "300 GB",
-                "versao_agente": "1.0.20.0"
+                "versao_agente": "1.0.20.0",
+                "ultima_atualizacao": now_iso
             },
             {
                 "hostname": "Aracaju-SMME-101-CS1",
                 "praca": "Aracaju",
                 "cs": 1,
+                "nome_servico": "DNA.ConfigMonitorSVC",
                 "service_name": "DNA.ConfigMonitorSVC",
                 "status": "Running",
+                "status_servico": "Em Execução",
                 "cpu_uso": "35%",
                 "ram_uso": "8.0 GB",
                 "disco_d_livre": "300 GB",
-                "versao_agente": "1.0.20.0"
+                "versao_agente": "1.0.20.0",
+                "ultima_atualizacao": now_iso
             }
         ],
         "channels": [
@@ -173,7 +185,8 @@ def test_pipeline_stages_integrity():
         ]
     }
 
-    with patch("praca_analyzer.get_cached_data", return_value=mock_cache):
+    with patch("praca_analyzer.get_cached_data", return_value=mock_cache), \
+         patch("tracking_detection_monitor.get_fastmatching_node_telemetry", return_value={"catalog_recon_zero": False}):
         audit = audit_praca_ecosystem("Aracaju", selected_cs="CS01")
         stages = audit["pipeline_stages"]
 

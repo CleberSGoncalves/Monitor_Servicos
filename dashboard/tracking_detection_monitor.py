@@ -1463,8 +1463,9 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
         h_upper = hostname.upper()
 
         is_dt02_or_cs2 = (
-            cs_int in (2, 3)
-            or any(tag in h_upper for tag in ["DT02", "DT-02", "DT2", "-02", "CS02", "CS2", "-CS2", "DT03", "DT-03", "DT3", "-03", "CS03", "CS3", "-CS3", "REPUCOM", "NACIONAL_ATRIA", "_RADIOS", "_RADIO"])
+            (cs_int in (2, 3) and cs_int != 1)
+            or (cs_int > 1 and any(tag in h_upper for tag in ["DT02", "DT-02", "DT2", "-02", "CS02", "CS2", "-CS2"]))
+            or any(tag in h_upper for tag in ["DT03", "DT-03", "DT3", "-03", "CS03", "CS3", "-CS3", "REPUCOM", "NACIONAL_ATRIA", "_RADIOS", "_RADIO"])
         )
 
         # Se for fisicamente nó secundário DT02/DT03/CS2/CS3 ou servidor dedicado de rádio/Repucom, descarta do pipeline de detecção CS01
@@ -1472,12 +1473,12 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
             continue
 
         # Normalização canônica determinística {Praca}-SMME-{idHost}-CS1
-        if "-SMME-" in hostname:
+        if "-SMME-" in hostname and not any(tag in hostname.upper() for tag in ["-CS2", "-CS3"]):
             canonical_host = hostname
         else:
             try:
                 from gcp_sync import format_canonical_hostname
-                canonical_host = format_canonical_hostname(praca, s.get("id_host"), 1, hostname)
+                canonical_host = format_canonical_hostname(praca, s.get("id_host"), 1, s.get("raw_hostname") or hostname)
             except Exception:
                 canonical_host = hostname
 

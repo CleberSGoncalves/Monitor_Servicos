@@ -8150,61 +8150,27 @@ async function loadIncidentsHistoryData() {
 
 
             const statBadge = isResolved ? `<span class="badge badge-green">🟢 Resolvido</span>` :
-
-
-
-                              (inc.status === "em_tratamento" ? `<span class="badge badge-purple">🟣 Em Tratamento</span>` : `<span class="badge badge-red">🔴 Aberto</span>`);
-
-
-
-
-
-
+                              (inc.status === "em_tratamento" ? `<span class="badge badge-purple">🟣 Em Tratamento</span>` :
+                              (inc.status === "aguardando_validacao_deteccao" ? `<span class="badge badge-yellow" title="Sinal recuperado. Validando esteira de detecção no CS01">🟡 Gate Anti-Itumbiara</span>` :
+                              `<span class="badge badge-red">🔴 Aberto</span>`));
 
             const isSelected = selectedIncidentCodeForAudit === inc.incident_code;
 
-
-
-
-
-
+            let csLabel = "CS";
+            const hostUpper = (inc.host || "").toUpperCase();
+            if (hostUpper.includes("CS1") || hostUpper.includes("DT01") || hostUpper.includes("DT1") || (inc.target_name || "").includes("CS 1") || (inc.target_name || "").includes("CS01")) csLabel = "CS 1";
+            else if (hostUpper.includes("CS2") || hostUpper.includes("DT02") || hostUpper.includes("DT2") || (inc.target_name || "").includes("CS 2") || (inc.target_name || "").includes("CS02")) csLabel = "CS 2";
+            else if (hostUpper.includes("CS3") || hostUpper.includes("DT03") || hostUpper.includes("DT3") || (inc.target_name || "").includes("CS 3") || (inc.target_name || "").includes("CS03")) csLabel = "CS 3";
 
             return `
-
-
-
                 <tr style="cursor: pointer; ${isSelected ? 'background: rgba(56, 189, 248, 0.12); border-left: 3px solid #38bdf8;' : ''}" onclick="selectIncidentRow('${inc.incident_code}', this)">
-
-
-
                     <td>
-
-
-
                         <strong style="color: #38bdf8; font-family: monospace;">${inc.incident_code}</strong>
-
-
-
                         <div style="font-size: 11px; color: var(--text-muted);">${inc.created_at || ''}</div>
-
-
-
                     </td>
-
-
-
                     <td>
-
-
-
                         <strong>${inc.praca}</strong>
-
-
-
-                        <span class="badge" style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); color: #93c5fd; font-size: 10px; margin-left: 4px;">CS</span>
-
-
-
+                        <span class="badge" style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); color: #93c5fd; font-size: 10px; margin-left: 4px;">${csLabel}</span>
                     </td>
 
 
@@ -8806,45 +8772,25 @@ window.showAllIncidentWorklogs = showAllIncidentWorklogs;
 
 
 function formatIncidentTypeName(type) {
-
-
-
     const map = {
-
-
-
+        "host_offline": "Host Offline / Keepalive",
+        "keepalive_loss": "Ausência de Keepalive / Link",
         "gop_stall": "GOP Stall / Congelamento",
-
-
-
         "rf_outage": "Perda de Sinal RF / Lock",
-
-
-
+        "storage_fault": "Falha de Gravação / Storage",
         "service_stopped": "Parada de Serviço Windows",
-
-
-
+        "detection_engine_stopped": "Motor Detecção Parado (CS01)",
+        "detection_wcf_stalled": "Despacho WCF Represado",
+        "detection_engine_conflict": "Conflito de Motores",
+        "obs_feed_stall": "Congelamento Feed OBS",
+        "radio_carrier_loss": "Perda de Portadora Rádio",
+        "paytv_signal_loss": "Perda de Sinal PayTV",
         "disk_space_low": "Espaço em Disco D: Baixo",
-
-
-
         "audio_drop": "Áudio Mudo / Desvio Lip-Sync",
-
-
-
-        "high_cpu": "Consumo Elevado de CPU"
-
-
-
+        "high_cpu": "Consumo Elevado de CPU",
+        "directshow_frozen_zombie": "Falha DirectShow / Zombie"
     };
-
-
-
     return map[type] || type;
-
-
-
 }
 
 

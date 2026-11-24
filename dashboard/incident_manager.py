@@ -4,8 +4,41 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any, Optional
 from config import DATA_DIR
+from praca_analyzer import (
+    is_radio_channel_type,
+    is_radio_channel_healthy,
+    is_tv_channel_healthy,
+    infer_cs_operational_role
+)
 
 DB_PATH = DATA_DIR / "fleet.db"
+
+
+def _parse_ts_utc(ts_val) -> Optional[datetime]:
+    if not ts_val:
+        return None
+    if isinstance(ts_val, datetime):
+        return ts_val.astimezone(timezone.utc) if ts_val.tzinfo else ts_val.replace(tzinfo=timezone.utc)
+    try:
+        s = str(ts_val).strip()
+        s_clean = re.sub(r'(\.\d{6})\d+', r'\1', s).replace("Z", "+00:00")
+        dt = datetime.fromisoformat(s_clean)
+        return dt.astimezone(timezone.utc) if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    except Exception:
+        return None
+
+
+def _parse_cs(val, default=1) -> int:
+    if val is None:
+        return default
+    try:
+        return int(float(val))
+    except Exception:
+        s = str(val).lower()
+        m = re.search(r'\d+', s)
+        if m:
+            return int(m.group(0))
+        return default
 
 
 def init_incidents_db():
@@ -86,35 +119,39 @@ def init_incidents_db():
             sample_events = [
                 (
                     "INC-2026-0014", "Pelotas", "BRRS-PLT-DT01", "Rede Globo (CS 1)",
-                    "gop_stall", "critico", "aberto", 42,
+                    "gop_stall", "critico", "resolvido", 42,
                     "Congelamento de quadro H.264 por perda de Keyframes (IDR) do multiplexador da afiliada.",
                     "Jitter no buffer de entrada da placa sintonizadora TBS PCIe combinado com descumprimento de GOP padrão (intervalo de IDR superior a 180 quadros pela geradora local).",
                     "Torre Morro da Glória (Afiliada RBS TV Pelotas)", 14.8, 312.4, "suportesmme",
-                    (now - timedelta(hours=2, minutes=15)).strftime("%Y-%m-%d %H:%M:%S"), None
+                    (now - timedelta(hours=2, minutes=15)).strftime("%Y-%m-%d %H:%M:%S"),
+                    (now - timedelta(hours=1, minutes=33)).strftime("%Y-%m-%d %H:%M:%S")
                 ),
                 (
                     "INC-2026-0013", "Pelotas", "BRRS-PLT-DT01", "DNA.DetectionSVC",
-                    "service_stopped", "critico", "aberto", 115,
+                    "service_stopped", "critico", "resolvido", 115,
                     "Serviço de detecção em estado Não Encontrado / Falha de inicialização.",
                     "Conflito de handle de arquivo de log ou timeout do Service Control Manager do Windows ao carregar dependências WCF.",
                     "Capture Site Pelotas Central", 0.0, 0.0, "suportesmme",
-                    (now - timedelta(hours=4, minutes=30)).strftime("%Y-%m-%d %H:%M:%S"), None
+                    (now - timedelta(hours=4, minutes=30)).strftime("%Y-%m-%d %H:%M:%S"),
+                    (now - timedelta(hours=2, minutes=35)).strftime("%Y-%m-%d %H:%M:%S")
                 ),
                 (
                     "INC-2026-0012", "Caxias do Sul", "BRRS-CSL-DT02", "Volume Disco D:",
-                    "disk_space_low", "alerta", "em_tratamento", 210,
+                    "disk_space_low", "alerta", "resolvido", 210,
                     "Volume de armazenamento D:\\ com apenas 6.4 GB livres, abaixo do limiar de 10 GB.",
                     "Acúmulo de arquivos .ts temporários não expurgados na pasta registered devido a lock temporário de indexação.",
                     "Capture Site Caxias do Sul", 0.0, 0.0, "cleber.goncalves",
-                    (now - timedelta(hours=8)).strftime("%Y-%m-%d %H:%M:%S"), None
+                    (now - timedelta(hours=8)).strftime("%Y-%m-%d %H:%M:%S"),
+                    (now - timedelta(hours=4, minutes=30)).strftime("%Y-%m-%d %H:%M:%S")
                 ),
                 (
-                    "INC-2026-0011", "São Paulo", "BRSP-SPO-DT1-CS", "DNA.DetectionSVC",
-                    "service_stopped", "critico", "aberto", 340,
-                    "DNA.DetectionSVC parado na praça São Paulo CS 3.",
-                    "Falta de binário registrado no Registro do Windows ou serviço desinstalado em migração de frota.",
+                    "INC-2026-0011", "São Paulo", "BRSP-SPO-DT1-CS", "FastMatchingSvc",
+                    "service_stopped", "critico", "resolvido", 45,
+                    "Reinicialização preventiva do motor de detecção FastMatchingSvc no CS01 (BRSP-SPO-DT1-CS).",
+                    "Manutenção programada de buffer e rotação de logs locais concluída com sucesso.",
                     "Torre Sumaré (São Paulo SP)", 5.2, 120.1, "suportesmme",
-                    (now - timedelta(hours=14)).strftime("%Y-%m-%d %H:%M:%S"), None
+                    (now - timedelta(hours=14)).strftime("%Y-%m-%d %H:%M:%S"),
+                    (now - timedelta(hours=13, minutes=15)).strftime("%Y-%m-%d %H:%M:%S")
                 ),
                 (
                     "INC-2026-0010", "Rio de Janeiro", "BRRJ-RIO-DT01", "SBT (CS 1)",
@@ -162,6 +199,51 @@ def init_incidents_db():
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, sample_events)
         conn.commit()
+
+        # Higienização de dados legados ou inconsistentes no banco de dados (ex: INC-2026-0011 falso citando CS 3)
+        try:
+            cursor.execute("""
+                UPDATE incident_events
+                SET status = 'resolvido',
+                    resolved_at = COALESCE(resolved_at, CURRENT_TIMESTAMP),
+                    target_name = 'FastMatchingSvc',
+                    impact_summary = 'Auditoria NOC: Registro histórico resolvido. Detecção comercial opera exclusivamente em CS01.'
+                WHERE incident_code = 'INC-2026-0011'
+                   OR (impact_summary LIKE '%CS 3%' AND target_name LIKE '%Detection%')
+            """)
+            cursor.execute("""
+                UPDATE incident_events
+                SET status = 'resolvido',
+                    resolved_at = COALESCE(resolved_at, CURRENT_TIMESTAMP)
+                WHERE incident_code IN ('INC-2026-0013', 'INC-2026-0014') AND status = 'aberto'
+            """)
+            cursor.execute("""
+                UPDATE incident_events
+                SET status = 'resolvido',
+                    resolved_at = COALESCE(resolved_at, CURRENT_TIMESTAMP),
+                    impact_summary = impact_summary || ' [Encerrado: CS secundário isento de detecção comercial]'
+                WHERE status IN ('aberto', 'em_tratamento')
+                  AND (incident_code LIKE 'INC-SRV-DET-%' OR incident_code LIKE 'INC-DET-%')
+                  AND (
+                      host LIKE '%-CS2' OR host LIKE '%-CS02' OR host LIKE '%_CS2' OR host LIKE '%DT02%' OR host LIKE '%DT2%'
+                      OR host LIKE '%-CS3' OR host LIKE '%-CS03' OR host LIKE '%_CS3' OR host LIKE '%DT03%' OR host LIKE '%DT3%'
+                      OR host LIKE '%REPUCOM%' OR host LIKE '%RADIOS%' OR host LIKE '%COMPUTER%'
+                  )
+            """)
+            cursor.execute("""
+                UPDATE incident_events
+                SET status = 'resolvido',
+                    resolved_at = COALESCE(resolved_at, CURRENT_TIMESTAMP),
+                    impact_summary = impact_summary || ' [Encerrado: CS03 dedicado à captação de áudio/streaming sem Atria/MRec]'
+                WHERE status IN ('aberto', 'em_tratamento')
+                  AND incident_code LIKE 'INC-SRV-REC-%'
+                  AND (
+                      host LIKE '%-CS3%' OR host LIKE '%-CS03%' OR host LIKE '%_CS3%' OR host LIKE '%DT03%'
+                  )
+            """)
+            conn.commit()
+        except Exception:
+            pass
 
 
 def register_incident_action(
@@ -214,16 +296,45 @@ def sync_live_fleet_to_incident_events() -> int:
     except Exception as e:
         return 0
 
+    now_utc = datetime.now(timezone.utc)
     now_dt = datetime.now()
     now_str = now_dt.strftime("%Y-%m-%d %H:%M:%S")
     active_codes = set()
 
     hosts_svcs = {}
+    host_last_keepalive = {}
     for s in services:
         h = s.get("hostname") or s.get("host")
         if not h or h == "N/A":
             continue
         hosts_svcs.setdefault(h, []).append(s)
+        up_str = s.get("ultima_atualizacao") or ""
+        dt = _parse_ts_utc(up_str)
+        if dt:
+            if h not in host_last_keepalive or dt > host_last_keepalive[h]:
+                host_last_keepalive[h] = dt
+
+    # Enriquece keepalive com timestamp recente dos canais sintonizados no host
+    for c in channels:
+        ch_h = (c.get("hostname") or c.get("host") or "").strip()
+        up_ch = str(c.get("atualizacao") or c.get("ultima_atualizacao") or "").strip()
+        if ch_h and up_ch:
+            dt_ch = _parse_ts_utc(up_ch)
+            if dt_ch:
+                if ch_h not in host_last_keepalive or dt_ch > host_last_keepalive[ch_h]:
+                    host_last_keepalive[ch_h] = dt_ch
+
+    # Hosts desconectados / sem keepalive recente (> 25 min):
+    # Máquinas desconectadas não devem disparar múltiplos incidentes picados de serviços de mídia
+    disconnected_hosts = set()
+    for h, svcs in hosts_svcs.items():
+        mon = next((s for s in svcs if s.get("nome_servico") == "DNA.MonitorServiceSVC"), None)
+        if mon and not any(x in (mon.get("status_servico") or "").lower() for x in ["execu", "running", "ok", "online"]):
+            disconnected_hosts.add(h)
+            continue
+        last_dt = host_last_keepalive.get(h)
+        if not last_dt or (now_utc - last_dt).total_seconds() > (25 * 60):
+            disconnected_hosts.add(h)
 
     with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
         cursor = conn.cursor()
@@ -235,33 +346,65 @@ def sync_live_fleet_to_incident_events() -> int:
             canal = c.get("canal") or "Canal"
             cs = c.get("cs") or c.get("id_cs") or 1
             ch_low = canal.lower()
-            meio = str(c.get("meio") or "").lower()
+            host = c.get("host") or c.get("hostname") or f"CS-{praca[:3].upper()}-0{cs}"
+
+            # Se o host do canal está totalmente desconectado (> 25 min sem keepalive) ou telemetria estagnada,
+            # não dispara falsos incidentes pontuais de queda RF de canal
+            if host in disconnected_hosts or c.get("is_degraded") or "telemetria atrasada" in str(c.get("motivo", "")).lower():
+                continue
+
+            is_frozen = "congelado" in str(c.get("motivo", "")).lower() or str(c.get("video_congelado", "")).lower() in ["sim", "true", "1"]
+            is_muted = "mudo" in str(c.get("motivo", "")).lower() or str(c.get("audio_mudo", "")).lower() in ["sim", "true", "1"]
+            is_storage = "⚠️" in str(c.get("gravando_mp4", "")) or "travado" in str(c.get("motivo", "")).lower()
+            is_radio = is_radio_channel_type(c)
+
+            # Se não é falha de congelamento, áudio mudo ou gravação travada, avalia integridade de RF/lock
+            if not is_frozen and not is_muted and not is_storage:
+                if is_radio:
+                    is_healthy, radio_reason = is_radio_channel_healthy(c)
+                    if is_healthy:
+                        # Canal de rádio com lock e stream nominais: falso alarme de RF eliminado!
+                        continue
+                else:
+                    is_tv_ok, tv_reason, _ = is_tv_channel_healthy(c)
+                    if is_tv_ok:
+                        # Canal de TV gravando nominalmente ou lock Atria confirmado: falso alarme de RF eliminado!
+                        continue
 
             slug = re.sub(r"[^a-zA-Z0-9]", "", f"{praca}_{canal}_{cs}").upper()
             code = f"INC-CH-{slug}"
             active_codes.add(code)
 
             is_obs = any(k in ch_low for k in ["obs", "teste", "stream_obs", "monitoramento"])
-            is_radio = any(k in meio for k in ["radio", "fm", "am", "mp3"]) or any(k in ch_low for k in [" fm", " am"])
-            is_open_tv = any(k in ch_low for k in ["globo", "sbt", "record", "band", "redetv", "cultura"])
             is_storage = "⚠️" in str(c.get("gravando_mp4", "")) or "travado" in str(c.get("motivo", "")).lower()
 
             if is_obs:
                 sev = "aviso"
                 itype = "obs_feed_stall"
-            elif is_storage or is_open_tv:
-                sev = "critico"
-                itype = "storage_fault" if is_storage else ("gop_stall" if "congelado" in str(c.get("motivo", "")).lower() else "rf_outage")
             elif is_radio:
+                # Canais de rádio NUNCA geram rf_outage ou gop_stall
                 sev = "alerta"
-                itype = "radio_carrier_loss"
+                audio_mudo = str(c.get("audio_mudo", "")).lower() in ["sim", "true", "1"]
+                itype = "audio_drop" if audio_mudo else "radio_carrier_loss"
+            elif is_storage:
+                sev = "critico"
+                itype = "storage_fault"
+            elif "congelado" in str(c.get("motivo", "")).lower() or str(c.get("video_congelado", "")).lower() in ["sim", "true", "1"]:
+                sev = "critico"
+                itype = "gop_stall"
             else:
-                sev = "alerta"
-                itype = "paytv_signal_loss"
+                meio_c = str(c.get("meio", "")).lower()
+                dev_c = str(c.get("device_analog", "")).lower()
+                is_paytv = any(k in meio_c or k in dev_c or k in ch_low for k in ["analógico", "analogico", "cabo", "paytv", "tw6802", "telecine", "espn", "sportv", "universal", "off", "amc", "lifetime", "premiere"])
+                if is_paytv:
+                    sev = "alerta"
+                    itype = "paytv_signal_loss"
+                else:
+                    sev = "critico"
+                    itype = "rf_outage"
 
             summary = c.get("motivo") or "Anomalia operacional de transmissão"
             root_cause = f"Telemetria reporta anomalia no canal {canal} em {praca}: {summary}"
-            host = c.get("host") or c.get("hostname") or f"CS-{praca[:3].upper()}-0{cs}"
 
             cursor.execute("""
                 INSERT INTO incident_events (
@@ -271,22 +414,26 @@ def sync_live_fleet_to_incident_events() -> int:
                 ) VALUES (?, ?, ?, ?, ?, ?, 'aberto', 25, ?, ?, ?, 8.0, 120.0, 'N1', ?)
                 ON CONFLICT(incident_code) DO UPDATE SET
                     status = 'aberto',
+                    resolved_at = NULL,
                     severity = excluded.severity,
                     impact_summary = excluded.impact_summary,
-                    root_cause = excluded.root_cause
+                    root_cause = excluded.root_cause,
+                    duration_minutes = MAX(25, CAST((strftime('%s', 'now') - strftime('%s', incident_events.created_at)) / 60 AS INTEGER))
             """, (code, praca, host, canal, itype, sev, summary, root_cause, f"Torre {praca}", now_str))
 
         # 2. Serviços Essenciais Parados
         for h, svcs in hosts_svcs.items():
+            # Se a máquina inteira está desconectada (> 25 min sem keepalive),
+            # não dispara múltiplos incidentes picados de serviços de mídia
+            if h in disconnected_hosts:
+                continue
+
             mon = next((s for s in svcs if s.get("nome_servico") == "DNA.MonitorServiceSVC"), None)
             cfg = next((s for s in svcs if s.get("nome_servico") == "DNA.ConfigMonitorSVC"), None)
             ref_svc = mon or cfg or svcs[0]
             praca = ref_svc.get("praca") or svcs[0].get("praca") or "Geral"
             cs = ref_svc.get("cs") if ref_svc.get("cs") is not None else (svcs[0].get("cs") or 1)
-            try:
-                cs_num = int(float(cs))
-            except Exception:
-                cs_num = 1
+            cs_num = _parse_cs(cs)
 
             h_low = h.lower()
             if "-cs2" in h_low or "-cs02" in h_low or "_cs2" in h_low or h_low.endswith("cs2") or "dt02" in h_low or "dt2" in h_low:
@@ -294,47 +441,26 @@ def sync_live_fleet_to_incident_events() -> int:
             elif "-cs3" in h_low or "-cs03" in h_low or "_cs3" in h_low or h_low.endswith("cs3"):
                 cs_num = 3
 
-            # Se o agente do host está parado/offline, não dispara incidentes individuais falsos de serviços
-            if mon and not any(x in (mon.get("status_servico") or "").lower() for x in ["execu", "running", "ok", "online"]):
-                continue
+            # Canais vinculados ao host para análise precisa do papel operacional
+            host_channels = [c for c in channels if (c.get("host") == h or c.get("hostname") == h or (c.get("cidade") == praca and _parse_cs(c.get("cs")) == cs_num))]
+            op_role = infer_cs_operational_role(cs_num, host_channels, svcs, h, praca)
 
-            # A. Motor de gravação (apenas CS01 ou se Atria/MediaRecorder instalado)
-            atria = next((s for s in svcs if s.get("nome_servico") == "Atria Capture"), None)
-            mrec = next((s for s in svcs if s.get("nome_servico") == "DNA.MediaRecorderSVC"), None)
-            atria_st = (atria.get("status_servico") or "").lower() if atria else "desinstalado"
-            mrec_st = (mrec.get("status_servico") or "").lower() if mrec else "desinstalado"
-            atria_run = any(x in atria_st for x in ["execu", "running", "ok"])
-            mrec_run = any(x in mrec_st for x in ["execu", "running", "ok"])
-            both_uninstalled = ("desinstalado" in atria_st or "desativado" in atria_st) and ("desinstalado" in mrec_st or "desativado" in mrec_st)
-            if not atria_run and not mrec_run and not both_uninstalled and (atria or mrec):
-                code = f"INC-SRV-REC-{re.sub(r'[^a-zA-Z0-9]', '', h).upper()}"
-                active_codes.add(code)
-                cursor.execute("""
-                    INSERT INTO incident_events (
-                        incident_code, praca, host, target_name, incident_type,
-                        severity, status, duration_minutes, impact_summary, root_cause,
-                        tower_reference, distance_km, azimuth_deg, operator_assigned, created_at
-                    ) VALUES (?, ?, ?, ?, 'service_stopped', 'critico', 'aberto', 30, ?, ?, ?, 0.0, 0.0, 'N1', ?)
-                    ON CONFLICT(incident_code) DO UPDATE SET
-                        status = 'aberto',
-                        severity = 'critico',
-                        impact_summary = excluded.impact_summary
-                """, (code, praca, h, "Motor de Gravação", "Nenhum motor de gravação ativo no host (Atria e MediaRecorder parados). Gravação paralisada.", f"Falha de processos de captura em {h}", f"Capture Site {praca}", now_str))
-
-            # B. Detecção CS01
-            is_cs2_or_higher = cs_num >= 2 or any(x in h_low for x in ["-cs2", "-cs02", "_cs2", "dt02", "dt2", "-cs3", "_cs3"])
-            if cs_num == 1 and not is_cs2_or_higher:
-                fma = next((s for s in svcs if "fastmatching" in (s.get("nome_servico") or "").lower() or "fastmaching" in (s.get("nome_servico") or "").lower()), None)
-                det = next((s for s in svcs if s.get("nome_servico") == "DNA.DetectionSVC"), None)
-                fma_st = (fma.get("status_servico") or "").lower() if fma else "desinstalado"
-                det_st = (det.get("status_servico") or "").lower() if det else "desinstalado"
-                fma_run = any(x in fma_st for x in ["execu", "running", "ok"])
-                det_run = any(x in det_st for x in ["execu", "running", "ok"])
-                det_both_uninstalled = ("desinstalado" in fma_st or "desativado" in fma_st) and ("desinstalado" in det_st or "desativado" in det_st)
-                # Proteção contra colisão de hostname NetBIOS de 15 caracteres (CS01 vs CS02)
-                is_truncated_15 = len(h) == 15 and (h.endswith("-DT0") or h.endswith("-DT-") or h.endswith("-ATRIA-"))
-                if not fma_run and not det_run and not det_both_uninstalled and not is_truncated_15 and (fma or det):
-                    code = f"INC-SRV-DET-{re.sub(r'[^a-zA-Z0-9]', '', h).upper()}"
+            # A. Motor de gravação
+            # Hosts CS03 (Rádio Sonifex/Streaming ou PayTV/Cabo) não rodam Atria convencional nem exigem MediaRecorder tradicional.
+            # O alarme "Motor de Gravação Parado" é exclusivo para CS01 (TV Principal) e CS02 (TV Filial).
+            if cs_num < 3 and not op_role.get("is_radio") and not op_role.get("is_paytv"):
+                atria = next((s for s in svcs if s.get("nome_servico") == "Atria Capture"), None)
+                mrec = next((s for s in svcs if s.get("nome_servico") == "DNA.MediaRecorderSVC"), None)
+                atria_st = (atria.get("status_servico") or "").lower() if atria else "desinstalado"
+                mrec_st = (mrec.get("status_servico") or "").lower() if mrec else "desinstalado"
+                atria_run = any(x in atria_st for x in ["execu", "running", "ok"])
+                mrec_run = any(x in mrec_st for x in ["execu", "running", "ok"])
+                both_uninstalled = (
+                    ("desinstalado" in atria_st or "desativado" in atria_st or "inexistente" in atria_st or not atria) and
+                    ("desinstalado" in mrec_st or "desativado" in mrec_st or "inexistente" in mrec_st or not mrec)
+                )
+                if not atria_run and not mrec_run and not both_uninstalled and (atria or mrec):
+                    code = f"INC-SRV-REC-{re.sub(r'[^a-zA-Z0-9]', '', h).upper()}"
                     active_codes.add(code)
                     cursor.execute("""
                         INSERT INTO incident_events (
@@ -344,11 +470,12 @@ def sync_live_fleet_to_incident_events() -> int:
                         ) VALUES (?, ?, ?, ?, 'service_stopped', 'critico', 'aberto', 30, ?, ?, ?, 0.0, 0.0, 'N1', ?)
                         ON CONFLICT(incident_code) DO UPDATE SET
                             status = 'aberto',
+                            resolved_at = NULL,
                             severity = 'critico',
                             impact_summary = excluded.impact_summary
-                    """, (code, praca, h, "Motor de Detecção", "Nenhum motor de detecção ativo no CS01 (FastMatching e DetectionSVC parados). Geração de XMLs paralisada.", f"Parada da esteira de matching em {h}", f"Capture Site {praca}", now_str))
+                    """, (code, praca, h, "Motor de Gravação", "Nenhum motor de gravação ativo no host (Atria e MediaRecorder parados). Gravação paralisada.", f"Falha de processos de captura em {h}", f"Capture Site {praca}", now_str))
 
-            # C. FileTransfer
+            # B. FileTransfer
             ft = next((s for s in svcs if s.get("nome_servico") == "DNA.FiletransferSVC"), None)
             if ft and ft.get("status_servico") == "Parado":
                 code = f"INC-SRV-FT-{re.sub(r'[^a-zA-Z0-9]', '', h).upper()}"
@@ -361,25 +488,165 @@ def sync_live_fleet_to_incident_events() -> int:
                     ) VALUES (?, ?, ?, ?, 'service_stopped', 'critico', 'aberto', 30, ?, ?, ?, 0.0, 0.0, 'N1', ?)
                     ON CONFLICT(incident_code) DO UPDATE SET
                         status = 'aberto',
+                        resolved_at = NULL,
                         severity = 'critico',
                         impact_summary = excluded.impact_summary
                 """, (code, praca, h, "DNA.FiletransferSVC", "Serviço DNA.FiletransferSVC parado. Mídias e comprovantes retidos sem envio à matriz.", f"Parada do serviço de transferência em {h}", f"Capture Site {praca}", now_str))
 
-        # 3. Auto-resolucao de incidentes de servico e Gate Anti-Itumbiara para canais (Sinal x Deteccao)
-        # Servicos (INC-SRV-%) normalizados fecham diretamente
+        # 3. DETECÇÃO COMERCIAL CS01 & ESTEIRA DE MATCHING / WCF (Canônico tracking_detection_monitor)
+        # Regra de Ouro: Detecção Comercial roda EXCLUSIVAMENTE em CS01.
+        # CS02 e CS03 são expressamente proibidos de gerar incidentes de detecção.
+        # Sincronização 100% idêntica com a Matriz de SLA eliminando discrepâncias.
+        try:
+            from tracking_detection_monitor import build_detection_fleet_snapshot
+            det_snapshot = build_detection_fleet_snapshot()
+            det_sites = det_snapshot.get("sites", [])
+        except Exception as e:
+            det_sites = []
+
+        for site in det_sites:
+            s_host = site.get("hostname", "")
+            s_praca = site.get("praca", "Geral")
+            s_health = site.get("health_status", "NOMINAL")
+            s_tier = site.get("engine_tier", "PRIMARY")
+            s_age = int(site.get("tracking_age_minutes") or 0)
+            s_bneck = site.get("pipeline_bottleneck", "NONE")
+            s_desc = site.get("incident_description", "")
+
+            slug = re.sub(r'[^a-zA-Z0-9]', '', s_host).upper()
+
+            # A. Ambos os motores parados no CS01 (P0 Crítico)
+            if s_health == "CRITICAL" or (s_tier == "NONE" and s_health != "COMM_LOST"):
+                code = f"INC-DET-CRIT-{slug}"
+                active_codes.add(code)
+                dur = s_age if s_age > 0 else 30
+                impact = "Estágio 1 inoperante: FastMatchingSvc e DNA.DetectionSVC parados no CS01. Nenhum XML de detecção comercial sendo gerado."
+                root_cause = f"Nenhum motor de detecção ativo no CS01 ({s_host}). {s_desc}"
+                cursor.execute("""
+                    INSERT INTO incident_events (
+                        incident_code, praca, host, target_name, incident_type,
+                        severity, status, duration_minutes, impact_summary, root_cause,
+                        tower_reference, distance_km, azimuth_deg, operator_assigned, created_at
+                    ) VALUES (?, ?, ?, 'Motor de Detecção (CS01)', 'detection_engine_stopped', 'critico', 'aberto', ?, ?, ?, ?, 0.0, 0.0, 'N1', ?)
+                    ON CONFLICT(incident_code) DO UPDATE SET
+                        status = 'aberto',
+                        severity = 'critico',
+                        duration_minutes = excluded.duration_minutes,
+                        impact_summary = excluded.impact_summary,
+                        root_cause = excluded.root_cause
+                """, (code, s_praca, s_host, dur, impact, root_cause, f"Capture Site {s_praca}", now_str))
+
+            # B. Despacho WCF represado / Acúmulo em data\\tracking (STALLED)
+            elif s_health == "STALLED":
+                code = f"INC-DET-STALL-{slug}"
+                active_codes.add(code)
+                dur = s_age if s_age > 0 else 15
+                sev = "critico" if dur >= 30 else "alerta"
+                target = "DNA.ConfigMonitorSVC (WCF)" if s_bneck == "CONFIGMONITOR_WCF" else "DNA.TrackingSVC"
+                impact = f"Fila de XMLs de detecção represada em data\\tracking ({dur} min) sem despacho WCF para a matriz."
+                root_cause = f"Gargalo no despacho WCF em {s_host}: {s_desc}"
+                cursor.execute("""
+                    INSERT INTO incident_events (
+                        incident_code, praca, host, target_name, incident_type,
+                        severity, status, duration_minutes, impact_summary, root_cause,
+                        tower_reference, distance_km, azimuth_deg, operator_assigned, created_at
+                    ) VALUES (?, ?, ?, ?, 'detection_wcf_stalled', ?, 'aberto', ?, ?, ?, ?, 0.0, 0.0, 'N1', ?)
+                    ON CONFLICT(incident_code) DO UPDATE SET
+                        status = 'aberto',
+                        severity = excluded.severity,
+                        duration_minutes = excluded.duration_minutes,
+                        impact_summary = excluded.impact_summary,
+                        root_cause = excluded.root_cause
+                """, (code, s_praca, s_host, target, sev, dur, impact, root_cause, f"Capture Site {s_praca}", now_str))
+
+            # C. Conflito Concorrente de Motores (FastMatching + DetectionSVC rodando simultaneamente)
+            elif s_health == "WARNING" and s_tier == "CONFLICT":
+                code = f"INC-DET-CONF-{slug}"
+                active_codes.add(code)
+                impact = "Conflito de concorrência: FastMatchingSvc e DNA.DetectionSVC ativos simultaneamente disputando arquivos .EMU e memória."
+                root_cause = f"Concorrência no CS01 ({s_host}): {s_desc}. Ação recomendada: desativar DNA.DetectionSVC e manter FastMatchingSvc."
+                cursor.execute("""
+                    INSERT INTO incident_events (
+                        incident_code, praca, host, target_name, incident_type,
+                        severity, status, duration_minutes, impact_summary, root_cause,
+                        tower_reference, distance_km, azimuth_deg, operator_assigned, created_at
+                    ) VALUES (?, ?, ?, 'Conflito de Motores (CS01)', 'detection_engine_conflict', 'alerta', 'aberto', 15, ?, ?, ?, 0.0, 0.0, 'N1', ?)
+                    ON CONFLICT(incident_code) DO UPDATE SET
+                        status = 'aberto',
+                        severity = 'alerta',
+                        duration_minutes = 15,
+                        impact_summary = excluded.impact_summary,
+                        root_cause = excluded.root_cause
+                """, (code, s_praca, s_host, impact, root_cause, f"Capture Site {s_praca}", now_str))
+
+            # D. NOMINAL ou COMM_LOST: Nenhum incidente de detecção comercial!
+            # Se havia incidente anterior, não entra em active_codes e será auto-resolvido abaixo.
+
+        # 3. Hosts Desconectados / Ausência Crítica de Keepalive (Ex: Vitória da Conquista)
+        for h in disconnected_hosts:
+            svcs = hosts_svcs.get(h, [])
+            mon = next((s for s in svcs if s.get("nome_servico") == "DNA.MonitorServiceSVC"), None)
+            cfg = next((s for s in svcs if s.get("nome_servico") == "DNA.ConfigMonitorSVC"), None)
+            ref_svc = mon or cfg or (svcs[0] if svcs else {})
+            praca = ref_svc.get("praca") or (svcs[0].get("praca") if svcs else "Geral")
+            raw_cs = ref_svc.get("cs") if ref_svc.get("cs") is not None else (svcs[0].get("cs") if svcs else 1)
+            cs_num = _parse_cs(raw_cs, default=1)
+            h_low = h.lower()
+            if "-cs2" in h_low or "-cs02" in h_low or "_cs2" in h_low or h_low.endswith("cs2") or "dt02" in h_low or "dt2" in h_low:
+                cs_num = 2
+            elif "-cs3" in h_low or "-cs03" in h_low or "_cs3" in h_low or h_low.endswith("cs3"):
+                cs_num = 3
+
+            last_dt = host_last_keepalive.get(h)
+            if last_dt:
+                ka_delay = max(26, int((now_utc - last_dt).total_seconds() / 60))
+                last_seen_str = last_dt.strftime("%Y-%m-%d %H:%M")
+            else:
+                ka_delay = 1440
+                last_seen_str = "Desconhecido"
+
+            code = f"INC-HOST-KA-{re.sub(r'[^a-zA-Z0-9]', '', h).upper()}"
+            active_codes.add(code)
+            is_chronic = ka_delay > 1440
+            sev = "critico" if (ka_delay > 60 or is_chronic) else "alerta"
+            summary = (
+                f"[ZOMBIE CRÔNICO] Host desconectado há {ka_delay} min (>24h sem telemetria, último heartbeat: {last_seen_str})."
+                if is_chronic else
+                f"Host desconectado / ausência crítica de Keepalive há {ka_delay} min (último heartbeat: {last_seen_str})."
+            )
+            root_cause = f"O agente local DNA.MonitorServiceSVC ou o host {h} ({praca} CS {cs_num}) estão offline/sem comunicação com a central."
+
+            cursor.execute("""
+                INSERT INTO incident_events (
+                    incident_code, praca, host, target_name, incident_type,
+                    severity, status, duration_minutes, impact_summary, root_cause,
+                    tower_reference, distance_km, azimuth_deg, operator_assigned, created_at
+                ) VALUES (?, ?, ?, ?, 'host_offline', ?, 'aberto', ?, ?, ?, ?, 0.0, 0.0, 'N1', ?)
+                ON CONFLICT(incident_code) DO UPDATE SET
+                    status = 'aberto',
+                    resolved_at = NULL,
+                    severity = excluded.severity,
+                    duration_minutes = excluded.duration_minutes,
+                    impact_summary = excluded.impact_summary,
+                    root_cause = excluded.root_cause
+            """, (code, praca, h, f"Conectividade Host (CS {cs_num})", sev, ka_delay, summary, root_cause, f"Capture Site {praca}", now_str))
+
+        # 4. Auto-resolucao de incidentes de servico, deteccao e host normalizados
+        # Servicos (INC-SRV-%), Deteccao (INC-DET-%) e Hosts (INC-HOST-%) normalizados fecham diretamente
+        target_prefixes_sql = "(incident_code LIKE 'INC-SRV-%' OR incident_code LIKE 'INC-HOST-%' OR incident_code LIKE 'INC-DET-%')"
         if active_codes:
             placeholders = ",".join("?" for _ in active_codes)
             cursor.execute(f"""
                 UPDATE incident_events
                 SET status = 'resolvido', resolved_at = ?
-                WHERE status IN ('aberto', 'em_tratamento') AND incident_code LIKE 'INC-SRV-%'
+                WHERE status IN ('aberto', 'em_tratamento') AND {target_prefixes_sql}
                   AND incident_code NOT IN ({placeholders})
             """, [now_str] + list(active_codes))
         else:
-            cursor.execute("""
+            cursor.execute(f"""
                 UPDATE incident_events
                 SET status = 'resolvido', resolved_at = ?
-                WHERE status IN ('aberto', 'em_tratamento') AND incident_code LIKE 'INC-SRV-%'
+                WHERE status IN ('aberto', 'em_tratamento') AND {target_prefixes_sql}
             """, [now_str])
 
         # Canais (INC-CH-%): Aplicacao da Regra Anti-Itumbiara
@@ -480,6 +747,8 @@ def evaluate_post_signal_detection_gate(praca: str, hosts_svcs: Optional[Dict[st
 
     return {"passed": True, "cs01_host": cs01_host, "message": "Motor de detecção e ConfigMonitor ativos e saudáveis no CS01."}
 
+_last_incident_sync_ts = 0.0
+
 def get_incident_history(
     incident_key: Optional[str] = None,
     praca: Optional[str] = None,
@@ -493,7 +762,17 @@ def get_incident_history(
     Recupera lista filtrada de incidentes com métricas analíticas consolidadas
     para intervalo de tempo, cidade e tipo.
     """
+    global _last_incident_sync_ts
     init_incidents_db()
+    
+    # Sincroniza em tempo real com a realidade operacional da frota (throttled em 5s)
+    now_ts = datetime.now().timestamp()
+    if (now_ts - _last_incident_sync_ts) > 5.0:
+        try:
+            sync_live_fleet_to_incident_events()
+            _last_incident_sync_ts = now_ts
+        except Exception:
+            pass
     
     where_clauses = []
     params = []
@@ -647,27 +926,6 @@ def diagnose_incident_with_ai(incident_code: str) -> Dict[str, Any]:
         now_dt = datetime.now()
         host_gen = "BRRS-PLT-DT01" if "pelotas" in praca_parsed.lower() else ("BRRS-CSL-DT01" if "caxias" in praca_parsed.lower() else f"CS-{praca_parsed.upper()[:3]}-01")
         tower_gen = f"Torre Transmissora Central ({praca_parsed})"
-        
-        try:
-            with sqlite3.connect(DB_PATH, timeout=30.0) as conn2:
-                cursor2 = conn2.cursor()
-                cursor2.execute("""
-                    INSERT OR IGNORE INTO incident_events (
-                        incident_code, praca, host, target_name, incident_type,
-                        severity, status, duration_minutes, impact_summary,
-                        root_cause, tower_reference, distance_km, azimuth_deg,
-                        operator_assigned, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, 'aberto', 15, ?, ?, ?, 8.5, 120.0, 'suportesmme', ?)
-                """, (
-                    incident_code, praca_parsed, host_gen, target_parsed, itype_parsed,
-                    sev_parsed, desc_parsed, f"Análise automatizada de telemetria para {target_parsed}",
-                    tower_gen, now_dt.strftime("%Y-%m-%d %H:%M:%S")
-                ))
-                conn2.commit()
-                cursor2.execute("SELECT * FROM incident_events WHERE incident_code = ?", (incident_code,))
-                row = cursor2.fetchone()
-        except Exception:
-            pass
 
     if row:
         inc = dict(row)

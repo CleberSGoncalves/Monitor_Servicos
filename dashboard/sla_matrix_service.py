@@ -323,14 +323,15 @@ def get_fleet_sla_matrix(
                     # Motor em execução e fluxo de XMLs nominal sem acúmulo
                     dt_delay = 0
                 elif h_stat == "STALLED":
-                    # Fila represada sem despacho WCF (atraso real medido pela idade do XML)
-                    dt_delay = tracking_age if tracking_age > 0 else max(15, ka_delay)
+                    # Fila represada sem despacho WCF (atraso real medido pela idade do XML em minutos)
+                    dt_delay = tracking_age if tracking_age > 0 else 15
                 elif h_stat == "CRITICAL" or eng_tier == "NONE":
                     # Motor inoperante (ambos os motores parados em CS01 com TV ativa)
-                    dt_delay = tracking_age if tracking_age > 0 else max(30, ka_delay)
+                    # Não contamina com atraso de rede (KA): se o host estiver offline (ka_delay > 25), DT é 0
+                    dt_delay = tracking_age if tracking_age > 0 else (30 if ka_delay == 0 else 0)
                 elif eng_tier == "CONFLICT":
                     # Conflito de motores (ambos ativos simultaneamente)
-                    dt_delay = tracking_age if tracking_age > 0 else 30
+                    dt_delay = 15
                 elif h_stat == "COMM_LOST":
                     # Host offline: já penalizado no Keepalive (KA), não gera falso alarme de detecção
                     dt_delay = 0
@@ -342,10 +343,10 @@ def get_fleet_sla_matrix(
                 fm_run = fm and any(w in _s_stat(fm) for w in ["execu", "running", "ativo"])
                 det_run = det and any(w in _s_stat(det) for w in ["execu", "running", "ativo"])
 
-                if fm_run or det_run:
+                if fm_run or det_run or ka_delay > 25:
                     dt_delay = 0
                 else:
-                    dt_delay = ka_delay if ka_delay > 15 else 0
+                    dt_delay = 30
 
         # ---------------------------------------------------------
         # F) Hardware: CPU, MEMÓRIA (RAM) e DISCO D:

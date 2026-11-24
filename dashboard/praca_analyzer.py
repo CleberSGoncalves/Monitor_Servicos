@@ -120,27 +120,36 @@ def is_radio_channel_healthy(c: Dict[str, Any]) -> tuple[bool, str]:
     """
     Avalia com rigor técnico e determinismo se um canal de Rádio (Sonifex ou Streaming RTSP) está saudável.
     Evita falsos positivos decorrentes de colunas GravandoMP3 não populadas no SharePoint
-    quando o encoder/tuner reporta status ativo ('WORKING' / 'READY TO WORK') e telemetria nominal.
+    quando o encoder/tuner reporta status ativo ('WORKING' / 'READY TO WORK') e telemetria nominal,
+    bem como falsos positivos de has_outage decorrentes de falta de portadora RF ou ausência de vídeo MP4.
     """
-    if bool(c.get("has_outage", False)):
-        return False, "Queda Detectada (Outage)"
-
     tuner_stat = str(c.get("status_tuner", "")).lower()
-    if any(w in tuner_stat for w in ["disconnect", "parado", "falha", "timeout", "error", "desconectado"]):
-        return False, "Sintonizador/Stream Desconectado"
+    audio_mudo = str(c.get("audio_mudo", "")).lower() in ["sim", "true", "1"]
+    is_disconnected = any(w in tuner_stat for w in ["disconnect", "parado", "falha", "timeout", "error", "desconectado"])
 
-    # Confirmação explícita de gravação MP3
+    # 1. Confirmação explícita de gravação MP3: áudio gravando nominalmente no nó
     mp3_rec = any(w in str(c.get("gravando_mp3", "")).lower() for w in ["sim", "gravando", "ativo", "mp3"])
-    if mp3_rec:
+    if mp3_rec and not audio_mudo and not is_disconnected:
         return True, "Áudio OK (Sonifex/Stream)"
 
-    # Se o sintonizador/streamer virtual do Atria Capture está ativo
+    # Se explicitamente marcado com áudio mudo
+    if audio_mudo:
+        return False, "Áudio Mudo Detectado"
+
+    if is_disconnected:
+        return False, f"Sintonizador/Stream Desconectado ({c.get('status_tuner')})"
+
+    # 2. Se o sintonizador/streamer virtual do Atria Capture ou Sonifex está ativo
     tuner_active = any(w in tuner_stat for w in ["working", "ready", "connected", "lock", "ok"])
     motivo = str(c.get("motivo", "")).lower()
     is_cloud_nominal = "operando normalmente" in motivo or "estável" in motivo or "estavel" in motivo
 
     if tuner_active and (is_cloud_nominal or not c.get("is_degraded")):
         return True, "Stream Conectado (Working)"
+
+    # Se explicitamente marcado com outage E não possui gravação/stream ativo
+    if bool(c.get("has_outage", False)):
+        return False, f"Queda Detectada ({c.get('motivo') or 'Outage'})"
 
     return False, "Sem Gravação / Fluxo Interrompido"
 
@@ -153,9 +162,6 @@ def is_tv_channel_healthy(c: Dict[str, Any]) -> tuple[bool, str, int]:
     e a gravação de mídia MP4/ASF está ativa e nominal.
     Para canais de PayTV / Analógico / Cabo (TW6802 PCI): a gravação contínua é a prova definitiva de sinal.
     """
-    if bool(c.get("has_outage", False)):
-        return False, "Queda Detectada (Outage)", 0
-
     tuner_stat = str(c.get("status_tuner", "")).strip()
     t_lower = tuner_stat.lower()
 
@@ -173,7 +179,7 @@ def is_tv_channel_healthy(c: Dict[str, Any]) -> tuple[bool, str, int]:
         return True, "Lock OK (PayTV/Cabo)", 100
 
     is_disconnected = any(w in t_lower for w in ["disconnect", "parado", "falha", "timeout", "error", "desconectado", "sem sintonizador", "no lock"])
-    if is_disconnected:
+    if is_disconnected and not rec_active:
         return False, f"Sintonizador Desconectado ({tuner_stat})", 0
 
     # Status ativo do tuner no Atria Capture
@@ -202,6 +208,9 @@ def is_tv_channel_healthy(c: Dict[str, Any]) -> tuple[bool, str, int]:
     # 3. Se qualidade > 0 mas sem gravação -> sinal RF presente
     if qualidade > 0 and not rec_active:
         return True, f"Sinal RF Presente ({qualidade}%)", qualidade
+
+    if bool(c.get("has_outage", False)):
+        return False, f"Queda Detectada ({c.get('motivo') or 'Outage'})", 0
 
     # 4. Falha real de sinal RF se não há tuner working nem gravação ativa
     return False, "Sem Lock RF / Sinal Ausente", 0

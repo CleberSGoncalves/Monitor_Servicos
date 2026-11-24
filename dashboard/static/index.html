@@ -10549,21 +10549,20 @@
             <label style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;">Tipo de Incidente</label>
 
             <select id="incFilterType" class="form-input" style="width: 100%;" onchange="loadIncidentsHistoryData()">
-
               <option value="all">Todos os Tipos</option>
-
+              <option value="host_offline">Host Desconectado / Keepalive</option>
               <option value="gop_stall">GOP Stall / Congelamento H.264</option>
-
               <option value="rf_outage">Perda de Sinal RF / Lock</option>
-
+              <option value="storage_fault">Falha de Gravação / Storage</option>
               <option value="service_stopped">Serviço Parado / Crash</option>
-
+              <option value="detection_engine_stopped">Motor Detecção Parado (CS01)</option>
+              <option value="detection_wcf_stalled">Despacho WCF Represado</option>
+              <option value="obs_feed_stall">Congelamento Feed OBS</option>
+              <option value="radio_carrier_loss">Perda de Portadora Rádio</option>
+              <option value="paytv_signal_loss">Perda de Sinal PayTV</option>
               <option value="disk_space_low">Espaço em Disco D: Baixo</option>
-
               <option value="audio_drop">Áudio Mudo / Desvio Lip-Sync</option>
-
               <option value="high_cpu">Consumo Elevado de CPU</option>
-
             </select>
 
           </div>

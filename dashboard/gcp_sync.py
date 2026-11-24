@@ -650,7 +650,11 @@ def format_canonical_hostname(
         praca = ov_praca
         if not id_host:
             id_host = ov_id
-        cs_int = ov_cs
+        # Se cs foi informado explicitamente como 1 para nó com NetBIOS truncado (ex: Uruguaiana, Goiânia), respeita CS 1
+        if cs is None or cs == "" or raw_up not in ("BRRS-UGN-ATRIA-", "BRGO-GNA-ATRIA-", "BRSP-STS-ATRIA-", "BRGO-RVD-ATRIA-", "BRRS-PAE-ATRIA-"):
+            cs_int = ov_cs
+        elif cs_int != 1:
+            cs_int = ov_cs
 
     praca_str = str(praca or "").strip()
     if not praca_str or praca_str.lower() in ("n/a", "não informado", "nao informado"):
