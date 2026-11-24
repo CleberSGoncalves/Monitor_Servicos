@@ -11265,6 +11265,11 @@
           <span>Repositório de Pacotes &amp; Releases (Auditado)</span>
           <span id="badgeRepoPackageCount" style="background: rgba(56, 189, 248, 0.2); color: #38bdf8; font-size: 10px; padding: 2px 7px; border-radius: 12px; font-weight: 700; margin-left: 6px;">12 Serviços</span>
         </button>
+        <button class="fleet-subtab-btn" id="btn-fleet-subtab-csconfig" onclick="switchFleetSubtab('csconfig')">
+          <i class="fas fa-sliders-h" style="color: #38bdf8;"></i>
+          <span>Configuração CS (ATRIA)</span>
+          <span style="background: rgba(16, 185, 129, 0.2); color: #34d399; font-size: 10px; padding: 2px 7px; border-radius: 12px; font-weight: 700; margin-left: 6px;">Multiplexes &amp; Perfis</span>
+        </button>
       </div>
 
       <!-- CONTAINER 1: GOVERNANÇA & ROLLOUT -->
@@ -11722,6 +11727,135 @@
         </div>
 
       </div><!-- FIM fleetSubtabRepositoryContainer -->
+
+      <!-- CONTAINER 3: CONFIGURAÇÃO CS (ATRIA & MEDIADNA) -->
+      <div id="fleetSubtabCSConfigContainer" style="display: none;">
+        <div class="panel-card" style="margin-bottom: 20px; border: 1px solid rgba(56, 189, 248, 0.35); background: linear-gradient(180deg, rgba(15, 23, 42, 0.9) 0%, rgba(15, 23, 42, 0.98) 100%); border-radius: 10px; padding: 20px;">
+          
+          <!-- Header do Painel -->
+          <div style="border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 14px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+            <div>
+              <div style="display: flex; align-items: center; gap: 10px; font-size: 17px; font-weight: 700; color: #f8fafc;">
+                <span>⚙️</span>
+                <span>Central de Configuração Remota do Capture Site (ATRIA &amp; MediaDNA)</span>
+                <span style="background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); font-size: 11px; padding: 3px 10px; border-radius: 20px; font-weight: 700;">Live XML Engine</span>
+              </div>
+              <div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">
+                Ajuste operacional de Multiplexes.xml (Canais, PIDs, Áudio), AppConfig.xml, LogRotate e Perfis de Gravação EMU sem necessidade de RDP manual.
+              </div>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <button class="btn-primary" onclick="openSelectedHostConfigModal()" style="padding: 7px 14px; font-size: 12px; display: flex; align-items: center; gap: 6px; background: linear-gradient(135deg, #0284c7, #2563eb);">
+                <i class="fas fa-expand"></i>
+                <span>Abrir no SuperModal Cheio</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Barra de Seleção: Praça, CS e Máquina -->
+          <div style="background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 8px; padding: 14px 18px; margin-bottom: 18px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 180px;">
+              <label style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; display: block; margin-bottom: 5px;">1. Filtrar Praça / Cidade</label>
+              <select id="subtabHostConfigPraca" onchange="onSubtabCSPracaChange(this.value)" class="form-control" style="background: #0f172a; color: #f8fafc; border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 6px; padding: 7px 10px; width: 100%; font-size: 13px;">
+                <option value="">Carregando praças...</option>
+              </select>
+            </div>
+
+            <div style="width: 140px;">
+              <label style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; display: block; margin-bottom: 5px;">2. Canal de Serviço</label>
+              <select id="subtabHostConfigCS" onchange="onSubtabCSChange(this.value)" class="form-control" style="background: #0f172a; color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 6px; padding: 7px 10px; width: 100%; font-size: 13px; font-weight: 700;">
+                <option value="ALL">Todos os CS</option>
+                <option value="1">CS 01 (Detecção)</option>
+                <option value="2">CS 02 (Mídia)</option>
+                <option value="3">CS 03 (Mídia)</option>
+              </select>
+            </div>
+
+            <div style="flex: 2; min-width: 260px;">
+              <label style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; display: block; margin-bottom: 5px;">3. Selecionar Máquina / Servidor</label>
+              <select id="subtabHostConfigMachine" onchange="onSubtabCSMachineSelected(this.value)" class="form-control" style="background: #0f172a; color: #f8fafc; border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 6px; padding: 7px 10px; width: 100%; font-size: 13px; font-family: monospace;">
+                <option value="">Selecione uma praça primeiro...</option>
+              </select>
+            </div>
+
+            <div style="align-self: flex-end;">
+              <button class="btn-primary" onclick="loadSubtabHostConfig()" style="padding: 8px 16px; font-size: 12px; font-weight: 700; display: flex; align-items: center; gap: 6px; background: linear-gradient(135deg, #10b981, #059669); border: none;">
+                <i class="fas fa-file-code"></i>
+                <span>Carregar XMLs</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Área de Exibição / Edição da Configuração Carregada -->
+          <div id="subtabCSConfigViewer" style="display: none;">
+            <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 16px; margin-bottom: 14px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <span id="subtabBadgeHostname" style="font-family: monospace; font-size: 14px; font-weight: 800; color: #38bdf8; background: rgba(2, 132, 199, 0.25); padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(56, 189, 248, 0.4);">-</span>
+                  <span id="subtabTextPraca" style="font-weight: 700; color: #fff;">-</span>
+                  <span id="subtabBadgeRole" style="font-size: 11px; padding: 3px 8px; border-radius: 12px; font-weight: 700; background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);">-</span>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                  <button class="btn-secondary" onclick="previewXmlChanges()" style="padding: 5px 12px; font-size: 11px; font-weight: 700; display: flex; align-items: center; gap: 4px;">
+                    <i class="fas fa-eye"></i> Ver Prévia XML
+                  </button>
+                  <button class="btn-primary" onclick="saveAndApplyHostConfig()" style="padding: 5px 14px; font-size: 11px; font-weight: 700; background: linear-gradient(135deg, #10b981, #059669); border: none; display: flex; align-items: center; gap: 6px;">
+                    <i class="fas fa-save"></i> Salvar e Reiniciar ATRIA
+                  </button>
+                </div>
+              </div>
+
+              <!-- Banner de Alerta Obrigatório -->
+              <div style="background: rgba(245, 158, 11, 0.12); border-left: 4px solid #f59e0b; padding: 10px 14px; border-radius: 4px; margin-bottom: 14px; font-size: 12px; color: #fde68a;">
+                <b>⚠️ AVISO OPERACIONAL:</b> Ao clicar em salvar, o Agente C# executará o script de fechamento gracioso do ATRIA, gravará os arquivos XML com backup (.bak) e reiniciará o ATRIA imediatamente com a nova configuração aplicada.
+              </div>
+
+              <!-- Atalho Rápido para Perfil EMU Padronizado -->
+              <div style="background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 6px; padding: 12px 14px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <div>
+                  <div style="font-size: 12.5px; font-weight: 700; color: #38bdf8;">Padronização de Gravação EMU (Spots em Memória)</div>
+                  <div style="font-size: 11px; color: #94a3b8;">Aplica automaticamente o perfil homologado <code>EMU MediaDNA 1min</code> em todos os canais que gravam EMU neste host.</div>
+                </div>
+                <button class="btn-secondary" onclick="applyEmuProfileToAllChannels('EMU MediaDNA 1min')" style="font-size: 11px; padding: 5px 12px; font-weight: 700; background: rgba(56, 189, 248, 0.15); border-color: rgba(56, 189, 248, 0.4); color: #38bdf8;">
+                  ⚡ Aplicar "EMU MediaDNA 1min" a Todos os Canais
+                </button>
+              </div>
+
+              <!-- Tabela de Canais Resumida na Subaba -->
+              <div style="margin-top: 10px;">
+                <h4 style="font-size: 13px; font-weight: 700; color: #f8fafc; margin-bottom: 8px;">Canais Configurados (Multiplexes.xml)</h4>
+                <div style="max-height: 280px; overflow-y: auto; border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 6px;">
+                  <table class="table" style="font-size: 12px; width: 100%; margin: 0;">
+                    <thead style="background: #1e293b; color: #94a3b8; position: sticky; top: 0;">
+                      <tr>
+                        <th style="width: 50px;">Ativo</th>
+                        <th>Canal / Emissora</th>
+                        <th style="width: 80px;">ProgID</th>
+                        <th style="width: 80px;">Áudio</th>
+                        <th style="width: 100px;">Grava EMU?</th>
+                        <th>Perfil EMU</th>
+                        <th>Pasta Destino</th>
+                      </tr>
+                    </thead>
+                    <tbody id="subtabHostConfigChannelsTbody">
+                      <!-- Renderizado via JS -->
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Empty State Inicial -->
+          <div id="subtabCSConfigEmptyState" style="text-align: center; padding: 40px 20px; color: #64748b;">
+            <i class="fas fa-satellite-dish" style="font-size: 36px; color: rgba(56, 189, 248, 0.3); margin-bottom: 12px; display: block;"></i>
+            <div style="font-size: 14px; font-weight: 700; color: #94a3b8;">Nenhum Capture Site carregado no momento</div>
+            <div style="font-size: 12px; color: #64748b; margin-top: 4px;">Selecione a praça e o servidor nos campos acima e clique em <b>Carregar XMLs</b> ou abra no SuperModal.</div>
+          </div>
+
+        </div>
+      </div>
+
 
     </section>
 

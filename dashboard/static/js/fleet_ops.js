@@ -2292,20 +2292,25 @@ let currentPackageRepoSearch = "";
 function switchFleetSubtab(subtab) {
     const btnGov = document.getElementById("btn-fleet-subtab-governance");
     const btnRepo = document.getElementById("btn-fleet-subtab-repository");
+    const btnCSConfig = document.getElementById("btn-fleet-subtab-csconfig");
     const containerGov = document.getElementById("fleetSubtabGovernanceContainer");
     const containerRepo = document.getElementById("fleetSubtabRepositoryContainer");
+    const containerCSConfig = document.getElementById("fleetSubtabCSConfigContainer");
+
+    if (btnGov) btnGov.classList.toggle("active", subtab === "governance");
+    if (btnRepo) btnRepo.classList.toggle("active", subtab === "repository");
+    if (btnCSConfig) btnCSConfig.classList.toggle("active", subtab === "csconfig");
+
+    if (containerGov) containerGov.style.display = (subtab === "governance") ? "block" : "none";
+    if (containerRepo) containerRepo.style.display = (subtab === "repository") ? "block" : "none";
+    if (containerCSConfig) containerCSConfig.style.display = (subtab === "csconfig") ? "block" : "none";
 
     if (subtab === "repository") {
-        if (btnGov) btnGov.classList.remove("active");
-        if (btnRepo) btnRepo.classList.add("active");
-        if (containerGov) containerGov.style.display = "none";
-        if (containerRepo) containerRepo.style.display = "block";
         loadPackageRepository();
-    } else {
-        if (btnGov) btnGov.classList.add("active");
-        if (btnRepo) btnRepo.classList.remove("active");
-        if (containerGov) containerGov.style.display = "block";
-        if (containerRepo) containerRepo.style.display = "none";
+    } else if (subtab === "governance") {
+        loadFleetGovernanceSummary();
+    } else if (subtab === "csconfig") {
+        populateSubtabCSSelectors();
     }
 }
 
@@ -2844,8 +2849,7 @@ function openSelectedHostConfigModal() {
 // ==========================================================================
 // SUPER MODAL ATRIA (MediaDNA): GERENCIAMENTO OPERACIONAL DO CAPTURE SITE
 // ==========================================================================
-let currentLoadedHostConfig = null;
-let selectedProfileFilename = null;
+selectedProfileFilename = null;
 
 async function openHostConfigModal(hostname, praca = "", cs = 1) {
     const modal = document.getElementById("modalHostConfig");
