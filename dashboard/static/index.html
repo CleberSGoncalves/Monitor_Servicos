@@ -3916,6 +3916,25 @@
             </button>
           </div>
 
+          <!-- SELETOR DE MODO DE VISÃO OPERACIONAL: FILA DE INCIDENTES vs MATRIZ GERAL DE SLA 360° -->
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 10px; padding: 8px 14px; flex-wrap: wrap; gap: 8px;">
+            <div style="display: inline-flex; align-items: center; background: rgba(30, 41, 59, 0.6); padding: 3px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.1);">
+              <button type="button" id="btnViewModeQueue" onclick="switchIncidentView('queue')" style="padding: 6px 16px; font-size: 12px; font-weight: 800; border-radius: 6px; border: 1px solid #38bdf8; background: linear-gradient(135deg, #0284c7, #2563eb); color: #fff; cursor: pointer; transition: all 0.2s; box-shadow: 0 0 10px rgba(56, 189, 248, 0.4);">
+                🚨 Fila de Incidentes N1 (Priorizados)
+              </button>
+              <button type="button" id="btnViewModeMatrix" onclick="switchIncidentView('matrix')" style="padding: 6px 16px; font-size: 12px; font-weight: 800; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.15); background: transparent; color: #cbd5e1; cursor: pointer; transition: all 0.2s; margin-left: 4px;" title="Matriz de Situação Geral dos Incidentes e Atrasos (KA, MP3, ASF, MP4, Detecção DT, WAN e Subprodutos)">
+                📊 Matriz Geral de SLA &amp; Atrasos 360° (NOC Matrix)
+              </button>
+            </div>
+            <div style="font-size: 11px; color: #94a3b8; display: flex; align-items: center; gap: 14px;">
+              <span><i class="fas fa-network-wired" style="color: #38bdf8;"></i> <strong>247</strong> Nós Ativos</span>
+              <span><i class="fas fa-satellite-dish" style="color: #34d399;"></i> <strong>953</strong> Canais</span>
+              <button type="button" class="btn-secondary" onclick="fetchAndRenderSlaMatrix()" style="padding: 4px 8px; font-size: 11px;" title="Atualizar Matriz de SLA">
+                <i class="fas fa-sync-alt"></i>
+              </button>
+            </div>
+          </div>
+
           <!-- Barra de Ações em Lote, Ordenação e Seletor de Densidade -->
           <div class="panel-card" style="margin-bottom: 14px; padding: 10px 16px; background: rgba(15, 23, 42, 0.7); border: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
             <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
@@ -4190,6 +4209,106 @@
 
             </div>
 
+          </div>
+
+          <!-- ============================================================== -->
+          <!-- CONTAINER DA MATRIZ GERAL DE SLA & SITUAÇÃO DOS INCIDENTES 360° -->
+          <!-- ============================================================== -->
+          <div id="nocSlaMatrixContainer" style="display: none; background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 10px; padding: 16px; margin-bottom: 20px;">
+            <!-- Topo com KPIs Rápidos de SLA -->
+            <div id="nocSlaMatrixKpiBar" style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px;">
+              <div style="background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(255, 255, 255, 0.1); padding: 6px 14px; border-radius: 8px; font-size: 12px; color: #cbd5e1; display: flex; align-items: center; gap: 6px;">
+                <i class="fas fa-server" style="color: #60a5fa;"></i> <span>Total Frota:</span> <strong id="matrixKpiTotal" style="color: #fff;">0</strong>
+              </div>
+              <div style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3); padding: 6px 14px; border-radius: 8px; font-size: 12px; color: #a7f3d0; display: flex; align-items: center; gap: 6px;">
+                <i class="fas fa-check-circle" style="color: #34d399;"></i> <span>SLA 100% (Nominais):</span> <strong id="matrixKpiNominal" style="color: #34d399;">0</strong>
+              </div>
+              <div style="background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.35); padding: 6px 14px; border-radius: 8px; font-size: 12px; color: #fde047; display: flex; align-items: center; gap: 6px;">
+                <i class="fas fa-exclamation-circle" style="color: #fbbf24;"></i> <span>Alertas Ativos (15-60m):</span> <strong id="matrixKpiActive" style="color: #fbbf24;">0</strong>
+              </div>
+              <div style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.35); padding: 6px 14px; border-radius: 8px; font-size: 12px; color: #fca5a5; display: flex; align-items: center; gap: 6px;">
+                <i class="fas fa-skull-crossbones" style="color: #ef4444;"></i> <span>Críticos (>60m):</span> <strong id="matrixKpiCritical" style="color: #ef4444;">0</strong>
+              </div>
+              <div style="background: rgba(234, 179, 8, 0.15); border: 1px solid rgba(234, 179, 8, 0.3); padding: 6px 14px; border-radius: 8px; font-size: 12px; color: #fef08a; display: flex; align-items: center; gap: 6px;">
+                <i class="fas fa-bullseye" style="color: #eab308;"></i> <span>Detecção Atrasada (DT):</span> <strong id="matrixKpiDtLag" style="color: #eab308;">0</strong>
+              </div>
+              <div style="background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.3); padding: 6px 14px; border-radius: 8px; font-size: 12px; color: #e9d5ff; display: flex; align-items: center; gap: 6px;">
+                <i class="fas fa-compact-disc" style="color: #c084fc;"></i> <span>Mídia / Gravação:</span> <strong id="matrixKpiMediaLag" style="color: #c084fc;">0</strong>
+              </div>
+              <div style="background: rgba(100, 116, 139, 0.2); border: 1px solid rgba(148, 163, 184, 0.3); padding: 6px 14px; border-radius: 8px; font-size: 12px; color: #cbd5e1; display: flex; align-items: center; gap: 6px;">
+                <i class="fas fa-ghost" style="color: #94a3b8;"></i> <span>Crônicos / Descomissionados (>24h):</span> <strong id="matrixKpiChronic" style="color: #cbd5e1;">0</strong>
+              </div>
+            </div>
+
+            <!-- Barra de Filtros Rápidos, Busca e Ordenação -->
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; background: rgba(30, 41, 59, 0.5); padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.08);">
+              <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center;">
+                <span style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; margin-right: 4px;">Filtros:</span>
+                <button type="button" id="btnFilterActive" class="btn-sm" onclick="setSlaMatrixFilterTier('active')" style="padding: 5px 12px; font-size: 11px; font-weight: 800; border-radius: 6px; cursor: pointer; transition: all 0.2s; border: 1px solid #38bdf8; background: linear-gradient(135deg, #0284c7, #2563eb); color: #fff;">
+                  🚨 Apenas Atrasos Ativos (Operacional)
+                </button>
+                <button type="button" id="btnFilterDt" class="btn-sm" onclick="setSlaMatrixCategory('detection')" style="padding: 5px 12px; font-size: 11px; font-weight: 700; border-radius: 6px; cursor: pointer; transition: all 0.2s; border: 1px solid rgba(255, 255, 255, 0.15); background: rgba(15, 23, 42, 0.7); color: #cbd5e1;">
+                  🎯 Gargalo Detecção (DT)
+                </button>
+                <button type="button" id="btnFilterMedia" class="btn-sm" onclick="setSlaMatrixCategory('media')" style="padding: 5px 12px; font-size: 11px; font-weight: 700; border-radius: 6px; cursor: pointer; transition: all 0.2s; border: 1px solid rgba(255, 255, 255, 0.15); background: rgba(15, 23, 42, 0.7); color: #cbd5e1;">
+                  📡 Mídia (MP3/MP4/ASF)
+                </button>
+                <button type="button" id="btnFilterWan" class="btn-sm" onclick="setSlaMatrixCategory('wan')" style="padding: 5px 12px; font-size: 11px; font-weight: 700; border-radius: 6px; cursor: pointer; transition: all 0.2s; border: 1px solid rgba(255, 255, 255, 0.15); background: rgba(15, 23, 42, 0.7); color: #cbd5e1;">
+                  🌐 Link WAN &amp; RTT
+                </button>
+                <button type="button" id="btnFilterChronic" class="btn-sm" onclick="setSlaMatrixFilterTier('chronic')" style="padding: 5px 12px; font-size: 11px; font-weight: 700; border-radius: 6px; cursor: pointer; transition: all 0.2s; border: 1px solid rgba(255, 255, 255, 0.15); background: rgba(15, 23, 42, 0.7); color: #cbd5e1;">
+                  👻 Crônicos (>24h)
+                </button>
+                <button type="button" id="btnFilterAll" class="btn-sm" onclick="setSlaMatrixFilterTier('all')" style="padding: 5px 12px; font-size: 11px; font-weight: 700; border-radius: 6px; cursor: pointer; transition: all 0.2s; border: 1px solid rgba(255, 255, 255, 0.15); background: rgba(15, 23, 42, 0.7); color: #cbd5e1;">
+                  ✅ Toda a Frota (247 Hosts)
+                </button>
+              </div>
+
+              <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                <input type="text" placeholder="🔍 Pesquisar praça, host ou ID..." oninput="handleSlaMatrixSearch(this.value)" class="form-input" style="padding: 5px 10px; font-size: 11px; width: 200px; border-radius: 6px;">
+                <select onchange="handleSlaMatrixSort(this.value)" class="form-input" style="padding: 5px 8px; font-size: 11px; border-radius: 6px; width: 150px;">
+                  <option value="delay">Maior Atraso</option>
+                  <option value="dt">Atraso Detecção (DT)</option>
+                  <option value="praca">Praça (A-Z)</option>
+                  <option value="id">ID Numérico</option>
+                </select>
+                <span class="badge badge-blue" id="badgeMatrixFilteredCount" style="font-size: 11px;">0 Hosts</span>
+              </div>
+            </div>
+
+            <!-- Tabela Matricial de Alta Densidade (Estilo Kantar Modernizado) -->
+            <div style="overflow-x: auto; max-height: 620px; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px;">
+              <table style="width: 100%; border-collapse: collapse; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 11px; text-align: left;">
+                <thead style="position: sticky; top: 0; background: #0f172a; z-index: 10; border-bottom: 2px solid rgba(56, 189, 248, 0.3);">
+                  <tr style="color: #94a3b8; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;">
+                    <th style="padding: 8px 6px; width: 24px; text-align: center;">C</th>
+                    <th style="padding: 8px 6px; width: 45px;">ID</th>
+                    <th style="padding: 8px 10px; min-width: 190px;">HOST / PRAÇA</th>
+                    <th style="padding: 8px 6px; width: 85px; text-align: center;">CS</th>
+                    <th style="padding: 8px 6px; width: 70px; text-align: center;" title="Keepalive: Minutos desde o último heartbeat">KA (AT)</th>
+                    <th style="padding: 8px 6px; width: 70px; text-align: center;" title="Gravação de Áudio: Atraso de Arquivo em Minutos">MP3 ARC</th>
+                    <th style="padding: 8px 6px; width: 70px; text-align: center;" title="Gravação de Áudio: Atraso de Buffer em Minutos">MP3 BUR</th>
+                    <th style="padding: 8px 6px; width: 70px; text-align: center;" title="Vídeo Legado ASF: Atraso de Arquivo em Minutos">ASF ARC</th>
+                    <th style="padding: 8px 6px; width: 75px; text-align: center;" title="Vídeo Atual MP4: Atraso de Arquivo em Minutos">MP4 ARC</th>
+                    <th style="padding: 8px 6px; width: 75px; text-align: center;" title="Detecção Automática Comercial: Atraso em Minutos (Exclusivo CS01)">DT (AT)</th>
+                    <th style="padding: 8px 10px; min-width: 140px;" title="Link de Internet WAN: Operadora, Latência RTT e Velocidade de Upload">LINK WAN</th>
+                    <th style="padding: 8px 10px; min-width: 110px;" title="Subprodutos de Mídia e Metadados (IMA, SPOT, HQ, TS)">SUBPRODUTOS</th>
+                    <th style="padding: 8px 8px; width: 90px; text-align: center;">AÇÃO</th>
+                  </tr>
+                </thead>
+                <tbody id="nocSlaMatrixTableBody">
+                  <tr>
+                    <td colspan="13" style="text-align: center; padding: 40px; color: #94a3b8;">
+                      <i class="fas fa-circle-notch fa-spin"></i> Carregando matriz de situação geral dos incidentes...
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div style="margin-top: 8px; font-size: 11px; color: #64748b; display: flex; justify-content: space-between; align-items: center;">
+              <span><i class="fas fa-info-circle"></i> Células em branco indicam operação nominal dentro do SLA (&lt; 15 min). Clique no botão <strong>Raio-X</strong> ou em qualquer linha para abrir a auditoria e os playbooks de auto-cura.</span>
+              <span>Kantar IBOPE Media • Central CS Fleet NOC</span>
+            </div>
           </div>
 
 
@@ -19700,8 +19819,9 @@
     </div>
   </div>
 
-  <script src="/static/js/detection_monitor.js?v=3.9.91"></script>
-  <script src="/static/js/praca_analyzer.js?v=3.9.93"></script>
+  <script src="/static/js/detection_monitor.js?v=3.9.94"></script>
+  <script src="/static/js/praca_analyzer.js?v=3.9.94"></script>
+  <script src="/static/js/sla_matrix.js?v=3.9.94"></script>
 
 </body>
 

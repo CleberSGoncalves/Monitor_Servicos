@@ -1,8 +1,8 @@
 {
-  "version": "3.9.93",
+  "version": "3.9.94",
   "agent_version": "1.0.21.5",
   "commit_sha": "auto",
-  "updated_at": "2026-11-23T23:55:00.000000",
-  "description": "v3.9.93 - Integra estágio de Link WAN (Internet, Operadora, RTT e SLA de upload) no pipeline forense da praça; isola estritamente Detecção Comercial e Despacho WCF como N/A exclusivo em CS02 e CS03 e sanitiza seletor de CSs.",
-  "release_notes": "v3.9.93: Adiciona estágio de Link WAN & Operadora no pipeline de confiabilidade (com latência ping, operadora e vazão de escoamento); blinda estágios de Detecção Automática e Despacho WCF como 'N/A — Exclusivo CS01' em nós CS02 e CS03; sanitiza botões e filtros de CS removendo sufixos float (ex: CS02.0 -> CS02)."
+  "updated_at": "2026-11-24T01:10:00.000000",
+  "description": "v3.9.94 - Matriz Geral de SLA & Situação dos Incidentes 360° (NOC Matrix) com cálculo em minutos de KA, MP3 ARC/BUR, ASF, MP4, Detecção Comercial DT e Link WAN, com filtros inteligentes e auto-cura de 1 clique.",
+  "release_notes": "v3.9.94: Implementa a Matriz Geral de SLA & Situação dos Incidentes 360° da Frota, superando a tela legada da Kantar/MediaDNA. Consolida todos os 247 hosts em alta densidade com atrasos exatos em minutos (KeepAlive KA, Áudio MP3 ARC/BUR, Vídeo MP4/ASF ARC/BUR, Detecção DT CS01, Link WAN e Subprodutos IMA/SPOT/HQ/TS). Adiciona filtros inteligentes para atrasos operacionais ativos (15m-24h), separação de estações crônicas/zombies (>24h), e botão Raio-X de 1 clique para auto-cura."
 }

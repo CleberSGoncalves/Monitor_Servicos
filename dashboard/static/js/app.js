@@ -13142,38 +13142,19 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
 
 
 
-        // Para canais de rádio, se gravando_mp3 estiver ativo ("Sim" ou "Gravando"), o canal está 100% nominal
-
-
-
-        const isRadioRecordingOk = isRadio && ((c.gravando_mp3 || "").toLowerCase().includes("sim") || (c.gravando_mp3 || "").toLowerCase().includes("grav"));
-
-
-
-        if (isRadioRecordingOk && !c.video_congelado && !c.audio_mudo) {
-
-
-
-            return; // Rádio nominal, sem incidente!
-
-
-
+        // Para canais de rádio, validação exclusiva por áudio e conectividade (RÁDIO JAMAIS POSSUI VÍDEO CONGELADO)
+        if (isRadio) {
+            const isRecOk = (c.gravando_mp3 || "").toLowerCase().includes("sim") || (c.gravando_mp3 || "").toLowerCase().includes("grav");
+            const tStat = (c.status_tuner || "").toLowerCase();
+            const isTunerWorking = tStat.includes("working") || tStat.includes("ready") || tStat.includes("ok") || tStat.includes("connected");
+            const isCloudNominal = (c.motivo || "").toLowerCase().includes("operando") || (c.motivo || "").toLowerCase().includes("estável");
+            if ((isRecOk || isTunerWorking || isCloudNominal) && !c.has_outage) {
+                return; // Rádio 100% nominal, sem incidente!
+            }
         }
 
-
-
-
-
-
-
-        const isStorageErr = !isRadioRecordingOk && ((c.gravando_mp4 || "").includes("⚠️") || (c.motivo || "").includes("Pasta") || (c.motivo || "").includes("Gravação"));
-
-
-
-        const isFrozen = (c.video_congelado || "").toLowerCase().includes("sim");
-
-
-
+        const isStorageErr = !isRadio && ((c.gravando_mp4 || "").includes("⚠️") || (c.motivo || "").includes("Pasta") || (c.motivo || "").includes("Gravação"));
+        const isFrozen = !isRadio && (c.video_congelado || "").toLowerCase().includes("sim");
         const isMute = (c.audio_mudo || "").toLowerCase().includes("sim");
 
 
@@ -13544,7 +13525,13 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
 
 
 
-            summary: c.motivo || "Anomalia Operacional Detectada",
+            summary: (() => {
+                let m = c.motivo || "Anomalia Operacional Detectada";
+                if (isRadio && m.toLowerCase().includes("vídeo")) {
+                    return "Instabilidade no Fluxo de Áudio";
+                }
+                return m;
+            })(),
 
 
 

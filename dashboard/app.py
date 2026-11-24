@@ -3295,6 +3295,33 @@ async def fleet_machines_overview_endpoint(user: dict = Depends(get_current_user
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 
+@app.get("/api/fleet/sla-matrix")
+async def fleet_sla_matrix_endpoint(
+    tier: Optional[str] = None,
+    category: Optional[str] = None,
+    search: Optional[str] = None,
+    sort_by: str = "delay",
+    user: dict = Depends(get_current_user)
+):
+    """
+    Matriz Geral de SLA & Situação dos Incidentes da Frota (NOC Matrix 360°).
+    Consolida atrasos em minutos de KeepAlive (KA), Gravação Áudio (MP3 ARC/BUR),
+    Vídeo (MP4/ASF ARC/BUR), Detecção Comercial (DT) e Subprodutos (IMA/SPOT/HQ/TS),
+    superando com inteligência operacional a tela legada da Kantar / MediaDNA.
+    """
+    try:
+        from sla_matrix_service import get_fleet_sla_matrix
+        return get_fleet_sla_matrix(
+            filter_tier=tier,
+            filter_category=category,
+            search=search,
+            sort_by=sort_by
+        )
+    except Exception as e:
+        logger.error(f"[FleetSLAMatrix] Erro ao gerar matriz de SLA: {e}", exc_info=True)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
 @app.get("/api/fleet/host/cpu-history/{hostname}")
 async def host_cpu_history_endpoint(hostname: str, period: str = "24h", user: dict = Depends(get_current_user)):
     """

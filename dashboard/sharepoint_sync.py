@@ -997,20 +997,20 @@ def sync_fleet_data(force_sharepoint: bool = False):
             is_analog = any(x in m_lower for x in ["analóg", "analog", "directshow"])
 
             is_radio = (
-
                 "radio" in m_lower
-
                 or "fm" in m_lower
-
                 or "mp3" in m_lower
-
                 or "rádio" in ch_name.lower()
-
                 or "radio" in ch_name.lower()
-
                 or " fm" in ch_name.lower()
-
+                or " am" in ch_name.lower()
+                or ch_name.lower().endswith("am")
+                or ch_name.lower().endswith("fm")
             )
+
+            # Rádio (AM/FM/Streaming de Áudio) JAMAIS possui vídeo.
+            if is_radio:
+                is_frozen = False
 
             id_cs = f.get("IDCS", 1)
 
@@ -1109,7 +1109,7 @@ def sync_fleet_data(force_sharepoint: bool = False):
 
                 motivo = "Telemetria Atrasada (>20m sem novo reporte)"
 
-            elif is_frozen:
+            elif is_frozen and not is_radio:
 
                 has_outage = True
 
@@ -1265,7 +1265,7 @@ def sync_fleet_data(force_sharepoint: bool = False):
 
                 "forca_sinal": sig_s if sig_s is not None else 0,
 
-                "video_congelado": f.get("VideoCongelado", "Não"),
+                "video_congelado": "Não" if is_radio else f.get("VideoCongelado", "Não"),
 
                 "audio_mudo": f.get("AudioMudo", "Não"),
 
