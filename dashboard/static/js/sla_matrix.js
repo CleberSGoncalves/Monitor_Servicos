@@ -169,7 +169,11 @@ function renderSlaMatrixTable(rows, totalFiltered) {
         // CS Badge
         let csBadge = `<span class="badge" style="background: rgba(59, 130, 246, 0.2); color: #93c5fd; border: 1px solid #3b82f6; font-weight: 800;">CS ${r.cs}</span>`;
         if (r.cs === 3) {
-            csBadge = `<span class="badge" style="background: rgba(168, 85, 247, 0.2); color: #d8b4fe; border: 1px solid #a855f7; font-weight: 800;">CS 3 (Rádio)</span>`;
+            if (r.is_paytv) {
+                csBadge = `<span class="badge" style="background: rgba(245, 158, 11, 0.2); color: #fde047; border: 1px solid #f59e0b; font-weight: 800;" title="Captação e Gravação de Canais por Assinatura (PayTV / Cabo)">CS 3 (PayTV)</span>`;
+            } else {
+                csBadge = `<span class="badge" style="background: rgba(168, 85, 247, 0.2); color: #d8b4fe; border: 1px solid #a855f7; font-weight: 800;" title="Captação e Gravação de Áudio de Emissoras de Rádio">CS 3 (Rádio)</span>`;
+            }
         } else if (r.cs === 2) {
             csBadge = `<span class="badge" style="background: rgba(14, 165, 233, 0.2); color: #7dd3fc; border: 1px solid #0ea5e9; font-weight: 800;">CS 2</span>`;
         }

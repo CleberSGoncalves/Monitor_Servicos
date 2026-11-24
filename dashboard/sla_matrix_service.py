@@ -68,7 +68,7 @@ def get_fleet_sla_matrix(
     """
     from sharepoint_sync import get_cached_data
     from media_pipeline_monitor import get_fleet_pipeline_incidents, get_link_monitoring_metrics
-    from praca_analyzer import is_radio_channel_healthy, is_tv_channel_healthy
+    from praca_analyzer import is_radio_channel_healthy, is_tv_channel_healthy, infer_cs_operational_role
     from tracking_detection_monitor import build_detection_fleet_snapshot
 
     data = get_cached_data()
@@ -395,6 +395,8 @@ def get_fleet_sla_matrix(
         if wan_ping > 120 or wan_info.get("status") in ("Instável", "Crítico", "Degradado"):
             kpis["wan_issues_count"] += 1
 
+        role_info = infer_cs_operational_role(cs, channels=chans, services=svcs, hostname=h, praca=praca)
+
         row = {
             "id_host": id_host,
             "hostname": h,
@@ -402,6 +404,10 @@ def get_fleet_sla_matrix(
             "display_name": info["display_name"],
             "praca": praca,
             "cs": cs,
+            "is_paytv": role_info.get("is_paytv", False),
+            "is_radio": role_info.get("is_radio", False),
+            "role_title": role_info.get("role_title", ""),
+            "role_badge": role_info.get("badge_label", f"CS {cs}"),
             "tier": tier,
             "color_flag": color_flag,
             "max_delay_min": max_delay,

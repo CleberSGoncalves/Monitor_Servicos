@@ -257,10 +257,15 @@ function renderPracaAuditAndSolutions(audit, sol) {
         nodeRoleLabel = "Papel Operacional:";
         nodeRoleVal = "📺 Captação TV Filial (Sem Detecção Automática / WCF)";
         nodeRoleColor = "#818cf8";
-    } else if (isSingleCs && tier === 3) {
+    } else if (isSingleCs && tier >= 3) {
         nodeRoleLabel = "Papel Operacional:";
-        nodeRoleVal = "📻 Rádio Sonifex / Streaming (Sem Detecção / WCF)";
-        nodeRoleColor = "#c084fc";
+        if (audit.is_paytv || (audit.role_info && audit.role_info.is_paytv)) {
+            nodeRoleVal = "📺 PayTV / Cabo (Gravação de Canais por Assinatura — Sem Detecção / WCF)";
+            nodeRoleColor = "#f59e0b";
+        } else {
+            nodeRoleVal = "📻 Rádio Sonifex / Streaming (Captação de Áudio — Sem Detecção / WCF)";
+            nodeRoleColor = "#c084fc";
+        }
     }
 
     let html = `

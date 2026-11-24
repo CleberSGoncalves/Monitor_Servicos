@@ -15,6 +15,107 @@ from sharepoint_sync import get_cached_data
 
 logger = logging.getLogger("PracaAnalyzer")
 
+def is_radio_channel_type(c: Dict[str, Any]) -> bool:
+    """Verifica com precisão se o registro se refere estritamente a um canal de rádio (FM/AM/Sonifex/Stream), evitando falso match em nomes como AMC."""
+    meio = str(c.get("meio") or "").lower()
+    ch_name = str(c.get("canal") or "").lower()
+    placa = str(c.get("placa") or c.get("device_analog") or "").lower()
+
+    # Canais analógicos (TW6802) ou digitais terrestres (TBS BDA) NUNCA são rádio
+    if any(k in meio for k in ["analógico", "analogico", "digital", "isdb", "cabo"]) or "tw6802" in placa:
+        return False
+    if meio == "radio" or "sonifex" in placa:
+        return True
+    return bool(re.search(r'\b(fm|am|radio|rádio)\b', ch_name, re.IGNORECASE))
+
+
+def infer_cs_operational_role(cs_tier: int, channels: list = None, services: list = None, hostname: str = "", praca: str = "") -> Dict[str, Any]:
+    """
+    Infere deterministamente o papel operacional do Capture Site a partir dos canais e veículos reais:
+    - CS01: Detecção Comercial & TV Principal
+    - CS02: Captação TV Filial / Retransmissoras
+    - CS03:
+        * Se grava canais de PayTV / Cabo / Analógico (Telecine, ESPN, etc.) -> 'PayTV / Cabo'
+        * Se grava emissoras de áudio (FM, AM, Sonifex, Streaming RTSP) -> 'Rádio Sonifex / Streaming'
+    """
+    if cs_tier == 1:
+        return {
+            "role_code": "CS01_DETECTION",
+            "role_title": "Detecção Comercial & TV Principal",
+            "role_label": "TV Principal & Detecção",
+            "badge_label": "CS 1",
+            "badge_color": "#3b82f6",
+            "icon": "🎯",
+            "has_detection": True,
+            "has_wcf": True,
+            "is_paytv": False,
+            "is_radio": False
+        }
+    elif cs_tier == 2:
+        return {
+            "role_code": "CS02_TV_FILIAL",
+            "role_title": "Captação TV Filial / Retransmissoras",
+            "role_label": "Captura TV Filial",
+            "badge_label": "CS 2",
+            "badge_color": "#0ea5e9",
+            "icon": "📡",
+            "has_detection": False,
+            "has_wcf": False,
+            "is_paytv": False,
+            "is_radio": False
+        }
+    else:
+        # CS 3 ou superior: Analisa os canais reais atribuídos ao nó
+        tv_count = 0
+        radio_count = 0
+        paytv_markers = ("analógico", "analogico", "cabo", "paytv", "pay tv", "tw6802", "telecine", "espn", "sportv", "universal", "off", "amc", "lifetime", "premiere")
+        is_explicit_paytv = False
+
+        for c in (channels or []):
+            meio = str(c.get("meio") or "").lower()
+            ch_name = str(c.get("canal") or "").lower()
+            device = str(c.get("device_analog") or "").lower()
+
+            if any(m in meio or m in ch_name or m in device for m in paytv_markers):
+                is_explicit_paytv = True
+
+            if any(w in ch_name for w in ["fm", "am", "radio", "rádio"]) or meio == "radio" or "sonifex" in device:
+                radio_count += 1
+            else:
+                tv_count += 1
+
+        h_lower = (hostname or "").lower()
+        if "radio" in h_lower or "rad" in h_lower:
+            radio_count += 10
+
+        if is_explicit_paytv or tv_count > radio_count:
+            return {
+                "role_code": "CS03_PAYTV",
+                "role_title": "PayTV / Cabo (Gravação de Canais por Assinatura)",
+                "role_label": "PayTV / Cabo",
+                "badge_label": "CS 3 (PayTV)",
+                "badge_color": "#f59e0b",
+                "icon": "📺",
+                "has_detection": False,
+                "has_wcf": False,
+                "is_paytv": True,
+                "is_radio": False
+            }
+        else:
+            return {
+                "role_code": "CS03_RADIO",
+                "role_title": "Rádio Sonifex / Streaming (Captação de Áudio)",
+                "role_label": "Rádio Sonifex / Streaming",
+                "badge_label": "CS 3 (Rádio)",
+                "badge_color": "#a855f7",
+                "icon": "📻",
+                "has_detection": False,
+                "has_wcf": False,
+                "is_paytv": False,
+                "is_radio": True
+            }
+
+
 def is_radio_channel_healthy(c: Dict[str, Any]) -> tuple[bool, str]:
     """
     Avalia com rigor técnico e determinismo se um canal de Rádio (Sonifex ou Streaming RTSP) está saudável.
@@ -46,10 +147,11 @@ def is_radio_channel_healthy(c: Dict[str, Any]) -> tuple[bool, str]:
 
 def is_tv_channel_healthy(c: Dict[str, Any]) -> tuple[bool, str, int]:
     """
-    Avalia com rigor de engenharia de broadcast se um canal de TV Digital (ISDB-Tb) está saudável.
+    Avalia com rigor de engenharia de broadcast se um canal de TV Digital (ISDB-Tb) ou PayTV (Analógico/Cabo) está saudável.
     Elimina falsos positivos de sintonizadores TBS / Atria Capture onde o driver BDA não reporta SNR
     (qualidade_sinal == 0 ou null), mas o processo está conectado ('WORKING' / 'READY' / 'LOCK')
     e a gravação de mídia MP4/ASF está ativa e nominal.
+    Para canais de PayTV / Analógico / Cabo (TW6802 PCI): a gravação contínua é a prova definitiva de sinal.
     """
     if bool(c.get("has_outage", False)):
         return False, "Queda Detectada (Outage)", 0
@@ -57,14 +159,22 @@ def is_tv_channel_healthy(c: Dict[str, Any]) -> tuple[bool, str, int]:
     tuner_stat = str(c.get("status_tuner", "")).strip()
     t_lower = tuner_stat.lower()
 
-    is_disconnected = any(w in t_lower for w in ["disconnect", "parado", "falha", "timeout", "error", "desconectado", "sem sintonizador", "no lock"])
-    if is_disconnected:
-        return False, f"Sintonizador Desconectado ({tuner_stat})", 0
-
     # Confirmação de gravação de mídia MP4/ASF/Vídeo
     rec_mp4 = any(w in str(c.get("gravando_mp4", "")).lower() for w in ["sim", "gravando", "ativo", ".asf", "ok", "rest"])
     rec_vid = any(w in str(c.get("gravando_video", c.get("gravando", ""))).lower() for w in ["sim", "gravando", "ativo"])
     rec_active = rec_mp4 or rec_vid
+
+    # Canais de PayTV / Analógico / Cabo (Placas TW6802 PCI ou operadoras a cabo)
+    meio_c = str(c.get("meio", "")).lower()
+    dev_c = str(c.get("device_analog", "")).lower()
+    ch_c = str(c.get("canal", "")).lower()
+    is_analog_paytv = any(k in meio_c or k in dev_c or k in ch_c for k in ["analógico", "analogico", "cabo", "paytv", "tw6802", "premiere", "sportv", "telecine", "espn", "universal", "off", "amc", "lifetime"])
+    if is_analog_paytv and rec_active:
+        return True, "Lock OK (PayTV/Cabo)", 100
+
+    is_disconnected = any(w in t_lower for w in ["disconnect", "parado", "falha", "timeout", "error", "desconectado", "sem sintonizador", "no lock"])
+    if is_disconnected:
+        return False, f"Sintonizador Desconectado ({tuner_stat})", 0
 
     # Status ativo do tuner no Atria Capture
     tuner_working = any(w in t_lower for w in ["working", "connected", "ready", "lock", "operando", "ok"])
@@ -187,7 +297,8 @@ def audit_praca_ecosystem(praca_name: str, selected_cs: Optional[str] = "ALL") -
                 cs_tier = 1
 
             label_prefix = f"CS0{cs_tier}"
-            cs_role = "Detecção Comercial & TV Principal" if cs_tier == 1 else ("Captura TV Filial" if cs_tier == 2 else "Rádio Sonifex / Streaming")
+            r_dyn = infer_cs_operational_role(cs_tier, praca_channels_raw, hostname=h, praca=praca_name)
+            cs_role = r_dyn["role_title"]
 
             # Sanitizacao de CPU 95% estatico do SharePoint em CS2/CS3
             raw_cpu = str(s.get("cpu_uso") or "26%")
@@ -204,7 +315,9 @@ def audit_praca_ecosystem(praca_name: str, selected_cs: Optional[str] = "ALL") -
                 "ultima_atualizacao": s.get("ultima_atualizacao", "N/D"),
                 "cpu_uso": raw_cpu,
                 "ram_uso": s.get("ram_uso", "N/A"),
-                "disco_d_livre": s.get("disco_d_livre", "N/A")
+                "disco_d_livre": s.get("disco_d_livre", "N/A"),
+                "is_paytv": r_dyn.get("is_paytv", False),
+                "is_radio": r_dyn.get("is_radio", False)
             }
         hosts_dict[h]["services"].append({
             "nome": s.get("nome_servico") or s.get("service_name") or s.get("nome") or "",
@@ -220,12 +333,15 @@ def audit_praca_ecosystem(praca_name: str, selected_cs: Optional[str] = "ALL") -
         opt_code = f"CS0{tier_int}"
         if opt_code not in seen_tiers:
             seen_tiers.add(opt_code)
-            role_desc = "TV Principal & Detecção" if tier_int == 1 else ("Captura TV Filial" if tier_int == 2 else "Rádio Sonifex / Streaming")
+            r_dyn = infer_cs_operational_role(tier_int, praca_channels_raw, hostname=h, praca=praca_name)
+            role_desc = r_dyn["role_label"]
             available_cs_options.append({
                 "cs_tier": tier_int,
                 "code": opt_code,
                 "hostname": h,
-                "label": f"{opt_code} ({role_desc})"
+                "label": f"{opt_code} ({role_desc})",
+                "is_paytv": r_dyn.get("is_paytv", False),
+                "is_radio": r_dyn.get("is_radio", False)
             })
 
     # Filtragem de maquina se o operador selecionou CS01, CS02 ou CS03
@@ -392,12 +508,7 @@ def audit_praca_ecosystem(praca_name: str, selected_cs: Optional[str] = "ALL") -
     canais_auditoria = []
     for c in praca_channels:
         canal_nome = c.get("canal", "Canal Desconhecido")
-        is_radio = (
-            any(w in canal_nome.lower() for w in ["fm", "am", "radio", "rádio"]) 
-            or c.get("meio") == "Radio" 
-            or "sonifex" in str(c.get("placa", "")).lower()
-            or "stream" in str(c.get("placa", "")).lower()
-        )
+        is_radio = is_radio_channel_type(c)
         tuner_stat = str(c.get("status_tuner", "Lock"))
         has_outage = bool(c.get("has_outage", False))
         mp4_rec = "sim" in str(c.get("gravando_mp4", "")).lower() or "gravando" in str(c.get("gravando_mp4", "")).lower()
@@ -605,8 +716,9 @@ def audit_praca_ecosystem(praca_name: str, selected_cs: Optional[str] = "ALL") -
     })
 
     # Estágio 6: Detecção Automática (ESTRITAMENTE EXCLUSIVO AO CS01)
+    role_info_stage = infer_cs_operational_role(active_cs_tier if is_single_cs_focus else 1, praca_channels, hostname=current_target_host, praca=praca_name)
     if is_single_cs_focus and active_cs_tier in (2, 3):
-        role_label = "Captação TV Filial" if active_cs_tier == 2 else "Rádio Sonifex / Streaming"
+        role_label = role_info_stage["role_label"]
         pipeline_stages.append({
             "id": "detection",
             "title": "6. Detecção Automática de Comerciais",
@@ -682,7 +794,12 @@ def audit_praca_ecosystem(praca_name: str, selected_cs: Optional[str] = "ALL") -
         "problems": problems,
         "active_engine": active_engine,
         "engine_conflict": engine_conflict,
-        "cs01_host": cs01_host
+        "cs01_host": cs01_host,
+        "role_info": role_info_stage,
+        "is_paytv": role_info_stage.get("is_paytv", False),
+        "is_radio": role_info_stage.get("is_radio", False),
+        "role_title": role_info_stage.get("role_title", ""),
+        "role_label": role_info_stage.get("role_label", "")
     }
 
 

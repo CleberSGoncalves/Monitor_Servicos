@@ -1,8 +1,8 @@
 {
-  "version": "3.9.98",
+  "version": "3.9.99",
   "agent_version": "1.0.21.5",
   "commit_sha": "auto",
-  "updated_at": "2026-11-24T02:30:00.000000",
-  "description": "v3.9.98 - Adiciona volume em Megas a cada 30min na coluna LINK WAN; erradica atraso sintético de 45m em arquivos ARC aplicando limiares de 30m; corrige seleção de praça no modal de Raio-X.",
-  "release_notes": "v3.9.98: Refina a coluna LINK WAN na Matriz de SLA com a telemetria essencial de transmissão por ciclo de 30 minutos (volume em Megas a transmitir a cada 30min: MB/30m, latência, upload e tempo de escoamento). Elimina atrasos sintéticos e hardcoded de 45 min em MP4/MP3 ARC, alinhando a métrica estritamente a arquivos reais de 30min represados no pipeline (.SENT pendente ou FileTransfer inoperante com limiares de tolerância <=15m, alerta >15m e crítico >60m). Corrige o modal de Raio-X forense para correspondência resiliente de praça (NFKD) eliminando o alerta de 'selecione uma praça'."
+  "updated_at": "2026-11-24T03:00:00.000000",
+  "description": "v3.9.99 - Inferência dinâmica e determinística de PayTV / Cabo vs Rádio para CS03; blindagem de canais analógicos TW6802 PCI e erradicação de falsos alertas de sinal RF.",
+  "release_notes": "v3.9.99: Elimina a suposição hardcoded de que todo CS03 é rádio Sonifex. Implementa a inferência operacional dinâmica que classifica com precisão nós dedicados a canais por assinatura como 'PayTV / Cabo' (ex: Nacional CS03 e São Paulo com Telecine, ESPN, etc.) exibindo badge 'CS 3 (PayTV)'. Blinda canais de placas analógicas TW6802 PCI com gravação ativa (.ASF/.MP4) considerando-os 100% saudáveis sem penalização por 'status_tuner = Disconnected' do driver sem BDA. Adiciona proteção contra falso match de rádio AM em nomes de canais como 'AMC'."
 }
