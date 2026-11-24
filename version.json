@@ -1,8 +1,8 @@
 {
-  "version": "3.9.110",
+  "version": "3.9.111",
   "agent_version": "1.0.21.5",
   "commit_sha": "auto",
-  "updated_at": "2026-11-24T13:30:00.000000",
-  "description": "v3.9.110 - Acompanhamento de Atualização ao Vivo com Percentual, Terminal em Tempo Real e Widget Flutuante Persistente.",
-  "release_notes": "v3.9.110: 1. Barra de progresso visual em tempo real com percentual numérico (0% a 100%) e descrição dinâmica da atividade em execução no host (download, parada profilática, extração de MSI, restauração de configs e healthcheck). 2. Terminal do Script em Tempo Real (Console do Host) integrado ao modal, com logs ao vivo e botão para copiar saída. 3. Widget Flutuante Persistente Global (#fleetActiveUpdateFloatingWidget): caso o operador feche o modal ou navegue pelo sistema, o widget flutuante no canto inferior permanece visível com percentual e status em tempo real, permitindo reabrir o modal em 1 clique a qualquer momento. 4. Botão de acompanhamento dinâmico na tabela da Frota e restauração automática via localStorage."
+  "updated_at": "2026-11-24T17:21:00.000000",
+  "description": "v3.9.111 - Super Modal Atria Capture Site, Hardening Incondicional de Perfis EMU e Detection Pipeline Live (fma.log).",
+  "release_notes": "v3.9.111: 1. Correção definitiva de perfil EMU em Uberlândia: Encoding 1252 compatível com PowerShell 5.1 e aplicação incondicional de 'EMU MediaDNA 1min' em updates do Atria Capture. 2. Super Modal ATRIA no Painel de Frota: 6 abas (Muxes, Canais & Gravação com 15 colunas e alertas de perfis, Application Options General & AutoDetection SVC, Editor e Catálogo de WMProfiles com aplicação em 1 clique, LogRotate e Prévia de Script). 3. Detection Pipeline Live: monitoramento em tempo real do motor FastMatching (fma.log), catálogo de spots, novas detecções e fluxo contínuo de geração de fatias EMU. 4. Diagnóstico forense de virada comercial em Ponta Porã e integração plug-and-play do instalador do agente."
 }

@@ -310,9 +310,16 @@ function renderPracaAuditAndSolutions(audit, sol) {
                 <div>
                     <span style="color: #94a3b8;">${escapeHtml(nodeTitle)}</span> <strong style="color: #fff;">${escapeHtml(nodeHost)}</strong>
                 </div>
-                <div>
-                    <span style="color: #94a3b8;">${escapeHtml(nodeRoleLabel)}</span>
-                    <strong style="color: ${nodeRoleColor};">${nodeRoleVal}</strong>
+                <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                    <div>
+                        <span style="color: #94a3b8;">${escapeHtml(nodeRoleLabel)}</span>
+                        <strong style="color: ${nodeRoleColor};">${nodeRoleVal}</strong>
+                    </div>
+                    ${tier === 1 || (audit.active_engine && audit.active_engine.includes('FastMatching')) ? `
+                        <button class="btn btn-sm" onclick="if(window.openDetectionPipelineLiveModal){openDetectionPipelineLiveModal('${escapeHtml(nodeHost)}', '${escapeHtml(audit.praca || '')}');}" style="background: rgba(14, 165, 233, 0.2); border: 1px solid #0ea5e9; color: #38bdf8; font-weight: 700; padding: 3px 8px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; font-size: 11px;" title="Monitorar telemetria viva de fma.log, spots e EMU">
+                            <span>📡</span> Pipeline Live (fma.log)
+                        </button>
+                    ` : ''}
                 </div>
             </div>
         </div>

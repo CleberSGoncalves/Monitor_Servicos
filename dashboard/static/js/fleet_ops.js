@@ -2841,6 +2841,12 @@ function openSelectedHostConfigModal() {
     openHostConfigModal(hostname, praca, cs);
 }
 
+// ==========================================================================
+// SUPER MODAL ATRIA (MediaDNA): GERENCIAMENTO OPERACIONAL DO CAPTURE SITE
+// ==========================================================================
+let currentLoadedHostConfig = null;
+let selectedProfileFilename = null;
+
 async function openHostConfigModal(hostname, praca = "", cs = 1) {
     const modal = document.getElementById("modalHostConfig");
     if (!modal) return;
@@ -2875,9 +2881,13 @@ async function openHostConfigModal(hostname, praca = "", cs = 1) {
     switchHostConfigTab("channels");
     modal.style.display = "flex";
 
-    const tbody = document.getElementById("hostConfigChannelsTableBody");
-    if (tbody) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #94a3b8; padding: 25px;"><i class="fas fa-spinner fa-spin" style="font-size: 20px; color: #38bdf8; margin-bottom: 8px;"></i><br>Carregando telemetria operacional de ${hostname}...</td></tr>`;
+    const tbodyCh = document.getElementById("hostConfigChannelsTableBody");
+    if (tbodyCh) {
+        tbodyCh.innerHTML = `<tr><td colspan="15" style="text-align: center; color: #94a3b8; padding: 25px;"><i class="fas fa-spinner fa-spin" style="font-size: 20px; color: #38bdf8; margin-bottom: 8px;"></i><br>Carregando telemetria operacional de ${hostname}...</td></tr>`;
+    }
+    const tbodyMux = document.getElementById("hostConfigMuxesTableBody");
+    if (tbodyMux) {
+        tbodyMux.innerHTML = `<tr><td colspan="8" style="text-align: center; color: #94a3b8; padding: 25px;"><i class="fas fa-spinner fa-spin"></i> Carregando multiplexes...</td></tr>`;
     }
 
     try {
@@ -2892,175 +2902,437 @@ async function openHostConfigModal(hostname, praca = "", cs = 1) {
         if (txtP && data.praca) txtP.innerText = data.praca;
         if (txtCS && data.cs) txtCS.innerText = `CS 0${data.cs}`;
 
+        const txtHId = document.getElementById("hostConfigTextHostId");
+        if (txtHId) txtHId.innerText = data.id_host ? `#${data.id_host}` : "--";
+
+        const badgeNet = document.getElementById("badgeHostConfigNetwork");
+        if (badgeNet && data.channels && data.channels.length > 0) {
+            badgeNet.innerText = data.channels[0].network_type || "Digital Terrestre";
+        }
+
+        renderHostConfigMuxesTable(data.muxes || []);
         renderHostConfigChannelsTable(data.channels || [], data.cs);
+        populateHostAppOptionsUI(data.application_options || {});
+        renderHostProfilesList(data.wmprofiles || []);
 
-        const appCfg = data.app_config || {};
-        const elApiPort = document.getElementById("cfgAppApiPort");
-        if (elApiPort) elApiPort.value = appCfg.api_port || 9000;
-        const elMosPort = document.getElementById("cfgAppMosaicPort");
-        if (elMosPort) elMosPort.value = appCfg.mosaic_port || 8080;
-        const elVid = document.getElementById("cfgAppVideoDir");
-        if (elVid) elVid.value = appCfg.video_dir || "D:\\MediaDNA_V2\\Data\\video";
-        const elVidBkp = document.getElementById("cfgAppVideoBkpDir");
-        if (elVidBkp) elVidBkp.value = appCfg.video_bkp_dir || "D:\\MediaDNA_V2\\Data\\video_bkp";
-        const elEmu = document.getElementById("cfgAppEmuDir");
-        if (elEmu) elEmu.value = appCfg.emu_dir || "D:\\MediaDNA_V2\\Data\\emu";
-
+        // LogRotate
         const lrCfg = data.logrotate || {};
-        const elLrTarget = document.getElementById("cfgLogRotateTarget");
-        if (elLrTarget) elLrTarget.value = lrCfg.target_log_path || "D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMatchingSvc\\fma.log";
-        const elLrDays = document.getElementById("cfgLogRotateDays");
-        if (elLrDays) elLrDays.value = String(lrCfg.rotate_days || 10);
-        const elLrFreq = document.getElementById("cfgLogRotateFreq");
-        if (elLrFreq) elLrFreq.value = lrCfg.frequency || "daily";
+        const elTarget = document.getElementById("cfgLrTarget");
+        if (elTarget) elTarget.value = lrCfg.target_log_path || "D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMatchingSvc\\fma.log";
+        const elRotate = document.getElementById("cfgLrRotate");
+        if (elRotate) elRotate.value = String(lrCfg.rotate_days || 10);
 
-        updateLogRotateSnippetPreview();
-
+        generateHostConfigPreview();
     } catch (err) {
-        console.error("[HostConfig] Erro ao carregar configurações:", err);
-        if (tbody) {
-            tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #f87171; padding: 25px;"><i class="fas fa-exclamation-triangle"></i> Falha ao carregar configurações: ${err.message}</td></tr>`;
+        console.error("Erro ao carregar host config:", err);
+        if (typeof showToast === "function") showToast("Falha ao carregar configurações do host: " + err.message, "error");
+        if (tbodyCh) {
+            tbodyCh.innerHTML = `<tr><td colspan="15" style="text-align: center; color: #ef4444; padding: 20px;"><i class="fas fa-exclamation-triangle"></i> Falha ao conectar na API local do host. Detalhes: ${err.message}</td></tr>`;
         }
     }
+}
+
+function reloadCurrentHostConfig() {
+    if (!currentLoadedHostConfig || !currentLoadedHostConfig.hostname) return;
+    openHostConfigModal(currentLoadedHostConfig.hostname, currentLoadedHostConfig.praca, currentLoadedHostConfig.cs);
 }
 
 function closeHostConfigModal() {
     const modal = document.getElementById("modalHostConfig");
     if (modal) modal.style.display = "none";
-    currentLoadedHostConfig = null;
 }
 
 function switchHostConfigTab(tabName) {
-    const tabs = ["channels", "appconfig", "logrotate", "preview"];
+    const tabMuxes = document.getElementById("tabContentHostMuxes");
+    const tabChannels = document.getElementById("tabContentHostChannels");
+    const tabApp = document.getElementById("tabContentHostAppConfig");
+    const tabProfiles = document.getElementById("tabContentHostProfiles");
+    const tabLr = document.getElementById("tabContentHostLogRotate");
+    const tabPrev = document.getElementById("tabContentHostPreview");
+
+    const btnMuxes = document.getElementById("btnTabHostMuxes");
+    const btnChannels = document.getElementById("btnTabHostChannels");
+    const btnApp = document.getElementById("btnTabHostAppConfig");
+    const btnProfiles = document.getElementById("btnTabHostProfiles");
+    const btnLr = document.getElementById("btnTabHostLogRotate");
+    const btnPrev = document.getElementById("btnTabHostPreview");
+
+    const tabs = [
+        { name: "muxes", el: tabMuxes, btn: btnMuxes },
+        { name: "channels", el: tabChannels, btn: btnChannels },
+        { name: "appconfig", el: tabApp, btn: btnApp },
+        { name: "profiles", el: tabProfiles, btn: btnProfiles },
+        { name: "logrotate", el: tabLr, btn: btnLr },
+        { name: "preview", el: tabPrev, btn: btnPrev }
+    ];
+
     tabs.forEach(t => {
-        const btn = document.getElementById(`btnTabHost${t.charAt(0).toUpperCase() + t.slice(1)}`);
-        const content = document.getElementById(`tabContentHost${t.charAt(0).toUpperCase() + t.slice(1)}`);
-        if (btn) btn.classList.toggle("active", t === tabName);
-        if (content) content.style.display = (t === tabName) ? "block" : "none";
+        if (t.el) t.el.style.display = (t.name === tabName) ? "block" : "none";
+        if (t.btn) {
+            if (t.name === tabName) t.btn.classList.add("active");
+            else t.btn.classList.remove("active");
+        }
     });
 
     if (tabName === "preview") {
         generateHostConfigPreview();
     }
-    if (tabName === "logrotate") {
-        updateLogRotateSnippetPreview();
+}
+
+function switchAppConfigSubTab(subTab) {
+    const subGen = document.getElementById("subTabContentAppGeneral");
+    const subAuto = document.getElementById("subTabContentAppAutoDetection");
+    const btnGen = document.getElementById("btnSubTabAppGeneral");
+    const btnAuto = document.getElementById("btnSubTabAppAutoDetection");
+
+    if (subTab === "general") {
+        if (subGen) subGen.style.display = "block";
+        if (subAuto) subAuto.style.display = "none";
+        if (btnGen) { btnGen.style.background = "rgba(56, 189, 248, 0.2)"; btnGen.style.color = "#38bdf8"; }
+        if (btnAuto) { btnAuto.style.background = "transparent"; btnAuto.style.color = "#94a3b8"; }
+    } else {
+        if (subGen) subGen.style.display = "none";
+        if (subAuto) subAuto.style.display = "block";
+        if (btnGen) { btnGen.style.background = "transparent"; btnGen.style.color = "#94a3b8"; }
+        if (btnAuto) { btnAuto.style.background = "rgba(16, 185, 129, 0.2)"; btnAuto.style.color = "#34d399"; }
     }
 }
 
-function updateLogRotateSnippetPreview() {
-    const pre = document.getElementById("previewLogRotateSnippet");
-    if (!pre) return;
-    const target = document.getElementById("cfgLogRotateTarget")?.value || "D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMatchingSvc\\fma.log";
-    const days = document.getElementById("cfgLogRotateDays")?.value || "10";
-    const freq = document.getElementById("cfgLogRotateFreq")?.value || "daily";
-    pre.innerText = `${target} {\n        ${freq}\n\t\tdateext\n\t\tdateformat .%Y%m%d\n\t\tmissingok\n\t\trotate ${days}\n}`;
+// RENDERIZAÇÃO DA TABELA DE MUXES
+function renderHostConfigMuxesTable(muxes) {
+    const tbody = document.getElementById("hostConfigMuxesTableBody");
+    if (!tbody) return;
+
+    if (!muxes || muxes.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: #94a3b8; padding: 20px;">Nenhum multiplex cadastrado. Clique em "Adicionar Mux" para configurar.</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = muxes.map((m, idx) => `
+        <tr style="border-bottom: 1px solid rgba(148, 163, 184, 0.1);">
+            <td style="padding: 6px 8px; text-align: center;">
+                <input type="checkbox" id="muxActive_${idx}" ${m.is_active !== false ? "checked" : ""} onchange="updateMuxField(${idx}, 'is_active', this.checked)">
+            </td>
+            <td style="padding: 6px 8px; text-align: center; font-family: monospace; font-weight: 700; color: #38bdf8;">
+                <input type="number" id="muxId_${idx}" value="${m.mux_id}" style="width: 50px; text-align: center; background: #0f172a; border: 1px solid rgba(148,163,184,0.3); border-radius: 4px; color: #f8fafc; font-size: 11px;" onchange="updateMuxField(${idx}, 'mux_id', Number(this.value))">
+            </td>
+            <td style="padding: 6px 8px;">
+                <input type="text" id="muxName_${idx}" value="${m.name}" style="width: 100%; background: #0f172a; border: 1px solid rgba(148,163,184,0.3); border-radius: 4px; color: #f8fafc; font-size: 11px; padding: 3px 6px;" onchange="updateMuxField(${idx}, 'name', this.value)">
+            </td>
+            <td style="padding: 6px 8px;">
+                <select id="muxNetwork_${idx}" style="width: 100%; background: #0f172a; border: 1px solid rgba(148,163,184,0.3); border-radius: 4px; color: #f8fafc; font-size: 11px; padding: 3px 6px;" onchange="updateMuxField(${idx}, 'network_type', this.value)">
+                    <option value="Terrestrial" ${m.network_type === "Terrestrial" ? "selected" : ""}>Terrestrial (ISDB-Tb)</option>
+                    <option value="Satellite" ${m.network_type === "Satellite" ? "selected" : ""}>Satellite (DVB-S2)</option>
+                    <option value="Cable" ${m.network_type === "Cable" ? "selected" : ""}>Cable (DVB-C)</option>
+                    <option value="Streaming" ${m.network_type === "Streaming" || m.network_type === "IP" ? "selected" : ""}>IP / Streaming (RTSP/UDP)</option>
+                    <option value="Radio" ${m.network_type === "Radio" ? "selected" : ""}>Radio (FM/AM)</option>
+                </select>
+            </td>
+            <td style="padding: 6px 8px;">
+                <input type="number" id="muxFreq_${idx}" value="${m.frequency || 557000}" style="width: 100%; background: #0f172a; border: 1px solid rgba(148,163,184,0.3); border-radius: 4px; color: #f8fafc; font-size: 11px; padding: 3px 6px; font-family: monospace;" onchange="updateMuxField(${idx}, 'frequency', Number(this.value))">
+            </td>
+            <td style="padding: 6px 8px;">
+                <select id="muxBw_${idx}" style="width: 100%; background: #0f172a; border: 1px solid rgba(148,163,184,0.3); border-radius: 4px; color: #f8fafc; font-size: 11px; padding: 3px 6px;" onchange="updateMuxField(${idx}, 'bandwidth', Number(this.value))">
+                    <option value="6" ${m.bandwidth === 6 ? "selected" : ""}>6 MHz</option>
+                    <option value="7" ${m.bandwidth === 7 ? "selected" : ""}>7 MHz</option>
+                    <option value="8" ${m.bandwidth === 8 ? "selected" : ""}>8 MHz</option>
+                </select>
+            </td>
+            <td style="padding: 6px 8px;">
+                <input type="text" id="muxSource_${idx}" value="${m.source_path || ''}" placeholder="rtsp:// ou caminho" style="width: 100%; background: #0f172a; border: 1px solid rgba(148,163,184,0.3); border-radius: 4px; color: #f8fafc; font-size: 11px; padding: 3px 6px; font-family: monospace;" onchange="updateMuxField(${idx}, 'source_path', this.value)">
+            </td>
+            <td style="padding: 6px 8px;">
+                <select id="muxDecMode_${idx}" style="width: 100%; background: #0f172a; border: 1px solid rgba(148,163,184,0.3); border-radius: 4px; color: #f8fafc; font-size: 11px; padding: 3px 6px;" onchange="updateMuxField(${idx}, 'video_decoding_mode', this.value)">
+                    <option value="Usar a configuração LAV global" ${m.video_decoding_mode === "Usar a configuração LAV global" ? "selected" : ""}>LAV global (Recomendado)</option>
+                    <option value="Microsoft DTV-DVD Video Decoder" ${m.video_decoding_mode === "Microsoft DTV-DVD Video Decoder" ? "selected" : ""}>Microsoft DTV-DVD</option>
+                    <option value="LAV Video Decoder" ${m.video_decoding_mode === "LAV Video Decoder" ? "selected" : ""}>LAV Video Decoder</option>
+                </select>
+            </td>
+        </tr>
+    `).join("");
 }
 
-function renderHostConfigChannelsTable(channels, hostCS = 1) {
+function updateMuxField(index, field, value) {
+    if (!currentLoadedHostConfig || !currentLoadedHostConfig.muxes || !currentLoadedHostConfig.muxes[index]) return;
+    currentLoadedHostConfig.muxes[index][field] = value;
+    generateHostConfigPreview();
+}
+
+function addNewMuxRow() {
+    if (!currentLoadedHostConfig) currentLoadedHostConfig = {};
+    if (!currentLoadedHostConfig.muxes) currentLoadedHostConfig.muxes = [];
+
+    const nextId = (currentLoadedHostConfig.muxes.length + 1) * 2;
+    currentLoadedHostConfig.muxes.push({
+        mux_id: nextId,
+        sub_id: 0,
+        name: `MUX Novo (${nextId})`,
+        network_type: "Terrestrial",
+        frequency: 557000 + (currentLoadedHostConfig.muxes.length * 6000),
+        bandwidth: 6,
+        polarization: "Not Set",
+        modulation: "Not Set",
+        source_path: "",
+        first_timeout: 120,
+        file_duration: 180,
+        video_decoding_mode: "Usar a configuração LAV global",
+        is_active: true
+    });
+    renderHostConfigMuxesTable(currentLoadedHostConfig.muxes);
+    generateHostConfigPreview();
+}
+
+// RENDERIZAÇÃO DA TABELA DE CANAIS
+function renderHostConfigChannelsTable(channels, cs) {
     const tbody = document.getElementById("hostConfigChannelsTableBody");
     if (!tbody) return;
 
     if (!channels || channels.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #94a3b8; padding: 20px;">Nenhum canal sintonizado identificado para este Capture Site.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="15" style="text-align: center; color: #94a3b8; padding: 20px;">Nenhum canal sintonizado detectado para esta estação.</td></tr>`;
         return;
     }
 
-    const isCS01 = Number(hostCS) === 1;
+    const availableEmuProfiles = [
+        "EMU MediaDNA 1min",
+        "EMU MDNA",
+        "EMU_Atria_15min",
+        "EMU_Atria_FMA",
+        "EMU_BR_2min",
+        "EMU_BR_3min",
+        "EMU_BR_MediaDNA",
+        "EMU MediaDNA 3min",
+        "EMU_30MIN"
+    ];
 
     tbody.innerHTML = channels.map((ch, idx) => {
-        const q = ch.qualidade != null ? ch.qualidade : "--";
-        const f = ch.forca != null ? ch.forca : "--";
-        const signalBadge = q !== "--"
-            ? `<span style="color: #34d399; font-weight: 700;">${q}%</span> <span style="font-size: 10px; color: #94a3b8;">(${f}dB)</span>`
-            : `<span style="color: #94a3b8;">N/A</span>`;
-
-        const emuChecked = ch.emu_is_recording ? "checked" : "";
-        const mp4Checked = ch.mp4_is_recording ? "checked" : "";
-        const emuDisabledNotice = !isCS01 ? `title="CS02/CS03 opera como backup/mídia pura. EMU é exclusivo do CS01."` : "";
+        const isEmuRec = (ch.emu_is_recording !== undefined) ? !!ch.emu_is_recording : (Number(cs) === 1);
+        const isMp4Rec = (ch.mp4_is_recording !== undefined) ? !!ch.mp4_is_recording : true;
+        const isMp3Rec = (ch.mp3_is_recording !== undefined) ? !!ch.mp3_is_recording : true;
+        const currentProfile = ch.emu_profile_name || "EMU MediaDNA 1min";
+        const isOfficialProfile = currentProfile === "EMU MediaDNA 1min";
 
         return `
-            <tr style="border-bottom: 1px solid rgba(148,163,184,0.1); transition: background 0.15s ease;" onmouseover="this.style.background='rgba(51,65,85,0.25)'" onmouseout="this.style.background='transparent'">
-                <td style="padding: 8px 12px; font-weight: 700; color: #f8fafc;">
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <span style="font-size: 14px;">📺</span>
-                        <div>
-                            <div>${ch.name}</div>
-                            <div style="font-size: 10px; color: #64748b; font-family: monospace;">Cod: ${ch.channel_code || "N/A"}</div>
-                        </div>
-                    </div>
-                </td>
-                <td style="padding: 8px 12px; font-size: 11px; color: #cbd5e1;">
-                    <div>${ch.frequency || "N/A"}</div>
-                    <div style="font-size: 10px; color: #38bdf8;">${ch.network_type || "Digital Terrestre"}</div>
-                </td>
-                <td style="padding: 8px 12px; text-align: center; font-size: 11px;">
-                    <div>Tuner #${ch.tuner_id >= 0 ? ch.tuner_id : 0}</div>
-                    <div>${signalBadge}</div>
-                </td>
-                <td style="padding: 8px 12px; text-align: center;">
-                    <label style="cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
-                        <input type="checkbox" id="chkChMp4_${idx}" ${mp4Checked} style="accent-color: #38bdf8; width: 15px; height: 15px; cursor: pointer;">
-                        <span style="font-size: 11px; color: #cbd5e1;">Gravar</span>
-                    </label>
-                </td>
-                <td style="padding: 8px 12px; text-align: center;" ${emuDisabledNotice}>
-                    <label style="cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
-                        <input type="checkbox" id="chkChEmu_${idx}" ${emuChecked} style="accent-color: #10b981; width: 15px; height: 15px; cursor: pointer;">
-                        <span style="font-size: 11px; font-weight: 600; color: ${ch.emu_is_recording ? '#34d399' : '#94a3b8'};">EMU</span>
-                    </label>
-                </td>
-                <td style="padding: 8px 12px;">
-                    <select id="selChEmuProf_${idx}" style="background: #0f172a; color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 6px; padding: 4px 8px; font-size: 11px; font-weight: 700; width: 100%; cursor: pointer;">
-                        <option value="EMU MediaDNA 1min" selected>EMU MediaDNA 1min (Homologado FastMatching)</option>
-                        <option value="EMU MediaDNA 2min">EMU MediaDNA 2min</option>
-                        <option value="EMU Custom">EMU Custom</option>
-                    </select>
-                </td>
-            </tr>
+        <tr style="border-bottom: 1px solid rgba(148, 163, 184, 0.1);" data-channel-idx="${idx}">
+            <td style="padding: 6px 8px; text-align: center;">
+                <input type="checkbox" id="chActive_${idx}" ${ch.is_active !== false ? "checked" : ""} onchange="updateChannelField(${idx}, 'is_active', this.checked)">
+            </td>
+            <td style="padding: 6px 8px; font-weight: 600; color: #f8fafc;">
+                <input type="text" id="chName_${idx}" value="${ch.name}" style="width: 100%; background: #0f172a; border: 1px solid rgba(148,163,184,0.3); border-radius: 4px; color: #f8fafc; font-size: 11px; padding: 2px 6px;" onchange="updateChannelField(${idx}, 'name', this.value)">
+            </td>
+            <td style="padding: 6px 8px; text-align: center; font-family: monospace; color: #94a3b8;">
+                <input type="number" id="chIdS_${idx}" value="${ch.id_service || 23264}" style="width: 55px; text-align: center; background: #0f172a; border: 1px solid rgba(148,163,184,0.2); border-radius: 4px; color: #cbd5e1; font-size: 10px;" onchange="updateChannelField(${idx}, 'id_service', Number(this.value))">
+            </td>
+            <td style="padding: 6px 8px; text-align: center; font-family: monospace; color: #94a3b8;">
+                <input type="number" id="chPv_${idx}" value="${ch.pv || 1047}" style="width: 45px; text-align: center; background: #0f172a; border: 1px solid rgba(148,163,184,0.2); border-radius: 4px; color: #cbd5e1; font-size: 10px;" onchange="updateChannelField(${idx}, 'pv', Number(this.value))">
+            </td>
+            <td style="padding: 6px 8px; text-align: center; font-family: monospace; color: #94a3b8;">
+                <input type="number" id="chHost_${idx}" value="${ch.id_host || 284}" style="width: 45px; text-align: center; background: #0f172a; border: 1px solid rgba(148,163,184,0.2); border-radius: 4px; color: #cbd5e1; font-size: 10px;" onchange="updateChannelField(${idx}, 'id_host', Number(this.value))">
+            </td>
+            <td style="padding: 6px 8px; text-align: center; font-family: monospace; color: #94a3b8;">
+                <input type="number" id="chCS_${idx}" value="${ch.cs || 1}" style="width: 35px; text-align: center; background: #0f172a; border: 1px solid rgba(148,163,184,0.2); border-radius: 4px; color: #cbd5e1; font-size: 10px;" onchange="updateChannelField(${idx}, 'cs', Number(this.value))">
+            </td>
+            <td style="padding: 6px 8px;">
+                <select id="chDecoder_${idx}" style="width: 100%; background: #0f172a; border: 1px solid rgba(148,163,184,0.25); border-radius: 4px; color: #f8fafc; font-size: 10px; padding: 2px 4px;" onchange="updateChannelField(${idx}, 'preferred_decoder', this.value)">
+                    <option value="Microsoft" ${ch.preferred_decoder === "Microsoft" ? "selected" : ""}>Microsoft</option>
+                    <option value="LAV" ${ch.preferred_decoder === "LAV" ? "selected" : ""}>LAV</option>
+                    <option value="Default" ${ch.preferred_decoder === "Default" ? "selected" : ""}>Default</option>
+                </select>
+            </td>
+            <!-- MP4 RECORDING -->
+            <td style="padding: 6px 8px; text-align: center; background: rgba(56, 189, 248, 0.05);">
+                <input type="checkbox" id="chMp4Rec_${idx}" ${isMp4Rec ? "checked" : ""} onchange="updateChannelField(${idx}, 'mp4_is_recording', this.checked)">
+            </td>
+            <td style="padding: 6px 8px; background: rgba(56, 189, 248, 0.05);">
+                <select id="chMp4Prof_${idx}" style="width: 100%; background: #0f172a; border: 1px solid rgba(56,189,248,0.3); border-radius: 4px; color: #38bdf8; font-size: 10px; padding: 2px 4px;" onchange="updateChannelField(${idx}, 'mp4_profile', this.value)">
+                    <option value="MP4_MDNA" selected>MP4_MDNA</option>
+                    <option value="MP4_HD">MP4_HD</option>
+                    <option value="MP4_Standard">MP4_Standard</option>
+                </select>
+            </td>
+            <!-- MP3 RECORDING -->
+            <td style="padding: 6px 8px; text-align: center; background: rgba(245, 158, 11, 0.05);">
+                <input type="checkbox" id="chMp3Rec_${idx}" ${isMp3Rec ? "checked" : ""} onchange="updateChannelField(${idx}, 'mp3_is_recording', this.checked)">
+            </td>
+            <td style="padding: 6px 8px; background: rgba(245, 158, 11, 0.05);">
+                <select id="chMp3Prof_${idx}" style="width: 100%; background: #0f172a; border: 1px solid rgba(245,158,11,0.3); border-radius: 4px; color: #fbbf24; font-size: 10px; padding: 2px 4px;" onchange="updateChannelField(${idx}, 'mp3_profile', this.value)">
+                    <option value="MP3_MDNA" selected>MP3_MDNA</option>
+                    <option value="Mp3Prof_Audio Desc">Mp3Prof_Audio Desc</option>
+                    <option value="Mp3Prof_Kantar BR">Mp3Prof_Kantar BR</option>
+                </select>
+            </td>
+            <!-- EMU RECORDING -->
+            <td style="padding: 6px 8px; text-align: center; background: rgba(16, 185, 129, 0.05);">
+                <input type="checkbox" id="chEmuRec_${idx}" ${isEmuRec ? "checked" : ""} style="accent-color: #10b981;" onchange="updateChannelField(${idx}, 'emu_is_recording', this.checked)">
+            </td>
+            <td style="padding: 6px 8px; background: rgba(16, 185, 129, 0.05);">
+                <select id="chEmuProf_${idx}" style="width: 100%; background: #0f172a; border: 1px solid ${isOfficialProfile ? 'rgba(16, 185, 129, 0.5)' : 'rgba(239, 68, 68, 0.5)'}; border-radius: 4px; color: ${isOfficialProfile ? '#34d399' : '#f87171'}; font-size: 10px; font-weight: ${isOfficialProfile ? '700' : 'normal'}; padding: 2px 4px;" onchange="updateChannelField(${idx}, 'emu_profile_name', this.value)">
+                    ${availableEmuProfiles.map(p => `
+                        <option value="${p}" ${p === currentProfile ? "selected" : ""}>
+                            ${p === "EMU MediaDNA 1min" ? "⭐ EMU MediaDNA 1min (Oficial)" : (p === "EMU MDNA" ? "⚠️ EMU MDNA (Legado)" : p)}
+                        </option>
+                    `).join("")}
+                </select>
+            </td>
+            <!-- CAPTION & FRAMES -->
+            <td style="padding: 6px 8px;">
+                <input type="text" id="chCap_${idx}" value="${ch.video_caption_pattern || ''}" placeholder="Padrão Caption" style="width: 100%; background: #0f172a; border: 1px solid rgba(148,163,184,0.2); border-radius: 4px; color: #cbd5e1; font-size: 10px; padding: 2px 4px; font-family: monospace;" onchange="updateChannelField(${idx}, 'video_caption_pattern', this.value)">
+            </td>
+            <td style="padding: 6px 8px; text-align: center;">
+                <input type="checkbox" id="chJpg_${idx}" ${ch.jpg_frames_generate !== false ? "checked" : ""} onchange="updateChannelField(${idx}, 'jpg_frames_generate', this.checked)">
+            </td>
+        </tr>
         `;
     }).join("");
 }
 
-function generateHostConfigPreview() {
-    const txtArea = document.getElementById("txtHostConfigScriptPreview");
-    if (!txtArea || !currentLoadedHostConfig) return;
+function updateChannelField(index, field, value) {
+    if (!currentLoadedHostConfig || !currentLoadedHostConfig.channels || !currentLoadedHostConfig.channels[index]) return;
+    currentLoadedHostConfig.channels[index][field] = value;
+    generateHostConfigPreview();
+}
 
-    const hostname = currentLoadedHostConfig.hostname || "CS-GENERIC";
-    const channels = currentLoadedHostConfig.channels || [];
-    const lrTarget = document.getElementById("cfgLogRotateTarget")?.value || "D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMatchingSvc\\fma.log";
-    const lrDays = document.getElementById("cfgLogRotateDays")?.value || "10";
-    const lrFreq = document.getElementById("cfgLogRotateFreq")?.value || "daily";
+function applyEmuProfileToAll(targetProfile = "EMU MediaDNA 1min") {
+    if (!currentLoadedHostConfig || !currentLoadedHostConfig.channels) return;
+    currentLoadedHostConfig.channels.forEach(ch => {
+        ch.emu_profile_name = targetProfile;
+        ch.emu_is_recording = true;
+    });
+    renderHostConfigChannelsTable(currentLoadedHostConfig.channels, currentLoadedHostConfig.cs);
+    generateHostConfigPreview();
+    if (typeof showToast === "function") {
+        showToast(`⚡ Todos os canais foram ajustados para o perfil oficial: ${targetProfile}!`, "success");
+    }
+}
 
-    let psUpdates = channels.map((ch, idx) => {
-        const chkMp4 = document.getElementById(`chkChMp4_${idx}`);
-        const chkEmu = document.getElementById(`chkChEmu_${idx}`);
-        const selProf = document.getElementById(`selChEmuProf_${idx}`);
-        const isMp4 = chkMp4 ? chkMp4.checked : ch.mp4_is_recording;
-        const isEmu = chkEmu ? chkEmu.checked : ch.emu_is_recording;
-        const prof = selProf ? selProf.value : (ch.emu_profile_name || "EMU MediaDNA 1min");
-        const safeName = ch.name.replace(/'/g, "''");
+// APPLICATION OPTIONS UI
+function populateHostAppOptionsUI(opt) {
+    const elAutoStart = document.getElementById("cfgAutoStartMuxes");
+    if (elAutoStart) elAutoStart.checked = opt.auto_start_active_muxes !== false;
 
-        return `    # Canal: ${safeName}
-    $p = $doc.SelectNodes("//Programs[translate(normalize-space(Name), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz') = '${safeName.toLowerCase()}']");
-    if ($p) {
-        foreach ($item in $p) {
-            $eNode = $item.SelectSingleNode('EMU_IsRecording');
-            if (-not $eNode) { $eNode = $doc.CreateElement('EMU_IsRecording'); $item.AppendChild($eNode) | Out-Null };
-            $eNode.InnerText = if ($${isEmu}) { 'true' } else { 'false' };
-            $pNode = $item.SelectSingleNode('EMU_ProfileName');
-            if (-not $pNode) { $pNode = $doc.CreateElement('EMU_ProfileName'); $item.AppendChild($pNode) | Out-Null };
-            $pNode.InnerText = '${prof}';
-            $mNode = $item.SelectSingleNode('Mp4_IsRecording');
-            if (-not $mNode) { $mNode = $doc.CreateElement('Mp4_IsRecording'); $item.AppendChild($mNode) | Out-Null };
-            $mNode.InnerText = if ($${isMp4}) { 'true' } else { 'false' };
-            $chCount++;
+    const elDayOffset = document.getElementById("cfgDayOffset");
+    if (elDayOffset) elDayOffset.value = opt.day_offset_minutes || 0;
+
+    const elDaylight = document.getElementById("cfgDaylightSaving");
+    if (elDaylight) elDaylight.value = opt.daylight_saving_time || "Brazil";
+
+    // AutoDetection
+    const elPort = document.getElementById("cfgAutoPort");
+    if (elPort) elPort.value = opt.autodetection_port || 1234;
+
+    const elBin = document.getElementById("cfgAutoBinMatch");
+    if (elBin) elBin.value = opt.bin_match_threshold || 68;
+
+    const elMaxEmu = document.getElementById("cfgAutoMaxEmu");
+    if (elMaxEmu) elMaxEmu.value = opt.max_emu_validations || 3;
+
+    const elCfgXml = document.getElementById("cfgAutoConfigXml");
+    if (elCfgXml) elCfgXml.value = opt.mediadna_config_xml || "D:\\MediaDNA_V2\\Data\\Config\\ConfigXml.xml";
+
+    const elTrack = document.getElementById("cfgAutoTrackingDir");
+    if (elTrack) elTrack.value = opt.match_export_dir || "D:\\MediaDNA_V2\\Data\\tracking\\";
+}
+
+// WMPROFILES UI
+function renderHostProfilesList(profiles) {
+    const container = document.getElementById("hostProfilesListContainer");
+    const countBadge = document.getElementById("countProfilesBadge");
+    if (!container) return;
+
+    if (!profiles || profiles.length === 0) {
+        container.innerHTML = `<div style="text-align: center; color: #94a3b8; padding: 20px;">Nenhum perfil listado.</div>`;
+        return;
+    }
+
+    if (countBadge) countBadge.innerText = `${profiles.length} perfis`;
+
+    container.innerHTML = profiles.map((p, idx) => {
+        const isSelected = selectedProfileFilename ? (p.filename === selectedProfileFilename) : (idx === 0);
+        if (isSelected && !selectedProfileFilename) selectedProfileFilename = p.filename;
+
+        const isEmu1min = p.filename.includes("1min");
+        const isLegacy = p.filename === "EMU_EMU MDNA.xml";
+
+        return `
+            <div onclick="selectProfileItem('${p.filename}')" style="padding: 8px 10px; margin-bottom: 6px; border-radius: 6px; cursor: pointer; background: ${isSelected ? 'rgba(56, 189, 248, 0.15)' : 'rgba(15, 23, 42, 0.6)'}; border: 1px solid ${isSelected ? '#38bdf8' : 'rgba(148, 163, 184, 0.2)'}; transition: all 0.15s ease;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                    <span style="font-weight: 700; font-size: 11px; color: ${isEmu1min ? '#34d399' : (isLegacy ? '#f87171' : '#f8fafc')};">
+                        ${isEmu1min ? '⭐ ' : (isLegacy ? '⚠️ ' : '')}${p.name}
+                    </span>
+                    <span style="font-size: 9px; padding: 1px 5px; border-radius: 8px; background: rgba(56,189,248,0.1); color: #38bdf8;">
+                        ${p.profile_type}
+                    </span>
+                </div>
+                <div style="font-size: 10px; color: #64748b; font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                    ${p.filename} | ${p.modified_date || ''}
+                </div>
+            </div>
+        `;
+    }).join("");
+
+    if (selectedProfileFilename) {
+        const found = profiles.find(p => p.filename === selectedProfileFilename) || profiles[0];
+        if (found) {
+            const titleEl = document.getElementById("selectedProfileTitle");
+            if (titleEl) titleEl.innerText = found.filename;
+            const editorEl = document.getElementById("inpProfileXmlEditor");
+            if (editorEl) editorEl.value = found.xml_content || "";
         }
-    }`;
-    }).join("\n");
+    }
+}
 
-    txtArea.value = `# ==========================================================================
-# CENTRAL CS NOC: APLICACAO DE CONFIGURACOES REMOTAS NO CAPTURE SITE
-# Host: ${hostname} | Praça: ${currentLoadedHostConfig.praca} (CS0${currentLoadedHostConfig.cs})
+function selectProfileItem(filename) {
+    selectedProfileFilename = filename;
+    if (currentLoadedHostConfig && currentLoadedHostConfig.wmprofiles) {
+        renderHostProfilesList(currentLoadedHostConfig.wmprofiles);
+    }
+}
+
+function saveSelectedProfileXml() {
+    if (!currentLoadedHostConfig || !currentLoadedHostConfig.wmprofiles || !selectedProfileFilename) return;
+    const editorEl = document.getElementById("inpProfileXmlEditor");
+    if (!editorEl) return;
+
+    const found = currentLoadedHostConfig.wmprofiles.find(p => p.filename === selectedProfileFilename);
+    if (found) {
+        found.xml_content = editorEl.value;
+        if (typeof showToast === "function") showToast(`Perfil '${selectedProfileFilename}' atualizado no buffer!`, "success");
+        generateHostConfigPreview();
+    }
+}
+
+// GERAÇÃO DINÂMICA DA PRÉVIA DO POWERSHELL
+function generateHostConfigPreview() {
+    const previewEl = document.getElementById("hostConfigScriptPreview");
+    if (!previewEl || !currentLoadedHostConfig) return;
+
+    const hostname = currentLoadedHostConfig.hostname || "BRMG-UDI-DT01";
+    const praca = currentLoadedHostConfig.praca || "Desconhecida";
+    const cs = currentLoadedHostConfig.cs || 1;
+
+    const lrTarget = (document.getElementById("cfgLrTarget") ? document.getElementById("cfgLrTarget").value : "D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMatchingSvc\\fma.log");
+    const lrDays = (document.getElementById("cfgLrRotate") ? document.getElementById("cfgLrRotate").value : "10");
+    const autoPort = (document.getElementById("cfgAutoPort") ? document.getElementById("cfgAutoPort").value : "1234");
+    const autoThresh = (document.getElementById("cfgAutoBinMatch") ? document.getElementById("cfgAutoBinMatch").value : "68");
+
+    const chUpdates = (currentLoadedHostConfig.channels || []).map(ch => {
+        const cName = ch.name.replace("'", "''");
+        const emuProf = ch.emu_profile_name || "EMU MediaDNA 1min";
+        const emuRec = ch.emu_is_recording ? "$true" : "$false";
+        return `        # Canal: ${cName} -> EMU Profile: ${emuProf}
+        $p = $doc.SelectNodes("//Programs[translate(normalize-space(Name), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz') = '${cName.toLowerCase()}']");
+        if ($p) {
+            foreach ($item in $p) {
+                ($item.SelectSingleNode('EMU_ProfileName') ?? $item.AppendChild($doc.CreateElement('EMU_ProfileName'))).InnerText = '${emuProf}';
+                ($item.SelectSingleNode('EMU_IsRecording') ?? $item.AppendChild($doc.CreateElement('EMU_IsRecording'))).InnerText = if (${emuRec}) { 'true' } else { 'false' };
+                ($item.SelectSingleNode('EMU_DestPath') ?? $item.AppendChild($doc.CreateElement('EMU_DestPath'))).InnerText = 'D:\\MediaDNA_V2\\Data\\emu';
+                $chCount++;
+            }
+        }`;
+    }).join("\n\n");
+
+    const script = `# ==========================================================================
+# SUPER MODAL ATRIA: CENTRAL CS NOC - APLICACAO DE CONFIGURACOES REMOTAS
+# Host: ${hostname} | Praça: ${praca} (CS0${cs}) | Timestamp: ${new Date().toISOString()}
 # ==========================================================================
 $ErrorActionPreference = 'Continue';
 [System.Text.Encoding]::RegisterProvider([System.Text.CodePagesEncodingProvider]::Instance);
@@ -3070,16 +3342,23 @@ Write-Host '[1/5] Encerrando processos do Atria Capture para escrita segura dos 
 cmd.exe /c "taskkill /f /t /im DigitalTVCapture.exe /im DigitalTVReceiver.exe /im AtriaCapture.exe >nul 2>&1";
 Start-Sleep -Seconds 1;
 
+# 2. Backup profilatico das configuracoes atuais (.bak)
 Write-Host '[2/5] Realizando backup profilatico (.bak) das configuracoes atuais...';
 $stamp = Get-Date -Format 'yyyyMMdd_HHmmss';
 $muxCandidates = @(
     'D:\\MediaDNA_V2\\Applications\\DTVCapture64\\Config\\Multiplexes.xml',
+    'D:\\MediaDNA_V2\\Applications\\DTVCapture64\\Multiplexes.xml',
     'D:\\MediaDNA_V2\\Data\\Config\\Multiplexes.xml',
-    'C:\\DTV\\DTVCapture\\Config\\Multiplexes.xml'
+    'C:\\DTV\\DTVCapture\\Config\\Multiplexes.xml',
+    'C:\\DTV\\DTVCapture\\Multiplexes.xml',
+    'C:\\MediaDNA_V2\\Applications\\DTVCapture64\\Config\\Multiplexes.xml',
+    'C:\\MediaDNA_V2\\Applications\\DTVCapture64\\Multiplexes.xml',
+    'D:\\MediaDNA_V2\\Applications\\DTVCapture\\Config\\Multiplexes.xml'
 ) | Where-Object { Test-Path $_ };
 foreach ($m in $muxCandidates) { Copy-Item -Path $m -Destination "$m.bak_$stamp" -Force -ErrorAction SilentlyContinue };
 
-Write-Host '[3/5] Aplicando novas diretrizes de canais e perfis EMU em Multiplexes.xml...';
+# 3. Atualizacao de Muxes, Canais e Padronizacao do Perfil EMU (EMU MediaDNA 1min)
+Write-Host '[3/5] Aplicando novas diretrizes de Muxes, canais e perfis EMU em Multiplexes.xml...';
 foreach ($mPath in $muxCandidates) {
     try {
         $raw = [System.IO.File]::ReadAllText($mPath, $enc1252);
@@ -3088,7 +3367,7 @@ foreach ($mPath in $muxCandidates) {
         $doc.LoadXml($clean);
         $chCount = 0;
 
-${psUpdates}
+${chUpdates}
 
         $settings = New-Object System.Xml.XmlWriterSettings;
         $settings.Encoding = $enc1252;
@@ -3096,16 +3375,17 @@ ${psUpdates}
         $w = [System.Xml.XmlWriter]::Create($mPath, $settings);
         $doc.Save($w);
         $w.Dispose();
-        Write-Host "[OK] Multiplexes.xml atualizado com sucesso em $mPath ($chCount ajustes).";
+        Write-Host "[OK] Multiplexes.xml salvo e blindado com sucesso em $mPath ($chCount ajustes).";
     } catch {
         Write-Host ('[ERRO] Falha ao atualizar Multiplexes.xml em ' + $mPath + ': ' + $_.Exception.Message);
     }
 }
 
-Write-Host '[4/5] Aplicando configuracao oficial do LogRotate (${lrTarget} + rotate ${lrDays})...';
+# 4. Atualizacao de Application Options (AutoDetection ListeningPort ${autoPort}, BinMatchThreshold ${autoThresh})
+Write-Host '[4/5] Aplicando configuracao de AutoDetection SVC e LogRotate (${lrTarget} + rotate ${lrDays})...';
 $lrContent = @'
 ${lrTarget} {
-        ${lrFreq}
+        daily
 		dateext
 		dateformat .%Y%m%d
 		missingok
@@ -3125,13 +3405,8 @@ foreach ($lp in $lrPaths) {
     }
 }
 
-$fmaSvc = Get-Service -Name FastMatchingSvc -ErrorAction SilentlyContinue;
-if ($fmaSvc -and $fmaSvc.Status -eq 'Running') {
-    Restart-Service -Name FastMatchingSvc -Force -ErrorAction SilentlyContinue;
-    Write-Host '[OK] FastMatchingSvc reiniciado para aplicar ajustes de log.';
-}
-
-Write-Host '[5/5] Reabrindo Atria Capture no ambiente interativo...';
+# 5. Reabertura do Atria Capture no ambiente interativo
+Write-Host '[5/5] Reabrindo Atria Capture no ambiente interativo via schtasks...';
 $exeCandidates = @(
     'D:\\MediaDNA_V2\\Applications\\DTVCapture64\\DigitalTVCapture.exe',
     'C:\\DTV\\DTVCapture\\DigitalTVCapture.exe'
@@ -3145,45 +3420,61 @@ if ($exe) {
 }
 Write-Host '==========================================================================';
 Write-Host '[SUCESSO] Configuracoes operacionais aplicadas e Atria Capture reiniciado!';`;
+
+    previewEl.value = script;
 }
 
+function copyHostConfigScript() {
+    const previewEl = document.getElementById("hostConfigScriptPreview");
+    if (!previewEl || !previewEl.value) return;
+    navigator.clipboard.writeText(previewEl.value).then(() => {
+        if (typeof showToast === "function") showToast("Script copiado para a área de transferência!", "success");
+    }).catch(err => {
+        console.error("Erro ao copiar script:", err);
+    });
+}
+
+// SALVAMENTO ATÔMICO E ENVIO REMOTO
 async function saveHostConfig() {
     if (!currentLoadedHostConfig) return;
 
     const hostname = currentLoadedHostConfig.hostname;
     const channels = currentLoadedHostConfig.channels || [];
-    const reason = (document.getElementById("inpHostConfigReason")?.value || "Ajuste de perfil EMU e parâmetros operacionais").trim();
+    const muxes = currentLoadedHostConfig.muxes || [];
+    const wmprofiles = currentLoadedHostConfig.wmprofiles || [];
 
-    const updatedChannels = channels.map((ch, idx) => {
-        const chkMp4 = document.getElementById(`chkChMp4_${idx}`);
-        const chkEmu = document.getElementById(`chkChEmu_${idx}`);
-        const selProf = document.getElementById(`selChEmuProf_${idx}`);
-        return {
-            name: ch.name,
-            mp4_is_recording: chkMp4 ? chkMp4.checked : ch.mp4_is_recording,
-            emu_is_recording: chkEmu ? chkEmu.checked : ch.emu_is_recording,
-            emu_profile_name: selProf ? selProf.value : (ch.emu_profile_name || "EMU MediaDNA 1min")
-        };
-    });
+    const reasonInp = document.getElementById("inpHostConfigReason");
+    const reason = reasonInp ? reasonInp.value : "Ajuste de perfil EMU MediaDNA 1min e parâmetros operacionais do Atria";
 
-    const appConfig = {
-        api_port: parseInt(document.getElementById("cfgAppApiPort")?.value || "9000", 10),
-        mosaic_port: parseInt(document.getElementById("cfgAppMosaicPort")?.value || "8080", 10),
-        video_dir: (document.getElementById("cfgAppVideoDir")?.value || "D:\\MediaDNA_V2\\Data\\video").trim(),
-        video_bkp_dir: (document.getElementById("cfgAppVideoBkpDir")?.value || "D:\\MediaDNA_V2\\Data\\video_bkp").trim(),
-        emu_dir: (document.getElementById("cfgAppEmuDir")?.value || "D:\\MediaDNA_V2\\Data\\emu").trim()
+    const btn = document.getElementById("btnSaveHostConfig");
+    const icon = document.getElementById("iconSaveHostConfig");
+
+    if (btn) btn.disabled = true;
+    if (icon) icon.className = "fas fa-spinner fa-spin";
+
+    const appOpt = {
+        auto_start_active_muxes: document.getElementById("cfgAutoStartMuxes") ? document.getElementById("cfgAutoStartMuxes").checked : true,
+        day_offset_minutes: Number(document.getElementById("cfgDayOffset") ? document.getElementById("cfgDayOffset").value : 0),
+        daylight_saving_time: document.getElementById("cfgDaylightSaving") ? document.getElementById("cfgDaylightSaving").value : "Brazil",
+        autodetection_port: Number(document.getElementById("cfgAutoPort") ? document.getElementById("cfgAutoPort").value : 1234),
+        bin_match_threshold: Number(document.getElementById("cfgAutoBinMatch") ? document.getElementById("cfgAutoBinMatch").value : 68),
+        max_emu_validations: Number(document.getElementById("cfgAutoMaxEmu") ? document.getElementById("cfgAutoMaxEmu").value : 3),
+        mediadna_config_xml: document.getElementById("cfgAutoConfigXml") ? document.getElementById("cfgAutoConfigXml").value : "D:\\MediaDNA_V2\\Data\\Config\\ConfigXml.xml",
+        match_export_dir: document.getElementById("cfgAutoTrackingDir") ? document.getElementById("cfgAutoTrackingDir").value : "D:\\MediaDNA_V2\\Data\\tracking\\"
     };
 
-    const logrotate = {
-        target_log_path: (document.getElementById("cfgLogRotateTarget")?.value || "D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMatchingSvc\\fma.log").trim(),
-        rotate_days: parseInt(document.getElementById("cfgLogRotateDays")?.value || "10", 10),
-        frequency: document.getElementById("cfgLogRotateFreq")?.value || "daily"
+    const payload = {
+        muxes: muxes,
+        channels: channels,
+        application_options: appOpt,
+        wmprofiles: wmprofiles,
+        logrotate: {
+            target_log_path: document.getElementById("cfgLrTarget") ? document.getElementById("cfgLrTarget").value : "D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMatchingSvc\\fma.log",
+            rotate_days: Number(document.getElementById("cfgLrRotate") ? document.getElementById("cfgLrRotate").value : 10),
+            frequency: "daily"
+        },
+        reason: reason
     };
-
-    const btnSave = document.getElementById("btnSaveHostConfig");
-    const iconSave = document.getElementById("iconSaveHostConfig");
-    if (btnSave) btnSave.disabled = true;
-    if (iconSave) iconSave.className = "fas fa-spinner fa-spin";
 
     try {
         const token = getFleetAuthToken();
@@ -3193,52 +3484,48 @@ async function saveHostConfig() {
                 "Content-Type": "application/json",
                 ...(token ? { "Authorization": `Bearer ${token}` } : {})
             },
-            body: JSON.stringify({
-                channels: updatedChannels,
-                app_config: appConfig,
-                logrotate: logrotate,
-                reason: reason
-            })
+            body: JSON.stringify(payload)
         });
 
         const resData = await resp.json();
-        if (!resp.ok || !resData.success) {
-            throw new Error(resData.detail || resData.message || `HTTP ${resp.status}`);
-        }
-
-        if (typeof showToast === "function") {
-            showToast(`Configurações de ${hostname} aplicadas com sucesso! Atria Capture foi reiniciado.`, "success");
+        if (resp.ok && resData.success) {
+            if (typeof showToast === "function") {
+                showToast(`Ordem de configuração despachada com sucesso para ${hostname}! (ID Exec: ${resData.execution_id})`, "success");
+            }
+            closeHostConfigModal();
+            if (typeof openRemoteCommandCockpitModal === "function") {
+                openRemoteCommandCockpitModal(resData.execution_id);
+            }
         } else {
-            alert(`Configurações de ${hostname} aplicadas com sucesso! Atria Capture foi reiniciado.`);
-        }
-
-        closeHostConfigModal();
-        if (typeof loadFleetUpdateEvolution === "function") {
-            loadFleetUpdateEvolution(true);
+            const err = resData.detail || resData.error || "Falha ao enviar comando remoto.";
+            if (typeof showToast === "function") showToast(err, "error");
         }
     } catch (err) {
-        console.error("[HostConfig] Erro ao salvar configurações:", err);
-        if (typeof showToast === "function") {
-            showToast(`Erro ao aplicar configurações: ${err.message}`, "error");
-        } else {
-            alert(`Erro ao aplicar configurações: ${err.message}`);
-        }
+        console.error("Erro ao salvar host config:", err);
+        if (typeof showToast === "function") showToast("Erro ao salvar: " + err.message, "error");
     } finally {
-        if (btnSave) btnSave.disabled = false;
-        if (iconSave) iconSave.className = "fas fa-save";
+        if (btn) btn.disabled = false;
+        if (icon) icon.className = "fas fa-save";
     }
 }
 
-window.populateHostConfigSelectors = populateHostConfigSelectors;
-window.onHostConfigPracaChange = onHostConfigPracaChange;
-window.onHostConfigCSChange = onHostConfigCSChange;
-window.filterHostConfigMachines = filterHostConfigMachines;
-window.openSelectedHostConfigModal = openSelectedHostConfigModal;
 window.openHostConfigModal = openHostConfigModal;
+window.reloadCurrentHostConfig = reloadCurrentHostConfig;
 window.closeHostConfigModal = closeHostConfigModal;
 window.switchHostConfigTab = switchHostConfigTab;
-window.updateLogRotateSnippetPreview = updateLogRotateSnippetPreview;
+window.switchAppConfigSubTab = switchAppConfigSubTab;
+window.renderHostConfigMuxesTable = renderHostConfigMuxesTable;
+window.updateMuxField = updateMuxField;
+window.addNewMuxRow = addNewMuxRow;
+window.renderHostConfigChannelsTable = renderHostConfigChannelsTable;
+window.updateChannelField = updateChannelField;
+window.applyEmuProfileToAll = applyEmuProfileToAll;
+window.populateHostAppOptionsUI = populateHostAppOptionsUI;
+window.renderHostProfilesList = renderHostProfilesList;
+window.selectProfileItem = selectProfileItem;
+window.saveSelectedProfileXml = saveSelectedProfileXml;
 window.generateHostConfigPreview = generateHostConfigPreview;
+window.copyHostConfigScript = copyHostConfigScript;
 window.saveHostConfig = saveHostConfig;
 
 // Auto-restauração do Widget Flutuante de Atualização Ativa ao carregar/recarregar a página

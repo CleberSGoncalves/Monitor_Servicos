@@ -2175,6 +2175,9 @@ function renderFastMatchingFleetTable(filterStatus = currentFmFleetFilter, searc
                 </td>
                 <td style="padding: 10px 12px; text-align: center; white-space: nowrap;">
                     <div style="display: flex; gap: 5px; justify-content: center; align-items: center;">
+                        <button type="button" class="btn-sm" onclick="event.stopPropagation(); openDetectionPipelineLiveModal('${item.hostname}', '${item.praca || ''}')" style="background: rgba(34, 197, 94, 0.15); border: 1px solid rgba(34, 197, 94, 0.4); color: #4ade80; font-size: 10px; font-weight: 700; padding: 4px 8px; border-radius: 5px; cursor: pointer;" title="Abrir monitoramento em tempo real do fma.log, spots e fluxo de EMU">
+                            📡 Live
+                        </button>
                         <button type="button" class="btn-sm" onclick="event.stopPropagation(); selectAndAuditFmSite('${item.hostname}')" style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); color: #38bdf8; font-size: 10px; font-weight: 700; padding: 4px 8px; border-radius: 5px; cursor: pointer;" title="Auditar telemetria física e feed do fma.log desta praça">
                             🔍 Auditar
                         </button>

@@ -7623,6 +7623,11 @@
           <span>⚠️</span> Matriz de Risco &amp; Praças Críticas (Diagnóstico SLA)
           <span style="background: rgba(239, 68, 68, 0.25); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.4); font-size: 10px; padding: 2px 7px; border-radius: 10px; font-weight: 700;" id="badgeRiskCriticalCount">0 Críticas</span>
         </button>
+        <div style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
+          <button id="btnOpenDetectionLiveGlobal" onclick="openDetectionPipelineLiveModal('', '')" style="background: linear-gradient(135deg, rgba(14, 165, 233, 0.25), rgba(99, 102, 241, 0.25)); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.5); padding: 9px 18px; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 12px rgba(14, 165, 233, 0.2); transition: all 0.2s ease;">
+            <span style="font-size: 16px;">📡</span> Pipeline Live (fma.log &amp; EMU)
+          </button>
+        </div>
       </div>
 
       <!-- SUB-ABA 1: VISÃO GERAL DA FROTA CS01 (TABELA COMPLETA) -->
@@ -19939,82 +19944,148 @@
     </div>
   </div>
 
-  <!-- MODAL DE CONFIGURAÇÃO REMOTA DO CAPTURE SITE (Multiplexes, AppConfig, LogRotate) -->
-  <div class="modal-overlay" id="modalHostConfig" style="display: none; align-items: center; justify-content: center; z-index: 10050; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.88); backdrop-filter: blur(6px);">
-    <div class="modal-content" style="max-width: 1250px; width: 96%; max-height: 94vh; background: #070d1e; border: 1px solid #38bdf8; border-radius: 12px; box-shadow: 0 25px 60px rgba(0, 0, 0, 0.95); padding: 22px; display: flex; flex-direction: column;">
+  <!-- SUPER MODAL ATRIA (MediaDNA): CONFIGURAÇÃO COMPLETA DO CAPTURE SITE -->
+  <div class="modal-overlay" id="modalHostConfig" style="display: none; align-items: center; justify-content: center; z-index: 10050; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.92); backdrop-filter: blur(8px);">
+    <div class="modal-content" style="max-width: 1420px; width: 98%; max-height: 96vh; background: #060b18; border: 1px solid #38bdf8; border-radius: 12px; box-shadow: 0 25px 70px rgba(0, 0, 0, 0.98); padding: 20px; display: flex; flex-direction: column;">
       
-      <!-- HEADER DO MODAL -->
-      <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid rgba(56, 189, 248, 0.25); padding-bottom: 14px; margin-bottom: 14px;">
-        <div style="display: flex; align-items: center; gap: 12px;">
-          <div style="font-size: 26px; background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.35); padding: 8px 12px; border-radius: 10px;">⚙️</div>
+      <!-- HEADER DO SUPER MODAL -->
+      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(56, 189, 248, 0.3); padding-bottom: 12px; margin-bottom: 12px;">
+        <div style="display: flex; align-items: center; gap: 14px;">
+          <div style="font-size: 26px; background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); padding: 6px 12px; border-radius: 10px; color: #38bdf8;">
+            <i class="fas fa-sliders-h"></i>
+          </div>
           <div>
-            <div style="font-size: 18px; font-weight: 800; color: #f8fafc; display: flex; align-items: center; gap: 10px;">
-              <span>Configuração Remota do Capture Site</span>
-              <span id="badgeHostConfigHostname" style="background: #0284c7; color: #f8fafc; font-family: monospace; font-size: 13px; padding: 2px 10px; border-radius: 16px;">--</span>
+            <div style="font-size: 19px; font-weight: 800; color: #f8fafc; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+              <span>Super Modal ATRIA: Configuração Completa do CS (MediaDNA)</span>
+              <span id="badgeHostConfigHostname" style="background: #0284c7; color: #f8fafc; font-family: monospace; font-size: 13px; padding: 3px 10px; border-radius: 16px; font-weight: 700;">--</span>
               <span id="badgeHostConfigRole" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); font-size: 11px; padding: 2px 8px; border-radius: 12px;">CS01 Primário</span>
+              <span id="badgeHostConfigNetwork" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4); font-size: 11px; padding: 2px 8px; border-radius: 12px;">Digital Terrestre</span>
             </div>
-            <div style="font-size: 12px; color: #94a3b8; margin-top: 3px;">
-              Praça: <strong id="hostConfigTextPraca" style="color: #cbd5e1;">--</strong> | CS: <strong id="hostConfigTextCS" style="color: #cbd5e1;">--</strong> | Arquivos: <code>Multiplexes.xml</code>, <code>AppConfig.xml</code>, <code>logrotate.conf</code>
+            <div style="font-size: 12px; color: #94a3b8; margin-top: 4px; display: flex; gap: 12px; flex-wrap: wrap;">
+              <span>Praça: <strong id="hostConfigTextPraca" style="color: #38bdf8;">--</strong></span>
+              <span>CS: <strong id="hostConfigTextCS" style="color: #38bdf8;">--</strong></span>
+              <span>ID Host: <strong id="hostConfigTextHostId" style="color: #cbd5e1;">--</strong></span>
+              <span>Arquivos Mapeados: <code>Multiplexes.xml</code>, <code>AppConfig.xml</code>, <code>WMProfiles/</code>, <code>logrotate.conf</code></span>
             </div>
           </div>
         </div>
-        <button type="button" onclick="closeHostConfigModal()" style="background: none; border: none; color: #94a3b8; font-size: 22px; cursor: pointer; padding: 4px 8px;" title="Fechar Modal">&times;</button>
-      </div>
 
-      <!-- ALERTA OPERACIONAL DE REINÍCIO DO ATRIA -->
-      <div style="background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.45); border-radius: 8px; padding: 12px 16px; margin-bottom: 14px; display: flex; align-items: center; gap: 12px;">
-        <span style="font-size: 24px; color: #fbbf24;">⚠️</span>
-        <div style="font-size: 12px; color: #fde68a; line-height: 1.5;">
-          <strong>AVISO OPERACIONAL:</strong> Ao salvar, o <strong>Atria Capture</strong> será momentaneamente finalizado para aplicação atômica dos novos arquivos de configuração (com backup automático <code>.bak</code> gerado) e reaberto imediatamente no ambiente interativo. Certifique-se de que a estação está em janela operacional.
+        <!-- AÇÕES RÁPIDAS NO HEADER -->
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <button type="button" class="btn-sm" onclick="applyEmuProfileToAll('EMU MediaDNA 1min')" style="background: rgba(16, 185, 129, 0.15); border: 1px solid #10b981; color: #34d399; padding: 6px 12px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px;" title="Padronizar todos os canais de gravação EMU para 'EMU MediaDNA 1min'">
+            <i class="fas fa-bolt"></i> ⚡ Forçar 'EMU MediaDNA 1min'
+          </button>
+          <button type="button" class="btn-sm" onclick="reloadCurrentHostConfig()" style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); color: #38bdf8; padding: 6px 10px; border-radius: 6px; font-size: 11px; cursor: pointer;" title="Recarregar dados do host">
+            <i class="fas fa-sync-alt"></i>
+          </button>
+          <button type="button" onclick="closeHostConfigModal()" style="background: none; border: none; color: #94a3b8; font-size: 24px; cursor: pointer; padding: 0 6px; line-height: 1;" title="Fechar Modal">&times;</button>
         </div>
       </div>
 
-      <!-- NAVEGAÇÃO DE ABAS INTERNAS DO MODAL -->
-      <div class="rc-subtabs-nav" style="margin-bottom: 14px; display: flex; gap: 8px;">
-        <button type="button" class="fleet-subtab-btn active" id="btnTabHostChannels" onclick="switchHostConfigTab('channels')" style="padding: 6px 14px; font-size: 12px;">
-          <i class="fas fa-broadcast-tower"></i>
-          <span>1. Canais &amp; Detecção EMU (Multiplexes.xml)</span>
+      <!-- ALERTA OPERACIONAL DE REINÍCIO DO ATRIA -->
+      <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.4); border-radius: 8px; padding: 8px 14px; margin-bottom: 12px; display: flex; align-items: center; gap: 10px;">
+        <span style="font-size: 20px; color: #fbbf24;"><i class="fas fa-exclamation-triangle"></i></span>
+        <div style="font-size: 11px; color: #fde68a; line-height: 1.4;">
+          <strong>AVISO OPERACIONAL:</strong> O Atria Capture será finalizado temporariamente para aplicação atômica dos XMLs (com backup profilático <code>.bak</code> gerado) e reaberto no ambiente interativo via <code>schtasks</code>. O perfil homologado para todos os canais de detecção é <strong>EMU MediaDNA 1min</strong>.
+        </div>
+      </div>
+
+      <!-- NAVEGAÇÃO DE ABAS DO SUPER MODAL (6 ABAS COMPLETAS) -->
+      <div class="rc-subtabs-nav" style="margin-bottom: 12px; display: flex; gap: 6px; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 6px; flex-wrap: wrap;">
+        <button type="button" class="fleet-subtab-btn active" id="btnTabHostMuxes" onclick="switchHostConfigTab('muxes')" style="padding: 6px 12px; font-size: 11px;">
+          <i class="fas fa-satellite-dish"></i>
+          <span>1. Muxes (Multiplexes.xml)</span>
         </button>
-        <button type="button" class="fleet-subtab-btn" id="btnTabHostAppConfig" onclick="switchHostConfigTab('appconfig')" style="padding: 6px 14px; font-size: 12px;">
+        <button type="button" class="fleet-subtab-btn" id="btnTabHostChannels" onclick="switchHostConfigTab('channels')" style="padding: 6px 12px; font-size: 11px;">
+          <i class="fas fa-tv"></i>
+          <span>2. Canais &amp; Gravação (Programs)</span>
+        </button>
+        <button type="button" class="fleet-subtab-btn" id="btnTabHostAppConfig" onclick="switchHostConfigTab('appconfig')" style="padding: 6px 12px; font-size: 11px;">
           <i class="fas fa-cogs"></i>
-          <span>2. Atria &amp; Diretórios (AppConfig.xml)</span>
+          <span>3. Application Options (Atria)</span>
         </button>
-        <button type="button" class="fleet-subtab-btn" id="btnTabHostLogRotate" onclick="switchHostConfigTab('logrotate')" style="padding: 6px 14px; font-size: 12px;">
+        <button type="button" class="fleet-subtab-btn" id="btnTabHostProfiles" onclick="switchHostConfigTab('profiles')" style="padding: 6px 12px; font-size: 11px;">
+          <i class="fas fa-file-code"></i>
+          <span>4. Perfis (WMProfiles)</span>
+        </button>
+        <button type="button" class="fleet-subtab-btn" id="btnTabHostLogRotate" onclick="switchHostConfigTab('logrotate')" style="padding: 6px 12px; font-size: 11px;">
           <i class="fas fa-history"></i>
-          <span>3. LogRotate &amp; Retenção (fma.log)</span>
+          <span>5. LogRotate (fma.log)</span>
         </button>
-        <button type="button" class="fleet-subtab-btn" id="btnTabHostPreview" onclick="switchHostConfigTab('preview')" style="padding: 6px 14px; font-size: 12px;">
+        <button type="button" class="fleet-subtab-btn" id="btnTabHostPreview" onclick="switchHostConfigTab('preview')" style="padding: 6px 12px; font-size: 11px;">
           <i class="fas fa-terminal"></i>
-          <span>4. Prévia Script PowerShell</span>
+          <span>6. Prévia PowerShell</span>
         </button>
       </div>
 
       <!-- CORPO DAS ABAS COM SCROLL -->
-      <div style="flex: 1; overflow-y: auto; padding-right: 4px; margin-bottom: 16px;">
+      <div style="flex: 1; overflow-y: auto; padding-right: 4px; margin-bottom: 12px;">
         
-        <!-- ABA 1: CANAIS & EMU -->
-        <div id="tabContentHostChannels">
-          <div style="font-size: 12px; color: #94a3b8; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
-            <span>Configure a gravação de MP4 e o perfil de fatias EMU para cada canal sintonizado em <code>Multiplexes.xml</code>:</span>
-            <span style="font-size: 11px; background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); padding: 2px 8px; border-radius: 12px;">
-              Perfil Padrão: <strong>EMU MediaDNA 1min</strong> (Spots em Memória)
-            </span>
+        <!-- ABA 1: MULTIPLEXES (MUXES) -->
+        <div id="tabContentHostMuxes">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <div style="font-size: 12px; color: #94a3b8;">
+              Configuração física e virtual de Muxes sintonizados (Suporta ISDB-Tb, Satélite DVB-S2, Cabo, Rádio e Streams IP):
+            </div>
+            <button type="button" class="btn-sm" onclick="addNewMuxRow()" style="background: rgba(56, 189, 248, 0.15); border: 1px solid #38bdf8; color: #38bdf8; font-size: 11px; padding: 4px 10px; border-radius: 4px; cursor: pointer;">
+              <i class="fas fa-plus"></i> Adicionar Mux
+            </button>
           </div>
-          <div style="max-height: 380px; overflow-y: auto; border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px;">
-            <table class="data-table" style="width: 100%; font-size: 12px; border-collapse: collapse;">
+          <div style="max-height: 400px; overflow-y: auto; border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px;">
+            <table class="data-table" style="width: 100%; font-size: 11px; border-collapse: collapse;">
               <thead>
                 <tr style="position: sticky; top: 0; background: #0f172a; z-index: 2;">
-                  <th style="padding: 8px 12px; text-align: left;">Canal / Emissora</th>
-                  <th style="padding: 8px 12px; text-align: left;">Frequência / Meio</th>
-                  <th style="padding: 8px 12px; text-align: center;">Tuner / Sinal</th>
-                  <th style="padding: 8px 12px; text-align: center;">Gravação MP4</th>
-                  <th style="padding: 8px 12px; text-align: center;">Gravação EMU</th>
-                  <th style="padding: 8px 12px; text-align: left;">Perfil EMU (Detecção)</th>
+                  <th style="padding: 8px 10px; text-align: center; width: 40px;">Ativo</th>
+                  <th style="padding: 8px 10px; text-align: center; width: 60px;">Mux ID</th>
+                  <th style="padding: 8px 10px; text-align: left;">Nome do Multiplex</th>
+                  <th style="padding: 8px 10px; text-align: left; width: 140px;">Tipo de Rede</th>
+                  <th style="padding: 8px 10px; text-align: left; width: 110px;">Frequência (kHz)</th>
+                  <th style="padding: 8px 10px; text-align: left; width: 80px;">Bandwidth</th>
+                  <th style="padding: 8px 10px; text-align: left;">Source Path / Stream URL</th>
+                  <th style="padding: 8px 10px; text-align: left; width: 180px;">VideoDecodingMode</th>
+                </tr>
+              </thead>
+              <tbody id="hostConfigMuxesTableBody">
+                <tr><td colspan="8" style="text-align: center; color: #94a3b8; padding: 25px;"><i class="fas fa-spinner fa-spin"></i> Carregando multiplexes...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ABA 2: CANAIS & GRAVAÇÃO (PROGRAMS) -->
+        <div id="tabContentHostChannels" style="display: none;">
+          <div style="font-size: 12px; color: #94a3b8; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+            <span>Configure MP4, MP3, Fatias EMU (Detecção), Decoders, Video Caption e Exportação de JPG Frames:</span>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <span style="font-size: 11px; background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); padding: 3px 10px; border-radius: 12px;">
+                Perfil Homologado: <strong>EMU MediaDNA 1min</strong>
+              </span>
+            </div>
+          </div>
+          <div style="max-height: 420px; overflow-y: auto; border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px;">
+            <table class="data-table" style="width: 100%; font-size: 11px; border-collapse: collapse;">
+              <thead>
+                <tr style="position: sticky; top: 0; background: #0f172a; z-index: 2;">
+                  <th style="padding: 6px 8px; text-align: center; width: 35px;">Atv</th>
+                  <th style="padding: 6px 8px; text-align: left; min-width: 150px;">Canal / Emissora</th>
+                  <th style="padding: 6px 8px; text-align: center; width: 60px;">ID S</th>
+                  <th style="padding: 6px 8px; text-align: center; width: 50px;">PV</th>
+                  <th style="padding: 6px 8px; text-align: center; width: 50px;">Host</th>
+                  <th style="padding: 6px 8px; text-align: center; width: 40px;">CS</th>
+                  <th style="padding: 6px 8px; text-align: left; width: 95px;">Decoder</th>
+                  <th style="padding: 6px 8px; text-align: center; width: 75px; background: rgba(56, 189, 248, 0.08);">Rec MP4</th>
+                  <th style="padding: 6px 8px; text-align: left; width: 100px; background: rgba(56, 189, 248, 0.08);">Perfil MP4</th>
+                  <th style="padding: 6px 8px; text-align: center; width: 75px; background: rgba(245, 158, 11, 0.08);">Rec MP3</th>
+                  <th style="padding: 6px 8px; text-align: left; width: 100px; background: rgba(245, 158, 11, 0.08);">Perfil MP3</th>
+                  <th style="padding: 6px 8px; text-align: center; width: 75px; background: rgba(16, 185, 129, 0.08);">Rec EMU</th>
+                  <th style="padding: 6px 8px; text-align: left; width: 170px; background: rgba(16, 185, 129, 0.08);">Perfil EMU (Detecção)</th>
+                  <th style="padding: 6px 8px; text-align: left; min-width: 130px;">Video Caption</th>
+                  <th style="padding: 6px 8px; text-align: center; width: 65px;">JPG</th>
                 </tr>
               </thead>
               <tbody id="hostConfigChannelsTableBody">
                 <tr>
-                  <td colspan="6" style="text-align: center; color: #94a3b8; padding: 20px;">
+                  <td colspan="15" style="text-align: center; color: #94a3b8; padding: 25px;">
                     <i class="fas fa-spinner fa-spin"></i> Carregando canais da estação...
                   </td>
                 </tr>
@@ -20023,111 +20094,211 @@
           </div>
         </div>
 
-        <!-- ABA 2: APPCONFIG.XML -->
+        <!-- ABA 3: APPLICATION OPTIONS DO ATRIA (GENERAL + AUTODETECTION SVC) -->
         <div id="tabContentHostAppConfig" style="display: none;">
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px;">
-            <div style="background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px; padding: 14px;">
-              <div style="font-size: 12px; font-weight: 700; color: #38bdf8; margin-bottom: 10px;">🌐 Portas de Rede &amp; APIs Locais</div>
-              <div style="margin-bottom: 10px;">
-                <label style="display: block; font-size: 11px; color: #cbd5e1; margin-bottom: 4px;">Porta REST API Atria (Muxes):</label>
-                <input type="number" id="cfgAppApiPort" value="9000" style="width: 100%; padding: 6px 10px; font-size: 12px; background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 6px; color: #f8fafc;">
-                <span style="font-size: 10px; color: #64748b;">Endpoint: http://localhost:9000/api/v1/Muxes</span>
-              </div>
-              <div>
-                <label style="display: block; font-size: 11px; color: #cbd5e1; margin-bottom: 4px;">Porta Mosaico Web HTTP:</label>
-                <input type="number" id="cfgAppMosaicPort" value="8080" style="width: 100%; padding: 6px 10px; font-size: 12px; background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 6px; color: #f8fafc;">
-                <span style="font-size: 10px; color: #64748b;">Painel de monitoramento visual de vídeo</span>
-              </div>
-            </div>
-
-            <div style="background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px; padding: 14px;">
-              <div style="font-size: 12px; font-weight: 700; color: #38bdf8; margin-bottom: 10px;">📁 Diretórios Operacionais de Mídia</div>
-              <div style="margin-bottom: 10px;">
-                <label style="display: block; font-size: 11px; color: #cbd5e1; margin-bottom: 4px;">Pasta de Vídeo Concluído (MP4):</label>
-                <input type="text" id="cfgAppVideoDir" value="D:\MediaDNA_V2\Data\video" style="width: 100%; padding: 6px 10px; font-size: 12px; background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 6px; color: #f8fafc; font-family: monospace;">
-              </div>
-              <div style="margin-bottom: 10px;">
-                <label style="display: block; font-size: 11px; color: #cbd5e1; margin-bottom: 4px;">Pasta de Chunks Temporários (Buffers):</label>
-                <input type="text" id="cfgAppVideoBkpDir" value="D:\MediaDNA_V2\Data\video_bkp" style="width: 100%; padding: 6px 10px; font-size: 12px; background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 6px; color: #f8fafc; font-family: monospace;">
-              </div>
-              <div>
-                <label style="display: block; font-size: 11px; color: #cbd5e1; margin-bottom: 4px;">Pasta de Fatias EMU (Detecção):</label>
-                <input type="text" id="cfgAppEmuDir" value="D:\MediaDNA_V2\Data\emu" style="width: 100%; padding: 6px 10px; font-size: 12px; background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 6px; color: #f8fafc; font-family: monospace;">
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- ABA 3: LOGROTATE.CONF -->
-        <div id="tabContentHostLogRotate" style="display: none;">
-          <div style="background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px; padding: 16px; max-width: 800px; margin: 0 auto;">
-            <div style="font-size: 13px; font-weight: 700; color: #38bdf8; margin-bottom: 6px;">📜 Governança de Rotação do fma.log (FastMatching)</div>
-            <div style="font-size: 11px; color: #94a3b8; margin-bottom: 14px;">
-              Configuração oficial do arquivo <code>logrotate.conf</code> para expurgar logs antigos e evitar consumo excessivo do drive D:.
-            </div>
-            
-            <div style="margin-bottom: 12px;">
-              <label style="display: block; font-size: 11px; color: #cbd5e1; margin-bottom: 4px;">Arquivo Alvo de Log Monitorado:</label>
-              <input type="text" id="cfgLogRotateTarget" value="D:\MediaDNA_V2\Applications\DTVCapture64\FastMatchingSvc\fma.log" style="width: 100%; padding: 6px 10px; font-size: 12px; background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 6px; color: #f8fafc; font-family: monospace;">
-            </div>
-
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
-              <div>
-                <label style="display: block; font-size: 11px; color: #cbd5e1; margin-bottom: 4px;">Dias de Retenção (rotate):</label>
-                <select id="cfgLogRotateDays" style="width: 100%; padding: 6px 10px; font-size: 12px; background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 6px; color: #f8fafc;">
-                  <option value="10" selected>10 Dias (Padrão Homologado)</option>
-                  <option value="7">7 Dias</option>
-                  <option value="5">5 Dias</option>
-                  <option value="3">3 Dias</option>
-                </select>
-              </div>
-              <div>
-                <label style="display: block; font-size: 11px; color: #cbd5e1; margin-bottom: 4px;">Periodicidade:</label>
-                <select id="cfgLogRotateFreq" style="width: 100%; padding: 6px 10px; font-size: 12px; background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 6px; color: #f8fafc;">
-                  <option value="daily" selected>Diária (daily)</option>
-                  <option value="weekly">Semanal (weekly)</option>
-                </select>
-              </div>
-            </div>
-
-            <div style="background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 6px; padding: 10px; font-family: monospace; font-size: 11px; color: #94a3b8;">
-              <div style="color: #38bdf8; font-weight: 700; margin-bottom: 4px;">Estrutura do arquivo logrotate.conf gerado:</div>
-              <pre id="previewLogRotateSnippet" style="margin: 0; color: #e2e8f0;">D:\MediaDNA_V2\Applications\DTVCapture64\FastMatchingSvc\fma.log {
-        daily
-		dateext
-		dateformat .%Y%m%d
-		missingok
-		rotate 10
-}</pre>
-            </div>
-          </div>
-        </div>
-
-        <!-- ABA 4: PRÉVIA POWERSHELL -->
-        <div id="tabContentHostPreview" style="display: none;">
-          <div style="margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
-            <div style="font-size: 12px; color: #94a3b8;">Script PowerShell puro gerado para execução segura e atômica no nó:</div>
-            <button type="button" class="btn-secondary" onclick="generateHostConfigPreview()" style="padding: 4px 10px; font-size: 11px;">
-              <i class="fas fa-sync-alt"></i> Atualizar Prévia
+          <div style="display: flex; gap: 8px; margin-bottom: 12px; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 6px;">
+            <button type="button" class="btn-sm active" id="btnSubTabAppGeneral" onclick="switchAppConfigSubTab('general')" style="background: rgba(56, 189, 248, 0.2); border: 1px solid #38bdf8; color: #38bdf8; padding: 4px 12px; border-radius: 4px; font-size: 11px; cursor: pointer;">
+              General (Atria Options)
+            </button>
+            <button type="button" class="btn-sm" id="btnSubTabAppAutoDetection" onclick="switchAppConfigSubTab('autodetection')" style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); color: #34d399; padding: 4px 12px; border-radius: 4px; font-size: 11px; cursor: pointer;">
+              AutoDetection SVC (Matching Local)
             </button>
           </div>
-          <textarea id="txtHostConfigScriptPreview" readonly style="width: 100%; height: 320px; background: #020617; color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 8px; padding: 12px; font-family: monospace; font-size: 11px; resize: none;"></textarea>
+
+          <!-- SUB-ABA GENERAL -->
+          <div id="subTabContentAppGeneral">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 14px;">
+              <!-- Recursos Habilitados (Enabled Features) -->
+              <div style="background: rgba(30, 41, 59, 0.5); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px; padding: 14px;">
+                <div style="font-size: 12px; font-weight: 700; color: #38bdf8; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between;">
+                  <span>🎯 Recursos Habilitados (Enabled Features)</span>
+                  <label style="font-size: 11px; color: #cbd5e1; display: inline-flex; align-items: center; gap: 4px;">
+                    <input type="checkbox" id="cfgAutoStartMuxes" checked> Auto-start active muxes
+                  </label>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; font-size: 11px; color: #e2e8f0;">
+                  <label><input type="checkbox" id="featWMV"> WMV</label>
+                  <label><input type="checkbox" id="featMP4" checked> <strong>MP4</strong></label>
+                  <label><input type="checkbox" id="featMP3" checked> <strong>MP3</strong></label>
+                  <label><input type="checkbox" id="featMPEG2"> MPEG2-TS</label>
+                  <label><input type="checkbox" id="featWAV"> WAV</label>
+                  <label><input type="checkbox" id="featEAM"> EAM</label>
+                  <label><input type="checkbox" id="featVideoFinger"> VideoFingerPrint</label>
+                  <label><input type="checkbox" id="featEMU" checked style="accent-color: #10b981;"> <strong style="color: #34d399;">EMU (Detecção)</strong></label>
+                  <label><input type="checkbox" id="featWatermark"> Watermark</label>
+                  <label><input type="checkbox" id="featVideoCaption" checked> Video Caption</label>
+                  <label><input type="checkbox" id="featEPG" checked> EPG&amp;Subs</label>
+                  <label><input type="checkbox" id="featJPG" checked> JPG Frames</label>
+                </div>
+                <div style="margin-top: 12px; display: flex; gap: 10px;">
+                  <div style="flex: 1;">
+                    <label style="display: block; font-size: 11px; color: #94a3b8; margin-bottom: 3px;">Daylight Saving Time:</label>
+                    <select id="cfgDaylightSaving" style="width: 100%; padding: 4px 8px; font-size: 11px; background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 4px; color: #f8fafc;">
+                      <option value="Brazil" selected>Brazil</option>
+                      <option value="None">None</option>
+                    </select>
+                  </div>
+                  <div style="width: 90px;">
+                    <label style="display: block; font-size: 11px; color: #94a3b8; margin-bottom: 3px;">Day Offset:</label>
+                    <input type="number" id="cfgDayOffset" value="0" style="width: 100%; padding: 4px 8px; font-size: 11px; background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 4px; color: #f8fafc;">
+                  </div>
+                </div>
+              </div>
+
+              <!-- Diretórios Operacionais -->
+              <div style="background: rgba(30, 41, 59, 0.5); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px; padding: 14px;">
+                <div style="font-size: 12px; font-weight: 700; color: #38bdf8; margin-bottom: 10px;">📁 Diretórios Oficiais do Atria (DTVCapture64)</div>
+                <div style="margin-bottom: 8px;">
+                  <label style="display: block; font-size: 10px; color: #94a3b8; margin-bottom: 2px;">Diretório de Logs (Logs level: Debug):</label>
+                  <input type="text" id="cfgAppLogDir" value="D:\MediaDNA_V2\Applications\DTVCapture64\Logs" style="width: 100%; padding: 4px 8px; font-size: 11px; background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 4px; color: #f8fafc; font-family: monospace;">
+                </div>
+                <div style="margin-bottom: 8px;">
+                  <label style="display: block; font-size: 10px; color: #94a3b8; margin-bottom: 2px;">DTVReceiver (Receiver Location):</label>
+                  <input type="text" id="cfgAppReceiverDir" value="D:\MediaDNA_V2\Applications\DTVCapture64\DTVReceiver" style="width: 100%; padding: 4px 8px; font-size: 11px; background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 4px; color: #f8fafc; font-family: monospace;">
+                </div>
+                <div style="margin-bottom: 8px;">
+                  <label style="display: block; font-size: 10px; color: #94a3b8; margin-bottom: 2px;">Perfis de Gravação (WMProfiles):</label>
+                  <input type="text" id="cfgAppProfilesDir" value="D:\MediaDNA_V2\Applications\DTVCapture64\WMProfiles" style="width: 100%; padding: 4px 8px; font-size: 11px; background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 4px; color: #f8fafc; font-family: monospace;">
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                  <div>
+                    <label style="display: block; font-size: 10px; color: #94a3b8; margin-bottom: 2px;">Temporais MP3:</label>
+                    <input type="text" id="cfgAppTempMp3" value="D:\MediaDNA_V2\data\audio" style="width: 100%; padding: 4px 8px; font-size: 11px; background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 4px; color: #f8fafc; font-family: monospace;">
+                  </div>
+                  <div>
+                    <label style="display: block; font-size: 10px; color: #94a3b8; margin-bottom: 2px;">Temporais MP4:</label>
+                    <input type="text" id="cfgAppTempMp4" value="D:\MediaDNA_V2\data\video" style="width: 100%; padding: 4px 8px; font-size: 11px; background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 4px; color: #f8fafc; font-family: monospace;">
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- SUB-ABA AUTODETECTION SVC -->
+          <div id="subTabContentAppAutoDetection" style="display: none;">
+            <div style="background: rgba(30, 41, 59, 0.5); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px; padding: 14px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <span style="font-size: 13px; font-weight: 700; color: #34d399;">⚡ Parâmetros de AutoDetection SVC</span>
+                  <span id="badgeAutoDetectionStatus" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); font-size: 11px; padding: 2px 8px; border-radius: 12px; font-weight: 700;">Working</span>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                  <button type="button" class="btn-sm" style="background: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444; color: #f87171; font-size: 11px; padding: 4px 10px; border-radius: 4px;">Stop</button>
+                  <button type="button" class="btn-sm" style="background: rgba(16, 185, 129, 0.15); border: 1px solid #10b981; color: #34d399; font-size: 11px; padding: 4px 10px; border-radius: 4px;">Start</button>
+                </div>
+              </div>
+              
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 12px;">
+                <div>
+                  <label style="display: block; font-size: 11px; color: #cbd5e1; margin-bottom: 3px;">Listening Port:</label>
+                  <input type="number" id="cfgAutoPort" value="1234" style="width: 100%; padding: 6px 8px; font-size: 12px; background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 4px; color: #f8fafc; font-family: monospace;">
+                </div>
+                <div>
+                  <label style="display: block; font-size: 11px; color: #cbd5e1; margin-bottom: 3px;">Finger Source:</label>
+                  <input type="text" id="cfgAutoFingerSource" value="MediaDNA" readonly style="width: 100%; padding: 6px 8px; font-size: 12px; background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 4px; color: #94a3b8;">
+                </div>
+                <div>
+                  <label style="display: block; font-size: 11px; color: #cbd5e1; margin-bottom: 3px;">Max EMU Simult. Validations:</label>
+                  <input type="number" id="cfgAutoMaxEmu" value="3" style="width: 100%; padding: 6px 8px; font-size: 12px; background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 4px; color: #f8fafc;">
+                </div>
+                <div>
+                  <label style="display: block; font-size: 11px; color: #cbd5e1; margin-bottom: 3px;">Bin Match Threshold:</label>
+                  <input type="number" id="cfgAutoBinMatch" value="68" style="width: 100%; padding: 6px 8px; font-size: 12px; background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 4px; color: #34d399; font-weight: 700;">
+                </div>
+              </div>
+
+              <div style="margin-bottom: 10px;">
+                <label style="display: block; font-size: 11px; color: #cbd5e1; margin-bottom: 3px;">MediaDNA Config XML Path:</label>
+                <input type="text" id="cfgAutoConfigXml" value="D:\MediaDNA_V2\Data\Config\ConfigXml.xml" style="width: 100%; padding: 6px 8px; font-size: 12px; background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 4px; color: #f8fafc; font-family: monospace;">
+              </div>
+
+              <div>
+                <label style="display: block; font-size: 11px; color: #cbd5e1; margin-bottom: 3px;">Match Exportation Directory (Tracking):</label>
+                <input type="text" id="cfgAutoTrackingDir" value="D:\MediaDNA_V2\Data\tracking\" style="width: 100%; padding: 6px 8px; font-size: 12px; background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 4px; color: #f8fafc; font-family: monospace;">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ABA 4: PERFIS DE GRAVAÇÃO E CODIFICAÇÃO (WMPROFILES) -->
+        <div id="tabContentHostProfiles" style="display: none;">
+          <div style="display: grid; grid-template-columns: 360px 1fr; gap: 14px;">
+            <!-- Lista de Perfis -->
+            <div style="background: rgba(30, 41, 59, 0.5); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px; padding: 12px; display: flex; flex-direction: column;">
+              <div style="font-size: 12px; font-weight: 700; color: #38bdf8; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+                <span>📜 Perfis em WMProfiles</span>
+                <span id="countProfilesBadge" style="font-size: 10px; background: rgba(56, 189, 248, 0.15); color: #38bdf8; padding: 2px 6px; border-radius: 10px;">--</span>
+              </div>
+              <div id="hostProfilesListContainer" style="flex: 1; max-height: 380px; overflow-y: auto;">
+                <!-- Carregado via JS -->
+              </div>
+            </div>
+
+            <!-- Editor / Visualizador de XML do Perfil -->
+            <div style="background: rgba(30, 41, 59, 0.5); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px; padding: 12px; display: flex; flex-direction: column;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span style="font-size: 12px; font-weight: 700; color: #cbd5e1;">Conteúdo XML:</span>
+                  <span id="selectedProfileTitle" style="font-family: monospace; font-size: 12px; color: #38bdf8; font-weight: 700;">EMU_EMU MediaDNA 1min.xml</span>
+                </div>
+                <button type="button" class="btn-sm" onclick="saveSelectedProfileXml()" style="background: rgba(16, 185, 129, 0.15); border: 1px solid #10b981; color: #34d399; font-size: 11px; padding: 3px 10px; border-radius: 4px; cursor: pointer;">
+                  <i class="fas fa-save"></i> Salvar Perfil
+                </button>
+              </div>
+              <textarea id="inpProfileXmlEditor" style="flex: 1; height: 350px; background: #020617; color: #e2e8f0; border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 6px; padding: 10px; font-family: monospace; font-size: 11px; line-height: 1.5; resize: none;"></textarea>
+            </div>
+          </div>
+        </div>
+
+        <!-- ABA 5: LOGROTATE.CONF (RETENÇÃO) -->
+        <div id="tabContentHostLogRotate" style="display: none;">
+          <div style="background: rgba(30, 41, 59, 0.5); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px; padding: 16px;">
+            <div style="font-size: 13px; font-weight: 700; color: #38bdf8; margin-bottom: 12px;">
+              🔄 Governança de Retenção de Logs (logrotate.conf)
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin-bottom: 14px;">
+              <div>
+                <label style="display: block; font-size: 11px; color: #cbd5e1; margin-bottom: 4px;">Arquivo Alvo (Log de Matching):</label>
+                <input type="text" id="cfgLrTarget" value="D:\MediaDNA_V2\Applications\DTVCapture64\FastMatchingSvc\fma.log" style="width: 100%; padding: 6px 10px; font-size: 12px; background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 6px; color: #f8fafc; font-family: monospace;">
+              </div>
+              <div>
+                <label style="display: block; font-size: 11px; color: #cbd5e1; margin-bottom: 4px;">Dias de Retenção (rotate):</label>
+                <select id="cfgLrRotate" style="width: 100%; padding: 6px 10px; font-size: 12px; background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 6px; color: #f8fafc;">
+                  <option value="3">3 dias (Recomendado para estações de alta carga)</option>
+                  <option value="5">5 dias (Intermediário)</option>
+                  <option value="10" selected>10 dias (Padrão Oficial NOC)</option>
+                  <option value="15">15 dias (Auditoria estendida)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ABA 6: PRÉVIA DO SCRIPT POWERSHELL -->
+        <div id="tabContentHostPreview" style="display: none;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <span style="font-size: 12px; color: #94a3b8;">Script PowerShell gerado em tempo real para auditoria de execução elevada:</span>
+            <button type="button" class="btn-sm" onclick="copyHostConfigScript()" style="background: rgba(56, 189, 248, 0.15); border: 1px solid #38bdf8; color: #38bdf8; font-size: 11px; padding: 4px 10px; border-radius: 4px; cursor: pointer;">
+              <i class="fas fa-copy"></i> Copiar Script
+            </button>
+          </div>
+          <textarea id="hostConfigScriptPreview" readonly style="width: 100%; height: 380px; background: #020617; color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 8px; padding: 12px; font-family: monospace; font-size: 11px; resize: none;"></textarea>
         </div>
 
       </div>
 
       <!-- RODAPÉ DO MODAL COM BOTÕES DE AÇÃO -->
-      <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(148, 163, 184, 0.2); padding-top: 14px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(148, 163, 184, 0.2); padding-top: 12px;">
         <div style="display: flex; align-items: center; gap: 8px;">
           <label style="font-size: 11px; color: #94a3b8;">Motivo NOC:</label>
-          <input type="text" id="inpHostConfigReason" value="Ajuste de perfil EMU e parâmetros operacionais" style="padding: 6px 10px; font-size: 12px; background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 6px; color: #f8fafc; min-width: 320px;">
+          <input type="text" id="inpHostConfigReason" value="Ajuste de perfil EMU MediaDNA 1min e parâmetros operacionais do Atria" style="padding: 6px 10px; font-size: 12px; background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 6px; color: #f8fafc; min-width: 380px;">
         </div>
         <div style="display: flex; gap: 10px;">
           <button type="button" class="btn-secondary" onclick="closeHostConfigModal()">Cancelar</button>
           <button type="button" class="btn-secondary" onclick="switchHostConfigTab('preview')" style="border-color: rgba(56, 189, 248, 0.4); color: #38bdf8;">
             <i class="fas fa-code"></i> Ver Script
           </button>
-          <button type="button" id="btnSaveHostConfig" class="btn-primary" onclick="saveHostConfig()" style="background: linear-gradient(135deg, #0284c7, #0369a1); border: 1px solid #38bdf8; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; padding: 8px 20px;">
+          <button type="button" id="btnSaveHostConfig" class="btn-primary" onclick="saveHostConfig()" style="background: linear-gradient(135deg, #0284c7, #0369a1); border: 1px solid #38bdf8; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; padding: 8px 22px;">
             <i class="fas fa-save" id="iconSaveHostConfig"></i>
             <span>Salvar e Aplicar (Reiniciar Atria)</span>
           </button>
@@ -20140,6 +20311,7 @@
   <script src="/static/js/detection_monitor.js?v=3.9.94"></script>
   <script src="/static/js/praca_analyzer.js?v=3.9.104"></script>
   <script src="/static/js/sla_matrix.js?v=3.9.102"></script>
+  <script src="/static/js/detection_pipeline_live.js?v=3.9.111"></script>
 
 </body>
 

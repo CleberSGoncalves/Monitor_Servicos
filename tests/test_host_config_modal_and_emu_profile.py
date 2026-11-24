@@ -148,3 +148,136 @@ def test_ui_elements_in_html_and_js():
     assert "function saveHostConfig" in js
     assert "function populateHostConfigSelectors" in js
     assert "isCS01" in js, "Validação de CS01 deve existir para blindar CS02 e CS03 da chave de detecção"
+    # Super Modal Tabs & Functions
+    assert "btnTabHostMuxes" in html
+    assert "btnTabHostChannels" in html
+    assert "btnTabHostAppConfig" in html
+    assert "btnTabHostProfiles" in html
+    assert "btnTabHostLogRotate" in html
+    assert "btnTabHostPreview" in html
+    assert "applyEmuProfileToAll" in js
+    assert "renderHostConfigMuxesTable" in js
+    assert "renderHostProfilesList" in js
+    assert "saveSelectedProfileXml" in js
+
+
+def test_super_modal_atria_muxes_channels_and_app_options():
+    """Valida o inventário rico de Muxes, Canais, Application Options e WMProfiles no Super Modal."""
+    from fastapi.testclient import TestClient
+    from app import app
+    from auth import create_session
+
+    client = TestClient(app)
+    token = create_session("admin_test", "admin")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    test_host = "BRMG-UDI-DT01"
+    resp = client.get(f"/api/fleet/host-config/{test_host}", headers=headers)
+    assert resp.status_code == 200
+    data = resp.json()
+
+    # Muxes
+    assert "muxes" in data
+    assert isinstance(data["muxes"], list)
+    assert len(data["muxes"]) > 0
+    m0 = data["muxes"][0]
+    assert "mux_id" in m0
+    assert "network_type" in m0
+    assert "frequency" in m0
+    assert "video_decoding_mode" in m0
+
+    # Canais ricos
+    c0 = data["channels"][0]
+    assert "preferred_decoder" in c0
+    assert "mp4_profile" in c0
+    assert "mp3_profile" in c0
+    assert "emu_profile_name" in c0
+    assert c0["emu_profile_name"] == "EMU MediaDNA 1min"
+    assert "video_caption_pattern" in c0
+    assert "jpg_frames_config" in c0
+
+    # Application Options
+    assert "application_options" in data
+    app_opt = data["application_options"]
+    assert app_opt["autodetection_port"] == 1234
+    assert app_opt["bin_match_threshold"] == 68
+    assert "ConfigXml.xml" in app_opt["mediadna_config_xml"]
+    assert "tracking" in app_opt["match_export_dir"]
+    assert app_opt["enabled_features"]["EMU"] is True
+    assert app_opt["enabled_features"]["MP4"] is True
+
+    # WMProfiles Catalog
+    assert "wmprofiles" in data
+    assert isinstance(data["wmprofiles"], list)
+    assert any(p["name"] == "EMU MediaDNA 1min" for p in data["wmprofiles"])
+    assert any(p["name"] == "EMU MDNA" for p in data["wmprofiles"])
+
+    # Teste POST com Muxes e Application Options
+    payload = {
+        "muxes": [
+            {
+                "mux_id": m0["mux_id"],
+                "name": m0["name"],
+                "network_type": "Terrestrial",
+                "frequency": 557000,
+                "bandwidth": 6,
+                "video_decoding_mode": "Usar a configuração LAV global"
+            }
+        ],
+        "channels": [
+            {
+                "name": c0["name"],
+                "emu_is_recording": True,
+                "emu_profile_name": "EMU MediaDNA 1min",
+                "mp4_is_recording": True,
+                "mp3_is_recording": True,
+                "preferred_decoder": "Microsoft",
+                "video_caption_height": 12,
+                "video_caption_pattern": "UBE - REC(DT) - %d/%m/%Y %H:%M:%S"
+            }
+        ],
+        "application_options": {
+            "autodetection_port": 1234,
+            "bin_match_threshold": 68,
+            "max_emu_validations": 3
+        },
+        "wmprofiles": [
+            {
+                "filename": "EMU_EMU MediaDNA 1min.xml",
+                "name": "EMU MediaDNA 1min",
+                "xml_content": "<profile><target_duration_sec>60</target_duration_sec></profile>"
+            }
+        ],
+        "reason": "Auditoria de Super Modal Atria"
+    }
+
+    resp_post = client.post(f"/api/fleet/host-config/{test_host}", json=payload, headers=headers)
+    assert resp_post.status_code == 200
+    res_data = resp_post.json()
+    assert res_data["success"] is True
+    script = res_data["script_preview"]
+    assert "Multiplexes.xml" in script
+    assert "EMU MediaDNA 1min" in script
+    assert "ListeningPort" in script
+    assert "BinMatchThreshold" in script
+    assert "WMProfiles" in script
+
+
+def test_uberlandia_emu_profile_hardening_scenario():
+    """
+    Testa o cenário forense de Uberlândia onde o perfil anterior era 'EMU MDNA':
+    O snippet gerado substitui de forma infalível o perfil legado para 'EMU MediaDNA 1min'
+    mesmo que a migração não esteja ativada no update do Atria.
+    """
+    script_atria = build_service_raw_script(
+        service_name="Atria Capture",
+        target_version="2.0.0.2",
+        migrate_to_fastmatching=False
+    )
+    # A blindagem de perfil EMU DEVE estar presente incondicionalmente no Atria Capture
+    assert "EMU_HARDENING" in script_atria
+    assert "EMU MediaDNA 1min" in script_atria
+    assert "Multiplexes.xml" in script_atria
+    assert "Start_Atria_Interactive" in script_atria
+    # Valida ordem: blindagem antes de iniciar Atria
+    assert script_atria.find("EMU MediaDNA 1min") < script_atria.find("Start_Atria_Interactive")

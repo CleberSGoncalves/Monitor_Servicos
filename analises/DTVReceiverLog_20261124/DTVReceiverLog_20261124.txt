@@ -1,0 +1,617 @@
+[24/11/2026 00:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Changing file because of sample with offset=[24115441ms] nextSampleTime=[24115409ms]. TimeNow=[1795492801s] TimeNextFile=[1795492800s]
+[24/11/2026 00:00:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: FinishCurrentFile. Video PacketQueue not empty (2).
+[24/11/2026 00:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareVideoConversions. Opened video codec: libx264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10
+[24/11/2026 00:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: AddAudioStream. Output audio configured: SampleRate=8000, Channels=2, BitRate=12kbps
+[24/11/2026 00:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareAudioConversions. Opened audio codec: AAC (Advanced Audio Coding)
+[24/11/2026 00:00:01]	[3]	[1]	[1]	[Rede Globo] Mp4Writer: Started encoding of file [C:/Users/SUPORT~1/AppData/Local/Temp/Mp4Writer_4108_13512_0_9961.tmp] for Encoding [0]
+[24/11/2026 00:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [25915441ms]. Same file duration [1800s]
+[24/11/2026 00:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [25915441ms] differs more than 1 minute. Previous=[24115409ms]
+[24/11/2026 00:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [25915441ms] differs less than 1 minute than previous+duration. Previous+dur=[25915409ms]
+[24/11/2026 00:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [25915441ms] differs less than 80ms, use it. Previous+dur=[25915409ms]
+[24/11/2026 00:00:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Next file change expected at [00:30:00], offset=[25915441ms]
+[24/11/2026 00:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: SetOriginStreamTime from AUDIO SAMPLE to 24115466
+[24/11/2026 00:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Changing file because of sample with offset=[25915472ms] nextSampleTime=[25915441ms]. TimeNow=[1795494600s] TimeNextFile=[1795494600s]
+[24/11/2026 00:30:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: FinishCurrentFile. Video PacketQueue not empty (2).
+[24/11/2026 00:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareVideoConversions. Opened video codec: libx264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10
+[24/11/2026 00:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: AddAudioStream. Output audio configured: SampleRate=8000, Channels=2, BitRate=12kbps
+[24/11/2026 00:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareAudioConversions. Opened audio codec: AAC (Advanced Audio Coding)
+[24/11/2026 00:30:01]	[3]	[1]	[1]	[Rede Globo] Mp4Writer: Started encoding of file [C:/Users/SUPORT~1/AppData/Local/Temp/Mp4Writer_4108_13512_0_491.tmp] for Encoding [0]
+[24/11/2026 00:30:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [27715472ms]. Same file duration [1800s]
+[24/11/2026 00:30:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [27715472ms] differs more than 1 minute. Previous=[25915441ms]
+[24/11/2026 00:30:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [27715472ms] differs less than 1 minute than previous+duration. Previous+dur=[27715441ms]
+[24/11/2026 00:30:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [27715472ms] differs less than 80ms, use it. Previous+dur=[27715441ms]
+[24/11/2026 00:30:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Next file change expected at [01:00:00], offset=[27715472ms]
+[24/11/2026 00:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: SetOriginStreamTime from AUDIO SAMPLE to 25915485
+[24/11/2026 01:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Changing file because of sample with offset=[27715471ms] nextSampleTime=[27715472ms]. TimeNow=[1795496401s] TimeNextFile=[1795496400s]
+[24/11/2026 01:00:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: FinishCurrentFile. Video PacketQueue not empty (2).
+[24/11/2026 01:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareVideoConversions. Opened video codec: libx264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10
+[24/11/2026 01:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: AddAudioStream. Output audio configured: SampleRate=8000, Channels=2, BitRate=12kbps
+[24/11/2026 01:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareAudioConversions. Opened audio codec: AAC (Advanced Audio Coding)
+[24/11/2026 01:00:01]	[3]	[1]	[1]	[Rede Globo] Mp4Writer: Started encoding of file [C:/Users/SUPORT~1/AppData/Local/Temp/Mp4Writer_4108_13512_0_2995.tmp] for Encoding [0]
+[24/11/2026 01:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [29515471ms]. Same file duration [1800s]
+[24/11/2026 01:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [29515471ms] differs more than 1 minute. Previous=[27715472ms]
+[24/11/2026 01:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [29515471ms] differs less than 1 minute than previous+duration. Previous+dur=[29515472ms]
+[24/11/2026 01:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [29515471ms] differs less than 80ms, use it. Previous+dur=[29515472ms]
+[24/11/2026 01:00:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Next file change expected at [01:30:00], offset=[29515471ms]
+[24/11/2026 01:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: SetOriginStreamTime from AUDIO SAMPLE to 27715503
+[24/11/2026 01:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Changing file because of sample with offset=[29515502ms] nextSampleTime=[29515471ms]. TimeNow=[1795498201s] TimeNextFile=[1795498200s]
+[24/11/2026 01:30:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: FinishCurrentFile. Video PacketQueue not empty (2).
+[24/11/2026 01:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareVideoConversions. Opened video codec: libx264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10
+[24/11/2026 01:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: AddAudioStream. Output audio configured: SampleRate=8000, Channels=2, BitRate=12kbps
+[24/11/2026 01:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareAudioConversions. Opened audio codec: AAC (Advanced Audio Coding)
+[24/11/2026 01:30:01]	[3]	[1]	[1]	[Rede Globo] Mp4Writer: Started encoding of file [C:/Users/SUPORT~1/AppData/Local/Temp/Mp4Writer_4108_13512_0_11942.tmp] for Encoding [0]
+[24/11/2026 01:30:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [31315502ms]. Same file duration [1800s]
+[24/11/2026 01:30:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [31315502ms] differs more than 1 minute. Previous=[29515471ms]
+[24/11/2026 01:30:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [31315502ms] differs less than 1 minute than previous+duration. Previous+dur=[31315471ms]
+[24/11/2026 01:30:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [31315502ms] differs less than 80ms, use it. Previous+dur=[31315471ms]
+[24/11/2026 01:30:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Next file change expected at [02:00:00], offset=[31315502ms]
+[24/11/2026 01:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: SetOriginStreamTime from AUDIO SAMPLE to 29515522
+[24/11/2026 02:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Changing file because of sample with offset=[31315467ms] nextSampleTime=[31315502ms]. TimeNow=[1795500001s] TimeNextFile=[1795500000s]
+[24/11/2026 02:00:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: FinishCurrentFile. Video PacketQueue not empty (2).
+[24/11/2026 02:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareVideoConversions. Opened video codec: libx264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10
+[24/11/2026 02:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: AddAudioStream. Output audio configured: SampleRate=8000, Channels=2, BitRate=12kbps
+[24/11/2026 02:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareAudioConversions. Opened audio codec: AAC (Advanced Audio Coding)
+[24/11/2026 02:00:01]	[3]	[1]	[1]	[Rede Globo] Mp4Writer: Started encoding of file [C:/Users/SUPORT~1/AppData/Local/Temp/Mp4Writer_4108_13512_0_4827.tmp] for Encoding [0]
+[24/11/2026 02:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [33115467ms]. Same file duration [1800s]
+[24/11/2026 02:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [33115467ms] differs more than 1 minute. Previous=[31315502ms]
+[24/11/2026 02:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [33115467ms] differs less than 1 minute than previous+duration. Previous+dur=[33115502ms]
+[24/11/2026 02:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [33115467ms] differs less than 80ms, use it. Previous+dur=[33115502ms]
+[24/11/2026 02:00:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Next file change expected at [02:30:00], offset=[33115467ms]
+[24/11/2026 02:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: SetOriginStreamTime from AUDIO SAMPLE to 31315498
+[24/11/2026 02:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Changing file because of sample with offset=[33115499ms] nextSampleTime=[33115467ms]. TimeNow=[1795501801s] TimeNextFile=[1795501800s]
+[24/11/2026 02:30:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: FinishCurrentFile. Video PacketQueue not empty (2).
+[24/11/2026 02:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareVideoConversions. Opened video codec: libx264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10
+[24/11/2026 02:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: AddAudioStream. Output audio configured: SampleRate=8000, Channels=2, BitRate=12kbps
+[24/11/2026 02:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareAudioConversions. Opened audio codec: AAC (Advanced Audio Coding)
+[24/11/2026 02:30:01]	[3]	[1]	[1]	[Rede Globo] Mp4Writer: Started encoding of file [C:/Users/SUPORT~1/AppData/Local/Temp/Mp4Writer_4108_13512_0_5436.tmp] for Encoding [0]
+[24/11/2026 02:30:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [34915499ms]. Same file duration [1800s]
+[24/11/2026 02:30:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [34915499ms] differs more than 1 minute. Previous=[33115467ms]
+[24/11/2026 02:30:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [34915499ms] differs less than 1 minute than previous+duration. Previous+dur=[34915467ms]
+[24/11/2026 02:30:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [34915499ms] differs less than 80ms, use it. Previous+dur=[34915467ms]
+[24/11/2026 02:30:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Next file change expected at [03:00:00], offset=[34915499ms]
+[24/11/2026 02:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: SetOriginStreamTime from AUDIO SAMPLE to 33115516
+[24/11/2026 02:39:44]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Audio gap of 74 millisecs detected!
+[24/11/2026 02:42:41]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Audio gap of 41 millisecs detected!
+[24/11/2026 03:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Changing file because of sample with offset=[34915530ms] nextSampleTime=[34915499ms]. TimeNow=[1795503600s] TimeNextFile=[1795503600s]
+[24/11/2026 03:00:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: FinishCurrentFile. Video PacketQueue not empty (2).
+[24/11/2026 03:00:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: FinishCurrentFile. Accomulated Gap=115ms).
+[24/11/2026 03:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareVideoConversions. Opened video codec: libx264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10
+[24/11/2026 03:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: AddAudioStream. Output audio configured: SampleRate=8000, Channels=2, BitRate=12kbps
+[24/11/2026 03:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareAudioConversions. Opened audio codec: AAC (Advanced Audio Coding)
+[24/11/2026 03:00:01]	[3]	[1]	[1]	[Rede Globo] Mp4Writer: Started encoding of file [C:/Users/SUPORT~1/AppData/Local/Temp/Mp4Writer_4108_13512_0_32391.tmp] for Encoding [0]
+[24/11/2026 03:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [36715530ms]. Same file duration [1800s]
+[24/11/2026 03:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [36715530ms] differs more than 1 minute. Previous=[34915499ms]
+[24/11/2026 03:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [36715530ms] differs less than 1 minute than previous+duration. Previous+dur=[36715499ms]
+[24/11/2026 03:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [36715530ms] differs less than 80ms, use it. Previous+dur=[36715499ms]
+[24/11/2026 03:00:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Next file change expected at [03:30:00], offset=[36715530ms]
+[24/11/2026 03:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: SetOriginStreamTime from AUDIO SAMPLE to 34915563
+[24/11/2026 03:07:04]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Audio gap of 91 millisecs detected!
+[24/11/2026 03:08:05]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Audio gap of 126 millisecs detected!
+[24/11/2026 03:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Changing file because of sample with offset=[36715528ms] nextSampleTime=[36715530ms]. TimeNow=[1795505401s] TimeNextFile=[1795505400s]
+[24/11/2026 03:30:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: FinishCurrentFile. Video PacketQueue not empty (2).
+[24/11/2026 03:30:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: FinishCurrentFile. Accomulated Gap=217ms).
+[24/11/2026 03:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareVideoConversions. Opened video codec: libx264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10
+[24/11/2026 03:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: AddAudioStream. Output audio configured: SampleRate=8000, Channels=2, BitRate=12kbps
+[24/11/2026 03:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareAudioConversions. Opened audio codec: AAC (Advanced Audio Coding)
+[24/11/2026 03:30:01]	[3]	[1]	[1]	[Rede Globo] Mp4Writer: Started encoding of file [C:/Users/SUPORT~1/AppData/Local/Temp/Mp4Writer_4108_13512_0_14604.tmp] for Encoding [0]
+[24/11/2026 03:30:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [38515528ms]. Same file duration [1800s]
+[24/11/2026 03:30:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [38515528ms] differs more than 1 minute. Previous=[36715530ms]
+[24/11/2026 03:30:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [38515528ms] differs less than 1 minute than previous+duration. Previous+dur=[38515530ms]
+[24/11/2026 03:30:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [38515528ms] differs less than 80ms, use it. Previous+dur=[38515530ms]
+[24/11/2026 03:30:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Next file change expected at [04:00:00], offset=[38515528ms]
+[24/11/2026 03:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: SetOriginStreamTime from AUDIO SAMPLE to 36715541
+[24/11/2026 04:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Changing file because of sample with offset=[38515426ms] nextSampleTime=[38515528ms]. TimeNow=[1795507201s] TimeNextFile=[1795507200s]
+[24/11/2026 04:00:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: FinishCurrentFile. Video PacketQueue not empty (2).
+[24/11/2026 04:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareVideoConversions. Opened video codec: libx264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10
+[24/11/2026 04:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: AddAudioStream. Output audio configured: SampleRate=8000, Channels=2, BitRate=12kbps
+[24/11/2026 04:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareAudioConversions. Opened audio codec: AAC (Advanced Audio Coding)
+[24/11/2026 04:00:01]	[3]	[1]	[1]	[Rede Globo] Mp4Writer: Started encoding of file [C:/Users/SUPORT~1/AppData/Local/Temp/Mp4Writer_4108_13512_0_3902.tmp] for Encoding [0]
+[24/11/2026 04:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [40315426ms]. Same file duration [1800s]
+[24/11/2026 04:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [40315426ms] differs more than 1 minute. Previous=[38515528ms]
+[24/11/2026 04:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [40315426ms] differs less than 1 minute than previous+duration. Previous+dur=[40315528ms]
+[24/11/2026 04:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [40315426ms] vs Previous+dur=[40315528ms] greater than 80ms. Use Minimum adjusted.
+[24/11/2026 04:00:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Changed NextFileSampleTime from [40315426] to [40315426].
+[24/11/2026 04:00:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Next file change expected at [04:30:00], offset=[40315426ms]
+[24/11/2026 04:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: SetOriginStreamTime from AUDIO SAMPLE to 38515431
+[24/11/2026 04:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Changing file because of sample with offset=[40315458ms] nextSampleTime=[40315426ms]. TimeNow=[1795509000s] TimeNextFile=[1795509000s]
+[24/11/2026 04:30:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: FinishCurrentFile. Video PacketQueue not empty (2).
+[24/11/2026 04:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareVideoConversions. Opened video codec: libx264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10
+[24/11/2026 04:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: AddAudioStream. Output audio configured: SampleRate=8000, Channels=2, BitRate=12kbps
+[24/11/2026 04:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareAudioConversions. Opened audio codec: AAC (Advanced Audio Coding)
+[24/11/2026 04:30:01]	[3]	[1]	[1]	[Rede Globo] Mp4Writer: Started encoding of file [C:/Users/SUPORT~1/AppData/Local/Temp/Mp4Writer_4108_13512_0_153.tmp] for Encoding [0]
+[24/11/2026 04:30:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [42115458ms]. Same file duration [1800s]
+[24/11/2026 04:30:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [42115458ms] differs more than 1 minute. Previous=[40315426ms]
+[24/11/2026 04:30:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [42115458ms] differs less than 1 minute than previous+duration. Previous+dur=[42115426ms]
+[24/11/2026 04:30:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [42115458ms] differs less than 80ms, use it. Previous+dur=[42115426ms]
+[24/11/2026 04:30:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Next file change expected at [05:00:00], offset=[42115458ms]
+[24/11/2026 04:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: SetOriginStreamTime from AUDIO SAMPLE to 40315493
+[24/11/2026 05:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Changing file because of sample with offset=[42115389ms] nextSampleTime=[42115458ms]. TimeNow=[1795510801s] TimeNextFile=[1795510800s]
+[24/11/2026 05:00:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: FinishCurrentFile. Video PacketQueue not empty (2).
+[24/11/2026 05:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareVideoConversions. Opened video codec: libx264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10
+[24/11/2026 05:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: AddAudioStream. Output audio configured: SampleRate=8000, Channels=2, BitRate=12kbps
+[24/11/2026 05:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareAudioConversions. Opened audio codec: AAC (Advanced Audio Coding)
+[24/11/2026 05:00:01]	[3]	[1]	[1]	[Rede Globo] Mp4Writer: Started encoding of file [C:/Users/SUPORT~1/AppData/Local/Temp/Mp4Writer_4108_13512_0_292.tmp] for Encoding [0]
+[24/11/2026 05:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [43915389ms]. Same file duration [1800s]
+[24/11/2026 05:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [43915389ms] differs more than 1 minute. Previous=[42115458ms]
+[24/11/2026 05:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [43915389ms] differs less than 1 minute than previous+duration. Previous+dur=[43915458ms]
+[24/11/2026 05:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [43915389ms] differs less than 80ms, use it. Previous+dur=[43915458ms]
+[24/11/2026 05:00:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Next file change expected at [05:30:00], offset=[43915389ms]
+[24/11/2026 05:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: SetOriginStreamTime from AUDIO SAMPLE to 42115426
+[24/11/2026 05:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Changing file because of sample with offset=[43915421ms] nextSampleTime=[43915389ms]. TimeNow=[1795512600s] TimeNextFile=[1795512600s]
+[24/11/2026 05:30:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: FinishCurrentFile. Video PacketQueue not empty (2).
+[24/11/2026 05:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareVideoConversions. Opened video codec: libx264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10
+[24/11/2026 05:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: AddAudioStream. Output audio configured: SampleRate=8000, Channels=2, BitRate=12kbps
+[24/11/2026 05:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareAudioConversions. Opened audio codec: AAC (Advanced Audio Coding)
+[24/11/2026 05:30:01]	[3]	[1]	[1]	[Rede Globo] Mp4Writer: Started encoding of file [C:/Users/SUPORT~1/AppData/Local/Temp/Mp4Writer_4108_13512_0_12382.tmp] for Encoding [0]
+[24/11/2026 05:30:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [45715421ms]. Same file duration [1800s]
+[24/11/2026 05:30:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [45715421ms] differs more than 1 minute. Previous=[43915389ms]
+[24/11/2026 05:30:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [45715421ms] differs less than 1 minute than previous+duration. Previous+dur=[45715389ms]
+[24/11/2026 05:30:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [45715421ms] differs less than 80ms, use it. Previous+dur=[45715389ms]
+[24/11/2026 05:30:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Next file change expected at [06:00:00], offset=[45715421ms]
+[24/11/2026 05:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: SetOriginStreamTime from AUDIO SAMPLE to 43915444
+[24/11/2026 05:40:17]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Audio gap of 231 millisecs detected!
+[24/11/2026 05:41:31]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Audio gap of 126 millisecs detected!
+[24/11/2026 05:41:32]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Audio gap of 86 millisecs detected!
+[24/11/2026 05:45:59]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Audio gap of 388 millisecs detected!
+[24/11/2026 05:45:59]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Audio gap of 128 millisecs detected!
+[24/11/2026 05:47:07]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Audio gap of 211 millisecs detected!
+[24/11/2026 05:47:07]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Audio gap of 86 millisecs detected!
+[24/11/2026 06:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Changing file because of sample with offset=[45715453ms] nextSampleTime=[45715421ms]. TimeNow=[1795514400s] TimeNextFile=[1795514400s]
+[24/11/2026 06:00:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: FinishCurrentFile. Video PacketQueue not empty (2).
+[24/11/2026 06:00:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: FinishCurrentFile. Accomulated Gap=1256ms).
+[24/11/2026 06:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareVideoConversions. Opened video codec: libx264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10
+[24/11/2026 06:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: AddAudioStream. Output audio configured: SampleRate=8000, Channels=2, BitRate=12kbps
+[24/11/2026 06:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareAudioConversions. Opened audio codec: AAC (Advanced Audio Coding)
+[24/11/2026 06:00:01]	[3]	[1]	[1]	[Rede Globo] Mp4Writer: Started encoding of file [C:/Users/SUPORT~1/AppData/Local/Temp/Mp4Writer_4108_13512_0_17421.tmp] for Encoding [0]
+[24/11/2026 06:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [47515453ms]. Same file duration [1800s]
+[24/11/2026 06:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [47515453ms] differs more than 1 minute. Previous=[45715421ms]
+[24/11/2026 06:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [47515453ms] differs less than 1 minute than previous+duration. Previous+dur=[47515421ms]
+[24/11/2026 06:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [47515453ms] differs less than 80ms, use it. Previous+dur=[47515421ms]
+[24/11/2026 06:00:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Next file change expected at [06:30:00], offset=[47515453ms]
+[24/11/2026 06:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: SetOriginStreamTime from AUDIO SAMPLE to 45715478
+[24/11/2026 06:12:16]	[3]	[1]	[2]	SignalStatistics: Quality=58 Strength=30
+[24/11/2026 06:12:16]	[3]	[1]	[2]	SignalStatistics: Quality=20 Strength=30
+[24/11/2026 06:12:19]	[3]	[1]	[2]	SignalStatistics: Quality=92 Strength=30
+[24/11/2026 06:12:33]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Audio gap of 619 millisecs detected!
+[24/11/2026 06:13:42]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Audio gap of 86 millisecs detected!
+[24/11/2026 06:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Changing file because of sample with offset=[47512314ms] nextSampleTime=[47515453ms]. TimeNow=[1795516201s] TimeNextFile=[1795516200s]
+[24/11/2026 06:30:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: FinishCurrentFile. Video PacketQueue not empty (2).
+[24/11/2026 06:30:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: FinishCurrentFile. Accomulated Gap=705ms).
+[24/11/2026 06:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareVideoConversions. Opened video codec: libx264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10
+[24/11/2026 06:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: AddAudioStream. Output audio configured: SampleRate=8000, Channels=2, BitRate=12kbps
+[24/11/2026 06:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareAudioConversions. Opened audio codec: AAC (Advanced Audio Coding)
+[24/11/2026 06:30:01]	[3]	[1]	[1]	[Rede Globo] Mp4Writer: Started encoding of file [C:/Users/SUPORT~1/AppData/Local/Temp/Mp4Writer_4108_13512_0_18716.tmp] for Encoding [0]
+[24/11/2026 06:30:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [49312314ms]. Same file duration [1800s]
+[24/11/2026 06:30:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [49312314ms] differs more than 1 minute. Previous=[47515453ms]
+[24/11/2026 06:30:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [49312314ms] differs less than 1 minute than previous+duration. Previous+dur=[49315453ms]
+[24/11/2026 06:30:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [49312314ms] vs Previous+dur=[49315453ms] greater than 80ms. Use Minimum adjusted.
+[24/11/2026 06:30:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Changed NextFileSampleTime from [49312314] to [49312314].
+[24/11/2026 06:30:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Next file change expected at [07:00:00], offset=[49312314ms]
+[24/11/2026 06:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: SetOriginStreamTime from AUDIO SAMPLE to 47512320
+[24/11/2026 06:42:04]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Audio gap of 220 millisecs detected!
+[24/11/2026 06:42:05]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Audio gap of 86 millisecs detected!
+[24/11/2026 06:43:05]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Audio gap of 126 millisecs detected!
+[24/11/2026 06:53:44]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Audio gap of 261 millisecs detected!
+[24/11/2026 06:53:44]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Audio gap of 129 millisecs detected!
+[24/11/2026 06:54:45]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Audio gap of 296 millisecs detected!
+[24/11/2026 06:54:45]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Audio gap of 86 millisecs detected!
+[24/11/2026 07:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Changing file because of sample with offset=[49312346ms] nextSampleTime=[49312314ms]. TimeNow=[1795518000s] TimeNextFile=[1795518000s]
+[24/11/2026 07:00:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: FinishCurrentFile. Video PacketQueue not empty (2).
+[24/11/2026 07:00:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: FinishCurrentFile. Accomulated Gap=1204ms).
+[24/11/2026 07:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareVideoConversions. Opened video codec: libx264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10
+[24/11/2026 07:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: AddAudioStream. Output audio configured: SampleRate=8000, Channels=2, BitRate=12kbps
+[24/11/2026 07:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareAudioConversions. Opened audio codec: AAC (Advanced Audio Coding)
+[24/11/2026 07:00:01]	[3]	[1]	[1]	[Rede Globo] Mp4Writer: Started encoding of file [C:/Users/SUPORT~1/AppData/Local/Temp/Mp4Writer_4108_13512_0_19718.tmp] for Encoding [0]
+[24/11/2026 07:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [51112346ms]. Same file duration [1800s]
+[24/11/2026 07:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [51112346ms] differs more than 1 minute. Previous=[49312314ms]
+[24/11/2026 07:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [51112346ms] differs less than 1 minute than previous+duration. Previous+dur=[51112314ms]
+[24/11/2026 07:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [51112346ms] differs less than 80ms, use it. Previous+dur=[51112314ms]
+[24/11/2026 07:00:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Next file change expected at [07:30:00], offset=[51112346ms]
+[24/11/2026 07:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: SetOriginStreamTime from AUDIO SAMPLE to 49312385
+[24/11/2026 07:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Changing file because of sample with offset=[51112377ms] nextSampleTime=[51112346ms]. TimeNow=[1795519800s] TimeNextFile=[1795519800s]
+[24/11/2026 07:30:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: FinishCurrentFile. Video PacketQueue not empty (2).
+[24/11/2026 07:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareVideoConversions. Opened video codec: libx264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10
+[24/11/2026 07:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: AddAudioStream. Output audio configured: SampleRate=8000, Channels=2, BitRate=12kbps
+[24/11/2026 07:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareAudioConversions. Opened audio codec: AAC (Advanced Audio Coding)
+[24/11/2026 07:30:01]	[3]	[1]	[1]	[Rede Globo] Mp4Writer: Started encoding of file [C:/Users/SUPORT~1/AppData/Local/Temp/Mp4Writer_4108_13512_0_19895.tmp] for Encoding [0]
+[24/11/2026 07:30:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [52912377ms]. Same file duration [1800s]
+[24/11/2026 07:30:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [52912377ms] differs more than 1 minute. Previous=[51112346ms]
+[24/11/2026 07:30:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [52912377ms] differs less than 1 minute than previous+duration. Previous+dur=[52912346ms]
+[24/11/2026 07:30:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [52912377ms] differs less than 80ms, use it. Previous+dur=[52912346ms]
+[24/11/2026 07:30:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Next file change expected at [08:00:00], offset=[52912377ms]
+[24/11/2026 07:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: SetOriginStreamTime from AUDIO SAMPLE to 51112403
+[24/11/2026 07:33:04]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Audio gap of 178 millisecs detected!
+[24/11/2026 07:33:04]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Audio gap of 129 millisecs detected!
+[24/11/2026 07:36:39]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Audio gap of 169 millisecs detected!
+[24/11/2026 07:36:39]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Audio gap of 86 millisecs detected!
+[24/11/2026 08:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Changing file because of sample with offset=[52912376ms] nextSampleTime=[52912377ms]. TimeNow=[1795521601s] TimeNextFile=[1795521600s]
+[24/11/2026 08:00:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: FinishCurrentFile. Video PacketQueue not empty (2).
+[24/11/2026 08:00:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: FinishCurrentFile. Accomulated Gap=562ms).
+[24/11/2026 08:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareVideoConversions. Opened video codec: libx264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10
+[24/11/2026 08:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: AddAudioStream. Output audio configured: SampleRate=8000, Channels=2, BitRate=12kbps
+[24/11/2026 08:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareAudioConversions. Opened audio codec: AAC (Advanced Audio Coding)
+[24/11/2026 08:00:01]	[3]	[1]	[1]	[Rede Globo] Mp4Writer: Started encoding of file [C:/Users/SUPORT~1/AppData/Local/Temp/Mp4Writer_4108_13512_0_5447.tmp] for Encoding [0]
+[24/11/2026 08:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [54712376ms]. Same file duration [1800s]
+[24/11/2026 08:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [54712376ms] differs more than 1 minute. Previous=[52912377ms]
+[24/11/2026 08:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [54712376ms] differs less than 1 minute than previous+duration. Previous+dur=[54712377ms]
+[24/11/2026 08:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [54712376ms] differs less than 80ms, use it. Previous+dur=[54712377ms]
+[24/11/2026 08:00:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Next file change expected at [08:30:00], offset=[54712376ms]
+[24/11/2026 08:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: SetOriginStreamTime from AUDIO SAMPLE to 52912383
+[24/11/2026 08:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Changing file because of sample with offset=[54712407ms] nextSampleTime=[54712376ms]. TimeNow=[1795523400s] TimeNextFile=[1795523400s]
+[24/11/2026 08:30:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: FinishCurrentFile. Video PacketQueue not empty (2).
+[24/11/2026 08:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareVideoConversions. Opened video codec: libx264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10
+[24/11/2026 08:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: AddAudioStream. Output audio configured: SampleRate=8000, Channels=2, BitRate=12kbps
+[24/11/2026 08:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareAudioConversions. Opened audio codec: AAC (Advanced Audio Coding)
+[24/11/2026 08:30:01]	[3]	[1]	[1]	[Rede Globo] Mp4Writer: Started encoding of file [C:/Users/SUPORT~1/AppData/Local/Temp/Mp4Writer_4108_13512_0_21726.tmp] for Encoding [0]
+[24/11/2026 08:30:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [56512407ms]. Same file duration [1800s]
+[24/11/2026 08:30:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [56512407ms] differs more than 1 minute. Previous=[54712376ms]
+[24/11/2026 08:30:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [56512407ms] differs less than 1 minute than previous+duration. Previous+dur=[56512376ms]
+[24/11/2026 08:30:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [56512407ms] differs less than 80ms, use it. Previous+dur=[56512376ms]
+[24/11/2026 08:30:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Next file change expected at [09:00:00], offset=[56512407ms]
+[24/11/2026 08:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: SetOriginStreamTime from AUDIO SAMPLE to 54712444
+[24/11/2026 09:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Changing file because of sample with offset=[56512405ms] nextSampleTime=[56512407ms]. TimeNow=[1795525201s] TimeNextFile=[1795525200s]
+[24/11/2026 09:00:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: FinishCurrentFile. Video PacketQueue not empty (2).
+[24/11/2026 09:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareVideoConversions. Opened video codec: libx264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10
+[24/11/2026 09:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: AddAudioStream. Output audio configured: SampleRate=8000, Channels=2, BitRate=12kbps
+[24/11/2026 09:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareAudioConversions. Opened audio codec: AAC (Advanced Audio Coding)
+[24/11/2026 09:00:01]	[3]	[1]	[1]	[Rede Globo] Mp4Writer: Started encoding of file [C:/Users/SUPORT~1/AppData/Local/Temp/Mp4Writer_4108_13512_0_14771.tmp] for Encoding [0]
+[24/11/2026 09:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [58312405ms]. Same file duration [1800s]
+[24/11/2026 09:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [58312405ms] differs more than 1 minute. Previous=[56512407ms]
+[24/11/2026 09:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [58312405ms] differs less than 1 minute than previous+duration. Previous+dur=[58312407ms]
+[24/11/2026 09:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [58312405ms] differs less than 80ms, use it. Previous+dur=[58312407ms]
+[24/11/2026 09:00:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Next file change expected at [09:30:00], offset=[58312405ms]
+[24/11/2026 09:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: SetOriginStreamTime from AUDIO SAMPLE to 56512420
+[24/11/2026 09:08:43]	[3]	[5]	[0]	
+[24/11/2026 09:08:43]	[3]	[1]	[0]	Starting the application [DigitalTVReceiver - v2.0.0.0 (64bits)]...
+[24/11/2026 09:08:43]	[3]	[1]	[0]	Param [D:\MediaDNA_V2\Applications\DTVCapture64\DTVReceiver\DigitalTVReceiver.exe]
+[24/11/2026 09:08:43]	[3]	[1]	[0]	Param [/MUXID=3]
+[24/11/2026 09:08:43]	[3]	[1]	[0]	Param [/LOGPATH=D:\MediaDNA_V2\Applications\DTVCapture64\Logs]
+[24/11/2026 09:08:43]	[3]	[1]	[0]	Registering communication channel with the server [DTVCapture]...
+[24/11/2026 09:08:43]	[3]	[2]	[0]	OK
+[24/11/2026 09:08:43]	[3]	[1]	[0]	Registering communication's channel for receiving commands [DTVReceiver3]...
+[24/11/2026 09:08:43]	[3]	[2]	[0]	OK
+[24/11/2026 09:08:43]	[3]	[1]	[0]	Publishing service [CommandMe] for receiving commands...
+[24/11/2026 09:08:43]	[3]	[2]	[0]	OK
+[24/11/2026 09:08:43]	[3]	[1]	[0]	Connecting with server [ipc://DTVCapture/TunerController3]...
+[24/11/2026 09:08:43]	[3]	[2]	[0]	OK
+[24/11/2026 09:08:43]	[3]	[1]	[2]	VideoFrozenScreenChecker: Lib path detected at 'D:\MediaDNA_V2\Applications\DTVCapture64\Filters'
+[24/11/2026 09:08:43]	[3]	[1]	[2]	FrozenDetector. Configured with a 180s movement timeout.
+[24/11/2026 09:08:43]	[3]	[1]	[2]	AudioMuteThreshold=0,01, VideoFrozenThreshold=97
+[24/11/2026 09:08:43]	[3]	[1]	[0]	Requesting tuning configuration to the server...
+[24/11/2026 09:08:43]	[3]	[2]	[0]	OK
+[24/11/2026 09:08:43]	[3]	[1]	[0]	Received tuning configuration from type [TERRESTRIAL], with [1] channel(s) configured.
+[24/11/2026 09:08:44]	[3]	[1]	[0]	Starting the DirectShow graph and retrieving the information of channels...
+[24/11/2026 09:08:49]	[3]	[1]	[0]	Channel [Rede Globo(30304)] located, configurating services...
+[24/11/2026 09:08:49]	[3]	[1]	[1]	Applying recording filenames DST logic 'SpainAudienceDST'
+[24/11/2026 09:08:52]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: Audio format set to: InSamplerate=48000 InChannels=2 InSampleFormat=1 OutSampleRate=8000 OutChannels=2 OutBitRate=12. AudioCodec=100
+[24/11/2026 09:08:52]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: Video format set to: InWidth=480 InHeight=360 Informat=RGB OutWidth=480 OutHeight=360 OutBitRate=600 OutFPS=15 Quality=5 VideoCodec=2
+[24/11/2026 09:08:52]	[3]	[1]	[1]	[Rede Globo] Mp4Writer: Added encoding quality [0] Configured with [Preset=5][Audio=1][channels=2][samplerate=8000][audiobitrate=12][Video=1][width=480][height=360][fps=15][videobitrate=600][path=D:\MediaDNA_V2\Data\video_bkp\H{HOST}_PV{PV}_{YYYY}{MM}{DD}{HMS}000_{SEQ}_{HMSd}000.mp4]
+[24/11/2026 09:08:52]	[3]	[1]	[2]	[Rede Globo] KResizer: Configured Resizer with frame size=[480, 342]. Caption [height=18, fontSize=12, bckColor=FF000000, fontColor=FFFFFFFF]. Label=[PON - GLO(DT) - %d/%m/%Y %H:%M:%S - PON].
+[24/11/2026 09:08:52]	[3]	[2]	[0]	Configured channel [Rede Globo (30304)]. Video=273 Audio=274 (stereo). TXTsubs=False DVBsubs=False EPG=False correctly.
+[24/11/2026 09:08:52]	[3]	[1]	[0]	Command received >> Start
+[24/11/2026 09:08:54]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Starting Mp4 filter...
+[24/11/2026 09:08:54]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: fMp4WriterFilter RUNNING... tStart=[117504]
+[24/11/2026 09:08:54]	[3]	[1]	[1]	[Rede Globo] Mp4Writer: ***** INITIALIZING THREAD MP4 SAMPLE WRITER!!!. Terminate=0
+[24/11/2026 09:08:54]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Detected FPS from pin source: 25.000
+[24/11/2026 09:08:54]	[3]	[1]	[2]	SignalStatistics: Quality=94 Strength=29
+[24/11/2026 09:08:56]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: First SampleTime to consider=[451]-->[30000].
+[24/11/2026 09:09:25]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Starting new file! (Encoding was stopped)
+[24/11/2026 09:09:25]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareVideoConversions. Opened video codec: libx264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10
+[24/11/2026 09:09:25]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: AddAudioStream. Output audio configured: SampleRate=8000, Channels=2, BitRate=12kbps
+[24/11/2026 09:09:25]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareAudioConversions. Opened audio codec: AAC (Advanced Audio Coding)
+[24/11/2026 09:09:25]	[3]	[1]	[1]	[Rede Globo] Mp4Writer: Started encoding of file [C:/Users/SUPORT~1/AppData/Local/Temp/Mp4Writer_3988_8584_0_41.tmp] for Encoding [0]
+[24/11/2026 09:09:25]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [1266030ms]. Same file duration [1800s]
+[24/11/2026 09:09:25]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [1266030ms] differs less than 80ms, use it. Previous=[1266030ms]
+[24/11/2026 09:09:25]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Next file change expected at [09:30:00], offset=[1266030ms]
+[24/11/2026 09:09:25]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: SetOriginStreamTime from AUDIO SAMPLE to 30062
+[24/11/2026 09:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Changing file because of sample with offset=[1266031ms] nextSampleTime=[1266030ms]. TimeNow=[1795527001s] TimeNextFile=[1795527000s]
+[24/11/2026 09:30:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: FinishCurrentFile. Video PacketQueue not empty (2).
+[24/11/2026 09:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareVideoConversions. Opened video codec: libx264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10
+[24/11/2026 09:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: AddAudioStream. Output audio configured: SampleRate=8000, Channels=2, BitRate=12kbps
+[24/11/2026 09:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareAudioConversions. Opened audio codec: AAC (Advanced Audio Coding)
+[24/11/2026 09:30:01]	[3]	[1]	[1]	[Rede Globo] Mp4Writer: Started encoding of file [C:/Users/SUPORT~1/AppData/Local/Temp/Mp4Writer_3988_8584_0_18467.tmp] for Encoding [0]
+[24/11/2026 09:30:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [3066031ms]. Same file duration [1800s]
+[24/11/2026 09:30:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [3066031ms] differs more than 1 minute. Previous=[1266030ms]
+[24/11/2026 09:30:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [3066031ms] differs less than 1 minute than previous+duration. Previous+dur=[3066030ms]
+[24/11/2026 09:30:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [3066031ms] differs less than 80ms, use it. Previous+dur=[3066030ms]
+[24/11/2026 09:30:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Next file change expected at [10:00:00], offset=[3066031ms]
+[24/11/2026 09:30:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: SetOriginStreamTime from AUDIO SAMPLE to 1266071
+[24/11/2026 09:49:22]	[3]	[1]	[2]	SignalStatistics: Quality=72 Strength=30
+[24/11/2026 09:49:36]	[3]	[1]	[2]	SignalStatistics: Quality=94 Strength=30
+[24/11/2026 09:50:30]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Audio gap of 221 millisecs detected!
+[24/11/2026 09:51:44]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Audio gap of 40 millisecs detected!
+[24/11/2026 10:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Changing file because of sample with offset=[3066063ms] nextSampleTime=[3066031ms]. TimeNow=[1795528800s] TimeNextFile=[1795528800s]
+[24/11/2026 10:00:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: FinishCurrentFile. Video PacketQueue not empty (2).
+[24/11/2026 10:00:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: FinishCurrentFile. Accomulated Gap=261ms).
+[24/11/2026 10:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareVideoConversions. Opened video codec: libx264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10
+[24/11/2026 10:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: AddAudioStream. Output audio configured: SampleRate=8000, Channels=2, BitRate=12kbps
+[24/11/2026 10:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareAudioConversions. Opened audio codec: AAC (Advanced Audio Coding)
+[24/11/2026 10:00:01]	[3]	[1]	[1]	[Rede Globo] Mp4Writer: Started encoding of file [C:/Users/SUPORT~1/AppData/Local/Temp/Mp4Writer_3988_8584_0_6334.tmp] for Encoding [0]
+[24/11/2026 10:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [4866063ms]. Same file duration [1800s]
+[24/11/2026 10:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [4866063ms] differs more than 1 minute. Previous=[3066031ms]
+[24/11/2026 10:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [4866063ms] differs less than 1 minute than previous+duration. Previous+dur=[4866031ms]
+[24/11/2026 10:00:01]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [4866063ms] differs less than 80ms, use it. Previous+dur=[4866031ms]
+[24/11/2026 10:00:01]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Next file change expected at [10:30:00], offset=[4866063ms]
+[24/11/2026 10:00:01]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: SetOriginStreamTime from AUDIO SAMPLE to 3066093
+[24/11/2026 10:10:26]	[3]	[1]	[0]	Command received >> Stop
+[24/11/2026 10:10:26]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Stopping Mp4 filter...
+[24/11/2026 10:10:27]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Waiting previous sample writer thread to stop...
+[24/11/2026 10:10:27]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: FinishCurrentFile. Video PacketQueue not empty (2).
+[24/11/2026 10:10:26]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: ***** EXITING THREAD MP4 SAMPLE WRITER!!!
+[24/11/2026 10:10:27]	[3]	[3]	[0]	Abort and exit command received! Exiting...
+[24/11/2026 10:10:52]	[3]	[5]	[0]	
+[24/11/2026 10:10:52]	[3]	[1]	[0]	Starting the application [DigitalTVReceiver - v2.0.0.0 (64bits)]...
+[24/11/2026 10:10:52]	[3]	[1]	[0]	Param [D:\MediaDNA_V2\Applications\DTVCapture64\DTVReceiver\DigitalTVReceiver.exe]
+[24/11/2026 10:10:52]	[3]	[1]	[0]	Param [/MUXID=3]
+[24/11/2026 10:10:52]	[3]	[1]	[0]	Param [/LOGPATH=D:\MediaDNA_V2\Applications\DTVCapture64\Logs]
+[24/11/2026 10:10:52]	[3]	[1]	[0]	Registering communication channel with the server [DTVCapture]...
+[24/11/2026 10:10:52]	[3]	[2]	[0]	OK
+[24/11/2026 10:10:52]	[3]	[1]	[0]	Registering communication's channel for receiving commands [DTVReceiver3]...
+[24/11/2026 10:10:52]	[3]	[2]	[0]	OK
+[24/11/2026 10:10:52]	[3]	[1]	[0]	Publishing service [CommandMe] for receiving commands...
+[24/11/2026 10:10:52]	[3]	[2]	[0]	OK
+[24/11/2026 10:10:52]	[3]	[1]	[0]	Connecting with server [ipc://DTVCapture/TunerController3]...
+[24/11/2026 10:10:52]	[3]	[2]	[0]	OK
+[24/11/2026 10:10:52]	[3]	[1]	[2]	VideoFrozenScreenChecker: Lib path detected at 'D:\MediaDNA_V2\Applications\DTVCapture64\Filters'
+[24/11/2026 10:10:52]	[3]	[1]	[2]	FrozenDetector. Configured with a 180s movement timeout.
+[24/11/2026 10:10:52]	[3]	[1]	[2]	AudioMuteThreshold=0,01, VideoFrozenThreshold=97
+[24/11/2026 10:10:52]	[3]	[1]	[0]	Requesting tuning configuration to the server...
+[24/11/2026 10:10:53]	[3]	[2]	[0]	OK
+[24/11/2026 10:10:53]	[3]	[1]	[0]	Received tuning configuration from type [TERRESTRIAL], with [1] channel(s) configured.
+[24/11/2026 10:10:54]	[3]	[1]	[0]	Starting the DirectShow graph and retrieving the information of channels...
+[24/11/2026 10:10:58]	[3]	[1]	[0]	Channel [Rede Globo(30304)] located, configurating services...
+[24/11/2026 10:10:58]	[3]	[1]	[1]	Applying recording filenames DST logic 'SpainAudienceDST'
+[24/11/2026 10:11:02]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: Audio format set to: InSamplerate=48000 InChannels=2 InSampleFormat=1 OutSampleRate=8000 OutChannels=2 OutBitRate=12. AudioCodec=100
+[24/11/2026 10:11:02]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: Video format set to: InWidth=480 InHeight=360 Informat=RGB OutWidth=480 OutHeight=360 OutBitRate=600 OutFPS=15 Quality=5 VideoCodec=2
+[24/11/2026 10:11:02]	[3]	[1]	[1]	[Rede Globo] Mp4Writer: Added encoding quality [0] Configured with [Preset=5][Audio=1][channels=2][samplerate=8000][audiobitrate=12][Video=1][width=480][height=360][fps=15][videobitrate=600][path=D:\MediaDNA_V2\Data\video_bkp\H{HOST}_PV{PV}_{YYYY}{MM}{DD}{HMS}000_{SEQ}_{HMSd}000.mp4]
+[24/11/2026 10:11:02]	[3]	[1]	[2]	[Rede Globo] KResizer: Configured Resizer with frame size=[480, 342]. Caption [height=18, fontSize=12, bckColor=FF000000, fontColor=FFFFFFFF]. Label=[PON - GLO(DT) - %d/%m/%Y %H:%M:%S - PON].
+[24/11/2026 10:11:02]	[3]	[2]	[0]	Configured channel [Rede Globo (30304)]. Video=273 Audio=274 (stereo). TXTsubs=False DVBsubs=False EPG=False correctly.
+[24/11/2026 10:11:02]	[3]	[1]	[0]	Command received >> Start
+[24/11/2026 10:11:04]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Starting Mp4 filter...
+[24/11/2026 10:11:04]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: fMp4WriterFilter RUNNING... tStart=[411024]
+[24/11/2026 10:11:04]	[3]	[1]	[1]	[Rede Globo] Mp4Writer: ***** INITIALIZING THREAD MP4 SAMPLE WRITER!!!. Terminate=0
+[24/11/2026 10:11:04]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Detected FPS from pin source: 25.000
+[24/11/2026 10:11:04]	[3]	[1]	[2]	SignalStatistics: Quality=82 Strength=30
+[24/11/2026 10:11:06]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: First SampleTime to consider=[0]-->[30000].
+[24/11/2026 10:11:34]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Starting new file! (Encoding was stopped)
+[24/11/2026 10:11:34]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareVideoConversions. Opened video codec: libx264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10
+[24/11/2026 10:11:34]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: AddAudioStream. Output audio configured: SampleRate=8000, Channels=2, BitRate=12kbps
+[24/11/2026 10:11:34]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareAudioConversions. Opened audio codec: AAC (Advanced Audio Coding)
+[24/11/2026 10:11:34]	[3]	[1]	[1]	[Rede Globo] Mp4Writer: Started encoding of file [C:/Users/SUPORT~1/AppData/Local/Temp/Mp4Writer_12264_2428_0_41.tmp] for Encoding [0]
+[24/11/2026 10:11:34]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [1137021ms]. Same file duration [1800s]
+[24/11/2026 10:11:34]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [1137021ms] differs less than 80ms, use it. Previous=[1137021ms]
+[24/11/2026 10:11:34]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Next file change expected at [10:30:00], offset=[1137021ms]
+[24/11/2026 10:11:34]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: SetOriginStreamTime from AUDIO SAMPLE to 30035
+[24/11/2026 10:13:09]	[3]	[1]	[0]	Command received >> Stop
+[24/11/2026 10:13:09]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Stopping Mp4 filter...
+[24/11/2026 10:13:09]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Waiting previous sample writer thread to stop...
+[24/11/2026 10:13:09]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: FinishCurrentFile. Video PacketQueue not empty (2).
+[24/11/2026 10:13:09]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: ***** EXITING THREAD MP4 SAMPLE WRITER!!!
+[24/11/2026 10:13:11]	[3]	[3]	[0]	Abort and exit command received! Exiting...
+[24/11/2026 10:13:27]	[3]	[5]	[0]	
+[24/11/2026 10:13:27]	[3]	[1]	[0]	Starting the application [DigitalTVReceiver - v2.0.0.0 (64bits)]...
+[24/11/2026 10:13:27]	[3]	[1]	[0]	Param [D:\MediaDNA_V2\Applications\DTVCapture64\DTVReceiver\DigitalTVReceiver.exe]
+[24/11/2026 10:13:27]	[3]	[1]	[0]	Param [/MUXID=3]
+[24/11/2026 10:13:27]	[3]	[1]	[0]	Param [/LOGPATH=D:\MediaDNA_V2\Applications\DTVCapture64\Logs]
+[24/11/2026 10:13:27]	[3]	[1]	[0]	Registering communication channel with the server [DTVCapture]...
+[24/11/2026 10:13:27]	[3]	[2]	[0]	OK
+[24/11/2026 10:13:27]	[3]	[1]	[0]	Registering communication's channel for receiving commands [DTVReceiver3]...
+[24/11/2026 10:13:27]	[3]	[2]	[0]	OK
+[24/11/2026 10:13:27]	[3]	[1]	[0]	Publishing service [CommandMe] for receiving commands...
+[24/11/2026 10:13:27]	[3]	[2]	[0]	OK
+[24/11/2026 10:13:27]	[3]	[1]	[0]	Connecting with server [ipc://DTVCapture/TunerController3]...
+[24/11/2026 10:13:27]	[3]	[2]	[0]	OK
+[24/11/2026 10:13:27]	[3]	[1]	[2]	VideoFrozenScreenChecker: Lib path detected at 'D:\MediaDNA_V2\Applications\DTVCapture64\Filters'
+[24/11/2026 10:13:28]	[3]	[1]	[2]	FrozenDetector. Configured with a 180s movement timeout.
+[24/11/2026 10:13:28]	[3]	[1]	[2]	AudioMuteThreshold=0,01, VideoFrozenThreshold=97
+[24/11/2026 10:13:28]	[3]	[1]	[0]	Requesting tuning configuration to the server...
+[24/11/2026 10:13:28]	[3]	[2]	[0]	OK
+[24/11/2026 10:13:28]	[3]	[1]	[0]	Received tuning configuration from type [TERRESTRIAL], with [1] channel(s) configured.
+[24/11/2026 10:13:29]	[3]	[1]	[0]	Starting the DirectShow graph and retrieving the information of channels...
+[24/11/2026 10:13:34]	[3]	[1]	[0]	Channel [Rede Globo(30304)] located, configurating services...
+[24/11/2026 10:13:34]	[3]	[1]	[1]	Applying recording filenames DST logic 'SpainAudienceDST'
+[24/11/2026 10:13:37]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: Audio format set to: InSamplerate=48000 InChannels=2 InSampleFormat=1 OutSampleRate=8000 OutChannels=2 OutBitRate=12. AudioCodec=100
+[24/11/2026 10:13:37]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: Video format set to: InWidth=480 InHeight=360 Informat=RGB OutWidth=480 OutHeight=360 OutBitRate=600 OutFPS=15 Quality=5 VideoCodec=2
+[24/11/2026 10:13:37]	[3]	[1]	[1]	[Rede Globo] Mp4Writer: Added encoding quality [0] Configured with [Preset=5][Audio=1][channels=2][samplerate=8000][audiobitrate=12][Video=1][width=480][height=360][fps=15][videobitrate=600][path=D:\MediaDNA_V2\Data\video_bkp\H{HOST}_PV{PV}_{YYYY}{MM}{DD}{HMS}000_{SEQ}_{HMSd}000.mp4]
+[24/11/2026 10:13:37]	[3]	[1]	[2]	[Rede Globo] KResizer: Configured Resizer with frame size=[480, 342]. Caption [height=18, fontSize=12, bckColor=FF000000, fontColor=FFFFFFFF]. Label=[PON - GLO(DT) - %d/%m/%Y %H:%M:%S - PON].
+[24/11/2026 10:13:37]	[3]	[2]	[0]	Configured channel [Rede Globo (30304)]. Video=273 Audio=274 (stereo). TXTsubs=False DVBsubs=False EPG=False correctly.
+[24/11/2026 10:13:37]	[3]	[1]	[0]	Command received >> Start
+[24/11/2026 10:13:39]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Starting Mp4 filter...
+[24/11/2026 10:13:39]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: fMp4WriterFilter RUNNING... tStart=[136451]
+[24/11/2026 10:13:39]	[3]	[1]	[1]	[Rede Globo] Mp4Writer: ***** INITIALIZING THREAD MP4 SAMPLE WRITER!!!. Terminate=0
+[24/11/2026 10:13:39]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Detected FPS from pin source: 25.000
+[24/11/2026 10:13:39]	[3]	[1]	[2]	SignalStatistics: Quality=84 Strength=30
+[24/11/2026 10:13:41]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: First SampleTime to consider=[1109]-->[30000].
+[24/11/2026 10:14:09]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Starting new file! (Encoding was stopped)
+[24/11/2026 10:14:09]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareVideoConversions. Opened video codec: libx264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10
+[24/11/2026 10:14:09]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: AddAudioStream. Output audio configured: SampleRate=8000, Channels=2, BitRate=12kbps
+[24/11/2026 10:14:09]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareAudioConversions. Opened audio codec: AAC (Advanced Audio Coding)
+[24/11/2026 10:14:09]	[3]	[1]	[1]	[Rede Globo] Mp4Writer: Started encoding of file [C:/Users/SUPORT~1/AppData/Local/Temp/Mp4Writer_4076_4372_0_41.tmp] for Encoding [0]
+[24/11/2026 10:14:09]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [982008ms]. Same file duration [1800s]
+[24/11/2026 10:14:09]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [982008ms] differs less than 80ms, use it. Previous=[982008ms]
+[24/11/2026 10:14:09]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Next file change expected at [10:30:00], offset=[0982008ms]
+[24/11/2026 10:14:09]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: SetOriginStreamTime from AUDIO SAMPLE to 30037
+[24/11/2026 10:14:25]	[3]	[1]	[0]	Command received >> Stop
+[24/11/2026 10:14:25]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Stopping Mp4 filter...
+[24/11/2026 10:14:25]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Waiting previous sample writer thread to stop...
+[24/11/2026 10:14:25]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: FinishCurrentFile. Video PacketQueue not empty (2).
+[24/11/2026 10:14:25]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: ***** EXITING THREAD MP4 SAMPLE WRITER!!!
+[24/11/2026 10:14:25]	[3]	[3]	[0]	Abort and exit command received! Exiting...
+[24/11/2026 10:14:36]	[3]	[5]	[0]	
+[24/11/2026 10:14:36]	[3]	[1]	[0]	Starting the application [DigitalTVReceiver - v2.0.0.0 (64bits)]...
+[24/11/2026 10:14:36]	[3]	[1]	[0]	Param [D:\MediaDNA_V2\Applications\DTVCapture64\DTVReceiver\DigitalTVReceiver.exe]
+[24/11/2026 10:14:36]	[3]	[1]	[0]	Param [/MUXID=3]
+[24/11/2026 10:14:36]	[3]	[1]	[0]	Param [/LOGPATH=D:\MediaDNA_V2\Applications\DTVCapture64\Logs]
+[24/11/2026 10:14:36]	[3]	[1]	[0]	Registering communication channel with the server [DTVCapture]...
+[24/11/2026 10:14:36]	[3]	[2]	[0]	OK
+[24/11/2026 10:14:36]	[3]	[1]	[0]	Registering communication's channel for receiving commands [DTVReceiver3]...
+[24/11/2026 10:14:36]	[3]	[2]	[0]	OK
+[24/11/2026 10:14:36]	[3]	[1]	[0]	Publishing service [CommandMe] for receiving commands...
+[24/11/2026 10:14:36]	[3]	[2]	[0]	OK
+[24/11/2026 10:14:36]	[3]	[1]	[0]	Connecting with server [ipc://DTVCapture/TunerController3]...
+[24/11/2026 10:14:36]	[3]	[2]	[0]	OK
+[24/11/2026 10:14:36]	[3]	[1]	[2]	VideoFrozenScreenChecker: Lib path detected at 'D:\MediaDNA_V2\Applications\DTVCapture64\Filters'
+[24/11/2026 10:14:36]	[3]	[1]	[2]	FrozenDetector. Configured with a 180s movement timeout.
+[24/11/2026 10:14:36]	[3]	[1]	[2]	AudioMuteThreshold=0,01, VideoFrozenThreshold=97
+[24/11/2026 10:14:36]	[3]	[1]	[0]	Requesting tuning configuration to the server...
+[24/11/2026 10:14:36]	[3]	[2]	[0]	OK
+[24/11/2026 10:14:36]	[3]	[1]	[0]	Received tuning configuration from type [TERRESTRIAL], with [1] channel(s) configured.
+[24/11/2026 10:14:37]	[3]	[1]	[0]	Starting the DirectShow graph and retrieving the information of channels...
+[24/11/2026 10:14:42]	[3]	[1]	[0]	Channel [Rede Globo(30304)] located, configurating services...
+[24/11/2026 10:14:42]	[3]	[1]	[1]	Applying recording filenames DST logic 'SpainAudienceDST'
+[24/11/2026 10:14:42]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: Audio format set to: InSamplerate=48000 InChannels=2 InSampleFormat=1 OutSampleRate=8000 OutChannels=2 OutBitRate=12. AudioCodec=100
+[24/11/2026 10:14:42]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: Video format set to: InWidth=240 InHeight=192 Informat=RGB OutWidth=240 OutHeight=192 OutBitRate=70 OutFPS=15 Quality=5 VideoCodec=2
+[24/11/2026 10:14:42]	[3]	[1]	[1]	[Rede Globo] Mp4Writer: Added encoding quality [0] Configured with [Preset=5][Audio=1][channels=2][samplerate=8000][audiobitrate=12][Video=1][width=240][height=192][fps=15][videobitrate=70][path=D:\MediaDNA_V2\Data\video_bkp\H{HOST}_PV{PV}_{YYYY}{MM}{DD}{HMS}000_{SEQ}_{HMSd}000.mp4]
+[24/11/2026 10:14:42]	[3]	[1]	[2]	[Rede Globo] KResizer: Configured Resizer with frame size=[240, 180]. Caption [height=12, fontSize=8, bckColor=FF000000, fontColor=FFFFFFFF]. Label=[PON - GLO(DT) - %d/%m/%Y %H:%M:%S - PON].
+[24/11/2026 10:14:42]	[3]	[2]	[0]	Configured channel [Rede Globo (30304)]. Video=273 Audio=274 (stereo). TXTsubs=False DVBsubs=False EPG=False correctly.
+[24/11/2026 10:14:46]	[3]	[1]	[0]	Command received >> Start
+[24/11/2026 10:14:47]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Starting Mp4 filter...
+[24/11/2026 10:14:47]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: fMp4WriterFilter RUNNING... tStart=[205252]
+[24/11/2026 10:14:47]	[3]	[1]	[1]	[Rede Globo] Mp4Writer: ***** INITIALIZING THREAD MP4 SAMPLE WRITER!!!. Terminate=0
+[24/11/2026 10:14:47]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Detected FPS from pin source: 25.000
+[24/11/2026 10:14:48]	[3]	[1]	[2]	SignalStatistics: Quality=86 Strength=30
+[24/11/2026 10:14:50]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: First SampleTime to consider=[1181]-->[30000].
+[24/11/2026 10:15:18]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Starting new file! (Encoding was stopped)
+[24/11/2026 10:15:18]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareVideoConversions. Opened video codec: libx264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10
+[24/11/2026 10:15:18]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: AddAudioStream. Output audio configured: SampleRate=8000, Channels=2, BitRate=12kbps
+[24/11/2026 10:15:18]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareAudioConversions. Opened audio codec: AAC (Advanced Audio Coding)
+[24/11/2026 10:15:18]	[3]	[1]	[1]	[Rede Globo] Mp4Writer: Started encoding of file [D:/MediaDNA_V2/Data/video_bkp/H291_PV1427_20261124101518000_0_103000000_0_SZ0_CS2.TMP] for Encoding [0]
+[24/11/2026 10:15:18]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [912013ms]. Same file duration [1800s]
+[24/11/2026 10:15:18]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [912013ms] differs less than 80ms, use it. Previous=[912013ms]
+[24/11/2026 10:15:18]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Next file change expected at [10:30:00], offset=[0912013ms]
+[24/11/2026 10:15:18]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: SetOriginStreamTime from AUDIO SAMPLE to 30024
+[24/11/2026 10:17:22]	[3]	[1]	[0]	Command received >> Stop
+[24/11/2026 10:17:22]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Stopping Mp4 filter...
+[24/11/2026 10:17:22]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Waiting previous sample writer thread to stop...
+[24/11/2026 10:17:22]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: FinishCurrentFile. Video PacketQueue not empty (2).
+[24/11/2026 10:17:22]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: ***** EXITING THREAD MP4 SAMPLE WRITER!!!
+[24/11/2026 10:17:23]	[3]	[3]	[0]	Abort and exit command received! Exiting...
+[24/11/2026 10:17:32]	[3]	[5]	[0]	
+[24/11/2026 10:17:32]	[3]	[1]	[0]	Starting the application [DigitalTVReceiver - v2.0.0.0 (64bits)]...
+[24/11/2026 10:17:32]	[3]	[1]	[0]	Param [D:\MediaDNA_V2\Applications\DTVCapture64\DTVReceiver\DigitalTVReceiver.exe]
+[24/11/2026 10:17:32]	[3]	[1]	[0]	Param [/MUXID=3]
+[24/11/2026 10:17:32]	[3]	[1]	[0]	Param [/LOGPATH=D:\MediaDNA_V2\Applications\DTVCapture64\Logs]
+[24/11/2026 10:17:32]	[3]	[1]	[0]	Registering communication channel with the server [DTVCapture]...
+[24/11/2026 10:17:32]	[3]	[2]	[0]	OK
+[24/11/2026 10:17:32]	[3]	[1]	[0]	Registering communication's channel for receiving commands [DTVReceiver3]...
+[24/11/2026 10:17:32]	[3]	[2]	[0]	OK
+[24/11/2026 10:17:32]	[3]	[1]	[0]	Publishing service [CommandMe] for receiving commands...
+[24/11/2026 10:17:32]	[3]	[2]	[0]	OK
+[24/11/2026 10:17:32]	[3]	[1]	[0]	Connecting with server [ipc://DTVCapture/TunerController3]...
+[24/11/2026 10:17:32]	[3]	[2]	[0]	OK
+[24/11/2026 10:17:32]	[3]	[1]	[2]	VideoFrozenScreenChecker: Lib path detected at 'D:\MediaDNA_V2\Applications\DTVCapture64\Filters'
+[24/11/2026 10:17:32]	[3]	[1]	[2]	FrozenDetector. Configured with a 180s movement timeout.
+[24/11/2026 10:17:32]	[3]	[1]	[2]	AudioMuteThreshold=0,01, VideoFrozenThreshold=97
+[24/11/2026 10:17:32]	[3]	[1]	[0]	Requesting tuning configuration to the server...
+[24/11/2026 10:17:32]	[3]	[2]	[0]	OK
+[24/11/2026 10:17:32]	[3]	[1]	[0]	Received tuning configuration from type [TERRESTRIAL], with [1] channel(s) configured.
+[24/11/2026 10:17:33]	[3]	[1]	[0]	Starting the DirectShow graph and retrieving the information of channels...
+[24/11/2026 10:17:37]	[3]	[1]	[0]	Channel [Rede Globo(30304)] located, configurating services...
+[24/11/2026 10:17:37]	[3]	[1]	[1]	Applying recording filenames DST logic 'Brazil'
+[24/11/2026 10:17:37]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: Audio format set to: InSamplerate=48000 InChannels=2 InSampleFormat=1 OutSampleRate=8000 OutChannels=2 OutBitRate=12. AudioCodec=100
+[24/11/2026 10:17:37]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: Video format set to: InWidth=240 InHeight=192 Informat=RGB OutWidth=240 OutHeight=192 OutBitRate=70 OutFPS=15 Quality=5 VideoCodec=2
+[24/11/2026 10:17:37]	[3]	[1]	[1]	[Rede Globo] Mp4Writer: Added encoding quality [0] Configured with [Preset=5][Audio=1][channels=2][samplerate=8000][audiobitrate=12][Video=1][width=240][height=192][fps=15][videobitrate=70][path=D:\MediaDNA_V2\Data\video_bkp\H{HOST}_PV{PV}_{YYYY}{MM}{DD}{HMS}000_{SEQ}_{HMSd}000.mp4]
+[24/11/2026 10:17:37]	[3]	[1]	[2]	[Rede Globo] KResizer: Configured Resizer with frame size=[240, 180]. Caption [height=12, fontSize=8, bckColor=FF000000, fontColor=FFFFFFFF]. Label=[PON - GLO(DT) - %d/%m/%Y %H:%M:%S - PON].
+[24/11/2026 10:17:37]	[3]	[2]	[0]	Configured channel [Rede Globo (30304)]. Video=273 Audio=274 (stereo). TXTsubs=False DVBsubs=False EPG=False correctly.
+[24/11/2026 10:17:41]	[3]	[1]	[0]	Command received >> Start
+[24/11/2026 10:17:43]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Starting Mp4 filter...
+[24/11/2026 10:17:43]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: fMp4WriterFilter RUNNING... tStart=[380703]
+[24/11/2026 10:17:43]	[3]	[1]	[1]	[Rede Globo] Mp4Writer: ***** INITIALIZING THREAD MP4 SAMPLE WRITER!!!. Terminate=0
+[24/11/2026 10:17:43]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Detected FPS from pin source: 25.000
+[24/11/2026 10:17:43]	[3]	[1]	[2]	SignalStatistics: Quality=88 Strength=30
+[24/11/2026 10:17:45]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: First SampleTime to consider=[587]-->[30000].
+[24/11/2026 10:18:14]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Starting new file! (Encoding was stopped)
+[24/11/2026 10:18:14]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareVideoConversions. Opened video codec: libx264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10
+[24/11/2026 10:18:14]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: AddAudioStream. Output audio configured: SampleRate=8000, Channels=2, BitRate=12kbps
+[24/11/2026 10:18:14]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareAudioConversions. Opened audio codec: AAC (Advanced Audio Coding)
+[24/11/2026 10:18:14]	[3]	[1]	[1]	[Rede Globo] Mp4Writer: Started encoding of file [D:/MediaDNA_V2/Data/video_bkp/H291_PV1427_20261124101813000_0_103000000_0_SZ0_CS2.TMP] for Encoding [0]
+[24/11/2026 10:18:14]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [737013ms]. Same file duration [1800s]
+[24/11/2026 10:18:14]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [737013ms] differs less than 80ms, use it. Previous=[737013ms]
+[24/11/2026 10:18:14]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Next file change expected at [10:30:00], offset=[0737013ms]
+[24/11/2026 10:18:14]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: SetOriginStreamTime from AUDIO SAMPLE to 30027
+[24/11/2026 10:18:24]	[3]	[1]	[0]	Command received >> Stop
+[24/11/2026 10:18:24]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Stopping Mp4 filter...
+[24/11/2026 10:18:25]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Waiting previous sample writer thread to stop...
+[24/11/2026 10:18:25]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: FinishCurrentFile. Video PacketQueue not empty (2).
+[24/11/2026 10:18:24]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: ***** EXITING THREAD MP4 SAMPLE WRITER!!!
+[24/11/2026 10:18:25]	[3]	[3]	[0]	Abort and exit command received! Exiting...
+[24/11/2026 10:18:34]	[3]	[5]	[0]	
+[24/11/2026 10:18:35]	[3]	[1]	[0]	Starting the application [DigitalTVReceiver - v2.0.0.0 (64bits)]...
+[24/11/2026 10:18:35]	[3]	[1]	[0]	Param [D:\MediaDNA_V2\Applications\DTVCapture64\DTVReceiver\DigitalTVReceiver.exe]
+[24/11/2026 10:18:35]	[3]	[1]	[0]	Param [/MUXID=3]
+[24/11/2026 10:18:35]	[3]	[1]	[0]	Param [/LOGPATH=D:\MediaDNA_V2\Applications\DTVCapture64\Logs]
+[24/11/2026 10:18:35]	[3]	[1]	[0]	Registering communication channel with the server [DTVCapture]...
+[24/11/2026 10:18:35]	[3]	[2]	[0]	OK
+[24/11/2026 10:18:35]	[3]	[1]	[0]	Registering communication's channel for receiving commands [DTVReceiver3]...
+[24/11/2026 10:18:35]	[3]	[2]	[0]	OK
+[24/11/2026 10:18:35]	[3]	[1]	[0]	Publishing service [CommandMe] for receiving commands...
+[24/11/2026 10:18:35]	[3]	[2]	[0]	OK
+[24/11/2026 10:18:35]	[3]	[1]	[0]	Connecting with server [ipc://DTVCapture/TunerController3]...
+[24/11/2026 10:18:35]	[3]	[2]	[0]	OK
+[24/11/2026 10:18:35]	[3]	[1]	[2]	VideoFrozenScreenChecker: Lib path detected at 'D:\MediaDNA_V2\Applications\DTVCapture64\Filters'
+[24/11/2026 10:18:35]	[3]	[1]	[2]	FrozenDetector. Configured with a 180s movement timeout.
+[24/11/2026 10:18:35]	[3]	[1]	[2]	AudioMuteThreshold=0,01, VideoFrozenThreshold=97
+[24/11/2026 10:18:35]	[3]	[1]	[0]	Requesting tuning configuration to the server...
+[24/11/2026 10:18:35]	[3]	[2]	[0]	OK
+[24/11/2026 10:18:35]	[3]	[1]	[0]	Received tuning configuration from type [TERRESTRIAL], with [1] channel(s) configured.
+[24/11/2026 10:18:36]	[3]	[1]	[0]	Starting the DirectShow graph and retrieving the information of channels...
+[24/11/2026 10:18:40]	[3]	[1]	[0]	Channel [Rede Globo(30304)] located, configurating services...
+[24/11/2026 10:18:40]	[3]	[1]	[1]	Applying recording filenames DST logic 'Brazil'
+[24/11/2026 10:18:41]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: Audio format set to: InSamplerate=48000 InChannels=2 InSampleFormat=1 OutSampleRate=8000 OutChannels=2 OutBitRate=12. AudioCodec=100
+[24/11/2026 10:18:41]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: Video format set to: InWidth=240 InHeight=192 Informat=RGB OutWidth=240 OutHeight=192 OutBitRate=70 OutFPS=15 Quality=5 VideoCodec=2
+[24/11/2026 10:18:41]	[3]	[1]	[1]	[Rede Globo] Mp4Writer: Added encoding quality [0] Configured with [Preset=5][Audio=1][channels=2][samplerate=8000][audiobitrate=12][Video=1][width=240][height=192][fps=15][videobitrate=70][path=D:\MediaDNA_V2\Data\video_bkp\H{HOST}_PV{PV}_{YYYY}{MM}{DD}{HMS}000_{SEQ}_{HMSd}000.mp4]
+[24/11/2026 10:18:41]	[3]	[1]	[2]	[Rede Globo] KResizer: Configured Resizer with frame size=[240, 180]. Caption [height=12, fontSize=8, bckColor=FF000000, fontColor=FFFFFFFF]. Label=[PON - GLO(DT) - %d/%m/%Y %H:%M:%S - PON].
+[24/11/2026 10:18:41]	[3]	[2]	[0]	Configured channel [Rede Globo (30304)]. Video=273 Audio=274 (stereo). TXTsubs=False DVBsubs=False EPG=False correctly.
+[24/11/2026 10:18:44]	[3]	[1]	[0]	Command received >> Start
+[24/11/2026 10:18:46]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Starting Mp4 filter...
+[24/11/2026 10:18:46]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: fMp4WriterFilter RUNNING... tStart=[14321]
+[24/11/2026 10:18:46]	[3]	[1]	[1]	[Rede Globo] Mp4Writer: ***** INITIALIZING THREAD MP4 SAMPLE WRITER!!!. Terminate=0
+[24/11/2026 10:18:46]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Detected FPS from pin source: 25.000
+[24/11/2026 10:18:46]	[3]	[1]	[2]	SignalStatistics: Quality=92 Strength=30
+[24/11/2026 10:18:48]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: First SampleTime to consider=[1536]-->[30000].
+[24/11/2026 10:19:16]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Starting new file! (Encoding was stopped)
+[24/11/2026 10:19:16]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareVideoConversions. Opened video codec: libx264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10
+[24/11/2026 10:19:16]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: AddAudioStream. Output audio configured: SampleRate=8000, Channels=2, BitRate=12kbps
+[24/11/2026 10:19:16]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareAudioConversions. Opened audio codec: AAC (Advanced Audio Coding)
+[24/11/2026 10:19:16]	[3]	[1]	[1]	[Rede Globo] Mp4Writer: Started encoding of file [D:/MediaDNA_V2/Data/video_bkp/H291_PV1427_20261124101916000_0_103000000_0_SZ0_CS2.TMP] for Encoding [0]
+[24/11/2026 10:19:16]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [674011ms]. Same file duration [1800s]
+[24/11/2026 10:19:16]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [674011ms] differs less than 80ms, use it. Previous=[674011ms]
+[24/11/2026 10:19:16]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Next file change expected at [10:30:00], offset=[0674011ms]
+[24/11/2026 10:19:16]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: SetOriginStreamTime from AUDIO SAMPLE to 30037
+[24/11/2026 10:30:00]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Changing file because of sample with offset=[673278ms] nextSampleTime=[674011ms]. TimeNow=[1795530600s] TimeNextFile=[1795530600s]
+[24/11/2026 10:30:00]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: FinishCurrentFile. Video PacketQueue not empty (2).
+[24/11/2026 10:30:00]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareVideoConversions. Opened video codec: libx264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10
+[24/11/2026 10:30:00]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: AddAudioStream. Output audio configured: SampleRate=8000, Channels=2, BitRate=12kbps
+[24/11/2026 10:30:00]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareAudioConversions. Opened audio codec: AAC (Advanced Audio Coding)
+[24/11/2026 10:30:00]	[3]	[1]	[1]	[Rede Globo] Mp4Writer: Started encoding of file [D:/MediaDNA_V2/Data/video_bkp/H291_PV1427_20261124103000000_1_110000000_0_SZ0_CS2.TMP] for Encoding [0]
+[24/11/2026 10:30:00]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [2473278ms]. Same file duration [1800s]
+[24/11/2026 10:30:00]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [2473278ms] differs more than 1 minute. Previous=[674011ms]
+[24/11/2026 10:30:00]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [2473278ms] differs less than 1 minute than previous+duration. Previous+dur=[2474011ms]
+[24/11/2026 10:30:00]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [2473278ms] vs Previous+dur=[2474011ms] greater than 80ms. Use Minimum adjusted.
+[24/11/2026 10:30:00]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Changed NextFileSampleTime from [2473278] to [2473278].
+[24/11/2026 10:30:00]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Next file change expected at [11:00:00], offset=[2473278ms]
+[24/11/2026 10:30:00]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: SetOriginStreamTime from AUDIO SAMPLE to 673278
+[24/11/2026 11:00:00]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Changing file because of sample with offset=[2473254ms] nextSampleTime=[2473278ms]. TimeNow=[1795532400s] TimeNextFile=[1795532400s]
+[24/11/2026 11:00:00]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: FinishCurrentFile. Video PacketQueue not empty (2).
+[24/11/2026 11:00:00]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareVideoConversions. Opened video codec: libx264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10
+[24/11/2026 11:00:00]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: AddAudioStream. Output audio configured: SampleRate=8000, Channels=2, BitRate=12kbps
+[24/11/2026 11:00:00]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareAudioConversions. Opened audio codec: AAC (Advanced Audio Coding)
+[24/11/2026 11:00:00]	[3]	[1]	[1]	[Rede Globo] Mp4Writer: Started encoding of file [D:/MediaDNA_V2/Data/video_bkp/H291_PV1427_20261124110000000_2_113000000_0_SZ0_CS2.TMP] for Encoding [0]
+[24/11/2026 11:00:00]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [4273254ms]. Same file duration [1800s]
+[24/11/2026 11:00:00]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [4273254ms] differs more than 1 minute. Previous=[2473278ms]
+[24/11/2026 11:00:00]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [4273254ms] differs less than 1 minute than previous+duration. Previous+dur=[4273278ms]
+[24/11/2026 11:00:00]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [4273254ms] differs less than 80ms, use it. Previous+dur=[4273278ms]
+[24/11/2026 11:00:00]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Next file change expected at [11:30:00], offset=[4273254ms]
+[24/11/2026 11:00:00]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: SetOriginStreamTime from AUDIO SAMPLE to 2473254
+[24/11/2026 11:30:00]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Changing file because of sample with offset=[4273273ms] nextSampleTime=[4273254ms]. TimeNow=[1795534200s] TimeNextFile=[1795534200s]
+[24/11/2026 11:30:00]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: FinishCurrentFile. Video PacketQueue not empty (2).
+[24/11/2026 11:30:00]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareVideoConversions. Opened video codec: libx264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10
+[24/11/2026 11:30:00]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: AddAudioStream. Output audio configured: SampleRate=8000, Channels=2, BitRate=12kbps
+[24/11/2026 11:30:00]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: PrepareAudioConversions. Opened audio codec: AAC (Advanced Audio Coding)
+[24/11/2026 11:30:00]	[3]	[1]	[1]	[Rede Globo] Mp4Writer: Started encoding of file [D:/MediaDNA_V2/Data/video_bkp/H291_PV1427_20261124113000000_3_120000000_0_SZ0_CS2.TMP] for Encoding [0]
+[24/11/2026 11:30:00]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [6073273ms]. Same file duration [1800s]
+[24/11/2026 11:30:00]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [6073273ms] differs more than 1 minute. Previous=[4273254ms]
+[24/11/2026 11:30:00]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [6073273ms] differs less than 1 minute than previous+duration. Previous+dur=[6073254ms]
+[24/11/2026 11:30:00]	[3]	[1]	[2]	[1427-291-2-1800] CheckSampleTime [6073273ms] differs less than 80ms, use it. Previous+dur=[6073254ms]
+[24/11/2026 11:30:00]	[3]	[3]	[0]	[Rede Globo] Mp4Writer: Encoding [0]: Next file change expected at [12:00:00], offset=[6073273ms]
+[24/11/2026 11:30:00]	[3]	[1]	[2]	[Rede Globo] Mp4Writer: Encoding [0]: SetOriginStreamTime from AUDIO SAMPLE to 4273273

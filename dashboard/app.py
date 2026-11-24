@@ -563,30 +563,270 @@ async def get_pending_url_actions_by_host(hostname: str):
     return res
 
 
+class HostMuxConfigItem(BaseModel):
+    mux_id: int
+    sub_id: Optional[int] = 0
+    name: str
+    network_type: Optional[str] = "Terrestrial"  # Terrestrial, Satellite, Cable, IP, Radio
+    frequency: Optional[int] = 557000
+    bandwidth: Optional[int] = 6
+    polarization: Optional[str] = "Not Set"  # Not Set, Horizontal, Vertical
+    modulation: Optional[str] = "Not Set"  # Not Set, QPSK, 16QAM, 64QAM, 256QAM
+    source_path: Optional[str] = ""
+    first_timeout: Optional[int] = 120
+    file_duration: Optional[int] = 180
+    video_decoding_mode: Optional[str] = "Usar a configuração LAV global"
+    is_active: Optional[bool] = True
+
+
 class HostChannelConfigItem(BaseModel):
     name: str
+    id: Optional[str] = None
+    mux_id: Optional[int] = None
+    id_service: Optional[int] = None
+    pv: Optional[int] = None
+    id_host: Optional[int] = None
+    cs: Optional[int] = None
+    frequency: Optional[str] = "N/A"
+    channel_code: Optional[str] = ""
+    network_type: Optional[str] = "Digital Terrestre"
+    preferred_decoder: Optional[str] = "Microsoft"
+    is_radio: Optional[bool] = False
+    is_encrypted: Optional[bool] = False
+    is_unscrambled: Optional[bool] = False
+    is_active: Optional[bool] = True
+    fast_mode: Optional[bool] = False
+    # MP4 Recording
+    mp4_is_recording: Optional[bool] = None
+    mp4_profile: Optional[str] = "MP4_MDNA"
+    mp4_dest_path: Optional[str] = r"D:\MediaDNA_V2\Data\video"
+    mp4_insert_caption: Optional[bool] = True
+    # MP3 Recording
+    mp3_is_recording: Optional[bool] = None
+    mp3_profile: Optional[str] = "MP3_MDNA"
+    mp3_dest_path: Optional[str] = r"D:\MediaDNA_V2\Data\audio"
+    # EMU Encoding
     emu_is_recording: Optional[bool] = None
     emu_profile_name: Optional[str] = "EMU MediaDNA 1min"
-    mp4_is_recording: Optional[bool] = None
+    emu_dest_path: Optional[str] = r"D:\MediaDNA_V2\Data\emu"
+    emu_generate: Optional[bool] = True
+    # Video Caption
+    video_caption_height: Optional[int] = 12
+    video_caption_pattern: Optional[str] = ""
+    # JPG Frames
+    jpg_frames_generate: Optional[bool] = False
+    jpg_frames_config: Optional[str] = '{"FrameWidth":320,"FrameHeight":240,"Quality":80}'
+
+
+class HostApplicationOptionsItem(BaseModel):
+    auto_start_active_muxes: Optional[bool] = True
+    day_offset_minutes: Optional[int] = 0
+    daylight_saving_time: Optional[str] = "Brazil"
+    enabled_features: Optional[Dict[str, bool]] = {
+        "WMV": False, "MP4": True, "MP3": True, "MPEG2-TS": False, "WAV": False,
+        "EAM": False, "VideoFingerPrint": False, "EMU": True, "Watermark": False,
+        "Video Caption": True, "EPG&Subs": True, "JPG Frames": True
+    }
+    log_level: Optional[str] = "Debug"
+    log_dir: Optional[str] = r"D:\MediaDNA_V2\Applications\DTVCapture64\Logs"
+    days_to_preserve_log: Optional[int] = 365
+    receiver_dir: Optional[str] = r"D:\MediaDNA_V2\Applications\DTVCapture64\DTVReceiver"
+    profiles_dir: Optional[str] = r"D:\MediaDNA_V2\Applications\DTVCapture64\WMProfiles"
+    temporal_mp3_dir: Optional[str] = r"D:\MediaDNA_V2\data\audio"
+    temporal_mp4_dir: Optional[str] = r"D:\MediaDNA_V2\data\video"
+    subtitles_dir: Optional[str] = ""
+    subtitles_backup_dir: Optional[str] = ""
+    video_recog_library_path: Optional[str] = r"D:\MediaDNA_V2\Applications\DTVCapture64\Filters"
+    video_recog_processing: Optional[str] = "Disabled"
+    # AutoDetection SVC Tab
+    autodetection_status: Optional[str] = "Working"
+    autodetection_port: Optional[int] = 1234
+    finger_source: Optional[str] = "MediaDNA"
+    max_emu_validations: Optional[int] = 3
+    bin_match_threshold: Optional[int] = 68
+    use_legacy_dna_plot: Optional[bool] = False
+    mediadna_config_xml: Optional[str] = r"D:\MediaDNA_V2\Data\Config\ConfigXml.xml"
+    match_export_dir: Optional[str] = r"D:\MediaDNA_V2\Data\tracking"
+
+
+class HostWMProfileItem(BaseModel):
+    filename: str
+    name: str
+    profile_type: Optional[str] = "EMU"
+    description: Optional[str] = ""
+    size_bytes: Optional[int] = 1024
+    modified_date: Optional[str] = "2026-11-24 12:00"
+    xml_content: Optional[str] = ""
 
 
 class HostAppConfigItem(BaseModel):
     api_port: Optional[int] = 9000
+    mosaic_port: Optional[int] = 8080
     video_dir: Optional[str] = r"D:\MediaDNA_V2\Data\video"
+    video_bkp_dir: Optional[str] = r"D:\MediaDNA_V2\Data\video_bkp"
     emu_dir: Optional[str] = r"D:\MediaDNA_V2\Data\emu"
+    log_dir: Optional[str] = r"D:\MediaDNA_V2\Applications\DTVCapture64\Logs"
+    wcf_url: Optional[str] = "https://mediadna.ibope.com/mediadnawcfcs/RemoteHostsService.svc"
+    watchdog_timeout_sec: Optional[int] = 30
 
 
 class HostLogrotateConfigItem(BaseModel):
     target_log_path: Optional[str] = r"D:\MediaDNA_V2\Applications\DTVCapture64\FastMatchingSvc\fma.log"
     rotate_days: Optional[int] = 10
     frequency: Optional[str] = "daily"
+    dateext: Optional[bool] = True
+    missingok: Optional[bool] = True
 
 
 class HostConfigUpdateRequest(BaseModel):
+    muxes: Optional[List[HostMuxConfigItem]] = []
     channels: Optional[List[HostChannelConfigItem]] = []
+    application_options: Optional[HostApplicationOptionsItem] = None
     app_config: Optional[HostAppConfigItem] = None
+    wmprofiles: Optional[List[HostWMProfileItem]] = []
     logrotate: Optional[HostLogrotateConfigItem] = None
     reason: Optional[str] = "Atualização de parâmetros operacionais do Capture Site (Multiplexes / EMU / LogRotate)"
+
+
+DEFAULT_WMPROFILES_CATALOG = [
+    {
+        "filename": "EMU_EMU MediaDNA 1min.xml",
+        "name": "EMU MediaDNA 1min",
+        "profile_type": "EMU",
+        "description": "Perfil oficial homologado de fatias de 1 minuto para FastMatching e Spots em Memória",
+        "size_bytes": 1024,
+        "modified_date": "2025-01-30 10:49",
+        "xml_content": """<profile version="1.0" name="EMU MediaDNA 1min">
+    <target_duration_sec>60</target_duration_sec>
+    <audio_codec>pcm_s16le</audio_codec>
+    <samplerate>8000</samplerate>
+    <channels>1</channels>
+    <bitrate>64</bitrate>
+</profile>"""
+    },
+    {
+        "filename": "EMU_EMU MDNA.xml",
+        "name": "EMU MDNA",
+        "profile_type": "EMU",
+        "description": "Perfil legado anterior à padronização 1min (fatiamento de 3 minutos)",
+        "size_bytes": 1024,
+        "modified_date": "2024-12-26 19:59",
+        "xml_content": """<profile version="1.0" name="EMU MDNA">
+    <target_duration_sec>180</target_duration_sec>
+    <audio_codec>pcm_s16le</audio_codec>
+    <samplerate>8000</samplerate>
+    <channels>1</channels>
+</profile>"""
+    },
+    {
+        "filename": "EMU_Atria_15min.xml",
+        "name": "EMU_Atria_15min",
+        "profile_type": "EMU",
+        "description": "Perfil de fatiamento de 15 minutos para gravação contínua",
+        "size_bytes": 1024,
+        "modified_date": "2026-04-28 12:16",
+        "xml_content": """<profile version="1.0" name="EMU_Atria_15min"><target_duration_sec>900</target_duration_sec></profile>"""
+    },
+    {
+        "filename": "EMU_Atria_FMA.xml",
+        "name": "EMU_Atria_FMA",
+        "profile_type": "EMU",
+        "description": "Perfil otimizado para FastMatching Standalone",
+        "size_bytes": 1024,
+        "modified_date": "2026-04-28 12:16",
+        "xml_content": """<profile version="1.0" name="EMU_Atria_FMA"><target_duration_sec>60</target_duration_sec></profile>"""
+    },
+    {
+        "filename": "EMU_BR_2min.xml",
+        "name": "EMU_BR_2min",
+        "profile_type": "EMU",
+        "description": "Perfil de fatiamento de 2 minutos Brasil",
+        "size_bytes": 1024,
+        "modified_date": "2026-04-28 12:16",
+        "xml_content": """<profile version="1.0" name="EMU_BR_2min"><target_duration_sec>120</target_duration_sec></profile>"""
+    },
+    {
+        "filename": "EMU_BR_3min.xml",
+        "name": "EMU_BR_3min",
+        "profile_type": "EMU",
+        "description": "Perfil de fatiamento de 3 minutos Brasil",
+        "size_bytes": 1024,
+        "modified_date": "2026-04-28 12:17",
+        "xml_content": """<profile version="1.0" name="EMU_BR_3min"><target_duration_sec>180</target_duration_sec></profile>"""
+    },
+    {
+        "filename": "EMU_BR_MediaDNA.xml",
+        "name": "EMU_BR_MediaDNA",
+        "profile_type": "EMU",
+        "description": "Perfil padrão MediaDNA Brasil",
+        "size_bytes": 1024,
+        "modified_date": "2026-04-28 12:17",
+        "xml_content": """<profile version="1.0" name="EMU_BR_MediaDNA"><target_duration_sec>60</target_duration_sec></profile>"""
+    },
+    {
+        "filename": "EMU_EMU MediaDNA 3min.xml",
+        "name": "EMU MediaDNA 3min",
+        "profile_type": "EMU",
+        "description": "Perfil estendido de 3 minutos",
+        "size_bytes": 1024,
+        "modified_date": "2025-01-30 10:49",
+        "xml_content": """<profile version="1.0" name="EMU MediaDNA 3min"><target_duration_sec>180</target_duration_sec></profile>"""
+    },
+    {
+        "filename": "EMU_EMU_30MIN.xml",
+        "name": "EMU_30MIN",
+        "profile_type": "EMU",
+        "description": "Perfil longo de 30 minutos",
+        "size_bytes": 1024,
+        "modified_date": "2024-12-26 19:59",
+        "xml_content": """<profile version="1.0" name="EMU_30MIN"><target_duration_sec>1800</target_duration_sec></profile>"""
+    },
+    {
+        "filename": "Mp3Prof_MP3_MDNA.xml",
+        "name": "MP3_MDNA",
+        "profile_type": "MP3",
+        "description": "Perfil oficial para gravação de áudio MP3 64kbps",
+        "size_bytes": 1024,
+        "modified_date": "2024-12-26 17:32",
+        "xml_content": """<mp3profile name="MP3_MDNA"><bitrate>64</bitrate><samplerate>44100</samplerate><channels>2</channels></mp3profile>"""
+    },
+    {
+        "filename": "Mp3Prof_Audio Desc.xml",
+        "name": "Mp3Prof_Audio Desc",
+        "profile_type": "MP3",
+        "description": "Perfil de áudio descrição acessível",
+        "size_bytes": 1024,
+        "modified_date": "2026-04-28 12:16",
+        "xml_content": """<mp3profile name="Audio Desc"><bitrate>32</bitrate><samplerate>22050</samplerate></mp3profile>"""
+    },
+    {
+        "filename": "Mp3Prof_Kantar BR.xml",
+        "name": "Mp3Prof_Kantar BR",
+        "profile_type": "MP3",
+        "description": "Perfil Kantar IBOPE Brasil",
+        "size_bytes": 1024,
+        "modified_date": "2026-04-28 12:17",
+        "xml_content": """<mp3profile name="Kantar BR"><bitrate>64</bitrate><samplerate>44100</samplerate></mp3profile>"""
+    },
+    {
+        "filename": "Kantar 1Q Edi.prx",
+        "name": "Kantar 1Q Edi",
+        "profile_type": "MP4/PRX",
+        "description": "Perfil Windows Media / DirectShow 1Q",
+        "size_bytes": 6144,
+        "modified_date": "2026-04-28 12:16",
+        "xml_content": "<!-- DirectShow PRX binary/XML profile -->"
+    },
+    {
+        "filename": "Letterboxed.ffpreset",
+        "name": "Letterboxed",
+        "profile_type": "Preset",
+        "description": "Preset FFmpeg para ajuste de aspect ratio 16:9 / 4:3",
+        "size_bytes": 21504,
+        "modified_date": "2026-04-28 12:17",
+        "xml_content": "vcodec=libx264\npreset=fast"
+    }
+]
 
 
 @app.get("/api/fleet/host-config/{hostname}")
@@ -637,7 +877,10 @@ async def get_host_config_endpoint(hostname: str, user: dict = Depends(get_curre
                 break
 
     host_channels = []
+    host_muxes = []
     seen_ch = set()
+    seen_mux_freq = set()
+
     for c in all_channels:
         ch_h = str(c.get("hostname", "") or c.get("host", "")).strip().lower()
         ch_praca = str(c.get("cidade", "") or c.get("praca", "")).strip().lower()
@@ -656,37 +899,131 @@ async def get_host_config_endpoint(hostname: str, user: dict = Depends(get_curre
             mp4_is_rec = "sim" in g_mp4 or "gravando" in g_mp4
             emu_is_rec = (cs == 1)
 
+            # Extração de frequência e identificadores
+            freq_raw = str(c.get("frequencia", "557000")).replace(",", ".")
+            try:
+                freq_int = int(float(freq_raw.split()[0].replace(".", "")))
+                if freq_int < 1000:
+                    freq_int = freq_int * 1000
+            except Exception:
+                freq_int = 557000 + (len(host_muxes) * 6000)
+
+            mux_id = 8 if len(host_muxes) == 0 else 4 if len(host_muxes) == 1 else (len(host_muxes) + 1) * 2
+            if freq_int not in seen_mux_freq:
+                seen_mux_freq.add(freq_int)
+                host_muxes.append({
+                    "mux_id": mux_id,
+                    "sub_id": 0,
+                    "name": f"{name} ({name} - {freq_int})",
+                    "network_type": "Terrestrial" if "terrestre" in str(c.get("meio", "")).lower() else "Streaming" if "stream" in str(c.get("meio", "")).lower() else "Satellite" if "sat" in str(c.get("meio", "")).lower() else "Radio" if "radio" in str(c.get("meio", "")).lower() else "Terrestrial",
+                    "frequency": freq_int,
+                    "bandwidth": 6,
+                    "polarization": "Not Set",
+                    "modulation": "Not Set",
+                    "source_path": "",
+                    "first_timeout": 120,
+                    "file_duration": 180,
+                    "video_decoding_mode": "Usar a configuração LAV global",
+                    "is_active": True
+                })
+
+            id_service = 23264 if "globo" in name.lower() or "integração" in name.lower() else (23288 if len(host_channels) == 0 else 23168 + len(host_channels) * 16)
+            pv_code = 1047 if len(host_channels) == 0 else 1046
+            praca_prefix = praca[:3].upper() if praca and len(praca) >= 3 else "CS"
+
             host_channels.append({
                 "id": str(c.get("id", len(host_channels) + 1)),
+                "mux_id": mux_id,
                 "name": name,
-                "frequency": str(c.get("frequencia", "N/A")),
+                "id_service": id_service,
+                "pv": pv_code,
+                "id_host": id_host or 284,
+                "cs": cs,
+                "frequency": str(c.get("frequencia", "557000")),
                 "channel_code": str(c.get("channel_code", "") or f"V{100 + len(host_channels)}"),
                 "network_type": str(c.get("meio", "Digital Terrestre")),
+                "preferred_decoder": "Microsoft",
+                "is_radio": False,
+                "is_encrypted": False,
+                "is_unscrambled": False,
+                "is_active": True,
+                "fast_mode": False,
                 "tuner_id": int(float(c.get("tuner_id", -1) or -1)),
-                "qualidade": c.get("qualidade_sinal"),
-                "forca": c.get("forca_sinal"),
+                "qualidade": c.get("qualidade_sinal") or 90,
+                "forca": c.get("forca_sinal") or 40,
+                # MP4
                 "mp4_is_recording": mp4_is_rec,
+                "mp4_profile": "MP4_MDNA",
                 "mp4_dest_path": str(c.get("pasta_mp4", "") or r"D:\MediaDNA_V2\Data\video"),
+                "mp4_insert_caption": True,
+                # MP3
+                "mp3_is_recording": True,
+                "mp3_profile": "MP3_MDNA",
+                "mp3_dest_path": r"D:\MediaDNA_V2\Data\audio",
+                # EMU
                 "emu_is_recording": emu_is_rec,
                 "emu_profile_name": "EMU MediaDNA 1min",
-                "emu_dest_path": r"D:\MediaDNA_V2\Data\emu"
+                "emu_dest_path": r"D:\MediaDNA_V2\Data\emu",
+                "emu_generate": True,
+                # Caption & Frames
+                "video_caption_height": 12,
+                "video_caption_pattern": f"{praca_prefix} - {name[:3].upper()}(DT) - %d/%m/%Y %H:%M:%S - {praca_prefix}",
+                "jpg_frames_generate": True,
+                "jpg_frames_config": '{"FrameWidth":320,"FrameHeight":240,"Quality":80}'
             })
 
     if not host_channels:
+        praca_prefix = praca[:3].upper() if praca and len(praca) >= 3 else "CS"
+        host_muxes.append({
+            "mux_id": 8,
+            "sub_id": 0,
+            "name": "TV PARANAÍBA (TV PARANAÍBA - 557000)",
+            "network_type": "Terrestrial",
+            "frequency": 557000,
+            "bandwidth": 6,
+            "polarization": "Not Set",
+            "modulation": "Not Set",
+            "source_path": "",
+            "first_timeout": 120,
+            "file_duration": 180,
+            "video_decoding_mode": "Usar a configuração LAV global",
+            "is_active": True
+        })
         host_channels.append({
             "id": "1",
-            "name": "Canal Principal",
-            "frequency": "587143",
+            "mux_id": 8,
+            "name": "TV PARANAÍBA HD (TV PARANAÍBA)",
+            "id_service": 23264,
+            "pv": 1047,
+            "id_host": id_host or 284,
+            "cs": cs,
+            "frequency": "557000",
             "channel_code": "V101",
             "network_type": "Digital Terrestre",
+            "preferred_decoder": "Microsoft",
+            "is_radio": False,
+            "is_encrypted": False,
+            "is_unscrambled": False,
+            "is_active": True,
+            "fast_mode": False,
             "tuner_id": 0,
-            "qualidade": 90,
-            "forca": 40,
+            "qualidade": 92,
+            "forca": 30,
             "mp4_is_recording": True,
+            "mp4_profile": "MP4_MDNA",
             "mp4_dest_path": r"D:\MediaDNA_V2\Data\video",
+            "mp4_insert_caption": True,
+            "mp3_is_recording": True,
+            "mp3_profile": "MP3_MDNA",
+            "mp3_dest_path": r"D:\MediaDNA_V2\Data\audio",
             "emu_is_recording": (cs == 1),
             "emu_profile_name": "EMU MediaDNA 1min",
-            "emu_dest_path": r"D:\MediaDNA_V2\Data\emu"
+            "emu_dest_path": r"D:\MediaDNA_V2\Data\emu",
+            "emu_generate": True,
+            "video_caption_height": 12,
+            "video_caption_pattern": f"{praca_prefix} - REC(DT) - %d/%m/%Y %H:%M:%S - {praca_prefix}",
+            "jpg_frames_generate": True,
+            "jpg_frames_config": '{"FrameWidth":320,"FrameHeight":240,"Quality":80}'
         })
 
     return {
@@ -694,7 +1031,48 @@ async def get_host_config_endpoint(hostname: str, user: dict = Depends(get_curre
         "praca": praca,
         "cs": cs,
         "id_host": id_host,
+        "muxes": host_muxes,
         "channels": host_channels,
+        "application_options": {
+            "auto_start_active_muxes": True,
+            "day_offset_minutes": 0,
+            "daylight_saving_time": "Brazil",
+            "enabled_features": {
+                "WMV": False,
+                "MP4": True,
+                "MP3": True,
+                "MPEG2-TS": False,
+                "WAV": False,
+                "EAM": False,
+                "VideoFingerPrint": False,
+                "EMU": True,
+                "Watermark": False,
+                "Video Caption": True,
+                "EPG&Subs": True,
+                "JPG Frames": True
+            },
+            "log_level": "Debug",
+            "log_dir": r"D:\MediaDNA_V2\Applications\DTVCapture64\Logs",
+            "days_to_preserve_log": 365,
+            "receiver_dir": r"D:\MediaDNA_V2\Applications\DTVCapture64\DTVReceiver",
+            "profiles_dir": r"D:\MediaDNA_V2\Applications\DTVCapture64\WMProfiles",
+            "temporal_mp3_dir": r"D:\MediaDNA_V2\data\audio",
+            "temporal_mp4_dir": r"D:\MediaDNA_V2\data\video",
+            "subtitles_dir": "",
+            "subtitles_backup_dir": "",
+            "video_recog_library_path": r"D:\MediaDNA_V2\Applications\DTVCapture64\Filters",
+            "video_recog_processing": "Disabled",
+            # AutoDetection SVC
+            "autodetection_status": "Working",
+            "autodetection_port": 1234,
+            "finger_source": "MediaDNA",
+            "max_emu_validations": 3,
+            "bin_match_threshold": 68,
+            "use_legacy_dna_plot": False,
+            "mediadna_config_xml": r"D:\MediaDNA_V2\Data\Config\ConfigXml.xml",
+            "match_export_dir": r"D:\MediaDNA_V2\Data\tracking"
+        },
+        "wmprofiles": DEFAULT_WMPROFILES_CATALOG,
         "app_config": {
             "api_port": 9000,
             "mosaic_port": 8080,
@@ -737,13 +1115,56 @@ async def update_host_config_endpoint(
     if not h_clean:
         raise HTTPException(status_code=400, detail="Hostname inválido.")
 
-    # 1. Monta blocos PowerShell para cada canal ajustado
+    # 1. Monta blocos PowerShell para cada mux ajustado
+    mux_updates_ps = []
+    for mux in req.muxes or []:
+        m_name = mux.name.replace("'", "''")
+        m_net = (mux.network_type or "Terrestrial").replace("'", "''")
+        m_mode = (mux.video_decoding_mode or "Usar a configuração LAV global").replace("'", "''")
+        m_source = (mux.source_path or "").replace("'", "''")
+        snippet_mux = f"""
+        $mx = $doc.SelectSingleNode("//Multiplexes[IDMUX = '{mux.mux_id}']");
+        if ($mx) {{
+            $f = $mx.SelectSingleNode('BaseFreq');
+            if (-not $f) {{ $f = $doc.CreateElement('BaseFreq'); $mx.AppendChild($f) | Out-Null }};
+            $f.InnerText = '{mux.frequency}';
+
+            $nt = $mx.SelectSingleNode('NetworkType');
+            if (-not $nt) {{ $nt = $doc.CreateElement('NetworkType'); $mx.AppendChild($nt) | Out-Null }};
+            $nt.InnerText = '{m_net}';
+
+            $vm = $mx.SelectSingleNode('VideoDecodingMode');
+            if (-not $vm) {{ $vm = $doc.CreateElement('VideoDecodingMode'); $mx.AppendChild($vm) | Out-Null }};
+            $vm.InnerText = '{m_mode}';
+
+            $sp = $mx.SelectSingleNode('OrigPath');
+            if (-not $sp) {{ $sp = $doc.CreateElement('OrigPath'); $mx.AppendChild($sp) | Out-Null }};
+            $sp.InnerText = '{m_source}';
+            $muxCount++;
+        }}"""
+        mux_updates_ps.append(snippet_mux)
+
+    mux_block = "\n".join(mux_updates_ps) if mux_updates_ps else "# Nenhum multiplex alterado especificamente\n"
+
+    # 2. Monta blocos PowerShell para cada canal ajustado
     ch_updates_ps = []
     for ch in req.channels or []:
         c_name = ch.name.replace("'", "''")
         emu_rec_val = "$true" if ch.emu_is_recording else "$false"
         emu_prof_val = (ch.emu_profile_name or "EMU MediaDNA 1min").replace("'", "''")
+        emu_dest_val = (ch.emu_dest_path or r"D:\MediaDNA_V2\Data\emu").replace("'", "''")
+        
         mp4_rec_val = "$true" if ch.mp4_is_recording else "$false"
+        mp4_prof_val = (ch.mp4_profile or "MP4_MDNA").replace("'", "''")
+        mp4_dest_val = (ch.mp4_dest_path or r"D:\MediaDNA_V2\Data\video").replace("'", "''")
+        
+        mp3_rec_val = "$true" if ch.mp3_is_recording else "$false"
+        mp3_prof_val = (ch.mp3_profile or "MP3_MDNA").replace("'", "''")
+        mp3_dest_val = (ch.mp3_dest_path or r"D:\MediaDNA_V2\Data\audio").replace("'", "''")
+
+        decoder_val = (ch.preferred_decoder or "Microsoft").replace("'", "''")
+        cap_height = int(ch.video_caption_height or 12)
+        cap_pattern = (ch.video_caption_pattern or "").replace("'", "''")
 
         snippet = f"""
         $p = $doc.SelectNodes("//Programs[translate(normalize-space(Name), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz') = '{c_name.lower()}']");
@@ -754,7 +1175,7 @@ async def update_host_config_endpoint(
                 if (-not $eNode) {{ $eNode = $doc.CreateElement('EMU_IsRecording'); $item.AppendChild($eNode) | Out-Null }};
                 $eNode.InnerText = if ({emu_rec_val}) {{ 'true' }} else {{ 'false' }};
 
-                # Ajuste EMU_ProfileName
+                # Ajuste EMU_ProfileName (Obrigatorio EMU MediaDNA 1min)
                 $pNode = $item.SelectSingleNode('EMU_ProfileName');
                 if (-not $pNode) {{ $pNode = $doc.CreateElement('EMU_ProfileName'); $item.AppendChild($pNode) | Out-Null }};
                 $pNode.InnerText = '{emu_prof_val}';
@@ -762,12 +1183,49 @@ async def update_host_config_endpoint(
                 # Ajuste EMU_DestPath
                 $dNode = $item.SelectSingleNode('EMU_DestPath');
                 if (-not $dNode) {{ $dNode = $doc.CreateElement('EMU_DestPath'); $item.AppendChild($dNode) | Out-Null }};
-                if (-not $dNode.InnerText) {{ $dNode.InnerText = 'D:\\MediaDNA_V2\\Data\\emu' }};
+                $dNode.InnerText = '{emu_dest_val}';
 
                 # Ajuste Mp4_IsRecording
                 $mNode = $item.SelectSingleNode('Mp4_IsRecording');
                 if (-not $mNode) {{ $mNode = $doc.CreateElement('Mp4_IsRecording'); $item.AppendChild($mNode) | Out-Null }};
                 $mNode.InnerText = if ({mp4_rec_val}) {{ 'true' }} else {{ 'false' }};
+
+                $mpNode = $item.SelectSingleNode('Mp4_ProfileName');
+                if (-not $mpNode) {{ $mpNode = $doc.CreateElement('Mp4_ProfileName'); $item.AppendChild($mpNode) | Out-Null }};
+                $mpNode.InnerText = '{mp4_prof_val}';
+
+                $mpdNode = $item.SelectSingleNode('Mp4_DestPath');
+                if (-not $mpdNode) {{ $mpdNode = $doc.CreateElement('Mp4_DestPath'); $item.AppendChild($mpdNode) | Out-Null }};
+                $mpdNode.InnerText = '{mp4_dest_val}';
+
+                # Ajuste Mp3_IsRecording
+                $aNode = $item.SelectSingleNode('Mp3_IsRecording');
+                if (-not $aNode) {{ $aNode = $doc.CreateElement('Mp3_IsRecording'); $item.AppendChild($aNode) | Out-Null }};
+                $aNode.InnerText = if ({mp3_rec_val}) {{ 'true' }} else {{ 'false' }};
+
+                $apNode = $item.SelectSingleNode('Mp3_ProfileName');
+                if (-not $apNode) {{ $apNode = $doc.CreateElement('Mp3_ProfileName'); $item.AppendChild($apNode) | Out-Null }};
+                $apNode.InnerText = '{mp3_prof_val}';
+
+                $apdNode = $item.SelectSingleNode('Mp3_DestPath');
+                if (-not $apdNode) {{ $apdNode = $doc.CreateElement('Mp3_DestPath'); $item.AppendChild($apdNode) | Out-Null }};
+                $apdNode.InnerText = '{mp3_dest_val}';
+
+                # Decoder
+                $decNode = $item.SelectSingleNode('PreferredDecoder');
+                if (-not $decNode) {{ $decNode = $doc.CreateElement('PreferredDecoder'); $item.AppendChild($decNode) | Out-Null }};
+                $decNode.InnerText = '{decoder_val}';
+
+                # Video Caption
+                $vchNode = $item.SelectSingleNode('VideoCaption_Height');
+                if (-not $vchNode) {{ $vchNode = $doc.CreateElement('VideoCaption_Height'); $item.AppendChild($vchNode) | Out-Null }};
+                $vchNode.InnerText = '{cap_height}';
+
+                if ('{cap_pattern}') {{
+                    $vcpNode = $item.SelectSingleNode('VideoCaption_Pattern');
+                    if (-not $vcpNode) {{ $vcpNode = $doc.CreateElement('VideoCaption_Pattern'); $item.AppendChild($vcpNode) | Out-Null }};
+                    $vcpNode.InnerText = '{cap_pattern}';
+                }};
 
                 $chCount++;
             }}
@@ -776,19 +1234,45 @@ async def update_host_config_endpoint(
 
     ch_block = "\n".join(ch_updates_ps) if ch_updates_ps else "# Nenhum canal modificado especificamente\n"
 
+    # 3. Perfis WMProfiles modificados para gravação
+    wm_profiles_ps = []
+    for prof in req.wmprofiles or []:
+        if prof.xml_content and prof.filename:
+            f_clean = prof.filename.replace("'", "''")
+            content_b64 = prof.xml_content.encode("utf-8").hex()  # Seguro para PowerShell
+            wm_snippet = f"""
+            $profDir = 'D:\\MediaDNA_V2\\Applications\\DTVCapture64\\WMProfiles';
+            if (-not (Test-Path $profDir)) {{ New-Item -ItemType Directory -Path $profDir -Force | Out-Null }};
+            $profFile = Join-Path $profDir '{f_clean}';
+            $hexBytes = '{content_b64}';
+            $bytes = [byte[]]@($hexBytes -replace '..', '0x$&, ' | Where-Object {{ $_ }} | ForEach-Object {{ [Convert]::ToByte($_, 16) }});
+            [System.IO.File]::WriteAllBytes($profFile, $bytes);
+            Write-Host "[OK] Perfil salvo em WMProfiles: $profFile";
+            """
+            wm_profiles_ps.append(wm_snippet)
+
+    wm_block = "\n".join(wm_profiles_ps) if wm_profiles_ps else "# Nenhum perfil modificado especificamente\n"
+
     # Parâmetros de logrotate
     lr_cfg = req.logrotate or HostLogrotateConfigItem()
     lr_target = (lr_cfg.target_log_path or r"D:\MediaDNA_V2\Applications\DTVCapture64\FastMatchingSvc\fma.log").replace("'", "''")
     lr_freq = (lr_cfg.frequency or "daily").replace("'", "''")
     lr_rotate = int(lr_cfg.rotate_days or 10)
 
+    # Parâmetros de Application Options
+    app_opt = req.application_options or HostApplicationOptionsItem()
+    auto_port = int(app_opt.autodetection_port or 1234)
+    auto_thresh = int(app_opt.bin_match_threshold or 68)
+    auto_max_emu = int(app_opt.max_emu_validations or 3)
+    auto_cfg_xml = (app_opt.mediadna_config_xml or r"D:\MediaDNA_V2\Data\Config\ConfigXml.xml").replace("'", "''")
+    auto_track_dir = (app_opt.match_export_dir or r"D:\MediaDNA_V2\Data\tracking").replace("'", "''")
+
     script = f"""# ==========================================================================
 # CENTRAL CS NOC: APLICACAO DE CONFIGURACOES REMOTAS NO CAPTURE SITE
 # Host: {h_clean} | Timestamp: {datetime.now(timezone.utc).isoformat()}
 # ==========================================================================
 $ErrorActionPreference = 'Continue';
-[System.Text.Encoding]::RegisterProvider([System.Text.CodePagesEncodingProvider]::Instance);
-$enc1252 = [System.Text.Encoding]::GetEncoding('Windows-1252');
+$enc1252 = try {{ [System.Text.Encoding]::GetEncoding(1252) }} catch {{ [System.Text.Encoding]::Default }};
 
 Write-Host '[1/5] Encerrando processos do Atria Capture para escrita segura dos XMLs...';
 cmd.exe /c "taskkill /f /t /im DigitalTVCapture.exe /im DigitalTVReceiver.exe /im AtriaCapture.exe >nul 2>&1";
@@ -799,13 +1283,18 @@ Write-Host '[2/5] Realizando backup profilatico (.bak) das configuracoes atuais.
 $stamp = Get-Date -Format 'yyyyMMdd_HHmmss';
 $muxCandidates = @(
     'D:\\MediaDNA_V2\\Applications\\DTVCapture64\\Config\\Multiplexes.xml',
+    'D:\\MediaDNA_V2\\Applications\\DTVCapture64\\Multiplexes.xml',
     'D:\\MediaDNA_V2\\Data\\Config\\Multiplexes.xml',
-    'C:\\DTV\\DTVCapture\\Config\\Multiplexes.xml'
+    'C:\\DTV\\DTVCapture\\Config\\Multiplexes.xml',
+    'C:\\DTV\\DTVCapture\\Multiplexes.xml',
+    'C:\\MediaDNA_V2\\Applications\\DTVCapture64\\Config\\Multiplexes.xml',
+    'C:\\MediaDNA_V2\\Applications\\DTVCapture64\\Multiplexes.xml',
+    'D:\\MediaDNA_V2\\Applications\\DTVCapture\\Config\\Multiplexes.xml'
 ) | Where-Object {{ Test-Path $_ }};
 foreach ($m in $muxCandidates) {{ Copy-Item -Path $m -Destination "$m.bak_$stamp" -Force -ErrorAction SilentlyContinue }};
 
-# 3. Atualização de Canais e Regras EMU em Multiplexes.xml
-Write-Host '[3/5] Aplicando novas diretrizes de canais e EMU em Multiplexes.xml...';
+# 3. Atualização de Muxes, Canais e Regras EMU em Multiplexes.xml
+Write-Host '[3/5] Aplicando novas diretrizes de Muxes, canais e EMU em Multiplexes.xml...';
 foreach ($mPath in $muxCandidates) {{
     try {{
         $raw = [System.IO.File]::ReadAllText($mPath, $enc1252);
@@ -813,7 +1302,12 @@ foreach ($mPath in $muxCandidates) {{
         [xml]$doc = New-Object System.Xml.XmlDocument;
         $doc.LoadXml($clean);
         $chCount = 0;
+        $muxCount = 0;
 
+        # Atualizacao de Muxes
+        {mux_block}
+
+        # Atualizacao de Canais
         {ch_block}
 
         $settings = New-Object System.Xml.XmlWriterSettings;
@@ -822,11 +1316,46 @@ foreach ($mPath in $muxCandidates) {{
         $w = [System.Xml.XmlWriter]::Create($mPath, $settings);
         $doc.Save($w);
         $w.Dispose();
-        Write-Host "[OK] Multiplexes.xml atualizado com sucesso em $mPath ($chCount ajustes).";
+        Write-Host "[OK] Multiplexes.xml atualizado com sucesso em $mPath ($chCount canais, $muxCount muxes ajustados).";
     }} catch {{
         Write-Host ('[ERRO] Falha ao atualizar Multiplexes.xml em ' + $mPath + ': ' + $_.Exception.Message);
     }}
 }}
+
+# 3.5 Salva novos perfis em WMProfiles
+{wm_block}
+
+# 3.6 Atualização de Application Options / AutoDetection SVC (Porta {auto_port}, Threshold {auto_thresh})
+$appCfgPaths = @(
+    'D:\\MediaDNA_V2\\Applications\\DTVCapture64\\Config\\AppConfig.xml',
+    'D:\\MediaDNA_V2\\Data\\Config\\AppConfig.xml',
+    'C:\\DTV\\DTVCapture\\Config\\AppConfig.xml'
+) | Where-Object {{ Test-Path $_ }};
+foreach ($acp in $appCfgPaths) {{
+    try {{
+        [xml]$adDoc = New-Object System.Xml.XmlDocument;
+        $adDoc.Load($acp);
+        $adNode = $adDoc.SelectSingleNode('//AutoDetection');
+        if (-not $adNode) {{ $adNode = $adDoc.CreateElement('AutoDetection'); $adDoc.DocumentElement.AppendChild($adNode) | Out-Null }};
+        
+        $pNode = $adNode.SelectSingleNode('ListeningPort');
+        if (-not $pNode) {{ $pNode = $adDoc.CreateElement('ListeningPort'); $adNode.AppendChild($pNode) | Out-Null }};
+        $pNode.InnerText = '{auto_port}';
+        
+        $tNode = $adNode.SelectSingleNode('BinMatchThreshold');
+        if (-not $tNode) {{ $tNode = $adDoc.CreateElement('BinMatchThreshold'); $adNode.AppendChild($tNode) | Out-Null }};
+        $tNode.InnerText = '{auto_thresh}';
+
+        $mNode = $adNode.SelectSingleNode('MaxEmuValidations');
+        if (-not $mNode) {{ $mNode = $adDoc.CreateElement('MaxEmuValidations'); $adNode.AppendChild($mNode) | Out-Null }};
+        $mNode.InnerText = '{auto_max_emu}';
+
+        $adDoc.Save($acp);
+        Write-Host "[OK] Application Options (AutoDetection port {auto_port}, thresh {auto_thresh}) salvo em $acp";
+    }} catch {{
+        Write-Host ('[AVISO] Falha ao atualizar AppConfig.xml em ' + $acp + ': ' + $_.Exception.Message);
+    }}
+}};
 
 # 4. Atualização de logrotate.conf para FastMatching
 Write-Host '[4/5] Aplicando configuracao oficial do LogRotate ({lr_target} + rotate {lr_rotate})...';
@@ -907,6 +1436,39 @@ Write-Host '[SUCESSO] Configuracoes operacionais aplicadas e Atria Capture reini
     except Exception as e:
         logger.error(f"Erro ao disparar atualização de configuração para {h_clean}: {e}", exc_info=True)
         return JSONResponse(status_code=500, content={"success": False, "detail": f"Erro interno ao disparar comando: {str(e)}"})
+
+
+@app.get("/api/detection/fma-cs01-hosts")
+async def get_fma_cs01_hosts_endpoint(user: dict = Depends(get_current_user)):
+    """Retorna a lista de todos os nós CS01 para o seletor do modal Detection Pipeline Live."""
+    try:
+        from tracking_detection_monitor import get_cs01_fastmatching_hosts
+        hosts = get_cs01_fastmatching_hosts()
+        return {"success": True, "total": len(hosts), "hosts": hosts}
+    except Exception as e:
+        logger.error(f"[DetectionLiveAPI] Erro ao listar nós CS01: {e}", exc_info=True)
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
+@app.get("/api/detection/fma-live/{hostname}")
+@app.get("/api/fleet/detection/fma-live/{hostname}")
+async def get_fma_live_endpoint(
+    hostname: str,
+    lines: int = Query(80, ge=20, le=300),
+    user: dict = Depends(get_current_user)
+):
+    """
+    Retorna o payload completo de telemetria em tempo real para o modal Detection Pipeline Live:
+    Leitura viva do fma.log, status de spots/catálogo, matches instantâneos e fluxo de .EMU.
+    """
+    try:
+        from tracking_detection_monitor import get_fastmatching_pipeline_live
+        data = get_fastmatching_pipeline_live(hostname, max_lines=lines)
+        return data
+    except Exception as e:
+        logger.error(f"[DetectionLiveAPI] Erro no live stream do FastMatching para {hostname}: {e}", exc_info=True)
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
 
 
 @app.get("/api/fleet/channels")
