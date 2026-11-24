@@ -110,16 +110,6 @@ function renderSlaMatrixTable(rows, totalFiltered) {
             cBadge = `<div style="width: 6px; height: 32px; background: #10b981; border-radius: 3px; opacity: 0.5;" title="Nominal"></div>`;
         }
 
-        // Subprodutos (Outros/Serviço)
-        let subprodHtml = `<span style="color: rgba(255, 255, 255, 0.15);">-</span>`;
-        if (r.subproducts && r.subproducts.length > 0) {
-            subprodHtml = r.subproducts.map(sp => `
-                <span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); font-size: 10px; font-weight: 700; margin-right: 4px;">
-                    ${sp.value} ${escapeHtml(sp.type)}
-                </span>
-            `).join("");
-        }
-
         // Link WAN & Latência
         const wan = r.wan || {};
         let wanColor = "#34d399";
@@ -132,6 +122,40 @@ function renderSlaMatrixTable(rows, totalFiltered) {
                 <span style="color: ${wanColor}; font-weight: 700;">${wan.ping_ms || 25}ms</span> • <span style="color: #94a3b8;">${wan.upload_mbps || 20}M</span>
             </div>
         `;
+
+        // Telemetria de Hardware (CPU, RAM, Disco D:)
+        const cpuStr = r.cpu_uso || "-";
+        let cpuBadge = `<span style="color: #94a3b8; font-size: 11px;">-</span>`;
+        if (cpuStr !== "-" && cpuStr !== "N/A") {
+            const cpuNum = parseFloat(cpuStr.replace("%", "").replace("<", "").trim()) || 0;
+            if (cpuNum >= 85) {
+                cpuBadge = `<span class="badge" style="background: rgba(239, 68, 68, 0.25); color: #fca5a5; border: 1px solid #ef4444; font-size: 10px; font-weight: 700;">${escapeHtml(cpuStr)}</span>`;
+            } else if (cpuNum >= 70) {
+                cpuBadge = `<span class="badge" style="background: rgba(245, 158, 11, 0.2); color: #fde047; border: 1px solid #f59e0b; font-size: 10px; font-weight: 700;">${escapeHtml(cpuStr)}</span>`;
+            } else {
+                cpuBadge = `<span style="color: #38bdf8; font-weight: 600; font-size: 11px;">${escapeHtml(cpuStr)}</span>`;
+            }
+        }
+
+        const ramStr = r.ram_uso || "-";
+        let ramBadge = `<span style="color: #94a3b8; font-size: 11px;">-</span>`;
+        if (ramStr !== "-" && ramStr !== "N/A") {
+            ramBadge = `<span style="color: #cbd5e1; font-weight: 600; font-size: 11px;">${escapeHtml(ramStr)}</span>`;
+        }
+
+        const discoStr = r.disco_d_livre || "-";
+        let discoBadge = `<span style="color: #94a3b8; font-size: 11px;">-</span>`;
+        if (discoStr !== "-" && discoStr !== "N/A") {
+            const matchGb = discoStr.match(/([\d\.,]+)\s*GB/i);
+            const gbNum = matchGb ? parseFloat(matchGb[1].replace(",", ".")) : 100;
+            if (gbNum < 30) {
+                discoBadge = `<span class="badge" style="background: rgba(239, 68, 68, 0.25); color: #fca5a5; border: 1px solid #ef4444; font-size: 10px; font-weight: 800;" title="Espaço Crítico em D: (&lt;30GB)">${escapeHtml(discoStr)}</span>`;
+            } else if (gbNum < 60) {
+                discoBadge = `<span class="badge" style="background: rgba(245, 158, 11, 0.2); color: #fde047; border: 1px solid #f59e0b; font-size: 10px; font-weight: 700;">${escapeHtml(discoStr)}</span>`;
+            } else {
+                discoBadge = `<span style="color: #34d399; font-weight: 600; font-size: 11px;">${escapeHtml(discoStr)}</span>`;
+            }
+        }
 
         // CS Badge
         let csBadge = `<span class="badge" style="background: rgba(59, 130, 246, 0.2); color: #93c5fd; border: 1px solid #3b82f6; font-weight: 800;">CS ${r.cs}</span>`;
@@ -155,12 +179,13 @@ function renderSlaMatrixTable(rows, totalFiltered) {
                 <td style="padding: 6px 8px; text-align: center; vertical-align: middle;">${csBadge}</td>
                 <td style="padding: 6px 8px; text-align: center; vertical-align: middle;">${fmtDelay(r.ka_delay_min)}</td>
                 <td style="padding: 6px 8px; text-align: center; vertical-align: middle;">${fmtDelay(r.mp3_arc_min)}</td>
-                <td style="padding: 6px 8px; text-align: center; vertical-align: middle;">${fmtDelay(r.mp3_bur_min)}</td>
                 <td style="padding: 6px 8px; text-align: center; vertical-align: middle;">${fmtDelay(r.asf_arc_min)}</td>
                 <td style="padding: 6px 8px; text-align: center; vertical-align: middle;">${fmtDelay(r.mp4_arc_min)}</td>
                 <td style="padding: 6px 8px; text-align: center; vertical-align: middle;">${fmtDelay(r.dt_delay_min, true)}</td>
                 <td style="padding: 6px 8px; vertical-align: middle;">${wanHtml}</td>
-                <td style="padding: 6px 8px; vertical-align: middle;">${subprodHtml}</td>
+                <td style="padding: 6px 8px; text-align: center; vertical-align: middle;">${cpuBadge}</td>
+                <td style="padding: 6px 8px; text-align: center; vertical-align: middle;">${ramBadge}</td>
+                <td style="padding: 6px 8px; text-align: center; vertical-align: middle;">${discoBadge}</td>
                 <td style="padding: 6px 8px; text-align: center; vertical-align: middle;" onclick="event.stopPropagation()">
                     <button type="button" class="btn-primary" 
                             style="padding: 4px 10px; font-size: 10px; font-weight: 800; background: linear-gradient(135deg, #2563eb, #7c3aed); border: 1px solid #38bdf8; border-radius: 4px; color: #fff; cursor: pointer; box-shadow: 0 0 8px rgba(56, 189, 248, 0.3);"

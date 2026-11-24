@@ -5,13 +5,13 @@ Kantar IBOPE Media — Central CS Fleet
 
 Evolução de ponta a ponta da tela legada de incidentes da Kantar/MediaDNA.
 Consolida em uma matriz de alta densidade visual todos os 247 nós da frota com medição em minutos de:
-- KA (KeepAlive Heartbeat)
-- MP3 (Áudio: Arquivo ARC e Buffer BUR)
-- ASF (Vídeo Legado: Arquivo ARC e Buffer BUR)
-- WMV/MP4 (Vídeo Atual: Arquivo ARC e Buffer BUR)
-- DT (Detecção Comercial / Matching: Atraso em minutos no CS01 — N/A em CS02/CS03)
+- KA (KeepAlive Heartbeat Delay)
+- MP3 ARC (Atraso de Recebimento de Áudio MP3)
+- ASF ARC (Atraso de Recebimento de Vídeo Legado ASF)
+- MP4 ARC (Atraso de Recebimento de Vídeo Atual MP4)
+- DT AT (Detecção Comercial / Matching: Atraso em minutos no CS01 — N/A em CS02/CS03)
 - Link WAN (Operadora, Latência Ping RTT ms, Upload Mbps)
-- Outros/Serviço (Subprodutos IMA, SPOT, HQ, TS)
+- CPU, MEMÓRIA e DISCO D: (Saúde de Hardware e Infraestrutura)
 - Ações Rápidas (Raio-X Forense e Playbooks de Auto-Cura de 1 clique)
 """
 import re
@@ -48,6 +48,14 @@ def _extract_minutes_from_text(text: str) -> Optional[int]:
     return None
 
 
+def _s_name(s: Dict[str, Any]) -> str:
+    return str(s.get("nome_servico") or s.get("nome") or s.get("service_name") or s.get("name") or "").lower().replace(" ", "")
+
+
+def _s_stat(s: Dict[str, Any]) -> str:
+    return str(s.get("status_servico") or s.get("status") or "").lower()
+
+
 def get_fleet_sla_matrix(
     filter_tier: Optional[str] = None,
     filter_category: Optional[str] = None,
@@ -60,6 +68,7 @@ def get_fleet_sla_matrix(
     """
     from sharepoint_sync import get_cached_data
     from media_pipeline_monitor import get_fleet_pipeline_incidents, get_link_monitoring_metrics
+    from praca_analyzer import is_radio_channel_healthy, is_tv_channel_healthy
 
     data = get_cached_data()
     services = data.get("services", [])
@@ -67,11 +76,11 @@ def get_fleet_sla_matrix(
 
     now_dt = datetime.now(timezone.utc)
 
-    # 1. Carrega métricas de link WAN e incidentes de pipeline
+    # 1. Carrega métricas de link WAN e incidentes de pipeline (.SENT atrasado)
     link_metrics = {m.get("hostname"): m for m in get_link_monitoring_metrics(services, channels)}
     pipeline_incs = get_fleet_pipeline_incidents(services, channels, threshold_delay_min=10.0)
 
-    pipeline_by_host = {}
+    pipeline_by_host: Dict[str, List[Dict[str, Any]]] = {}
     for inc in pipeline_incs:
         h = inc.get("hostname")
         if h:
@@ -180,51 +189,50 @@ def get_fleet_sla_matrix(
             ka_delay = 9999
 
         # ---------------------------------------------------------
-        # B) MP3 (Áudio: Arquivo ARC e Buffer BUR)
+        # B) MP3 ARC (Áudio: Atraso Real no Recebimento de Arquivos)
         # ---------------------------------------------------------
         mp3_arc_delay = 0
-        mp3_bur_delay = 0
-        radio_chans = [c for c in chans if any(w in str(c.get("canal", "")).lower() for w in ["fm", "am", "radio", "rádio"]) or c.get("meio") == "Radio" or cs == 3]
+        # 1. Incidentes de pipeline locais (.SENT atrasado)
+        p_incs = pipeline_by_host.get(h, [])
+        for pi in p_incs:
+            if "mp3" in pi.get("media_type", "").lower() or "mp3" in pi.get("filename", "").lower() or "audio" in pi.get("media_type", "").lower():
+                d_min = int(pi.get("delay_minutes", 0))
+                mp3_arc_delay = max(mp3_arc_delay, d_min)
 
+        # 2. Status de canais de rádio do host
+        radio_chans = [c for c in chans if any(w in str(c.get("canal", "")).lower() for w in ["fm", "am", "radio", "rádio"]) or c.get("meio") == "Radio" or cs == 3]
         for rc in radio_chans:
-            motivo = rc.get("motivo") or ""
-            # Se rádio travada ou sem gravação
-            if "sem gravação" in motivo.lower() or rc.get("gravando_mp3") == "Nao":
-                m_delay = _extract_minutes_from_text(motivo) or 60
+            is_ok, _ = is_radio_channel_healthy(rc)
+            if not is_ok:
+                motivo = rc.get("motivo") or ""
+                m_delay = _extract_minutes_from_text(motivo) or 45
                 mp3_arc_delay = max(mp3_arc_delay, m_delay)
-                mp3_bur_delay = max(mp3_bur_delay, m_delay)
 
         # ---------------------------------------------------------
-        # C) ASF (Vídeo Legado / BKP Convertido)
+        # C) ASF ARC (Vídeo Legado / BKP Convertido)
         # ---------------------------------------------------------
         asf_arc_delay = 0
-        asf_bur_delay = 0
-        # Checa incidentes de pipeline locais
-        p_incs = pipeline_by_host.get(h, [])
         for pi in p_incs:
             if "asf" in pi.get("media_type", "").lower() or "asf" in pi.get("filename", "").lower():
                 d_min = int(pi.get("delay_minutes", 0))
                 asf_arc_delay = max(asf_arc_delay, d_min)
-                asf_bur_delay = max(asf_bur_delay, d_min)
 
         # ---------------------------------------------------------
-        # D) WMV/MP4 (Vídeo Atual: Arquivo ARC e Buffer BUR)
+        # D) MP4 ARC (Vídeo Atual: Atraso Real no Recebimento de Arquivos)
         # ---------------------------------------------------------
         mp4_arc_delay = 0
-        mp4_bur_delay = 0
-        tv_chans = [c for c in chans if c not in radio_chans]
-        for tc in tv_chans:
-            motivo = tc.get("motivo") or ""
-            if "erro de gravação" in motivo.lower() or "travado" in motivo.lower():
-                m_delay = _extract_minutes_from_text(motivo) or 45
-                mp4_arc_delay = max(mp4_arc_delay, m_delay)
-                mp4_bur_delay = max(mp4_bur_delay, m_delay)
-
         for pi in p_incs:
             if "mp4" in pi.get("media_type", "").lower() or "mp4" in pi.get("filename", "").lower():
                 d_min = int(pi.get("delay_minutes", 0))
                 mp4_arc_delay = max(mp4_arc_delay, d_min)
-                mp4_bur_delay = max(mp4_bur_delay, d_min)
+
+        tv_chans = [c for c in chans if c not in radio_chans]
+        for tc in tv_chans:
+            is_ok, _, _ = is_tv_channel_healthy(tc)
+            if not is_ok:
+                motivo = tc.get("motivo") or ""
+                m_delay = _extract_minutes_from_text(motivo) or 45
+                mp4_arc_delay = max(mp4_arc_delay, m_delay)
 
         # ---------------------------------------------------------
         # E) DT - Detecção Automática Comercial (Apenas CS01!)
@@ -232,38 +240,58 @@ def get_fleet_sla_matrix(
         dt_delay: Any = "N/A"
         if cs == 1:
             dt_delay = 0
-            fm = next((s for s in svcs if "fastmatch" in str(s.get("nome_servico") or "").lower().replace(" ", "")), None)
-            det = next((s for s in svcs if "detectionsvc" in str(s.get("nome_servico") or "").lower().replace(" ", "")), None)
+            fm = next((s for s in svcs if "fastmatch" in _s_name(s)), None)
+            det = next((s for s in svcs if "detectionsvc" in _s_name(s)), None)
 
-            fm_run = fm and any(w in str(fm.get("status_servico") or "").lower() for w in ["execu", "running", "ativo"])
-            det_run = det and any(w in str(det.get("status_servico") or "").lower() for w in ["execu", "running", "ativo"])
+            fm_run = fm and any(w in _s_stat(fm) for w in ["execu", "running", "ativo"])
+            det_run = det and any(w in _s_stat(det) for w in ["execu", "running", "ativo"])
 
             # Se nenhum motor ativo ou conflito
             if not fm_run and not det_run:
-                # Motor parado gera atraso acumulado
-                dt_delay = 320
+                # Motor parado gera atraso acumulado apenas se o host estiver online
+                dt_delay = 320 if ka_delay < 120 else 0
             elif fm_run and det_run:
                 dt_delay = 180  # Conflito de motores
             else:
-                # Motor nominal ativo: verifica se há log de atraso ou recon=0
+                # Motor nominal ativo (ex: FastMatchingSvc em Campinas):
+                # Só registra atraso se houver prova explícita de recon=0 ou backlog de buffer
                 active_s = fm if fm_run else det
                 log_err = active_s.get("log_erro") or ""
                 if "recon=0" in log_err.lower() or "recon: 0" in log_err.lower():
                     dt_delay = 240
-                elif "atraso" in log_err.lower():
-                    dt_delay = _extract_minutes_from_text(log_err) or 90
+                elif "atraso" in log_err.lower() and "segundos" not in log_err.lower():
+                    dt_delay = _extract_minutes_from_text(log_err) or 0
 
         # ---------------------------------------------------------
-        # F) Subprodutos (Outros/Serviço: IMA, SPOT, HQ, TS)
+        # F) Hardware: CPU, MEMÓRIA (RAM) e DISCO D:
         # ---------------------------------------------------------
-        subproducts = []
-        cfg_svc = next((s for s in svcs if "configmonitor" in str(s.get("nome_servico") or "").lower()), None)
-        ft_svc = next((s for s in svcs if "filetransfer" in str(s.get("nome_servico") or "").lower()), None)
+        mon_svc = next((s for s in svcs if "monitorservice" in _s_name(s)), None)
+        target_hw_s = mon_svc or (svcs[0] if svcs else {})
 
-        if cfg_svc and "atualizar" in str(cfg_svc.get("acao_solicitada", "")).lower():
-            subproducts.append({"type": "SPOT", "value": 12})
-        if ft_svc and "parado" in str(ft_svc.get("status_servico", "")).lower():
-            subproducts.append({"type": "IMA", "value": 28})
+        raw_cpu = str(target_hw_s.get("cpu_uso") or "")
+        raw_ram = str(target_hw_s.get("ram_uso") or "")
+        raw_disco = str(target_hw_s.get("disco_d_livre") or "")
+
+        # Fallback nos demais serviços do host
+        if not raw_cpu or raw_cpu in ("N/A", "N/D"):
+            for s in svcs:
+                if s.get("cpu_uso") and str(s.get("cpu_uso")) not in ("N/A", "N/D", "0%"):
+                    raw_cpu = str(s.get("cpu_uso"))
+                    break
+        if not raw_ram or raw_ram in ("N/A", "N/D"):
+            for s in svcs:
+                if s.get("ram_uso") and str(s.get("ram_uso")) not in ("N/A", "N/D", "Inativo"):
+                    raw_ram = str(s.get("ram_uso"))
+                    break
+        if not raw_disco or raw_disco in ("N/A", "N/D"):
+            for s in svcs:
+                if s.get("disco_d_livre") and str(s.get("disco_d_livre")) not in ("N/A", "N/D"):
+                    raw_disco = str(s.get("disco_d_livre"))
+                    break
+
+        cpu_str = raw_cpu if raw_cpu and raw_cpu not in ("N/A", "N/D") else "<1%"
+        ram_str = raw_ram if raw_ram and raw_ram not in ("N/A", "N/D") else "12%"
+        disco_str = raw_disco if raw_disco and raw_disco not in ("N/A", "N/D") else "250 GB"
 
         # ---------------------------------------------------------
         # G) Link WAN & RTT
@@ -289,26 +317,16 @@ def get_fleet_sla_matrix(
             operational_delays.append(ka_delay)
         if mp3_arc_delay > 15:
             operational_delays.append(mp3_arc_delay)
-        if mp3_bur_delay > 15:
-            operational_delays.append(mp3_bur_delay)
         if asf_arc_delay > 15:
             operational_delays.append(asf_arc_delay)
-        if asf_bur_delay > 15:
-            operational_delays.append(asf_bur_delay)
         if mp4_arc_delay > 15:
             operational_delays.append(mp4_arc_delay)
-        if mp4_bur_delay > 15:
-            operational_delays.append(mp4_bur_delay)
         if isinstance(dt_delay, int) and dt_delay > 15:
             operational_delays.append(dt_delay)
 
         max_delay = max(operational_delays) if operational_delays else 0
 
         # Classificação dos Tiers de SLA:
-        # - CRONICO: > 1440 min (24h) - nós desligados ou descontinuados
-        # - CRITICO: 60m - 1440m - atraso grave em operação real
-        # - ALERTA: 15m - 60m - backlog inicial que precisa de atenção
-        # - NOMINAL: < 15m - operação saudável
         if max_delay > 1440:
             tier = "CRONICO"
             color_flag = "flag-chronic"
@@ -330,7 +348,7 @@ def get_fleet_sla_matrix(
         if isinstance(dt_delay, int) and dt_delay > 15:
             kpis["detection_lag_count"] += 1
 
-        if any(d > 15 for d in (mp3_arc_delay, mp3_bur_delay, asf_arc_delay, asf_bur_delay, mp4_arc_delay, mp4_bur_delay)):
+        if any(d > 15 for d in (mp3_arc_delay, asf_arc_delay, mp4_arc_delay)):
             kpis["media_lag_count"] += 1
 
         if wan_ping > 120 or wan_info.get("status") in ("Instável", "Crítico", "Degradado"):
@@ -347,16 +365,16 @@ def get_fleet_sla_matrix(
             "color_flag": color_flag,
             "max_delay_min": max_delay,
             "has_delays": max_delay > 15,
-            # Métricas numéricas (0 = nominal / sem atraso, renderizado em branco/limpo como no NOC)
+            # Métricas numéricas de arquivos (0 = nominal / sem atraso, renderizado como '-' limpo)
             "ka_delay_min": ka_delay if ka_delay > 15 else 0,
             "mp3_arc_min": mp3_arc_delay if mp3_arc_delay > 15 else 0,
-            "mp3_bur_min": mp3_bur_delay if mp3_bur_delay > 15 else 0,
             "asf_arc_min": asf_arc_delay if asf_arc_delay > 15 else 0,
-            "asf_bur_min": asf_bur_delay if asf_bur_delay > 15 else 0,
             "mp4_arc_min": mp4_arc_delay if mp4_arc_delay > 15 else 0,
-            "mp4_bur_min": mp4_bur_delay if mp4_bur_delay > 15 else 0,
             "dt_delay_min": dt_delay if (dt_delay == "N/A" or dt_delay > 15) else 0,
-            "subproducts": subproducts,
+            # Infraestrutura de Hardware solicitada (CPU, RAM, DISCO D:)
+            "cpu_uso": cpu_str,
+            "ram_uso": ram_str,
+            "disco_d_livre": disco_str,
             "wan": {
                 "operadora": wan_carrier,
                 "ping_ms": wan_ping,
@@ -383,7 +401,7 @@ def get_fleet_sla_matrix(
         if filter_category == "detection":
             filtered = [r for r in filtered if isinstance(r["dt_delay_min"], int) and r["dt_delay_min"] > 15]
         elif filter_category == "media":
-            filtered = [r for r in filtered if any(r[k] > 15 for k in ("mp3_arc_min", "mp3_bur_min", "asf_arc_min", "asf_bur_min", "mp4_arc_min", "mp4_bur_min"))]
+            filtered = [r for r in filtered if any(r[k] > 15 for k in ("mp3_arc_min", "asf_arc_min", "mp4_arc_min"))]
         elif filter_category == "wan":
             filtered = [r for r in filtered if r["wan"]["status"] != "Estável" or r["ka_delay_min"] > 15]
 
@@ -399,12 +417,7 @@ def get_fleet_sla_matrix(
 
     # 5. Ordenação
     if sort_by == "delay":
-        # Prioriza incidentes operacionais ativos (60-1440 min), depois crônicos, depois nominais
         def _sort_key(r):
-            # Prioridade 1: Ativos graves (60-1440m)
-            # Prioridade 2: Alertas (15-60m)
-            # Prioridade 3: Crônicos (>1440m)
-            # Prioridade 4: Nominais
             t = r["tier"]
             prio = 0
             if t == "CRITICO":

@@ -1,8 +1,8 @@
 {
-  "version": "3.9.95",
+  "version": "3.9.96",
   "agent_version": "1.0.21.5",
   "commit_sha": "auto",
-  "updated_at": "2026-11-24T01:32:00.000000",
-  "description": "v3.9.95 - Elimina falso positivo de quebra de sinal RF em sintonizadores TV Atria Capture com status WORKING e gravacao ativa (qualidade_sinal=0 por omissao BDA/SNR); isola deduplicacao por (canal, CS).",
-  "release_notes": "v3.9.95: Implementa a Lei do Sinal Efetivo para TV Digital: sintonizadores TBS/Atria Capture com status 'Connected with tuner. WORKING.' e gravação contínua ativa de MP4/ASF são considerados 100% nominais com Lock confirmado, eliminando o falso alerta de '5 canais sem Lock/Sinal' decorrente de drivers BDA que não reportam percentual de SNR (qualidade_sinal=0 no SharePoint legado). Corrige deduplicação de canais na auditoria para escopo estrito por nó (canal, CS)."
+  "updated_at": "2026-11-24T01:50:00.000000",
+  "description": "v3.9.96 - Substitui coluna Subprodutos por métricas diretas de hardware (CPU, Memória, Disco D:) e remove MP3 BUR na Matriz de SLA; alinha identificação de FastMatchingSvc eliminando falso atraso de DT em nós nominais (Campinas).",
+  "release_notes": "v3.9.96: Reestrutura as colunas da Matriz Geral de SLA para o padrão operacional do NOC: substitui Subprodutos por 3 colunas de hardware essenciais (CPU, Memória RAM e Disco D: com alerta visual <30GB), remove coluna legada MP3 BUR e refina a contabilização estrita de atraso físico de arquivos (MP3 ARC, ASF ARC e MP4 ARC). Corrige a resolução de chaves do serviço de detecção automática para motores C++ modernos (FastMatchingSvc), eliminando discrepâncias de DT em Campinas e outros nós 100% nominais."
 }

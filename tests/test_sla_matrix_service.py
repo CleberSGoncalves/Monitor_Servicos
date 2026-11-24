@@ -35,7 +35,7 @@ def test_sla_matrix_structure_and_kpis():
 
 
 def test_sla_matrix_host_contract():
-    """Valida o contrato das linhas da matriz: colunas clássicas do NOC + WAN."""
+    """Valida o contrato das linhas da matriz: colunas clássicas do NOC + WAN + Hardware."""
     res = get_fleet_sla_matrix()
     rows = res["rows"]
     assert len(rows) > 0
@@ -44,8 +44,9 @@ def test_sla_matrix_host_contract():
     expected_fields = [
         "id_host", "hostname", "raw_hostname", "display_name", "praca", "cs",
         "tier", "color_flag", "max_delay_min", "has_delays",
-        "ka_delay_min", "mp3_arc_min", "mp3_bur_min", "asf_arc_min", "asf_bur_min",
-        "mp4_arc_min", "mp4_bur_min", "dt_delay_min", "subproducts", "wan"
+        "ka_delay_min", "mp3_arc_min", "asf_arc_min",
+        "mp4_arc_min", "dt_delay_min", "wan",
+        "cpu_uso", "ram_uso", "disco_d_livre"
     ]
     for field in expected_fields:
         assert field in first, f"Campo {field} ausente na linha da matriz"
@@ -54,6 +55,17 @@ def test_sla_matrix_host_contract():
     for r in rows:
         if r["cs"] in (2, 3):
             assert r["dt_delay_min"] == "N/A", f"CS {r['cs']} não deve avaliar detecção comercial"
+
+
+def test_campinas_cs01_dt_nominal_without_false_positive():
+    """Valida que Campinas CS01 não reporta falso positivo de DT se FastMatchingSvc estiver nominal."""
+    res = get_fleet_sla_matrix()
+    rows = res["rows"]
+    campinas_rows = [r for r in rows if "campinas" in r["praca"].lower() and r["cs"] == 1]
+    if campinas_rows:
+        campinas_cs01 = campinas_rows[0]
+        # DT não pode ser 320 falso positivo
+        assert campinas_cs01["dt_delay_min"] == 0, f"Campinas CS01 com FastMatchingSvc nominal deve ter DT=0, mas teve {campinas_cs01['dt_delay_min']}"
 
 
 def test_sla_matrix_filtering():
