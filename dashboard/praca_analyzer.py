@@ -479,6 +479,81 @@ def audit_praca_ecosystem(praca_name: str, selected_cs: Optional[str] = "ALL") -
     problems = []
 
     # ==============================================================================
+    # 0. AVALIAÇÃO DETERMINÍSTICA DE CONECTIVIDADE E HEARTBEAT DO NÓ
+    # ==============================================================================
+    current_target_host = focused_host or cs01_host or (list(hosts_dict.keys())[0] if hosts_dict else "CS")
+    host_info = hosts_dict.get(current_target_host, {})
+    host_tier = active_cs_tier if is_single_cs_focus and active_cs_tier is not None else host_info.get("cs_tier", 1)
+
+    now_dt = datetime.now(timezone.utc)
+    latest_hb_dt = host_info.get("latest_keepalive_dt")
+    last_hb_str = host_info.get("latest_keepalive_str") or host_info.get("ultima_atualizacao", "N/D")
+    agent_ver = host_info.get("versao_agente", "N/D")
+
+    ka_delay_min = 0
+    if latest_hb_dt:
+        diff_sec = (now_dt - latest_hb_dt).total_seconds()
+        ka_delay_min = max(0, int(diff_sec / 60))
+    elif last_hb_str and last_hb_str != "N/D":
+        try:
+            dt_parsed = datetime.fromisoformat(last_hb_str.replace("Z", "+00:00"))
+            if dt_parsed.tzinfo is None:
+                dt_parsed = dt_parsed.replace(tzinfo=timezone.utc)
+            diff_sec = (now_dt - dt_parsed).total_seconds()
+            ka_delay_min = max(0, int(diff_sec / 60))
+        except Exception:
+            ka_delay_min = 9999
+    else:
+        ka_delay_min = 9999
+
+    is_host_disconnected = ka_delay_min > 60
+    is_host_ka_delayed = 25 < ka_delay_min <= 60
+    tier_lbl = f"CS0{host_tier}"
+
+    # Avaliação de conectividade do nó CS01
+    cs01_disconnected = False
+    cs01_ka_delay = 0
+    if cs01_host and cs01_host in hosts_dict:
+        cs01_info = hosts_dict[cs01_host]
+        cs01_dt = cs01_info.get("latest_keepalive_dt")
+        if cs01_dt:
+            cs01_ka_delay = max(0, int((now_dt - cs01_dt).total_seconds() / 60))
+        elif cs01_info.get("ultima_atualizacao") and cs01_info.get("ultima_atualizacao") != "N/D":
+            try:
+                dt_p = datetime.fromisoformat(cs01_info["ultima_atualizacao"].replace("Z", "+00:00"))
+                if dt_p.tzinfo is None:
+                    dt_p = dt_p.replace(tzinfo=timezone.utc)
+                cs01_ka_delay = max(0, int((now_dt - dt_p).total_seconds() / 60))
+            except Exception:
+                cs01_ka_delay = 9999
+        else:
+            cs01_ka_delay = 9999
+        cs01_disconnected = cs01_ka_delay > 60
+
+    if is_host_disconnected:
+        problems.append({
+            "code": "HOST_TELEMETRY_DISCONNECTED",
+            "severity": "CRITICO",
+            "category": f"Conectividade ({tier_lbl})",
+            "host": current_target_host,
+            "title": f"Host Desconectado / Ausência Crítica de Keepalive ({tier_lbl})",
+            "detail": f"O host {current_target_host} está sem envio de telemetria à central há {ka_delay_min} minutos (último registro às {last_hb_str[:19].replace('T', ' ')}). O agente local DNA.MonitorServiceSVC ou o host estão offline/sem internet.",
+            "recommended_action": "check_host_connectivity",
+            "action_label": "Verificar Conectividade & Agente"
+        })
+    elif is_host_ka_delayed:
+        problems.append({
+            "code": "HOST_KEEPALIVE_DELAYED",
+            "severity": "ALERTA",
+            "category": f"Conectividade ({tier_lbl})",
+            "host": current_target_host,
+            "title": f"Atraso de Heartbeat ({tier_lbl})",
+            "detail": f"O host {current_target_host} está há {ka_delay_min} minutos sem renovar seu heartbeat na central.",
+            "recommended_action": "check_agent_status",
+            "action_label": "Checar Agente Local"
+        })
+
+    # ==============================================================================
     # 1. AUDITORIA DO MOTOR DE DETECÇÃO COMERCIAL (ESTRITAMENTE EXCLUSIVO AO CS01)
     # ==============================================================================
     active_engine = "N/A"
@@ -491,73 +566,75 @@ def audit_praca_ecosystem(praca_name: str, selected_cs: Optional[str] = "ALL") -
         detection_analyzed = False
     elif cs01_host and (not is_single_cs_focus or active_cs_tier == 1):
         detection_analyzed = True
-        svcs = hosts_dict[cs01_host]["services"]
-        fm = next((s for s in svcs if "fastmatch" in str(s.get("nome") or "").lower().replace(" ", "")), None)
-        det = next((s for s in svcs if "detectionsvc" in str(s.get("nome") or "").lower().replace(" ", "")), None)
-        trk = next((s for s in svcs if "trackingsvc" in str(s.get("nome") or "").lower().replace(" ", "")), None)
-        cfg = next((s for s in svcs if "configmonitor" in str(s.get("nome") or "").lower().replace(" ", "")), None)
-
-        fm_run = fm and any(w in str(fm.get("status", "")).lower() for w in ["execu", "running", "ativo"])
-        det_run = det and any(w in str(det.get("status", "")).lower() for w in ["execu", "running", "ativo"])
-
-        if fm_run and det_run:
-            engine_conflict = True
-            active_engine = "CONFLITO (FastMatching + DetectionSVC ativos)"
-            problems.append({
-                "code": "ENGINE_CONCURRENCY_CONFLICT",
-                "severity": "CRITICO",
-                "category": "Deteccao Comercial (CS01)",
-                "host": cs01_host,
-                "title": "Conflito de Concorrência entre FastMatching e DetectionSVC",
-                "detail": "Ambos os motores estão rodando simultaneamente no CS01. Isso causa bloqueio de CPU, lock de arquivos EMU e duplicidade de logs.",
-                "recommended_action": "safe_cascade_restart",
-                "action_label": "Desativar Legado & Manter FastMatching"
-            })
-        elif fm_run:
-            active_engine = "FastMatchingSvc (Moderno C++)"
-            # Auditoria de Recon / Fingerprints em memória no FastMatching (Ponta Porã recon=0)
-            try:
-                from tracking_detection_monitor import get_fastmatching_node_telemetry
-                fm_telemetry = get_fastmatching_node_telemetry(cs01_host, praca_name)
-                if fm_telemetry.get("catalog_recon_zero"):
-                    problems.append({
-                        "code": "FASTMATCHING_CATALOG_RECON_ZERO",
-                        "severity": "CRITICO",
-                        "category": "Deteccao Comercial (CS01)",
-                        "host": cs01_host,
-                        "title": "FastMatching Ocioso / Falha de Carregamento de Spots (recon=0)",
-                        "detail": "O FastMatchingSvc identificou o catálogo ConfigXml.xml mas carregou 0 spots (recon=0, RAM ociosa). Causa provável: Templates .mdna ausentes em data\\sgg ou IdCanal incorreto no FastMatchingSvc.ini.",
-                        "recommended_action": "fastmatching_recon_fix",
-                        "action_label": "Auto-Cura FastMatching (recon=0 Fix)"
-                    })
-            except Exception as e:
-                logger.warning(f"Erro ao checar telemetria FastMatching em {cs01_host}: {e}")
-        elif det_run:
-            active_engine = "DNA.DetectionSVC + TrackingSVC (Legado .NET)"
+        if cs01_disconnected:
+            active_engine = "Telemetria Suspensa (Host Offline)"
         else:
-            active_engine = "PARADO"
-            problems.append({
-                "code": "DETECTION_ENGINE_STOPPED",
-                "severity": "CRITICO",
-                "category": "Deteccao Comercial (CS01)",
-                "host": cs01_host,
-                "title": "Nenhum Motor de Detecção Comercial Ativo no CS01",
-                "detail": "O Capture Site CS01 não possui nenhum motor de matching rodando. Nenhuma detecção comercial está sendo gerada.",
-                "recommended_action": "safe_cascade_restart",
-                "action_label": "Iniciar Motor com Auto-Cura Segura"
-            })
+            svcs = hosts_dict[cs01_host]["services"]
+            fm = next((s for s in svcs if "fastmatch" in str(s.get("nome") or "").lower().replace(" ", "")), None)
+            det = next((s for s in svcs if "detectionsvc" in str(s.get("nome") or "").lower().replace(" ", "")), None)
+            trk = next((s for s in svcs if "trackingsvc" in str(s.get("nome") or "").lower().replace(" ", "")), None)
+            cfg = next((s for s in svcs if "configmonitor" in str(s.get("nome") or "").lower().replace(" ", "")), None)
 
-        if cfg and not any(w in str(cfg.get("status", "")).lower() for w in ["execu", "running", "ativo"]):
-            problems.append({
-                "code": "CONFIG_MONITOR_STOPPED",
-                "severity": "CRITICO",
-                "category": "Transmissao WCF (CS01)",
-                "host": cs01_host,
-                "title": "DNA.ConfigMonitorSVC Parado no CS01",
-                "detail": "O despachante WCF está inativo. Os arquivos de detecção estão represados na pasta data\\tracking sem envio à matriz.",
-                "recommended_action": "safe_cascade_restart",
-                "action_label": "Reiniciar ConfigMonitorSVC"
-            })
+            fm_run = fm and any(w in str(fm.get("status", "")).lower() for w in ["execu", "running", "ativo"])
+            det_run = det and any(w in str(det.get("status", "")).lower() for w in ["execu", "running", "ativo"])
+
+            if fm_run and det_run:
+                engine_conflict = True
+                active_engine = "CONFLITO (FastMatching + DetectionSVC ativos)"
+                problems.append({
+                    "code": "ENGINE_CONCURRENCY_CONFLICT",
+                    "severity": "CRITICO",
+                    "category": "Deteccao Comercial (CS01)",
+                    "host": cs01_host,
+                    "title": "Conflito de Concorrência entre FastMatching e DetectionSVC",
+                    "detail": "Ambos os motores estão rodando simultaneamente no CS01. Isso causa bloqueio de CPU, lock de arquivos EMU e duplicidade de logs.",
+                    "recommended_action": "safe_cascade_restart",
+                    "action_label": "Desativar Legado & Manter FastMatching"
+                })
+            elif fm_run:
+                active_engine = "FastMatchingSvc (Moderno C++)"
+                try:
+                    from tracking_detection_monitor import get_fastmatching_node_telemetry
+                    fm_telemetry = get_fastmatching_node_telemetry(cs01_host, praca_name)
+                    if fm_telemetry.get("catalog_recon_zero"):
+                        problems.append({
+                            "code": "FASTMATCHING_CATALOG_RECON_ZERO",
+                            "severity": "CRITICO",
+                            "category": "Deteccao Comercial (CS01)",
+                            "host": cs01_host,
+                            "title": "FastMatching Ocioso / Falha de Carregamento de Spots (recon=0)",
+                            "detail": "O FastMatchingSvc identificou o catálogo ConfigXml.xml mas carregou 0 spots (recon=0, RAM ociosa). Causa provável: Templates .mdna ausentes em data\\sgg ou IdCanal incorreto no FastMatchingSvc.ini.",
+                            "recommended_action": "fastmatching_recon_fix",
+                            "action_label": "Auto-Cura FastMatching (recon=0 Fix)"
+                        })
+                except Exception as e:
+                    logger.warning(f"Erro ao checar telemetria FastMatching em {cs01_host}: {e}")
+            elif det_run:
+                active_engine = "DNA.DetectionSVC + TrackingSVC (Legado .NET)"
+            else:
+                active_engine = "PARADO"
+                problems.append({
+                    "code": "DETECTION_ENGINE_STOPPED",
+                    "severity": "CRITICO",
+                    "category": "Deteccao Comercial (CS01)",
+                    "host": cs01_host,
+                    "title": "Nenhum Motor de Detecção Comercial Ativo no CS01",
+                    "detail": "O Capture Site CS01 não possui nenhum motor de matching rodando. Nenhuma detecção comercial está sendo gerada.",
+                    "recommended_action": "safe_cascade_restart",
+                    "action_label": "Iniciar Motor com Auto-Cura Segura"
+                })
+
+            if cfg and not any(w in str(cfg.get("status", "")).lower() for w in ["execu", "running", "ativo"]):
+                problems.append({
+                    "code": "CONFIG_MONITOR_STOPPED",
+                    "severity": "CRITICO",
+                    "category": "Transmissao WCF (CS01)",
+                    "host": cs01_host,
+                    "title": "DNA.ConfigMonitorSVC Parado no CS01",
+                    "detail": "O despachante WCF está inativo. Os arquivos de detecção estão represados na pasta data\\tracking sem envio à matriz.",
+                    "recommended_action": "safe_cascade_restart",
+                    "action_label": "Reiniciar ConfigMonitorSVC"
+                })
     elif not cs01_host:
         active_engine = "N/A — Praça sem CS01 de Detecção Cadastrado"
 
@@ -572,6 +649,49 @@ def audit_praca_ecosystem(praca_name: str, selected_cs: Optional[str] = "ALL") -
         has_outage = bool(c.get("has_outage", False))
         mp4_rec = "sim" in str(c.get("gravando_mp4", "")).lower() or "gravando" in str(c.get("gravando_mp4", "")).lower()
         mp3_rec = "sim" in str(c.get("gravando_mp3", "")).lower() or "gravando" in str(c.get("gravando_mp3", "")).lower()
+
+        # Determina a saúde do host do canal
+        ch_h_raw = c.get("host") or c.get("hostname") or ""
+        ch_tier = c.get("cs_tier", 1)
+        ch_target_h = ch_h_raw
+        if not ch_target_h or ch_target_h not in hosts_dict:
+            for cand_h, cand_info in hosts_dict.items():
+                if int(cand_info.get("cs_tier", 1)) == ch_tier:
+                    ch_target_h = cand_h
+                    break
+        ch_info = hosts_dict.get(ch_target_h) if ch_target_h else host_info
+        ch_ka = 0
+        if ch_info and ch_info.get("latest_keepalive_dt"):
+            ch_ka = max(0, int((now_dt - ch_info["latest_keepalive_dt"]).total_seconds() / 60))
+        elif ch_info and ch_info.get("ultima_atualizacao") and ch_info.get("ultima_atualizacao") != "N/D":
+            try:
+                dt_tmp = datetime.fromisoformat(ch_info["ultima_atualizacao"].replace("Z", "+00:00"))
+                if dt_tmp.tzinfo is None:
+                    dt_tmp = dt_tmp.replace(tzinfo=timezone.utc)
+                ch_ka = max(0, int((now_dt - dt_tmp).total_seconds() / 60))
+            except Exception:
+                ch_ka = 9999
+        else:
+            ch_ka = 9999
+        ch_disconnected = ch_ka > 60 or (is_single_cs_focus and is_host_disconnected)
+
+        # SE O HOST DO CANAL ESTÁ DESCONECTADO: A telemetria local está 100% suspensa!
+        if ch_disconnected:
+            canais_auditoria.append({
+                "canal": canal_nome,
+                "meio": "Radio" if is_radio else "TV",
+                "is_radio": is_radio,
+                "cs": c.get("cs", c.get("cs_origin", "CS01")),
+                "cs_origin": c.get("cs_origin", "CS01"),
+                "host": ch_target_h or c.get("host") or focused_host or "CS",
+                "qualidade": 0,
+                "qualidade_str": "Telemetria Suspensa",
+                "status_tuner": f"Host Desconectado ({ch_ka}m)",
+                "gravando": "Indeterminado",
+                "is_nominal": False,
+                "has_outage": True
+            })
+            continue
 
         # REGRAS RÍGIDAS DE RÁDIO VS TV DIGITAL:
         if is_radio:
@@ -660,64 +780,16 @@ def audit_praca_ecosystem(praca_name: str, selected_cs: Optional[str] = "ALL") -
     # 3. PIPELINE FORENSE DE SAÚDE DO NÓ (7 ESTÁGIOS DE CONFIABILIDADE)
     # ==============================================================================
     pipeline_stages = []
-    current_target_host = focused_host or cs01_host or (list(hosts_dict.keys())[0] if hosts_dict else "CS")
-    host_info = hosts_dict.get(current_target_host, {})
-    host_tier = active_cs_tier if is_single_cs_focus and active_cs_tier is not None else host_info.get("cs_tier", 1)
 
     # Estágio 1: Keepalive do Agente Local & Conectividade
-    now_dt = datetime.now(timezone.utc)
-    latest_hb_dt = host_info.get("latest_keepalive_dt")
-    last_hb_str = host_info.get("latest_keepalive_str") or host_info.get("ultima_atualizacao", "N/D")
-    agent_ver = host_info.get("versao_agente", "N/D")
-
-    ka_delay_min = 0
-    if latest_hb_dt:
-        diff_sec = (now_dt - latest_hb_dt).total_seconds()
-        ka_delay_min = max(0, int(diff_sec / 60))
-    elif last_hb_str and last_hb_str != "N/D":
-        try:
-            dt_parsed = datetime.fromisoformat(last_hb_str.replace("Z", "+00:00"))
-            if dt_parsed.tzinfo is None:
-                dt_parsed = dt_parsed.replace(tzinfo=timezone.utc)
-            diff_sec = (now_dt - dt_parsed).total_seconds()
-            ka_delay_min = max(0, int(diff_sec / 60))
-        except Exception:
-            ka_delay_min = 9999
-    else:
-        ka_delay_min = 9999
-
-    is_host_disconnected = ka_delay_min > 60
-    is_host_ka_delayed = 25 < ka_delay_min <= 60
-    tier_lbl = f"CS0{host_tier}"
-
     if is_host_disconnected:
         st1_status = "CRITICO"
         st1_badge = f"Desconectado ({ka_delay_min}m)"
         st1_detail = f"Host sem comunicação há {ka_delay_min} min (último heartbeat às {last_hb_str[:19].replace('T', ' ')}). Telemetria e serviços inalcançáveis."
-        problems.append({
-            "code": "HOST_TELEMETRY_DISCONNECTED",
-            "severity": "CRITICO",
-            "category": f"Conectividade ({tier_lbl})",
-            "host": current_target_host,
-            "title": f"Host Desconectado / Ausência Crítica de Keepalive ({tier_lbl})",
-            "detail": f"O host {current_target_host} está sem envio de telemetria à central há {ka_delay_min} minutos (último registro às {last_hb_str[:19].replace('T', ' ')}). O agente local DNA.MonitorServiceSVC ou o host estão offline/sem internet.",
-            "recommended_action": "check_host_connectivity",
-            "action_label": "Verificar Conectividade & Agente"
-        })
     elif is_host_ka_delayed:
         st1_status = "ALERTA"
         st1_badge = f"Atraso KA ({ka_delay_min}m)"
         st1_detail = f"Heartbeat em atraso ({ka_delay_min} min sem envio). Último reporte às {last_hb_str[:19].replace('T', ' ')}."
-        problems.append({
-            "code": "HOST_KEEPALIVE_DELAYED",
-            "severity": "ALERTA",
-            "category": f"Conectividade ({tier_lbl})",
-            "host": current_target_host,
-            "title": f"Atraso de Heartbeat ({tier_lbl})",
-            "detail": f"O host {current_target_host} está há {ka_delay_min} minutos sem renovar seu heartbeat na central.",
-            "recommended_action": "check_agent_status",
-            "action_label": "Checar Agente Local"
-        })
     else:
         st1_status = "NOMINAL" if agent_ver != "N/D" else "CRITICO"
         st1_badge = f"Agente v{agent_ver}" if agent_ver != "N/D" else "Sem Agente"
@@ -732,93 +804,111 @@ def audit_praca_ecosystem(praca_name: str, selected_cs: Optional[str] = "ALL") -
     })
 
     # Estágio 2: Conectividade & Link WAN (Internet / Operadora / RTT - Dados da aba Link WAN)
-    wan_stage_status = "NOMINAL"
-    wan_badge = "Conexão Folgada (SLA 100%)"
-    wan_detail = "Link de internet WAN estável. Escoamento de mídia e latência dentro do SLA."
-    try:
-        from media_pipeline_monitor import get_link_monitoring_metrics
-        import unicodedata
+    if is_host_disconnected:
+        pipeline_stages.append({
+            "id": "wan_link",
+            "title": "2. Link de Internet WAN & Operadora",
+            "status": "CRITICO",
+            "badge": "Link Inacessível",
+            "detail": f"Comunicação com o host perdida há {ka_delay_min} min. Sem resposta de ICMP/Ping ou telemetria de tráfego de rede."
+        })
+    else:
+        wan_stage_status = "NOMINAL"
+        wan_badge = "Conexão Folgada (SLA 100%)"
+        wan_detail = "Link de internet WAN estável. Escoamento de mídia e latência dentro do SLA."
+        try:
+            from media_pipeline_monitor import get_link_monitoring_metrics
+            import unicodedata
 
-        def _norm_s(v):
-            return "".join(c for c in unicodedata.normalize('NFKD', str(v or "")) if not unicodedata.combining(c)).strip().lower()
+            def _norm_s(v):
+                return "".join(c for c in unicodedata.normalize('NFKD', str(v or "")) if not unicodedata.combining(c)).strip().lower()
 
-        all_wan_metrics = get_link_monitoring_metrics()
-        target_wan = None
-        h_target_norm = _norm_s(current_target_host)
-        p_target_norm = _norm_s(praca_name)
+            all_wan_metrics = get_link_monitoring_metrics()
+            target_wan = None
+            h_target_norm = _norm_s(current_target_host)
+            p_target_norm = _norm_s(praca_name)
 
-        for m in all_wan_metrics:
-            if _norm_s(m.get("hostname")) == h_target_norm:
-                target_wan = m
-                break
-        if not target_wan:
             for m in all_wan_metrics:
-                if _norm_s(m.get("praca")) == p_target_norm and int(m.get("cs", 1)) == int(host_tier or 1):
+                if _norm_s(m.get("hostname")) == h_target_norm:
                     target_wan = m
                     break
-        if not target_wan:
-            for m in all_wan_metrics:
-                if _norm_s(m.get("praca")) == p_target_norm:
-                    target_wan = m
-                    break
+            if not target_wan:
+                for m in all_wan_metrics:
+                    if _norm_s(m.get("praca")) == p_target_norm and int(m.get("cs", 1)) == int(host_tier or 1):
+                        target_wan = m
+                        break
+            if not target_wan:
+                for m in all_wan_metrics:
+                    if _norm_s(m.get("praca")) == p_target_norm:
+                        target_wan = m
+                        break
 
-        if target_wan:
-            wan_status = str(target_wan.get("status", "estavel")).lower()
-            operadora = target_wan.get("operadora", "Operadora WAN")
-            ping_ms = target_wan.get("ping_ms")
-            upload_mbps = target_wan.get("measured_upload_mbps") or target_wan.get("speed_upload_mbps") or 30.0
-            drain_min = target_wan.get("drain_time_minutes", 0.5)
-            loss_pct = target_wan.get("packet_loss_pct", 0.0)
-            status_label = target_wan.get("status_label", "Conexão Folgada (SLA 100%)")
+            if target_wan:
+                wan_status = str(target_wan.get("status", "estavel")).lower()
+                operadora = target_wan.get("operadora", "Operadora WAN")
+                ping_ms = target_wan.get("ping_ms")
+                upload_mbps = target_wan.get("measured_upload_mbps") or target_wan.get("speed_upload_mbps") or 30.0
+                drain_min = target_wan.get("drain_time_minutes", 0.5)
+                loss_pct = target_wan.get("packet_loss_pct", 0.0)
+                status_label = target_wan.get("status_label", "Conexão Folgada (SLA 100%)")
 
-            wan_stage_status = "CRITICO" if wan_status == "critico" else ("ALERTA" if wan_status == "alerta" else "NOMINAL")
-            ping_str = f"{ping_ms}ms" if ping_ms is not None else "20ms"
-            wan_badge = f"{operadora} | {ping_str} | {upload_mbps} Mbps"
-            wan_detail = f"{status_label}. Escoamento em {drain_min} min (Perda: {loss_pct}%)."
+                wan_stage_status = "CRITICO" if wan_status == "critico" else ("ALERTA" if wan_status == "alerta" else "NOMINAL")
+                ping_str = f"{ping_ms}ms" if ping_ms is not None else "20ms"
+                wan_badge = f"{operadora} | {ping_str} | {upload_mbps} Mbps"
+                wan_detail = f"{status_label}. Escoamento em {drain_min} min (Perda: {loss_pct}%)."
 
-            if wan_status == "critico":
-                problems.append({
-                    "code": "WAN_LINK_BOTTLENECK",
-                    "severity": "CRITICO",
-                    "category": f"Link WAN (CS0{host_tier})",
-                    "host": current_target_host,
-                    "title": f"Gargalo Crítico de Link WAN / Internet no CS0{host_tier}",
-                    "detail": f"Tempo de escoamento em {drain_min} min excede o limite tolerado de 25 min. Risco iminente de perda de SLA.",
-                    "recommended_action": "diagnose_wan_link",
-                    "action_label": "Verificar Rota & Latência WAN"
-                })
-    except Exception as e:
-        logger.warning(f"Erro ao obter telemetria WAN para {current_target_host}: {e}")
+                if wan_status == "critico":
+                    problems.append({
+                        "code": "WAN_LINK_BOTTLENECK",
+                        "severity": "CRITICO",
+                        "category": f"Link WAN (CS0{host_tier})",
+                        "host": current_target_host,
+                        "title": f"Gargalo Crítico de Link WAN / Internet no CS0{host_tier}",
+                        "detail": f"Tempo de escoamento em {drain_min} min excede o limite tolerado de 25 min. Risco iminente de perda de SLA.",
+                        "recommended_action": "diagnose_wan_link",
+                        "action_label": "Verificar Rota & Latência WAN"
+                    })
+        except Exception as e:
+            logger.warning(f"Erro ao obter telemetria WAN para {current_target_host}: {e}")
 
-    pipeline_stages.append({
-        "id": "wan_link",
-        "title": "2. Link de Internet WAN & Operadora",
-        "status": wan_stage_status,
-        "badge": wan_badge,
-        "detail": wan_detail
-    })
+        pipeline_stages.append({
+            "id": "wan_link",
+            "title": "2. Link de Internet WAN & Operadora",
+            "status": wan_stage_status,
+            "badge": wan_badge,
+            "detail": wan_detail
+        })
 
     # Estágio 3: Sintonizadores & Sinal
-    signal_faults = [p for p in problems if "SIGNAL" in p["code"]]
-    pipeline_stages.append({
-        "id": "signal",
-        "title": "3. Integridade de Sintonizadores & Sinal",
-        "status": "CRITICO" if signal_faults else "NOMINAL",
-        "badge": f"{len(signal_faults)} Anomalia(s)" if signal_faults else "Tuners Saudáveis",
-        "detail": f"{len(signal_faults)} canal(is) sem Lock/Sinal." if signal_faults else "Todos os sintonizadores de TV e placas de áudio operando com lock/estabilidade."
-    })
+    if is_host_disconnected:
+        pipeline_stages.append({
+            "id": "signal",
+            "title": "3. Integridade de Sintonizadores & Sinal",
+            "status": "CRITICO",
+            "badge": "Telemetria Suspensa",
+            "detail": f"Host desconectado há {ka_delay_min} min. Impossível atestar sinal RF e sintonizadores sem telemetria viva."
+        })
+    else:
+        signal_faults = [p for p in problems if "SIGNAL" in p["code"]]
+        pipeline_stages.append({
+            "id": "signal",
+            "title": "3. Integridade de Sintonizadores & Sinal",
+            "status": "CRITICO" if signal_faults else "NOMINAL",
+            "badge": f"{len(signal_faults)} Anomalia(s)" if signal_faults else "Tuners Saudáveis",
+            "detail": f"{len(signal_faults)} canal(is) sem Lock/Sinal." if signal_faults else "Todos os sintonizadores de TV e placas de áudio operando com lock/estabilidade."
+        })
 
     # Estágio 4: Gravação Contínua
-    rec_faults = [p for p in problems if "RECORDING" in p["code"]]
     if is_host_disconnected:
         pipeline_stages.append({
             "id": "recording",
             "title": "4. Fluxo de Gravação de Mídia",
             "status": "CRITICO",
-            "badge": "Status Indeterminado",
-            "detail": f"Comunicação com o host interrompida há {ka_delay_min}m. Impossível atestar gravação contínua sem telemetria viva."
+            "badge": "Telemetria Suspensa",
+            "detail": f"Comunicação com o host interrompida há {ka_delay_min} min. Impossível atestar gravação contínua sem telemetria viva."
         })
     else:
+        rec_faults = [p for p in problems if "RECORDING" in p["code"]]
         pipeline_stages.append({
             "id": "recording",
             "title": "4. Fluxo de Gravação de Mídia",
@@ -834,7 +924,7 @@ def audit_praca_ecosystem(praca_name: str, selected_cs: Optional[str] = "ALL") -
             "title": "5. Recursos de Hardware & SO",
             "status": "CRITICO",
             "badge": "Telemetria Suspensa",
-            "detail": f"Host desconectado há {ka_delay_min}m. Leituras de CPU, Memória e Disco indisponíveis."
+            "detail": f"Host desconectado há {ka_delay_min} min. Leituras de CPU, Memória e Disco indisponíveis."
         })
     else:
         cpu_val_str = host_info.get("cpu_uso", "26%")
@@ -862,14 +952,23 @@ def audit_praca_ecosystem(praca_name: str, selected_cs: Optional[str] = "ALL") -
             "detail": f"Este nó (CS0{active_cs_tier} — {role_label}) não executa detecção automática de comerciais. O motor de matching roda exclusivamente no CS01."
         })
     elif cs01_host and (not is_single_cs_focus or active_cs_tier == 1):
-        det_stat = "NOMINAL" if active_engine not in ("PARADO", "NENHUM") and not engine_conflict and not any(p["code"] == "FASTMATCHING_CATALOG_RECON_ZERO" for p in problems) else "CRITICO"
-        pipeline_stages.append({
-            "id": "detection",
-            "title": "6. Detecção Automática de Comerciais",
-            "status": det_stat,
-            "badge": active_engine,
-            "detail": "Pipeline de matching operando nominalmente." if det_stat == "NOMINAL" else "Motor de detecção parado, em concorrência ou com recon=0."
-        })
+        if cs01_disconnected:
+            pipeline_stages.append({
+                "id": "detection",
+                "title": "6. Detecção Automática de Comerciais",
+                "status": "CRITICO",
+                "badge": "Telemetria Suspensa",
+                "detail": f"Host CS01 ({cs01_host}) desconectado há {cs01_ka_delay} min. Impossível auditar motores de matching sem telemetria viva."
+            })
+        else:
+            det_stat = "NOMINAL" if active_engine not in ("PARADO", "NENHUM") and not engine_conflict and not any(p["code"] == "FASTMATCHING_CATALOG_RECON_ZERO" for p in problems) else "CRITICO"
+            pipeline_stages.append({
+                "id": "detection",
+                "title": "6. Detecção Automática de Comerciais",
+                "status": det_stat,
+                "badge": active_engine,
+                "detail": "Pipeline de matching operando nominalmente." if det_stat == "NOMINAL" else "Motor de detecção parado, em concorrência ou com recon=0."
+            })
     else:
         pipeline_stages.append({
             "id": "detection",
@@ -889,14 +988,23 @@ def audit_praca_ecosystem(praca_name: str, selected_cs: Optional[str] = "ALL") -
             "detail": f"O despacho WCF de metadados de detecção é exclusivo do CS01. Este nó (CS0{active_cs_tier}) realiza transmissão de mídia via FileTransfer."
         })
     elif cs01_host and (not is_single_cs_focus or active_cs_tier == 1):
-        cfg_fault = any(p["code"] == "CONFIG_MONITOR_STOPPED" for p in problems)
-        pipeline_stages.append({
-            "id": "dispatch",
-            "title": "7. Despacho WCF & Transmissão",
-            "status": "CRITICO" if cfg_fault else "NOMINAL",
-            "badge": "Despacho WCF OK" if not cfg_fault else "WCF Represado",
-            "detail": "DNA.ConfigMonitorSVC operando despacho à matriz." if not cfg_fault else "DNA.ConfigMonitorSVC inativo. Verifique o serviço."
-        })
+        if cs01_disconnected:
+            pipeline_stages.append({
+                "id": "dispatch",
+                "title": "7. Despacho WCF & Transmissão",
+                "status": "CRITICO",
+                "badge": "Telemetria Suspensa",
+                "detail": f"Host CS01 ({cs01_host}) desconectado há {cs01_ka_delay} min. Despacho WCF do ConfigMonitorSVC inalcançável sem comunicação viva."
+            })
+        else:
+            cfg_fault = any(p["code"] == "CONFIG_MONITOR_STOPPED" for p in problems)
+            pipeline_stages.append({
+                "id": "dispatch",
+                "title": "7. Despacho WCF & Transmissão",
+                "status": "CRITICO" if cfg_fault else "NOMINAL",
+                "badge": "Despacho WCF OK" if not cfg_fault else "WCF Represado",
+                "detail": "DNA.ConfigMonitorSVC operando despacho à matriz." if not cfg_fault else "DNA.ConfigMonitorSVC inativo. Verifique o serviço."
+            })
     else:
         pipeline_stages.append({
             "id": "dispatch",

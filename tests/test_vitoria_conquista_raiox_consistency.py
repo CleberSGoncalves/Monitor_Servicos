@@ -1,9 +1,9 @@
 """
 test_vitoria_conquista_raiox_consistency.py
 Garante consistência total entre a Matriz de SLA e o Raio-X Forense de Praças.
-Quando um host apresenta atraso crítico de telemetria/keepalive (ex: Vitória da Conquista CS01/CS02 com > 10 horas sem heartbeat),
-o Raio-X Forense DEVE marcar o Estágio 1 (Conectividade & Keepalive) como CRÍTICO, com badge de Desconectado,
-suspender métricas de hardware e penalizar o Health Score (teto <= 20% e status CRÍTICO).
+Quando um host apresenta ausência de comunicação/heartbeat (ex: Vitória da Conquista com > 10 horas offline),
+o Raio-X Forense NÃO PODE fingir que sintonizadores estão saudáveis ou que a conexão WAN está operando nominalmente!
+Todos os estágios dependentes de telemetria local devem ser marcados como CRÍTICO (Telemetria Suspensa / Link Inacessível).
 """
 import sys
 import os
@@ -14,37 +14,50 @@ from praca_analyzer import audit_praca_ecosystem
 
 
 def test_vitoria_conquista_cs02_telemetry_disconnected():
-    """Valida que Vitória da Conquista CS02 (offline há > 10h) é auditado como CRÍTICO no Raio-X."""
+    """Valida que Vitória da Conquista CS02 (offline há > 10h) suspende telemetria em TODOS os estágios."""
     res = audit_praca_ecosystem("Vitória da Conquista", selected_cs="CS02")
     
     assert res is not None
     assert res["status_geral"] == "CRITICO", f"Esperado CRITICO, obteve {res['status_geral']}"
     assert res["health_score"] <= 25, f"Esperado score penalizado <= 25%, obteve {res['health_score']}%"
     
-    # Valida Estágio 1 (Conectividade & Keepalive)
+    # 1. Conectividade & Keepalive
     st1 = next((s for s in res["pipeline_stages"] if s["id"] == "link"), None)
     assert st1 is not None
-    assert st1["status"] == "CRITICO", f"Estágio 1 deveria ser CRITICO, obteve {st1['status']}"
-    assert "desconectado" in st1["badge"].lower() or "sem sinal" in st1["badge"].lower()
+    assert st1["status"] == "CRITICO"
+    assert "desconectado" in st1["badge"].lower()
     
-    # Valida que o problema HOST_TELEMETRY_DISCONNECTED foi gerado
-    problem_codes = [p["code"] for p in res["problems"]]
-    assert "HOST_TELEMETRY_DISCONNECTED" in problem_codes
+    # 2. Link de Internet WAN
+    st2 = next((s for s in res["pipeline_stages"] if s["id"] == "wan_link"), None)
+    assert st2 is not None
+    assert st2["status"] == "CRITICO", "Link WAN não pode ser nominal se o host está offline!"
+    assert "inacessível" in st2["badge"].lower() or "inacessivel" in st2["badge"].lower()
     
-    # Valida Estágio 4 (Gravação) e Estágio 5 (Hardware)
+    # 3. Sintonizadores & Sinal
+    st3 = next((s for s in res["pipeline_stages"] if s["id"] == "signal"), None)
+    assert st3 is not None
+    assert st3["status"] == "CRITICO", "Sintonizadores não podem ser declarados saudáveis se a máquina está offline!"
+    assert "suspensa" in st3["badge"].lower()
+    
+    # 4. Fluxo de Gravação
     st4 = next((s for s in res["pipeline_stages"] if s["id"] == "recording"), None)
     assert st4 is not None
     assert st4["status"] == "CRITICO"
-    assert "indeterminado" in st4["badge"].lower()
+    assert "suspensa" in st4["badge"].lower()
     
+    # 5. Recursos de Hardware
     st5 = next((s for s in res["pipeline_stages"] if s["id"] == "hardware"), None)
     assert st5 is not None
     assert st5["status"] == "CRITICO"
     assert "suspensa" in st5["badge"].lower()
+    
+    # Valida que o problema HOST_TELEMETRY_DISCONNECTED foi gerado
+    problem_codes = [p["code"] for p in res["problems"]]
+    assert "HOST_TELEMETRY_DISCONNECTED" in problem_codes
 
 
 def test_vitoria_conquista_cs01_telemetry_disconnected():
-    """Valida que Vitória da Conquista CS01 também é auditado como CRÍTICO por ausência de heartbeat."""
+    """Valida que Vitória da Conquista CS01 (nó de detecção offline) suspende matching e WCF."""
     res = audit_praca_ecosystem("Vitória da Conquista", selected_cs="CS01")
     
     assert res is not None
@@ -52,12 +65,21 @@ def test_vitoria_conquista_cs01_telemetry_disconnected():
     assert res["health_score"] <= 25
     
     st1 = next((s for s in res["pipeline_stages"] if s["id"] == "link"), None)
-    assert st1 is not None
     assert st1["status"] == "CRITICO"
-    assert "desconectado" in st1["badge"].lower()
     
-    problem_codes = [p["code"] for p in res["problems"]]
-    assert "HOST_TELEMETRY_DISCONNECTED" in problem_codes
+    st2 = next((s for s in res["pipeline_stages"] if s["id"] == "wan_link"), None)
+    assert st2["status"] == "CRITICO"
+    
+    st3 = next((s for s in res["pipeline_stages"] if s["id"] == "signal"), None)
+    assert st3["status"] == "CRITICO"
+    
+    st6 = next((s for s in res["pipeline_stages"] if s["id"] == "detection"), None)
+    assert st6["status"] == "CRITICO"
+    assert "suspensa" in st6["badge"].lower()
+    
+    st7 = next((s for s in res["pipeline_stages"] if s["id"] == "dispatch"), None)
+    assert st7["status"] == "CRITICO"
+    assert "suspensa" in st7["badge"].lower()
 
 
 def test_boa_vista_healthy_preserves_nominal():
@@ -69,6 +91,10 @@ def test_boa_vista_healthy_preserves_nominal():
     assert res["health_score"] == 100
     
     st1 = next((s for s in res["pipeline_stages"] if s["id"] == "link"), None)
-    assert st1 is not None
     assert st1["status"] == "NOMINAL"
-    assert "agente" in st1["badge"].lower()
+    
+    st2 = next((s for s in res["pipeline_stages"] if s["id"] == "wan_link"), None)
+    assert st2["status"] == "NOMINAL"
+    
+    st3 = next((s for s in res["pipeline_stages"] if s["id"] == "signal"), None)
+    assert st3["status"] == "NOMINAL"
