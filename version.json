@@ -1,8 +1,8 @@
 {
-  "version": "3.9.101",
+  "version": "3.9.102",
   "agent_version": "1.0.21.5",
   "commit_sha": "auto",
-  "updated_at": "2026-11-24T04:10:00.000000",
-  "description": "v3.9.101 - Erradica telemetria de CPU estática e congelada (56%); suspende métricas de hardware em hosts offline e aplica variação viva nos nós online.",
-  "release_notes": "v3.9.101: Elimina a aberração operacional de dezenas de máquinas cravadas em '56% de CPU'. Identifica e resolve a causa raiz no agente C# (dirty check ignorando flutuação de CPU e congelando valores de boot do encoder Atria). Suspende formalmente a telemetria de hardware (CPU, RAM e Disco D marcados com '-') em nós desconectados/offline (como Vitória da Conquista e Parintins), e implementa dinamização realista baseada na carga real de canais ativos e flutuação orgânica nos hosts online."
+  "updated_at": "2026-11-24T05:00:00.000000",
+  "description": "v3.9.102 - Alinha auditoria forense do Raio-X com o Keepalive real; penaliza nós desconectados (Vitória da Conquista) e elimina inconsistência com a Matriz de SLA.",
+  "release_notes": "v3.9.102: Erradica a inconsistência gritante entre a Matriz de SLA e o Raio-X Forense de Praças. Corrige a causa raiz em praca_analyzer.py onde o Estágio 1 avaliava apenas a presença estática da versão do agente em vez da idade real da telemetria. Agora, nós sem heartbeat há mais de 1 hora (ex: Vitória da Conquista com KA=625m) têm o Estágio 1 marcado imediatamente como CRÍTICO ('Desconectado Xm'), o problema HOST_TELEMETRY_DISCONNECTED injetado formalmente, as métricas de hardware suspensas e o Health Score penalizado para o teto crítico (<= 20%)."
 }

@@ -9,7 +9,7 @@ Examina a topologia completa da praca e de cada Capture Site especifico (CS01, C
 """
 import re
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 from sharepoint_sync import get_cached_data
 
@@ -275,6 +275,13 @@ def audit_praca_ecosystem(praca_name: str, selected_cs: Optional[str] = "ALL") -
 
     # Agrupamento e identificacao dos hosts da praca
     hosts_dict = {}
+    gcp_hosts_map = {}
+    try:
+        from gcp_sync import _cached_firestore_hosts, _fetch_firestore_hosts_rest
+        gcp_hosts_map = _cached_firestore_hosts or _fetch_firestore_hosts_rest() or {}
+    except Exception:
+        pass
+
     for s in praca_services_raw:
         h = s.get("hostname", "")
         if not h:
@@ -313,17 +320,60 @@ def audit_praca_ecosystem(praca_name: str, selected_cs: Optional[str] = "ALL") -
                 "status_geral": "NOMINAL",
                 "versao_agente": s.get("versao_instalada", "N/D"),
                 "ultima_atualizacao": s.get("ultima_atualizacao", "N/D"),
+                "latest_keepalive_dt": None,
+                "latest_keepalive_str": "",
                 "cpu_uso": raw_cpu,
                 "ram_uso": s.get("ram_uso", "N/A"),
                 "disco_d_livre": s.get("disco_d_livre", "N/A"),
                 "is_paytv": r_dyn.get("is_paytv", False),
                 "is_radio": r_dyn.get("is_radio", False)
             }
+
+        s_name = s.get("nome_servico") or s.get("service_name") or s.get("nome") or ""
         hosts_dict[h]["services"].append({
-            "nome": s.get("nome_servico") or s.get("service_name") or s.get("nome") or "",
+            "nome": s_name,
             "status": s.get("status_servico") or s.get("status") or "",
             "versao": s.get("versao_instalada") or s.get("versao_agente") or ""
         })
+
+        # Atualiza a versao do agente se este servico for o proprio DNA.MonitorServiceSVC
+        if "monitorservice" in s_name.lower():
+            ag_v = s.get("versao_instalada") or s.get("versao_agente")
+            if ag_v and ag_v not in ("N/D", "Não Instalado", ""):
+                hosts_dict[h]["versao_agente"] = ag_v
+
+        # Rastreia o timestamp mais recente de atualizacao do host
+        up_str = s.get("ultima_atualizacao")
+        if up_str and up_str != "N/D":
+            try:
+                clean = up_str.replace("Z", "+00:00")
+                dt = datetime.fromisoformat(clean)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                curr_dt = hosts_dict[h].get("latest_keepalive_dt")
+                if curr_dt is None or dt > curr_dt:
+                    hosts_dict[h]["latest_keepalive_dt"] = dt
+                    hosts_dict[h]["latest_keepalive_str"] = up_str
+                    hosts_dict[h]["ultima_atualizacao"] = up_str
+            except Exception:
+                pass
+
+    # Enriquece keepalive com Firestore se disponível
+    for h, info in hosts_dict.items():
+        doc = gcp_hosts_map.get(h.upper())
+        if doc and isinstance(doc, dict):
+            hb_doc = str(doc.get("last_heartbeat") or doc.get("updated_at") or "").strip()
+            if hb_doc:
+                try:
+                    dt_gcp = datetime.fromisoformat(hb_doc.replace("Z", "+00:00"))
+                    if dt_gcp.tzinfo is None:
+                        dt_gcp = dt_gcp.replace(tzinfo=timezone.utc)
+                    if info["latest_keepalive_dt"] is None or dt_gcp > info["latest_keepalive_dt"]:
+                        info["latest_keepalive_dt"] = dt_gcp
+                        info["latest_keepalive_str"] = hb_doc
+                        info["ultima_atualizacao"] = hb_doc
+                except Exception:
+                    pass
 
     # Lista de CS disponiveis na praca para os botoes da UI (estritamente inteiros CS01, CS02, CS03)
     available_cs_options = []
@@ -605,15 +655,71 @@ def audit_praca_ecosystem(praca_name: str, selected_cs: Optional[str] = "ALL") -
     host_info = hosts_dict.get(current_target_host, {})
     host_tier = active_cs_tier if is_single_cs_focus and active_cs_tier is not None else host_info.get("cs_tier", 1)
 
-    # Estágio 1: Keepalive do Agente Local
+    # Estágio 1: Keepalive do Agente Local & Conectividade
+    now_dt = datetime.now(timezone.utc)
+    latest_hb_dt = host_info.get("latest_keepalive_dt")
+    last_hb_str = host_info.get("latest_keepalive_str") or host_info.get("ultima_atualizacao", "N/D")
     agent_ver = host_info.get("versao_agente", "N/D")
-    last_hb = host_info.get("ultima_atualizacao", "N/D")
+
+    ka_delay_min = 0
+    if latest_hb_dt:
+        diff_sec = (now_dt - latest_hb_dt).total_seconds()
+        ka_delay_min = max(0, int(diff_sec / 60))
+    elif last_hb_str and last_hb_str != "N/D":
+        try:
+            dt_parsed = datetime.fromisoformat(last_hb_str.replace("Z", "+00:00"))
+            if dt_parsed.tzinfo is None:
+                dt_parsed = dt_parsed.replace(tzinfo=timezone.utc)
+            diff_sec = (now_dt - dt_parsed).total_seconds()
+            ka_delay_min = max(0, int(diff_sec / 60))
+        except Exception:
+            ka_delay_min = 9999
+    else:
+        ka_delay_min = 9999
+
+    is_host_disconnected = ka_delay_min > 60
+    is_host_ka_delayed = 25 < ka_delay_min <= 60
+    tier_lbl = f"CS0{host_tier}"
+
+    if is_host_disconnected:
+        st1_status = "CRITICO"
+        st1_badge = f"Desconectado ({ka_delay_min}m)"
+        st1_detail = f"Host sem comunicação há {ka_delay_min} min (último heartbeat às {last_hb_str[:19].replace('T', ' ')}). Telemetria e serviços inalcançáveis."
+        problems.append({
+            "code": "HOST_TELEMETRY_DISCONNECTED",
+            "severity": "CRITICO",
+            "category": f"Conectividade ({tier_lbl})",
+            "host": current_target_host,
+            "title": f"Host Desconectado / Ausência Crítica de Keepalive ({tier_lbl})",
+            "detail": f"O host {current_target_host} está sem envio de telemetria à central há {ka_delay_min} minutos (último registro às {last_hb_str[:19].replace('T', ' ')}). O agente local DNA.MonitorServiceSVC ou o host estão offline/sem internet.",
+            "recommended_action": "check_host_connectivity",
+            "action_label": "Verificar Conectividade & Agente"
+        })
+    elif is_host_ka_delayed:
+        st1_status = "ALERTA"
+        st1_badge = f"Atraso KA ({ka_delay_min}m)"
+        st1_detail = f"Heartbeat em atraso ({ka_delay_min} min sem envio). Último reporte às {last_hb_str[:19].replace('T', ' ')}."
+        problems.append({
+            "code": "HOST_KEEPALIVE_DELAYED",
+            "severity": "ALERTA",
+            "category": f"Conectividade ({tier_lbl})",
+            "host": current_target_host,
+            "title": f"Atraso de Heartbeat ({tier_lbl})",
+            "detail": f"O host {current_target_host} está há {ka_delay_min} minutos sem renovar seu heartbeat na central.",
+            "recommended_action": "check_agent_status",
+            "action_label": "Checar Agente Local"
+        })
+    else:
+        st1_status = "NOMINAL" if agent_ver != "N/D" else "CRITICO"
+        st1_badge = f"Agente v{agent_ver}" if agent_ver != "N/D" else "Sem Agente"
+        st1_detail = f"Telemetria nominal recebida às {last_hb_str[:19].replace('T', ' ')}." if last_hb_str != "N/D" else "Sem reporte do agente local."
+
     pipeline_stages.append({
         "id": "link",
         "title": "1. Conectividade & Keepalive",
-        "status": "NOMINAL" if agent_ver != "N/D" else "CRITICO",
-        "badge": f"Agente v{agent_ver}",
-        "detail": f"Telemetria recebida às {last_hb[:19].replace('T', ' ')}" if last_hb != "N/D" else "Sem reporte do agente local."
+        "status": st1_status,
+        "badge": st1_badge,
+        "detail": st1_detail
     })
 
     # Estágio 2: Conectividade & Link WAN (Internet / Operadora / RTT - Dados da aba Link WAN)
@@ -695,25 +801,45 @@ def audit_praca_ecosystem(praca_name: str, selected_cs: Optional[str] = "ALL") -
 
     # Estágio 4: Gravação Contínua
     rec_faults = [p for p in problems if "RECORDING" in p["code"]]
-    pipeline_stages.append({
-        "id": "recording",
-        "title": "4. Fluxo de Gravação de Mídia",
-        "status": "ALERTA" if rec_faults else "NOMINAL",
-        "badge": f"{len(rec_faults)} Falha(s)" if rec_faults else "Gravação Ativa",
-        "detail": f"{len(rec_faults)} canal(is) sem gravação de vídeo/áudio." if rec_faults else "Gravação nominal contínua de MP4/ASF (TV) e MP3 (Rádio)."
-    })
+    if is_host_disconnected:
+        pipeline_stages.append({
+            "id": "recording",
+            "title": "4. Fluxo de Gravação de Mídia",
+            "status": "CRITICO",
+            "badge": "Status Indeterminado",
+            "detail": f"Comunicação com o host interrompida há {ka_delay_min}m. Impossível atestar gravação contínua sem telemetria viva."
+        })
+    else:
+        pipeline_stages.append({
+            "id": "recording",
+            "title": "4. Fluxo de Gravação de Mídia",
+            "status": "ALERTA" if rec_faults else "NOMINAL",
+            "badge": f"{len(rec_faults)} Falha(s)" if rec_faults else "Gravação Ativa",
+            "detail": f"{len(rec_faults)} canal(is) sem gravação de vídeo/áudio." if rec_faults else "Gravação nominal contínua de MP4/ASF (TV) e MP3 (Rádio)."
+        })
 
     # Estágio 5: Hardware & SO
-    cpu_val_str = host_info.get("cpu_uso", "26%")
-    ram_val_str = host_info.get("ram_uso", "N/A")
-    disk_val_str = host_info.get("disco_d_livre", "N/A")
-    pipeline_stages.append({
-        "id": "hardware",
-        "title": "5. Recursos de Hardware & SO",
-        "status": "NOMINAL",
-        "badge": f"CPU {cpu_val_str} | RAM {ram_val_str}",
-        "detail": f"Espaço em disco D: {disk_val_str}. Uso estável de hardware."
-    })
+    if is_host_disconnected:
+        pipeline_stages.append({
+            "id": "hardware",
+            "title": "5. Recursos de Hardware & SO",
+            "status": "CRITICO",
+            "badge": "Telemetria Suspensa",
+            "detail": f"Host desconectado há {ka_delay_min}m. Leituras de CPU, Memória e Disco indisponíveis."
+        })
+    else:
+        cpu_val_str = host_info.get("cpu_uso", "26%")
+        ram_val_str = host_info.get("ram_uso", "N/A")
+        disk_val_str = host_info.get("disco_d_livre", "N/A")
+        hw_status = "ALERTA" if is_host_ka_delayed else "NOMINAL"
+        hw_detail = f"Espaço em disco D: {disk_val_str}. Uso estável de hardware." if not is_host_ka_delayed else f"Espaço em disco D: {disk_val_str}. Telemetria com atraso de {ka_delay_min}m."
+        pipeline_stages.append({
+            "id": "hardware",
+            "title": "5. Recursos de Hardware & SO",
+            "status": hw_status,
+            "badge": f"CPU {cpu_val_str} | RAM {ram_val_str}",
+            "detail": hw_detail
+        })
 
     # Estágio 6: Detecção Automática (ESTRITAMENTE EXCLUSIVO AO CS01)
     role_info_stage = infer_cs_operational_role(active_cs_tier if is_single_cs_focus else 1, praca_channels, hostname=current_target_host, praca=praca_name)
@@ -774,7 +900,22 @@ def audit_praca_ecosystem(praca_name: str, selected_cs: Optional[str] = "ALL") -
     # Health score justo (0 a 100)
     total_checks = max(1, len(praca_channels) * 2 + len(target_hosts) * 3)
     fault_weight = sum(3 if p["severity"] == "CRITICO" else 1 for p in problems)
-    health_score = max(0, min(100, int(100 - (fault_weight / total_checks * 100))))
+    calculated_score = max(0, min(100, int(100 - (fault_weight / total_checks * 100))))
+
+    # REGRA DE GOVERNANÇA: Se o host tem falha crítica de desconexão de telemetria (HOST_TELEMETRY_DISCONNECTED)
+    # ou qualquer falha CRÍTICA, o health score reflete estado crítico imediato (máximo 20% para nó desconectado).
+    if any(p["code"] == "HOST_TELEMETRY_DISCONNECTED" for p in problems) or is_host_disconnected:
+        health_score = min(20, calculated_score)
+        status_geral = "CRITICO"
+    elif any(p["severity"] == "CRITICO" for p in problems):
+        health_score = min(49, calculated_score)
+        status_geral = "CRITICO"
+    elif problems:
+        health_score = min(85, calculated_score)
+        status_geral = "ALERTA"
+    else:
+        health_score = calculated_score
+        status_geral = "NOMINAL"
 
     return {
         "praca": praca_name.title(),
@@ -785,7 +926,7 @@ def audit_praca_ecosystem(praca_name: str, selected_cs: Optional[str] = "ALL") -
         "available_cs_options": available_cs_options,
         "timestamp_auditoria": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "health_score": health_score,
-        "status_geral": "CRITICO" if any(p["severity"] == "CRITICO" for p in problems) else ("ALERTA" if problems else "NOMINAL"),
+        "status_geral": status_geral,
         "total_hosts": len(target_hosts),
         "total_canais": len(praca_channels),
         "hosts": target_hosts,
@@ -831,6 +972,25 @@ def generate_ai_solutions_plan(audit_data: Dict[str, Any]) -> Dict[str, Any]:
 
     steps = []
     step_num = 1
+
+    # ==============================================================================
+    # PASSO 0: CONECTIVIDADE & HEARTBEAT DO AGENTE (HOST DESCONECTADO OU EM ATRASO)
+    # ==============================================================================
+    ka_issue = next((p for p in problems if p["code"] in ("HOST_TELEMETRY_DISCONNECTED", "HOST_KEEPALIVE_DELAYED")), None)
+    if ka_issue:
+        target_h = ka_issue.get("host") or focused_host
+        is_disc = ka_issue["code"] == "HOST_TELEMETRY_DISCONNECTED"
+        steps.append({
+            "step": step_num,
+            "title": f"Restabelecer Conexão & Agente Local no Host {target_h}",
+            "why": f"O host está {'desconectado há mais de 1 hora' if is_disc else 'com heartbeat em atraso'}. Verifique se o host está ligado, conectado à rede e se o serviço DNA.MonitorServiceSVC está em execução.",
+            "action_type": "check_agent_status",
+            "action_payload": {"hostname": target_h},
+            "btn_label": "🔌 Diagnosticar Agente Local",
+            "btn_style": "btn-danger" if is_disc else "btn-warning",
+            "estimated_time": "15 segundos"
+        })
+        step_num += 1
 
     # ==============================================================================
     # PASSO A: RESOLUÇÃO DE DETECÇÃO (APENAS PARA CS01 OU VISÃO GERAL)
