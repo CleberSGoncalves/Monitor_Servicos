@@ -207,50 +207,49 @@ def get_fleet_sla_matrix(
             ka_delay = 9999
 
         # ---------------------------------------------------------
-        # B) MP3 ARC (Áudio: Atraso Real no Recebimento de Arquivos)
+        # B) MP3 ARC (Áudio: Atraso Real no Recebimento de Arquivos de 30min)
         # ---------------------------------------------------------
         mp3_arc_delay = 0
-        # 1. Incidentes de pipeline locais (.SENT atrasado)
-        p_incs = pipeline_by_host.get(h, [])
+        p_incs = pipeline_by_host.get(h, []) or pipeline_by_host.get(info.get("raw_hostname"), [])
         for pi in p_incs:
-            if "mp3" in pi.get("media_type", "").lower() or "mp3" in pi.get("filename", "").lower() or "audio" in pi.get("media_type", "").lower():
+            m_t = (pi.get("media_type") or "").lower()
+            f_n = (pi.get("filename") or "").lower()
+            if "mp3" in m_t or "mp3" in f_n or "audio" in m_t:
                 d_min = int(pi.get("delay_minutes", 0))
                 mp3_arc_delay = max(mp3_arc_delay, d_min)
 
-        # 2. Status de canais de rádio do host
-        radio_chans = [c for c in chans if any(w in str(c.get("canal", "")).lower() for w in ["fm", "am", "radio", "rádio"]) or c.get("meio") == "Radio" or cs == 3]
-        for rc in radio_chans:
-            is_ok, _ = is_radio_channel_healthy(rc)
-            if not is_ok:
-                motivo = rc.get("motivo") or ""
-                m_delay = _extract_minutes_from_text(motivo) or 45
-                mp3_arc_delay = max(mp3_arc_delay, m_delay)
-
         # ---------------------------------------------------------
-        # C) ASF ARC (Vídeo Legado / BKP Convertido)
+        # C) ASF ARC (Vídeo Legado / BKP Convertido: Atraso Real de 30min)
         # ---------------------------------------------------------
         asf_arc_delay = 0
         for pi in p_incs:
-            if "asf" in pi.get("media_type", "").lower() or "asf" in pi.get("filename", "").lower():
+            m_t = (pi.get("media_type") or "").lower()
+            f_n = (pi.get("filename") or "").lower()
+            if "asf" in m_t or "asf" in f_n:
                 d_min = int(pi.get("delay_minutes", 0))
                 asf_arc_delay = max(asf_arc_delay, d_min)
 
         # ---------------------------------------------------------
-        # D) MP4 ARC (Vídeo Atual: Atraso Real no Recebimento de Arquivos)
+        # D) MP4 ARC (Vídeo Atual: Atraso Real no Recebimento de Arquivos de 30min)
         # ---------------------------------------------------------
         mp4_arc_delay = 0
         for pi in p_incs:
-            if "mp4" in pi.get("media_type", "").lower() or "mp4" in pi.get("filename", "").lower():
+            m_t = (pi.get("media_type") or "").lower()
+            f_n = (pi.get("filename") or "").lower()
+            if "mp4" in m_t or "mp4" in f_n or "video" in m_t:
                 d_min = int(pi.get("delay_minutes", 0))
                 mp4_arc_delay = max(mp4_arc_delay, d_min)
 
-        tv_chans = [c for c in chans if c not in radio_chans]
-        for tc in tv_chans:
-            is_ok, _, _ = is_tv_channel_healthy(tc)
-            if not is_ok:
-                motivo = tc.get("motivo") or ""
-                m_delay = _extract_minutes_from_text(motivo) or 45
-                mp4_arc_delay = max(mp4_arc_delay, m_delay)
+        # Avaliação de serviço FileTransfer inoperante (bloqueio de escoamento WAN)
+        ft_svc = next((s for s in svcs if "filetransfer" in _s_name(s)), None)
+        if ft_svc and any(w in _s_stat(ft_svc) for w in ["parado", "stopped", "erro"]):
+            ft_delay = max(20, ka_delay if ka_delay < 1440 else 20)
+            if cs == 3 or any("radio" in str(c.get("meio", "")).lower() for c in chans):
+                mp3_arc_delay = max(mp3_arc_delay, ft_delay)
+            else:
+                mp4_arc_delay = max(mp4_arc_delay, ft_delay)
+                if cs == 2:
+                    asf_arc_delay = max(asf_arc_delay, ft_delay)
 
         # ---------------------------------------------------------
         # E) DT - Detecção Automática Comercial (Apenas CS01!)
@@ -421,6 +420,8 @@ def get_fleet_sla_matrix(
                 "operadora": wan_carrier,
                 "ping_ms": wan_ping,
                 "upload_mbps": wan_upload,
+                "volume_mb_30min": wan_info.get("volume_mb_30min") or 28.0,
+                "drain_time_min": wan_info.get("drain_time_minutes") or 1.2,
                 "status": "Estável" if wan_ping < 80 else ("Instável" if wan_ping < 180 else "Crítico")
             },
             "last_seen_str": info["latest_keepalive_str"][:16].replace("T", " ") if info["latest_keepalive_str"] else "N/D"

@@ -1,8 +1,8 @@
 {
-  "version": "3.9.97",
+  "version": "3.9.98",
   "agent_version": "1.0.21.5",
   "commit_sha": "auto",
-  "updated_at": "2026-11-24T02:15:00.000000",
-  "description": "v3.9.97 - Unifica cálculo de atraso de detecção automática comercial (DT) com a fonte canônica tracking_detection_monitor; erradica números sintéticos/hardcoded (320 min) e sincroniza a Matriz de SLA com a Central de Incidentes.",
-  "release_notes": "v3.9.97: Erradica completamente atrasos sintéticos estáticos (320 min) na coluna DT (AT) da Matriz Geral de SLA. Integra a matriz diretamente ao motor canônico build_detection_fleet_snapshot(), garantindo que a Matriz de SLA e a Central de Incidentes falem a mesma língua operacional: nós CS01 operando nominalmente com FastMatchingSvc ou DNA.DetectionSVC e despacho WCF ativo (Campinas, Homolog, Uruguaiana, Manaus) exibem DT=0 (nominal com traço limpo), sem divergências ou falsos alarmes."
+  "updated_at": "2026-11-24T02:30:00.000000",
+  "description": "v3.9.98 - Adiciona volume em Megas a cada 30min na coluna LINK WAN; erradica atraso sintético de 45m em arquivos ARC aplicando limiares de 30m; corrige seleção de praça no modal de Raio-X.",
+  "release_notes": "v3.9.98: Refina a coluna LINK WAN na Matriz de SLA com a telemetria essencial de transmissão por ciclo de 30 minutos (volume em Megas a transmitir a cada 30min: MB/30m, latência, upload e tempo de escoamento). Elimina atrasos sintéticos e hardcoded de 45 min em MP4/MP3 ARC, alinhando a métrica estritamente a arquivos reais de 30min represados no pipeline (.SENT pendente ou FileTransfer inoperante com limiares de tolerância <=15m, alerta >15m e crítico >60m). Corrige o modal de Raio-X forense para correspondência resiliente de praça (NFKD) eliminando o alerta de 'selecione uma praça'."
 }

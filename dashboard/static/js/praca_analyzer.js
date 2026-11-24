@@ -16,10 +16,33 @@ async function openPracaAuditModal(preSelectedPraca = "", preSelectedCs = "") {
 
     await populatePracasDropdown(true);
 
-    const input = document.getElementById("pracaAuditSelect");
-    if (input && preSelectedPraca) {
-        input.value = preSelectedPraca;
-        await runPracaAudit(null, currentPracaAuditTargetCs);
+    const sel = document.getElementById("pracaAuditSelect");
+    let targetPraca = (preSelectedPraca || "").trim();
+
+    if (sel && targetPraca) {
+        // Busca insensível a maiúsculas, minúsculas e acentos
+        const norm = (s) => (s || "").toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").trim();
+        const targetNorm = norm(targetPraca);
+        let matchedVal = "";
+        for (let i = 0; i < sel.options.length; i++) {
+            const optVal = sel.options[i].value;
+            if (norm(optVal) === targetNorm || norm(optVal).includes(targetNorm) || targetNorm.includes(norm(optVal))) {
+                matchedVal = optVal;
+                break;
+            }
+        }
+        if (matchedVal) {
+            sel.value = matchedVal;
+            targetPraca = matchedVal;
+        } else {
+            // Cria opção dinamicamente para a praça selecionada
+            const newOpt = document.createElement("option");
+            newOpt.value = targetPraca;
+            newOpt.textContent = `🏢 ${targetPraca}`;
+            sel.appendChild(newOpt);
+            sel.value = targetPraca;
+        }
+        await runPracaAudit(targetPraca, currentPracaAuditTargetCs);
     }
 }
 window.openPracaAuditModal = openPracaAuditModal;
