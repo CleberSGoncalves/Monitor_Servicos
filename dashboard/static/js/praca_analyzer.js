@@ -81,7 +81,21 @@ async function runPracaAudit(pracaOverride = null, csOverride = null) {
     const sel = document.getElementById("pracaAuditSelect");
     const praca = (pracaOverride !== null ? pracaOverride : (sel ? sel.value.trim() : "")).trim();
     if (!praca) {
-        alert("Por favor, selecione uma praça para auditar.");
+        if (sel && sel.options.length > 1) {
+            // Auto-seleciona a primeira praça válida da lista se disponível
+            sel.selectedIndex = 1;
+            return runPracaAudit(sel.value, csOverride);
+        }
+        const container = document.getElementById("pracaAuditResultContainer");
+        if (container) {
+            container.innerHTML = `
+                <div style="text-align: center; padding: 40px; color: #94a3b8;">
+                    <i class="fas fa-hand-pointer" style="font-size: 32px; color: #38bdf8; margin-bottom: 12px; display: block;"></i>
+                    <strong style="color: #fff; font-size: 14px;">Selecione uma praça acima para auditar o Capture Site</strong>
+                    <p style="font-size: 12px; margin-top: 6px;">Escolha a praça no menu suspenso ou clique diretamente no botão <strong>Raio-X</strong> na Matriz de SLA.</p>
+                </div>
+            `;
+        }
         return;
     }
     currentPracaName = praca;

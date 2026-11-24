@@ -84,7 +84,8 @@ function renderSlaMatrixTable(rows, totalFiltered) {
             return `<span style="color: rgba(255, 255, 255, 0.15);">-</span>`;
         }
         if (val > 1440) {
-            return `<span class="badge" style="background: rgba(147, 51, 234, 0.2); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4); font-size: 11px; font-weight: 800;" title="Atraso Crônico (>24h)">${val}</span>`;
+            const days = (val / 1440).toFixed(1);
+            return `<span class="badge" style="background: rgba(147, 51, 234, 0.25); color: #d8b4fe; border: 1px solid rgba(168, 85, 247, 0.5); font-size: 10px; font-weight: 800; padding: 2px 6px;" title="Atraso Crônico (>24h): Host sem comunicação há ${days} dias (${val} min)">${days}d (Crônico)</span>`;
         }
         if (val > 60) {
             return `<span class="badge" style="background: rgba(239, 68, 68, 0.25); color: #fca5a5; border: 1px solid #ef4444; font-size: 11px; font-weight: 800;" title="Atraso Crítico (>1h)">${val}</span>`;
@@ -192,7 +193,10 @@ function renderSlaMatrixTable(rows, totalFiltered) {
                 <td style="padding: 6px 8px; text-align: center; vertical-align: middle;">${cBadge}</td>
                 <td style="padding: 6px 8px; font-weight: 800; color: #60a5fa; font-size: 12px; vertical-align: middle;">${r.id_host || '-'}</td>
                 <td style="padding: 6px 8px; vertical-align: middle;">
-                    <div style="font-weight: 700; color: #f8fafc; font-size: 12px;">${escapeHtml(r.display_name)}</div>
+                    <div style="font-weight: 700; color: #f8fafc; font-size: 12px; display: flex; align-items: center; gap: 6px;">
+                        <span>${escapeHtml(r.display_name)}</span>
+                        ${r.tier === 'CRONICO' ? `<span style="font-size: 9px; font-weight: 800; background: rgba(147, 51, 234, 0.25); color: #d8b4fe; border: 1px solid rgba(168, 85, 247, 0.5); padding: 1px 5px; border-radius: 4px;" title="Host inoperante / sem comunicação há dias. Último registro em ${escapeHtml(r.last_seen_str)}">CRÔNICO &gt; 24H</span>` : ''}
+                    </div>
                     <div style="font-size: 10px; color: #94a3b8;">${escapeHtml(r.hostname)}</div>
                 </td>
                 <td style="padding: 6px 8px; text-align: center; vertical-align: middle;">${csBadge}</td>

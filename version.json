@@ -1,8 +1,8 @@
 {
-  "version": "3.9.104",
+  "version": "3.9.105",
   "agent_version": "1.0.21.5",
   "commit_sha": "auto",
-  "updated_at": "2026-11-24T05:45:00.000000",
-  "description": "v3.9.104 - Precedência estrita de telemetria no Raio-X Forense: suspensão total de diagnósticos de Link WAN, Tuners RF e Motores em hosts offline.",
-  "release_notes": "v3.9.104: Aplica o Princípio Fundamental de Precedência de Telemetria no Raio-X Forense de Praças. Quando um host está sem comunicação com a matriz (offline há mais de 1 hora, ex: Vitória da Conquista), o sistema é terminantemente proibido de atestar sintonizadores como 'Tuners Saudáveis' ou declarar link WAN com ping e escoamento nominal. Todos os 7 estágios do nó desconectado refletem o estado crítico com 'Telemetria Suspensa' e 'Link Inacessível', eliminando qualquer inconsistência visual ou conceitual."
+  "updated_at": "2026-11-24T06:35:00.000000",
+  "description": "v3.9.105 - Formatação humana de atrasos crônicos (>24h), rotulagem de nós desconectados há semanas e blindagem do seletor de Raio-X.",
+  "release_notes": "v3.9.105: Converte atrasos de Keepalive crônicos (> 24h, ex: 13.920m e 9.446m de máquinas paradas desde 14/11 e 17/11) para formatação humana em dias (ex: '9.7d (Crônico)', '6.6d (Crônico)'), adiciona badge explícito 'CRÔNICO > 24H' no nome do host na Matriz de SLA, isola os nós inoperantes da visão de incidentes de turno ativo e elimina o alert invasivo no modal de Raio-X com auto-seleção amigável de praça."
 }
