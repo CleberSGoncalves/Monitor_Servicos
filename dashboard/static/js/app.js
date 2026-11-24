@@ -12343,6 +12343,10 @@ function setNocQuickFilter(filterKey) {
             pill.classList.remove("active");
         }
     });
+    if (filterKey === "all") {
+        document.querySelectorAll(".noc-sev-check").forEach(cb => { cb.checked = true; });
+        document.querySelectorAll(".noc-trig-check").forEach(cb => { cb.checked = true; });
+    }
     renderNocUnifiedQueue();
 }
 window.setNocQuickFilter = setNocQuickFilter;
@@ -14218,9 +14222,8 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
 
 
 
-    // 7. Incidentes de Hosts Desconectados (Telemetria Ausente) para nós secundários/CS02 não cobertos acima
-
-    const coveredDetHosts = new Set((detectionSites || []).map(s => (s.hostname || '').toLowerCase().trim()));
+    // 7. Incidentes de Hosts Desconectados (Telemetria Ausente) para todos os nós físicos offline
+    const coveredIncidentHosts = new Set(incidents.map(inc => (inc.hostname || '').toLowerCase().trim()));
 
     Object.values(hostsMap).forEach(h => {
 
@@ -14228,7 +14231,7 @@ function processNocTelemetryAndIncidents(summary, servicesList, channelsList, pi
 
         const hKey = (h.hostname || '').toLowerCase().trim();
 
-        if (coveredDetHosts.has(hKey)) return;
+        if (coveredIncidentHosts.has(hKey)) return;
 
 
 

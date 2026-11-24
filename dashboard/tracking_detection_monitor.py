@@ -1980,7 +1980,20 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
 
         # Diagnostico da Esteira de Deteccao
         # LEI DA VALIDADE DE TELEMETRIA:
-        if engine_tier == "NONE":
+        # Se o host está desconectado há mais de 2 horas (ou agente stale com heartbeat ausente),
+        # o status da esteira de detecção é estritamente COMM_LOST (Telemetria Suspensa).
+        is_host_offline_for_detection = (agent_comm_hours >= 2.0) or (agent_comm_status in ("OFFLINE_RECENT", "OFFLINE_CRITICAL", "LOST"))
+
+        if is_host_offline_for_detection:
+            health_status = "COMM_LOST"
+            severity_label = f"Alerta (P1) - Host Desconectado / Telemetria Suspensa ({agent_comm_label})"
+            incident_description = (
+                f"Host CS01 inalcançável há {agent_comm_label}. Telemetria suspensa. "
+                f"O estado real dos processos locais (FastMatching, DetectionSVC, ConfigMonitor) "
+                f"não pode ser aferido em tempo real até o restabelecimento da comunicação."
+            )
+            pipeline_bottleneck = "TELEMETRY_OFFLINE"
+        elif engine_tier == "NONE":
             fm_st_raw = str(fm_svc.get("status") or "").lower() if fm_svc else ""
             det_st_raw = str(det_svc.get("status") or "").lower() if det_svc else ""
             both_non_existent = (fm_st_raw in ("inexistente", "não instalado", "nao instalado", "não encontrado", "nao encontrado", "")) and                                 (det_st_raw in ("inexistente", "não instalado", "nao instalado", "não encontrado", "nao encontrado", ""))

@@ -1,8 +1,8 @@
 {
-  "version": "3.9.105",
+  "version": "3.9.106",
   "agent_version": "1.0.21.5",
   "commit_sha": "auto",
-  "updated_at": "2026-11-24T06:35:00.000000",
-  "description": "v3.9.105 - Formatação humana de atrasos crônicos (>24h), rotulagem de nós desconectados há semanas e blindagem do seletor de Raio-X.",
-  "release_notes": "v3.9.105: Converte atrasos de Keepalive crônicos (> 24h, ex: 13.920m e 9.446m de máquinas paradas desde 14/11 e 17/11) para formatação humana em dias (ex: '9.7d (Crônico)', '6.6d (Crônico)'), adiciona badge explícito 'CRÔNICO > 24H' no nome do host na Matriz de SLA, isola os nós inoperantes da visão de incidentes de turno ativo e elimina o alert invasivo no modal de Raio-X com auto-seleção amigável de praça."
+  "updated_at": "2026-11-24T06:55:00.000000",
+  "description": "v3.9.106 - Sincronização e Coerência Fila N1 vs Matriz SLA: unificação de incidentes offline (CS01 e CS02) e exibição completa de P2 no pill Todos.",
+  "release_notes": "v3.9.106: Corrige a divergência entre a Fila de Incidentes N1 e a Matriz de SLA. 1) Hosts CS01 desconectados (ex: Vitória da Conquista CS01) agora recebem status COMM_LOST imediato e geram incidente P1 de Host Desconectado na Fila N1 em paridade com CS02. 2) O seletor de severidade P2 passa a vir marcado por padrão e o clique no pill 'Todos' garante a exibição de todas as ocorrências sem bloqueio silencioso. 3) Diagnóstico completo dos logs de Parintins comprovando que a versão local ainda tenta atualizar o SharePoint via Microsoft Graph e é rejeitada com HTTP 429 Throttling e itemNotFound."
 }
