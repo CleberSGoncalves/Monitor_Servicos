@@ -20000,10 +20000,10 @@
               <div>
                 <label style="display: block; font-size: 11px; color: #cbd5e1; margin-bottom: 4px;">Dias de Retenção (rotate):</label>
                 <select id="cfgLogRotateDays" style="width: 100%; padding: 6px 10px; font-size: 12px; background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 6px; color: #f8fafc;">
-                  <option value="3" selected>3 Dias (Homologado Produção)</option>
-                  <option value="5">5 Dias</option>
+                  <option value="10" selected>10 Dias (Padrão Homologado)</option>
                   <option value="7">7 Dias</option>
-                  <option value="10">10 Dias (Legado)</option>
+                  <option value="5">5 Dias</option>
+                  <option value="3">3 Dias</option>
                 </select>
               </div>
               <div>
@@ -20022,7 +20022,7 @@
 		dateext
 		dateformat .%Y%m%d
 		missingok
-		rotate 3
+		rotate 10
 }</pre>
             </div>
           </div>

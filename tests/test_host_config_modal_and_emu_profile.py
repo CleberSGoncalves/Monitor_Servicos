@@ -87,7 +87,7 @@ def test_api_host_config_get_and_post():
     assert "app_config" in data
     assert data["app_config"]["api_port"] == 9000
     assert "logrotate" in data
-    assert data["logrotate"]["rotate_days"] == 3
+    assert data["logrotate"]["rotate_days"] == 10
     assert "fma.log" in data["logrotate"]["target_log_path"]
 
     # 2. Teste POST
@@ -107,7 +107,7 @@ def test_api_host_config_get_and_post():
         },
         "logrotate": {
             "target_log_path": r"D:\MediaDNA_V2\Applications\DTVCapture64\FastMatchingSvc\fma.log",
-            "rotate_days": 3,
+            "rotate_days": 10,
             "frequency": "daily"
         },
         "reason": "Auditoria automatizada de teste pytest"
@@ -119,7 +119,7 @@ def test_api_host_config_get_and_post():
     assert "execution_id" in res_data
     assert "script_preview" in res_data
     assert "Multiplexes.xml" in res_data["script_preview"]
-    assert "rotate 3" in res_data["script_preview"]
+    assert "rotate 10" in res_data["script_preview"]
     assert "Start_Atria_Interactive" in res_data["script_preview"]
 
 

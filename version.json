@@ -1,8 +1,8 @@
 {
-  "version": "3.9.108",
+  "version": "3.9.109",
   "agent_version": "1.0.21.5",
   "commit_sha": "auto",
-  "updated_at": "2026-11-24T12:48:00.000000",
-  "description": "v3.9.108 - Blindagem EMU MediaDNA 1min no Multiplexes.xml, exclusão estrita de detecção em CS02/CS03 e Central de Configuração Remota do Capture Site na Frota.",
-  "release_notes": "v3.9.108: 1. Na atualização do ATRIA com FastMatching + FileCleaner, aplica a blindagem do Multiplexes.xml forçando <EMU_ProfileName>EMU MediaDNA 1min</EMU_ProfileName> em todos os canais com gravação EMU ativa, após restaurar o backup e estritamente antes de reabrir o Atria interativo. 2. Blindagem de CS02/CS03: como nós secundários não possuem detecção comercial, a chave de migração para FastMatching/FileCleaner é ocultada e bloqueada no frontend e no backend. 3. Nova Central de Configuração Remota do Capture Site na aba Frota, com barra seletora dinâmica por Praça, CS e Máquina, além de botões e links diretos na tabela. 4. Modal completo de configuração em 4 abas (Multiplexes/EMU, AppConfig, LogRotate e Prévia PowerShell) com aviso operacional explícito de reinício automático do Atria."
+  "updated_at": "2026-11-24T13:04:00.000000",
+  "description": "v3.9.109 - Homologação de rotate 10 para fma.log em D: e script de correção do LogRotate para toda a frota de Capture Sites.",
+  "release_notes": "v3.9.109: 1. Homologação oficial do logrotate.conf com rotate 10 (retenção de 10 dias) e apontamento corrigido para D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMatchingSvc\\fma.log em substituição ao apontamento legado na unidade C:. 2. Script Corrigir_LogRotate_FastMatching.ps1 e atualizador em lote atualizar_logrotate_frota.py parametrizados com rotate 10 e regra operacional estrita: reinicia o FastMatchingSvc apenas nas praças onde o serviço estiver ativo/em execução, preservando nós parados. 3. Integração total no Catálogo Remoto da IA e no modal de Central de Configuração Remota do Capture Site na aba Frota."
 }

@@ -2708,7 +2708,7 @@ async function openHostConfigModal(hostname, praca = "", cs = 1) {
         const elLrTarget = document.getElementById("cfgLogRotateTarget");
         if (elLrTarget) elLrTarget.value = lrCfg.target_log_path || "D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMatchingSvc\\fma.log";
         const elLrDays = document.getElementById("cfgLogRotateDays");
-        if (elLrDays) elLrDays.value = String(lrCfg.rotate_days || 3);
+        if (elLrDays) elLrDays.value = String(lrCfg.rotate_days || 10);
         const elLrFreq = document.getElementById("cfgLogRotateFreq");
         if (elLrFreq) elLrFreq.value = lrCfg.frequency || "daily";
 
@@ -2749,7 +2749,7 @@ function updateLogRotateSnippetPreview() {
     const pre = document.getElementById("previewLogRotateSnippet");
     if (!pre) return;
     const target = document.getElementById("cfgLogRotateTarget")?.value || "D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMatchingSvc\\fma.log";
-    const days = document.getElementById("cfgLogRotateDays")?.value || "3";
+    const days = document.getElementById("cfgLogRotateDays")?.value || "10";
     const freq = document.getElementById("cfgLogRotateFreq")?.value || "daily";
     pre.innerText = `${target} {\n        ${freq}\n\t\tdateext\n\t\tdateformat .%Y%m%d\n\t\tmissingok\n\t\trotate ${days}\n}`;
 }
@@ -2826,7 +2826,7 @@ function generateHostConfigPreview() {
     const hostname = currentLoadedHostConfig.hostname || "CS-GENERIC";
     const channels = currentLoadedHostConfig.channels || [];
     const lrTarget = document.getElementById("cfgLogRotateTarget")?.value || "D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMatchingSvc\\fma.log";
-    const lrDays = document.getElementById("cfgLogRotateDays")?.value || "3";
+    const lrDays = document.getElementById("cfgLogRotateDays")?.value || "10";
     const lrFreq = document.getElementById("cfgLogRotateFreq")?.value || "daily";
 
     let psUpdates = channels.map((ch, idx) => {
@@ -2974,7 +2974,7 @@ async function saveHostConfig() {
 
     const logrotate = {
         target_log_path: (document.getElementById("cfgLogRotateTarget")?.value || "D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMatchingSvc\\fma.log").trim(),
-        rotate_days: parseInt(document.getElementById("cfgLogRotateDays")?.value || "3", 10),
+        rotate_days: parseInt(document.getElementById("cfgLogRotateDays")?.value || "10", 10),
         frequency: document.getElementById("cfgLogRotateFreq")?.value || "daily"
     };
 

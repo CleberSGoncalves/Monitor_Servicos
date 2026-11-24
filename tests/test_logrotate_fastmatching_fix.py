@@ -17,7 +17,7 @@ from atualizar_logrotate_frota import carregar_hosts_frota
 def test_powershell_logrotate_script_content_and_syntax():
     """
     Garante que o script PowerShell oficial existe, possui sintaxe válida
-    e contém o arquivo logrotate.conf exato apontando para D:\... com rotate 3.
+    e contém o arquivo logrotate.conf exato apontando para D:\... com rotate 10.
     """
     ps_file = scripts_dir / "Corrigir_LogRotate_FastMatching.ps1"
     assert ps_file.exists(), "Script PowerShell deve existir em scripts/Corrigir_LogRotate_FastMatching.ps1"
@@ -26,7 +26,7 @@ def test_powershell_logrotate_script_content_and_syntax():
     
     # 1. Verifica conteúdo exato exigido pelo usuário
     assert r"D:\MediaDNA_V2\Applications\DTVCapture64\FastMatchingSvc\fma.log {" in content
-    assert "rotate 3" in content
+    assert "rotate 10" in content
     assert "daily" in content
     assert "dateext" in content
     assert "dateformat .%Y%m%d" in content
@@ -52,7 +52,7 @@ def test_ai_command_pool_has_logrotate_fix():
     """
     cmd = next((c for c in SYSTEMIC_AI_COMMANDS_POOL if c.get("id") == "ai_cmd_fix_logrotate_fastmatching"), None)
     assert cmd is not None, "Comando ai_cmd_fix_logrotate_fastmatching deve constar no catálogo de IA"
-    assert "rotate 3" in cmd["command"]
+    assert "rotate 10" in cmd["command"]
     assert r"D:\MediaDNA_V2\Applications\DTVCapture64\FastMatchingSvc\fma.log" in cmd["command"]
     assert cmd["category"] == "correcao"
 
@@ -63,7 +63,7 @@ def test_simulate_or_execute_on_host_logrotate():
     """
     out_active = simulate_or_execute_on_host("Aracaju-SMME-328-CS1", "powershell", "corrigir logrotate fma.log")
     assert "D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMatchingSvc\\fma.log" in out_active
-    assert "rotate 3" in out_active
+    assert "rotate 10" in out_active
     assert "FastMatchingSvc" in out_active
 
 

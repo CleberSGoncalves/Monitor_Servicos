@@ -81,11 +81,11 @@ SYSTEMIC_AI_COMMANDS_POOL = [
     },
     {
         "id": "ai_cmd_fix_logrotate_fastmatching",
-        "title": "🛠️ Correção LogRotate FastMatching (fma.log D: + Rotate 3)",
+        "title": "🛠️ Correção LogRotate FastMatching (fma.log D: + Rotate 10)",
         "category": "correcao",
         "shell_type": "powershell",
-        "command": "$conf = @'\nD:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMatchingSvc\\fma.log {\n        daily\n\t\tdateext\n\t\tdateformat .%Y%m%d\n\t\tmissingok\n\t\trotate 3\n}\n'@; $paths = @('D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMatchingSvc\\LogRotate\\logrotate.conf', 'C:\\DTV\\DTVCapture\\FastMatchingSvc\\LogRotate\\logrotate.conf'); foreach ($p in $paths) { $dir = Split-Path -Parent $p; if (Test-Path (Split-Path -Parent $dir)) { if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }; [System.IO.File]::WriteAllText($p, $conf, [System.Text.Encoding]::ASCII); Write-Host ('[OK] logrotate.conf atualizado em: ' + $p); } }; $svc = Get-Service -Name FastMatchingSvc -ErrorAction SilentlyContinue; if ($svc -and $svc.Status -eq 'Running') { Write-Host '[FastMatching] Servico em execucao. Reiniciando...'; Restart-Service -Name FastMatchingSvc -Force; Write-Host '[OK] FastMatchingSvc reiniciado com sucesso!' } else { Write-Host ('[INFO] FastMatchingSvc status: ' + ($svc.Status ? $svc.Status : 'Nao instalado') + '. Nenhum reinicio necessario.') }",
-        "reason": "Corrige o apontamento do logrotate.conf de C:\\ para D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMatchingSvc\\fma.log e define rotate 3, evitando crescimento descontrolado do fma.log. Reinicia o FastMatchingSvc exclusivamente nas praças onde ele estiver ativo (Running).",
+        "command": "$conf = @'\nD:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMatchingSvc\\fma.log {\n        daily\n\t\tdateext\n\t\tdateformat .%Y%m%d\n\t\tmissingok\n\t\trotate 10\n}\n'@; $paths = @('D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMatchingSvc\\LogRotate\\logrotate.conf', 'C:\\DTV\\DTVCapture\\FastMatchingSvc\\LogRotate\\logrotate.conf'); foreach ($p in $paths) { $dir = Split-Path -Parent $p; if (Test-Path (Split-Path -Parent $dir)) { if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }; [System.IO.File]::WriteAllText($p, $conf, [System.Text.Encoding]::ASCII); Write-Host ('[OK] logrotate.conf atualizado em: ' + $p); } }; $svc = Get-Service -Name FastMatchingSvc -ErrorAction SilentlyContinue; if ($svc -and $svc.Status -eq 'Running') { Write-Host '[FastMatching] Servico em execucao. Reiniciando...'; Restart-Service -Name FastMatchingSvc -Force; Write-Host '[OK] FastMatchingSvc reiniciado com sucesso!' } else { Write-Host ('[INFO] FastMatchingSvc status: ' + ($svc.Status ? $svc.Status : 'Nao instalado') + '. Nenhum reinicio necessario.') }",
+        "reason": "Corrige o apontamento do logrotate.conf de C:\\ para D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMatchingSvc\\fma.log e define rotate 10 para retenção de histórico. Reinicia o FastMatchingSvc exclusivamente nas praças onde ele estiver ativo (Running).",
         "action_label": "Corrigir LogRotate FastMatching",
         "risk_level": "medio",
         "risk_warning": "Atualiza o logrotate.conf em todas as praças. Se o FastMatchingSvc estiver em execução no nó, ele será reiniciado rapidamente para aplicar a nova rotação."
@@ -334,8 +334,8 @@ def init_remote_command_db():
                 INSERT INTO remote_command_catalog (title, description, category, shell_type, command_script, is_builtin, created_by, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
             ''', (
-                "🔧 Corrigir LogRotate fma.log (Caminho D: + Rotate 3 + Reinício Seletivo)",
-                "Corrige logrotate.conf para apontar para D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMatchingSvc\\fma.log com rotate 3 em todas as praças. Se o FastMatchingSvc estiver em execução (Running), reinicia o serviço; se estiver parado ou inexistente, preserva intacto sem iniciar.",
+                "🔧 Corrigir LogRotate fma.log (Caminho D: + Rotate 10 + Reinício Seletivo)",
+                "Corrige logrotate.conf para apontar para D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMatchingSvc\\fma.log com rotate 10 em todas as praças. Se o FastMatchingSvc estiver em execução (Running), reinicia o serviço; se estiver parado ou inexistente, preserva intacto sem iniciar.",
                 "correcao",
                 "powershell",
                 '''$fmaLogTarget = 'D:\MediaDNA_V2\Applications\DTVCapture64\FastMatchingSvc\fma.log'
@@ -348,7 +348,7 @@ $fmaLogTarget {
 		dateext
 		dateformat .%Y%m%d
 		missingok
-		rotate 3
+		rotate 10
 }
 "@
 foreach ($cd in $confDirs) {
@@ -785,11 +785,11 @@ D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMatchingSvc\\fma.log {{
 \t\tdateext
 \t\tdateformat .%Y%m%d
 \t\tmissingok
-\t\trotate 3
+\t\trotate 10
 }}
 [Log] fma.log monitorado: D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMatchingSvc\\fma.log
 {fma_block}
-[OK] Host {host} 100% em conformidade com rotate 3 na unidade D:."""
+[OK] Host {host} 100% em conformidade com rotate 10 na unidade D:."""
 
     elif "get-service" in s_lower or "restart-service" in s_lower:
         return f"""[{now_str}] Executando via {shell_type.upper()} em {host}...

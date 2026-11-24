@@ -1,11 +1,11 @@
 ﻿<#
 .SYNOPSIS
-    Corrige o apontamento do logrotate.conf para a unidade D: (fma.log) e define rotate 3.
+    Corrige o apontamento do logrotate.conf para a unidade D: (fma.log) e define rotate 10.
     Reinicia condicionalmente o serviço FastMatchingSvc APENAS nas praças onde ele estiver ativo.
 
 .DESCRIPTION
     1. Localiza ou cria o arquivo logrotate.conf na pasta FastMatchingSvc\LogRotate.
-    2. Atualiza a configuração para monitorar D:\MediaDNA_V2\Applications\DTVCapture64\FastMatchingSvc\fma.log com rotate 3.
+    2. Atualiza a configuração para monitorar D:\MediaDNA_V2\Applications\DTVCapture64\FastMatchingSvc\fma.log com rotate 10.
     3. Trata arquivos fma.log excessivamente grandes (>50MB).
     4. Verifica o status do serviço FastMatchingSvc:
        - Se estiver 'Running': reinicia o serviço para aplicar a nova rotação.
@@ -23,7 +23,7 @@ param(
 $ErrorActionPreference = "Continue"
 
 Write-Host "==========================================================================" -ForegroundColor Cyan
-Write-Host " [LogRotate FastMatching] Correcao de Apontamento fma.log e Rotate 3     " -ForegroundColor Cyan
+Write-Host " [LogRotate FastMatching] Correcao de Apontamento fma.log e Rotate 10    " -ForegroundColor Cyan
 Write-Host "==========================================================================" -ForegroundColor Cyan
 Write-Host "Data/Hora: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') | Host: $env:COMPUTERNAME" -ForegroundColor Gray
 
@@ -34,7 +34,7 @@ D:\MediaDNA_V2\Applications\DTVCapture64\FastMatchingSvc\fma.log {
 		dateext
 		dateformat .%Y%m%d
 		missingok
-		rotate 3
+		rotate 10
 }
 "@
 

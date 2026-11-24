@@ -3,7 +3,7 @@ Orquestrador em Lote de Correção de LogRotate FastMatching (Frota Completa)
 Kantar IBOPE Media — Monitor_Servicos
 
 Aplica o novo logrotate.conf apontando para:
-D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMatchingSvc\\fma.log com rotate 3
+D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMatchingSvc\\fma.log com rotate 10
 em todas as praças, e reinicia o FastMatchingSvc exclusivamente nas praças onde ele estiver ativo (Running).
 """
 
@@ -63,14 +63,14 @@ def carregar_hosts_frota(apenas_cs1: bool = True):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Atualizar LogRotate FastMatching para rotate 3 em D: em toda a frota.")
+    parser = argparse.ArgumentParser(description="Atualizar LogRotate FastMatching para rotate 10 em D: em toda a frota.")
     parser.add_argument("--all-fleet", action="store_true", help="Disparar para TODOS os hosts (CS01, CS02, CS03). Padrão: todos os CS01.")
     parser.add_argument("--hosts", type=str, default="", help="Lista separada por vírgula de hosts ou praças específicas.")
     parser.add_argument("--dry-run", action="store_true", help="Simula o planejamento sem disparar comandos na fila.")
     args = parser.parse_args()
 
     print("=" * 80)
-    print(" [ORQUESTRADOR DE FROTA] CORREÇÃO DE LOGROTATE FASTMATCHING (ROTATE 3 EM D:)")
+    print(" [ORQUESTRADOR DE FROTA] CORREÇÃO DE LOGROTATE FASTMATCHING (ROTATE 10 EM D:)")
     print("=" * 80)
 
     # 1. Carrega o script PowerShell oficial
@@ -118,7 +118,7 @@ def main():
         hosts=target_hostnames,
         shell_type="powershell",
         command_script=command_script,
-        command_title="🛠️ Correção LogRotate FastMatching (rotate 3 em D:)",
+        command_title="🛠️ Correção LogRotate FastMatching (rotate 10 em D:)",
         requested_by="Engenharia Broadcast / Operador NOC"
     )
 

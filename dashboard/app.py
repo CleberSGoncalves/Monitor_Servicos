@@ -578,7 +578,7 @@ class HostAppConfigItem(BaseModel):
 
 class HostLogrotateConfigItem(BaseModel):
     target_log_path: Optional[str] = r"D:\MediaDNA_V2\Applications\DTVCapture64\FastMatchingSvc\fma.log"
-    rotate_days: Optional[int] = 3
+    rotate_days: Optional[int] = 10
     frequency: Optional[str] = "daily"
 
 
@@ -707,7 +707,7 @@ async def get_host_config_endpoint(hostname: str, user: dict = Depends(get_curre
         },
         "logrotate": {
             "target_log_path": r"D:\MediaDNA_V2\Applications\DTVCapture64\FastMatchingSvc\fma.log",
-            "rotate_days": 3,
+            "rotate_days": 10,
             "frequency": "daily",
             "dateext": True,
             "missingok": True
@@ -780,7 +780,7 @@ async def update_host_config_endpoint(
     lr_cfg = req.logrotate or HostLogrotateConfigItem()
     lr_target = (lr_cfg.target_log_path or r"D:\MediaDNA_V2\Applications\DTVCapture64\FastMatchingSvc\fma.log").replace("'", "''")
     lr_freq = (lr_cfg.frequency or "daily").replace("'", "''")
-    lr_rotate = int(lr_cfg.rotate_days or 3)
+    lr_rotate = int(lr_cfg.rotate_days or 10)
 
     script = f"""# ==========================================================================
 # CENTRAL CS NOC: APLICACAO DE CONFIGURACOES REMOTAS NO CAPTURE SITE
