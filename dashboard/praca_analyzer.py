@@ -43,6 +43,60 @@ def is_radio_channel_healthy(c: Dict[str, Any]) -> tuple[bool, str]:
 
     return False, "Sem Gravação / Fluxo Interrompido"
 
+
+def is_tv_channel_healthy(c: Dict[str, Any]) -> tuple[bool, str, int]:
+    """
+    Avalia com rigor de engenharia de broadcast se um canal de TV Digital (ISDB-Tb) está saudável.
+    Elimina falsos positivos de sintonizadores TBS / Atria Capture onde o driver BDA não reporta SNR
+    (qualidade_sinal == 0 ou null), mas o processo está conectado ('WORKING' / 'READY' / 'LOCK')
+    e a gravação de mídia MP4/ASF está ativa e nominal.
+    """
+    if bool(c.get("has_outage", False)):
+        return False, "Queda Detectada (Outage)", 0
+
+    tuner_stat = str(c.get("status_tuner", "")).strip()
+    t_lower = tuner_stat.lower()
+
+    is_disconnected = any(w in t_lower for w in ["disconnect", "parado", "falha", "timeout", "error", "desconectado", "sem sintonizador", "no lock"])
+    if is_disconnected:
+        return False, f"Sintonizador Desconectado ({tuner_stat})", 0
+
+    # Confirmação de gravação de mídia MP4/ASF/Vídeo
+    rec_mp4 = any(w in str(c.get("gravando_mp4", "")).lower() for w in ["sim", "gravando", "ativo", ".asf", "ok", "rest"])
+    rec_vid = any(w in str(c.get("gravando_video", c.get("gravando", ""))).lower() for w in ["sim", "gravando", "ativo"])
+    rec_active = rec_mp4 or rec_vid
+
+    # Status ativo do tuner no Atria Capture
+    tuner_working = any(w in t_lower for w in ["working", "connected", "ready", "lock", "operando", "ok"])
+
+    raw_q = c.get("qualidade_sinal")
+    try:
+        qualidade = int(float(raw_q)) if raw_q is not None else 0
+    except Exception:
+        qualidade = 0
+
+    # 1. Se qualidade > 0 e tuner working e gravando -> 100% nominal
+    if qualidade > 0 and (rec_active or tuner_working):
+        return True, f"Lock OK ({qualidade}%)", qualidade
+
+    # 2. SE QUALIDADE == 0 MAS O SINTONIZADOR ESTÁ 'WORKING' / 'CONNECTED' E GRAVANDO:
+    # O canal está 100% sintonizado e gravando! Qualidade 0 é omissão de leitura SNR do driver BDA.
+    motivo = str(c.get("motivo", "")).lower()
+    is_nominal_motivo = "operando normalmente" in motivo or "estável" in motivo or "estavel" in motivo or "sintonizador tbs conectado" in motivo
+
+    if (rec_active and tuner_working) or (tuner_working and is_nominal_motivo and not c.get("is_degraded")):
+        # Lock confirmado fisicamente pelo Atria Capture
+        effective_q = qualidade if qualidade > 0 else 100
+        return True, "Lock OK (Atria Working)", effective_q
+
+    # 3. Se qualidade > 0 mas sem gravação -> sinal RF presente
+    if qualidade > 0 and not rec_active:
+        return True, f"Sinal RF Presente ({qualidade}%)", qualidade
+
+    # 4. Falha real de sinal RF se não há tuner working nem gravação ativa
+    return False, "Sem Lock RF / Sinal Ausente", 0
+
+
 def list_active_pracas() -> List[Dict[str, Any]]:
     """Retorna lista consolidada de todas as pracas ativas com contagem de hosts e canais."""
     data = get_cached_data()
@@ -59,7 +113,7 @@ def list_active_pracas() -> List[Dict[str, Any]]:
             praca_map[p_norm] = {"praca": p_norm, "total_canais": 0, "canais_com_falha": 0, "hosts": set()}
         praca_map[p_norm]["total_canais"] += 1
         
-        # Canal com falha apenas se houver outage real ou TV sem lock (ignora SNR em radio)
+        # Canal com falha apenas se houver falha real de sinal ou áudio
         canal_nome = c.get("canal", "").lower()
         is_rad = any(w in canal_nome for w in ["fm", "am", "radio", "rádio"]) or c.get("meio") == "Radio" or "stream" in str(c.get("meio", "")).lower()
         if is_rad:
@@ -67,7 +121,8 @@ def list_active_pracas() -> List[Dict[str, Any]]:
             if not is_ok:
                 praca_map[p_norm]["canais_com_falha"] += 1
         else:
-            if c.get("has_outage") or c.get("qualidade_sinal") == "0":
+            is_ok, _, _ = is_tv_channel_healthy(c)
+            if not is_ok:
                 praca_map[p_norm]["canais_com_falha"] += 1
 
         h = c.get("host") or c.get("hostname")
@@ -215,10 +270,6 @@ def audit_praca_ecosystem(praca_name: str, selected_cs: Optional[str] = "ALL") -
     for c in praca_channels_raw:
         c_name = c.get("canal", "Canal Desconhecido")
         c_host = c.get("host") or ""
-        # Deduplicacao de canal na mesma praca
-        if c_name in seen_channels:
-            continue
-        seen_channels.add(c_name)
 
         # Identifica CS do canal
         cs_val = c.get("cs") or c.get("id_cs")
@@ -236,6 +287,12 @@ def audit_praca_ecosystem(praca_name: str, selected_cs: Optional[str] = "ALL") -
         c["cs_tier"] = c_tier
         c["cs_origin"] = f"CS0{c_tier}"
         c["cs"] = f"CS0{c_tier}"
+
+        # Deduplicacao de canal por (nome, CS)
+        c_key = (c_name.strip().lower(), c_tier)
+        if c_key in seen_channels:
+            continue
+        seen_channels.add(c_key)
 
         # Se houver filtro ativo de CS, inclui apenas os canais daquela maquina
         if is_single_cs_focus and active_cs_tier is not None:
@@ -384,34 +441,35 @@ def audit_praca_ecosystem(praca_name: str, selected_cs: Optional[str] = "ALL") -
             })
         else:
             # TV DIGITAL TERRESTRE (ISDB-Tb)
+            is_ok, status_desc, eff_q = is_tv_channel_healthy(c)
             qualidade = int(float(c.get("qualidade_sinal") or 0))
-            rec_nominal = mp4_rec
-            is_nominal = (not has_outage) and ("disconnect" not in tuner_stat.lower()) and (qualidade > 0) and rec_nominal
+            is_nominal = is_ok
 
-            if has_outage or "disconnect" in tuner_stat.lower() or qualidade == 0:
-                problems.append({
-                    "code": "TV_SIGNAL_OUTAGE",
-                    "severity": "CRITICO",
-                    "category": f"Sinal & Sintonia TV ({c.get('cs_origin', 'CS01')})",
-                    "host": c.get("host") or focused_host or "CS",
-                    "canal": canal_nome,
-                    "title": f"Quebra de Sinal TV / Tuner sem Lock: {canal_nome}",
-                    "detail": f"O canal digital {canal_nome} está com status de tuner '{tuner_stat}' e Qualidade de Sinal em {qualidade}%.",
-                    "recommended_action": "restart_tuner",
-                    "action_label": f"Reiniciar Sintonizador ({canal_nome})"
-                })
-            elif not mp4_rec:
-                problems.append({
-                    "code": "TV_RECORDING_FAULT",
-                    "severity": "ALERTA",
-                    "category": f"Gravação TV ({c.get('cs_origin', 'CS01')})",
-                    "host": c.get("host") or focused_host or "CS",
-                    "canal": canal_nome,
-                    "title": f"Falha de Gravação TV: {canal_nome}",
-                    "detail": f"Canal digital sintonizado mas sem geração contínua de MP4/ASF.",
-                    "recommended_action": "restart_atria_capture",
-                    "action_label": "Reiniciar Atria Capture"
-                })
+            if not is_ok:
+                if has_outage or "disconnect" in tuner_stat.lower() or not ("working" in tuner_stat.lower() or "ready" in tuner_stat.lower() or "connected" in tuner_stat.lower() or "lock" in tuner_stat.lower()):
+                    problems.append({
+                        "code": "TV_SIGNAL_OUTAGE",
+                        "severity": "CRITICO",
+                        "category": f"Sinal & Sintonia TV ({c.get('cs_origin', 'CS01')})",
+                        "host": c.get("host") or focused_host or "CS",
+                        "canal": canal_nome,
+                        "title": f"Quebra de Sinal TV / Tuner sem Lock: {canal_nome}",
+                        "detail": f"O canal digital {canal_nome} está com status de tuner '{tuner_stat}' e Qualidade de Sinal em {qualidade}%.",
+                        "recommended_action": "restart_tuner",
+                        "action_label": f"Reiniciar Sintonizador ({canal_nome})"
+                    })
+                elif not mp4_rec:
+                    problems.append({
+                        "code": "TV_RECORDING_FAULT",
+                        "severity": "ALERTA",
+                        "category": f"Gravação TV ({c.get('cs_origin', 'CS01')})",
+                        "host": c.get("host") or focused_host or "CS",
+                        "canal": canal_nome,
+                        "title": f"Falha de Gravação TV: {canal_nome}",
+                        "detail": f"Canal digital sintonizado mas sem geração contínua de MP4/ASF.",
+                        "recommended_action": "restart_atria_capture",
+                        "action_label": "Reiniciar Atria Capture"
+                    })
 
             canais_auditoria.append({
                 "canal": canal_nome,
@@ -420,10 +478,10 @@ def audit_praca_ecosystem(praca_name: str, selected_cs: Optional[str] = "ALL") -
                 "cs": c.get("cs", c.get("cs_origin", "CS01")),
                 "cs_origin": c.get("cs_origin", "CS01"),
                 "host": c.get("host") or c.get("hostname") or "",
-                "qualidade": qualidade,
-                "qualidade_str": f"{qualidade}%",
-                "status_tuner": tuner_stat,
-                "gravando": "Sim" if mp4_rec else "Nao",
+                "qualidade": eff_q,
+                "qualidade_str": f"{eff_q}%" if qualidade > 0 else "Lock (Atria)",
+                "status_tuner": status_desc if is_ok else tuner_stat,
+                "gravando": "Sim" if mp4_rec or is_ok else "Nao",
                 "is_nominal": is_nominal,
                 "has_outage": has_outage
             })
@@ -894,9 +952,8 @@ def get_fleet_machines_overview() -> Dict[str, Any]:
                 # Rádio Sonifex: não avalia RF
                 continue
             else:
-                q = int(float(c.get("qualidade_sinal") or c.get("qualidade") or 0))
-                stat = str(c.get("status_tuner", "Lock"))
-                if q == 0 or "disconnect" in stat.lower() or c.get("has_outage"):
+                is_ok, _, _ = is_tv_channel_healthy(c)
+                if not is_ok:
                     sig_faults += 1
 
         if sig_faults > 0:
@@ -915,8 +972,10 @@ def get_fleet_machines_overview() -> Dict[str, Any]:
                 if not is_ok:
                     rec_faults += 1
             else:
-                mp4 = "sim" in str(c.get("gravando_video", c.get("gravando", ""))).lower() or "sim" in str(c.get("gravando_mp4", "")).lower()
-                if not mp4:
+                is_ok, _, _ = is_tv_channel_healthy(c)
+                rec_mp4 = any(w in str(c.get("gravando_mp4", "")).lower() for w in ["sim", "gravando", "ativo", ".asf", "ok", "rest"])
+                rec_vid = any(w in str(c.get("gravando_video", c.get("gravando", ""))).lower() for w in ["sim", "gravando", "ativo"])
+                if not is_ok and not (rec_mp4 or rec_vid):
                     rec_faults += 1
 
         if rec_faults > 0:

@@ -341,19 +341,15 @@ function renderPracaAuditAndSolutions(audit, sol) {
             // Se o backend marcou is_nominal === true, ou se gravando == 'Sim', ou se status_tuner indica working/ready/ok/conectado:
             // O canal é 100% NOMINAL VERDE!
             let isNominal = false;
-            if (isRadio) {
-                if (ch.is_nominal !== undefined) {
-                    isNominal = Boolean(ch.is_nominal);
-                } else {
-                    const tStat = (ch.status_tuner || "").toLowerCase();
-                    const isWorking = tStat.includes("working") || tStat.includes("ready") || tStat.includes("conectado") || tStat.includes("connected") || tStat.includes("ok");
-                    isNominal = isRec || isWorking;
-                }
+            if (ch.is_nominal !== undefined) {
+                isNominal = Boolean(ch.is_nominal);
             } else {
-                if (ch.is_nominal !== undefined) {
-                    isNominal = Boolean(ch.is_nominal);
+                const tStat = (ch.status_tuner || "").toLowerCase();
+                const isWorking = tStat.includes("working") || tStat.includes("ready") || tStat.includes("conectado") || tStat.includes("connected") || tStat.includes("lock") || tStat.includes("ok");
+                if (isRadio) {
+                    isNominal = isRec || isWorking;
                 } else {
-                    isNominal = !ch.has_outage && (ch.qualidade > 0) && isRec;
+                    isNominal = !ch.has_outage && (isRec || isWorking);
                 }
             }
 
@@ -375,6 +371,7 @@ function renderPracaAuditAndSolutions(audit, sol) {
 
             const csLabel = ch.cs || ch.cs_origin || (isRadio ? 'CS03' : 'CS01');
             const csBadgeColor = csLabel.includes('03') ? '#c084fc' : (csLabel.includes('02') ? '#818cf8' : '#38bdf8');
+            const qDisplay = isNominal ? (ch.qualidade_str || (ch.qualidade > 0 ? ch.qualidade + '%' : '100%')) : (ch.qualidade + '%');
             html += `
                 <div style="background: rgba(0,0,0,0.3); border: 1px solid ${borderCol}44; border-left: 3px solid ${borderCol}; border-radius: 6px; padding: 8px 10px; font-size: 11px;">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px;">
@@ -385,7 +382,7 @@ function renderPracaAuditAndSolutions(audit, sol) {
                     </div>
                     <div style="display: flex; justify-content: space-between; color: #94a3b8; font-size: 10px;">
                         <span>CS: <strong style="color: ${csBadgeColor}; font-weight: 700;">${escapeHtml(csLabel)}</strong></span>
-                        <span>${isRadio ? 'Áudio' : 'Q'}: <strong style="color: ${isNominal ? '#34d399' : '#f87171'};">${isRadio ? (isNominal ? 'Nominal' : 'Mudo') : ch.qualidade + '%'}</strong></span>
+                        <span>${isRadio ? 'Áudio' : 'Q'}: <strong style="color: ${isNominal ? '#34d399' : '#f87171'};">${isRadio ? (isNominal ? 'Nominal' : 'Mudo') : qDisplay}</strong></span>
                         <span>Grav: <strong style="color: ${isNominal ? '#34d399' : '#f87171'};">${escapeHtml(ch.gravando || (isNominal ? 'Sim' : 'Não'))}</strong></span>
                     </div>
                 </div>

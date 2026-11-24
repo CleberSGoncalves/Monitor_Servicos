@@ -1,8 +1,8 @@
 {
-  "version": "3.9.94",
+  "version": "3.9.95",
   "agent_version": "1.0.21.5",
   "commit_sha": "auto",
-  "updated_at": "2026-11-24T01:10:00.000000",
-  "description": "v3.9.94 - Matriz Geral de SLA & Situação dos Incidentes 360° (NOC Matrix) com cálculo em minutos de KA, MP3 ARC/BUR, ASF, MP4, Detecção Comercial DT e Link WAN, com filtros inteligentes e auto-cura de 1 clique.",
-  "release_notes": "v3.9.94: Implementa a Matriz Geral de SLA & Situação dos Incidentes 360° da Frota, superando a tela legada da Kantar/MediaDNA. Consolida todos os 247 hosts em alta densidade com atrasos exatos em minutos (KeepAlive KA, Áudio MP3 ARC/BUR, Vídeo MP4/ASF ARC/BUR, Detecção DT CS01, Link WAN e Subprodutos IMA/SPOT/HQ/TS). Adiciona filtros inteligentes para atrasos operacionais ativos (15m-24h), separação de estações crônicas/zombies (>24h), e botão Raio-X de 1 clique para auto-cura."
+  "updated_at": "2026-11-24T01:32:00.000000",
+  "description": "v3.9.95 - Elimina falso positivo de quebra de sinal RF em sintonizadores TV Atria Capture com status WORKING e gravacao ativa (qualidade_sinal=0 por omissao BDA/SNR); isola deduplicacao por (canal, CS).",
+  "release_notes": "v3.9.95: Implementa a Lei do Sinal Efetivo para TV Digital: sintonizadores TBS/Atria Capture com status 'Connected with tuner. WORKING.' e gravação contínua ativa de MP4/ASF são considerados 100% nominais com Lock confirmado, eliminando o falso alerta de '5 canais sem Lock/Sinal' decorrente de drivers BDA que não reportam percentual de SNR (qualidade_sinal=0 no SharePoint legado). Corrige deduplicação de canais na auditoria para escopo estrito por nó (canal, CS)."
 }
