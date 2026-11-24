@@ -140,7 +140,7 @@ function renderSlaMatrixTable(rows, totalFiltered) {
 
         // Telemetria de Hardware (CPU, RAM, Disco D:)
         const cpuStr = r.cpu_uso || "-";
-        let cpuBadge = `<span style="color: #94a3b8; font-size: 11px;">-</span>`;
+        let cpuBadge = `<span style="color: rgba(255, 255, 255, 0.2); font-size: 11px;" title="Telemetria suspensa (Host desconectado)">-</span>`;
         if (cpuStr !== "-" && cpuStr !== "N/A") {
             const cpuNum = parseFloat(cpuStr.replace("%", "").replace("<", "").trim()) || 0;
             if (cpuNum >= 85) {
@@ -153,13 +153,13 @@ function renderSlaMatrixTable(rows, totalFiltered) {
         }
 
         const ramStr = r.ram_uso || "-";
-        let ramBadge = `<span style="color: #94a3b8; font-size: 11px;">-</span>`;
+        let ramBadge = `<span style="color: rgba(255, 255, 255, 0.2); font-size: 11px;" title="Telemetria suspensa (Host desconectado)">-</span>`;
         if (ramStr !== "-" && ramStr !== "N/A") {
             ramBadge = `<span style="color: #cbd5e1; font-weight: 600; font-size: 11px;">${escapeHtml(ramStr)}</span>`;
         }
 
         const discoStr = r.disco_d_livre || "-";
-        let discoBadge = `<span style="color: #94a3b8; font-size: 11px;">-</span>`;
+        let discoBadge = `<span style="color: rgba(255, 255, 255, 0.2); font-size: 11px;" title="Telemetria suspensa (Host desconectado)">-</span>`;
         if (discoStr !== "-" && discoStr !== "N/A") {
             const matchGb = discoStr.match(/([\d\.,]+)\s*GB/i);
             const gbNum = matchGb ? parseFloat(matchGb[1].replace(",", ".")) : 100;

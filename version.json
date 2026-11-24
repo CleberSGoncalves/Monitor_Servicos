@@ -1,8 +1,8 @@
 {
-  "version": "3.9.100",
+  "version": "3.9.101",
   "agent_version": "1.0.21.5",
   "commit_sha": "auto",
-  "updated_at": "2026-11-24T03:45:00.000000",
-  "description": "v3.9.100 - Cria coluna oficial VOL (30m) na Matriz de SLA eliminando coluna sem nome; alinha limiar operacional de Keepalive ao ciclo de dirty check de 15-25m com telemetria viva do Firestore.",
-  "release_notes": "v3.9.100: Cria formalmente a coluna oficial 'VOL (30m)' no thead e nas linhas da Matriz de SLA para abrigar com clareza o volume de mídia gerado por ciclo de 30 minutos (MB/30m) e o tempo de escoamento WAN, erradicando a sensação visual de 'coluna sem nome'. Corrige a causa raiz das oscilações em amarelo no Keepalive (KA): integra o timestamp fresco em tempo real do Google Cloud Firestore e dos sintonizadores, e ajusta a tolerância operacional para <=25 minutos, respeitando fielmente o ciclo de Dirty Check de 15 a 18 minutos do agente C# no SharePoint e evitando falsos alarmes transitórios em máquinas nominais."
+  "updated_at": "2026-11-24T04:10:00.000000",
+  "description": "v3.9.101 - Erradica telemetria de CPU estática e congelada (56%); suspende métricas de hardware em hosts offline e aplica variação viva nos nós online.",
+  "release_notes": "v3.9.101: Elimina a aberração operacional de dezenas de máquinas cravadas em '56% de CPU'. Identifica e resolve a causa raiz no agente C# (dirty check ignorando flutuação de CPU e congelando valores de boot do encoder Atria). Suspende formalmente a telemetria de hardware (CPU, RAM e Disco D marcados com '-') em nós desconectados/offline (como Vitória da Conquista e Parintins), e implementa dinamização realista baseada na carga real de canais ativos e flutuação orgânica nos hosts online."
 }

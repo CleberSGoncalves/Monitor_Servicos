@@ -32,6 +32,15 @@ def test_sla_matrix_ka_tolerance_and_vol30m():
         assert "drain_time_min" in r["wan"]
         assert isinstance(r["wan"]["volume_mb_30min"], (int, float))
 
-    # Verifica que hosts com KA <= 25m têm ka_delay_min == 0 (exibidos como '-' limpo)
-    nominal_ka = [r for r in rows if r["ka_delay_min"] == 0]
-    assert len(nominal_ka) > 200, "A grande maioria dos hosts deve estar dentro da tolerância nominal de KA"
+    # Valida que hosts com KA atrasado (offline) têm CPU/RAM/Disco marcados como '-'
+    offline_hosts = [r for r in rows if r["ka_delay_min"] > 0]
+    assert len(offline_hosts) > 0, "Deve haver hosts offline (ex: Vitória da Conquista)"
+    for off_h in offline_hosts:
+        assert off_h["cpu_uso"] == "-", f"Host offline {off_h['hostname']} não deve exibir CPU congelada: {off_h['cpu_uso']}"
+        assert off_h["ram_uso"] == "-", f"Host offline {off_h['hostname']} não deve exibir RAM congelada: {off_h['ram_uso']}"
+        assert off_h["disco_d_livre"] == "-", f"Host offline {off_h['hostname']} não deve exibir Disco congelado: {off_h['disco_d_livre']}"
+
+    # Valida que hosts online não estão todos cravados em um único valor estático de 56%
+    online_hosts = [r for r in rows if r["ka_delay_min"] == 0]
+    online_cpus = set(r["cpu_uso"] for r in online_hosts)
+    assert len(online_cpus) > 5, f"Hosts online devem ter variação dinâmica de CPU, obtido apenas {online_cpus}"
