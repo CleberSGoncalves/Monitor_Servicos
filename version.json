@@ -1,8 +1,8 @@
 {
-  "version": "3.9.92",
+  "version": "3.9.93",
   "agent_version": "1.0.21.5",
   "commit_sha": "auto",
-  "updated_at": "2026-11-23T23:35:00.000000",
-  "description": "v3.9.92 - Elimina falsos positivos de gravação de áudio de rádios em Belo Horizonte e demais praças no modal de auditoria forense, alinhando badges nominais com telemetria ativa e atualização dinâmica do dropdown.",
-  "release_notes": "v3.9.92: Blindagem definitiva de canais de rádio (Sonifex e Streaming RTSP/IP) no modal de diagnóstico; renderização nominal verde para encoders com status ativo ('WORKING' / 'Stream Conectado'); recarregamento dinâmico sem cache do dropdown de praças refletindo 0 falhas em Belo Horizonte."
+  "updated_at": "2026-11-23T23:55:00.000000",
+  "description": "v3.9.93 - Integra estágio de Link WAN (Internet, Operadora, RTT e SLA de upload) no pipeline forense da praça; isola estritamente Detecção Comercial e Despacho WCF como N/A exclusivo em CS02 e CS03 e sanitiza seletor de CSs.",
+  "release_notes": "v3.9.93: Adiciona estágio de Link WAN & Operadora no pipeline de confiabilidade (com latência ping, operadora e vazão de escoamento); blinda estágios de Detecção Automática e Despacho WCF como 'N/A — Exclusivo CS01' em nós CS02 e CS03; sanitiza botões e filtros de CS removendo sufixos float (ex: CS02.0 -> CS02)."
 }

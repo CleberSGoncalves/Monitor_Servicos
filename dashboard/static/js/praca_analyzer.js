@@ -132,12 +132,13 @@ function renderPracaAuditAndSolutions(audit, sol) {
     `;
 
     availableCs.forEach(csItem => {
-        const csCode = (typeof csItem === "object" && csItem !== null) ? (csItem.code || csItem.hostname || "") : String(csItem || "");
-        const csLabel = (typeof csItem === "object" && csItem !== null) ? (csItem.label || csItem.code || csItem.hostname || "") : String(csItem || "");
-        const isSelected = currentCs.toUpperCase() === csCode.toUpperCase();
+        const rawCode = (typeof csItem === "object" && csItem !== null) ? (csItem.code || csItem.hostname || "") : String(csItem || "");
+        const csCode = rawCode.replace(".0", "");
+        const csLabel = (typeof csItem === "object" && csItem !== null) ? (csItem.label || csCode) : csCode;
+        const isSelected = currentCs.toUpperCase().replace(".0", "") === csCode.toUpperCase();
         let icon = "🖥️";
         if (csCode.includes("03") || csCode.includes("RADIO")) icon = "📻";
-        else if (csCode.includes("02")) icon = "🖥️";
+        else if (csCode.includes("02")) icon = "📺";
 
         csButtonsHtml += `
             <button type="button" 
@@ -157,18 +158,18 @@ function renderPracaAuditAndSolutions(audit, sol) {
         scopeNoticeHtml = `
             <div style="background: rgba(56, 189, 248, 0.08); border-left: 3px solid #38bdf8; padding: 8px 12px; border-radius: 0 6px 6px 0; font-size: 11px; color: #bae6fd; margin-bottom: 14px; display: flex; align-items: center; gap: 8px;">
                 <i class="fas fa-info-circle" style="color: #38bdf8;"></i>
-                <span>Visualizando estritamente <strong>${escapeHtml(audit.selected_cs)}</strong> (${escapeHtml(audit.focused_host)}). ${isCs1 ? 'Motor de Detecção analisado ativamente.' : 'Detecção Comercial é exclusiva do CS01; este host analisa gravação de mídia, sintonizadores e hardware.'}</span>
+                <span>Visualizando estritamente <strong>${escapeHtml(audit.selected_cs)}</strong> (${escapeHtml(audit.focused_host || 'Nó Local')}). ${isCs1 ? 'Motor de Detecção e Transmissão WCF analisados ativamente no CS01.' : 'Detecção Comercial e Despacho WCF são exclusivos do CS01; este host analisa link de internet WAN, gravação de mídia, sintonizadores e hardware.'}</span>
             </div>
         `;
     }
 
-    // 6 Estágios do Pipeline Forense
+    // Estágios do Pipeline Forense
     let pipelineHtml = "";
     if (audit.pipeline_stages && audit.pipeline_stages.length > 0) {
         pipelineHtml = `
             <div style="margin-bottom: 16px;">
                 <h4 style="margin: 0 0 8px 0; font-size: 12px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">
-                    Pipeline de Saúde do Nó (6 Estágios de Confiabilidade)
+                    Pipeline de Confiabilidade do Nó (${audit.pipeline_stages.length} Estágios Operacionais)
                 </h4>
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 8px;">
         `;
@@ -219,6 +220,26 @@ function renderPracaAuditAndSolutions(audit, sol) {
         `;
     }
 
+    // Banner Superior Contextualizado por Nó
+    const isSingleCs = !!audit.is_single_cs_focus;
+    const tier = audit.active_cs_tier;
+    const nodeTitle = isSingleCs ? `Nó em Análise (${audit.selected_cs}):` : 'Host Central CS01:';
+    const nodeHost = isSingleCs ? (audit.focused_host || audit.cs01_host || 'N/D') : (audit.cs01_host || 'N/D');
+
+    let nodeRoleLabel = "Motor de Detecção:";
+    let nodeRoleVal = escapeHtml(audit.active_engine);
+    let nodeRoleColor = audit.engine_conflict ? '#ef4444' : (audit.active_engine.includes('N/A') ? '#94a3b8' : '#38bdf8');
+
+    if (isSingleCs && tier === 2) {
+        nodeRoleLabel = "Papel Operacional:";
+        nodeRoleVal = "📺 Captação TV Filial (Sem Detecção Automática / WCF)";
+        nodeRoleColor = "#818cf8";
+    } else if (isSingleCs && tier === 3) {
+        nodeRoleLabel = "Papel Operacional:";
+        nodeRoleVal = "📻 Rádio Sonifex / Streaming (Sem Detecção / WCF)";
+        nodeRoleColor = "#c084fc";
+    }
+
     let html = `
         ${csButtonsHtml}
         ${scopeNoticeHtml}
@@ -242,14 +263,14 @@ function renderPracaAuditAndSolutions(audit, sol) {
                 </div>
             </div>
 
-            <!-- Camada de Motores e CS01 -->
+            <!-- Camada de Papel do Nó e Motores -->
             <div style="background: rgba(0,0,0,0.3); border-radius: 6px; padding: 10px 12px; font-size: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
                 <div>
-                    <span style="color: #94a3b8;">Host Central CS01:</span> <strong style="color: #fff;">${escapeHtml(audit.cs01_host || 'N/D')}</strong>
+                    <span style="color: #94a3b8;">${escapeHtml(nodeTitle)}</span> <strong style="color: #fff;">${escapeHtml(nodeHost)}</strong>
                 </div>
                 <div>
-                    <span style="color: #94a3b8;">Motor de Detecção:</span>
-                    <strong style="color: ${audit.engine_conflict ? '#ef4444' : (audit.active_engine.includes('N/A') ? '#94a3b8' : '#38bdf8')};">${escapeHtml(audit.active_engine)}</strong>
+                    <span style="color: #94a3b8;">${escapeHtml(nodeRoleLabel)}</span>
+                    <strong style="color: ${nodeRoleColor};">${nodeRoleVal}</strong>
                 </div>
             </div>
         </div>

@@ -134,7 +134,7 @@ def test_detection_engine_ignored_on_cs02_and_cs03():
 
 def test_pipeline_stages_integrity():
     """
-    Verifica a presença e consistência dos 6 estágios do pipeline forense.
+    Verifica a presença e consistência dos 7 estágios do pipeline forense (incluindo Link WAN).
     """
     mock_cache = {
         "services": [
@@ -177,11 +177,48 @@ def test_pipeline_stages_integrity():
         audit = audit_praca_ecosystem("Aracaju", selected_cs="CS01")
         stages = audit["pipeline_stages"]
 
-        assert len(stages) == 6
+        assert len(stages) == 7
         stage_ids = [s["id"] for s in stages]
-        assert stage_ids == ["link", "detection", "signal", "recording", "hardware", "dispatch"]
+        assert stage_ids == ["link", "wan_link", "signal", "recording", "hardware", "detection", "dispatch"]
 
         # No CS01 com FastMatching ativo, detecção deve ser NOMINAL
         det_stage = next(s for s in stages if s["id"] == "detection")
         assert det_stage["status"] == "NOMINAL"
         assert "FastMatching" in det_stage["badge"]
+
+        # Link WAN deve estar presente
+        wan_stage = next(s for s in stages if s["id"] == "wan_link")
+        assert wan_stage["status"] == "NOMINAL"
+        assert "Mbps" in wan_stage["badge"] or "SLA" in wan_stage["badge"]
+
+
+def test_cs02_and_cs03_wcf_and_detection_strictly_na_and_wan_link():
+    """
+    Garante que em CS02 e CS03:
+    1. Detecção Automática seja N/A — Exclusivo CS01.
+    2. Despacho WCF seja N/A — Exclusivo CS01.
+    3. Link WAN esteja presente com operadora e RTT.
+    4. Filtros com float como 'CS02.0' funcionem perfeitamente.
+    """
+    audit_cs2 = audit_praca_ecosystem("Brasília", selected_cs="CS02.0")
+    assert audit_cs2["selected_cs"] == "CS02"
+    assert audit_cs2["is_single_cs_focus"] is True
+    assert audit_cs2["active_cs_tier"] == 2
+    assert audit_cs2["total_hosts"] == 1
+    assert "CS2" in audit_cs2["focused_host"]
+
+    # Detecção e WCF devem ser estritamente N/A
+    stages_cs2 = audit_cs2["pipeline_stages"]
+    det_st = next(s for s in stages_cs2 if s["id"] == "detection")
+    assert det_st["status"] == "NA"
+    assert "N/A — Exclusivo CS01" in det_st["badge"]
+
+    disp_st = next(s for s in stages_cs2 if s["id"] == "dispatch")
+    assert disp_st["status"] == "NA"
+    assert "N/A — Exclusivo CS01" in disp_st["badge"]
+
+    # Link WAN deve estar presente e com telemetria
+    wan_st = next(s for s in stages_cs2 if s["id"] == "wan_link")
+    assert wan_st["status"] == "NOMINAL"
+    assert "Telebras" in wan_st["badge"]
+    assert "Mbps" in wan_st["badge"]

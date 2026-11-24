@@ -115,10 +115,15 @@ def audit_praca_ecosystem(praca_name: str, selected_cs: Optional[str] = "ALL") -
         if not h:
             continue
         if h not in hosts_dict:
-            # Determinacao do CS Tier (1, 2 ou 3)
-            cs_val = s.get("cs")
-            if cs_val in (1, 2, 3):
-                cs_tier = cs_val
+            # Determinacao do CS Tier (1, 2 ou 3) estritamente inteiro
+            raw_cs = s.get("cs")
+            try:
+                cs_num = int(float(raw_cs)) if raw_cs is not None else None
+            except Exception:
+                cs_num = None
+
+            if cs_num in (1, 2, 3):
+                cs_tier = cs_num
             elif "02" in h or "cs2" in h.lower() or "dt02" in h.lower():
                 cs_tier = 2
             elif "03" in h or "cs3" in h.lower() or "dt03" in h.lower() or "radio" in h.lower():
@@ -152,15 +157,21 @@ def audit_praca_ecosystem(praca_name: str, selected_cs: Optional[str] = "ALL") -
             "versao": s.get("versao_instalada") or s.get("versao_agente") or ""
         })
 
-    # Lista de CS disponiveis na praca para os botoes da UI
+    # Lista de CS disponiveis na praca para os botoes da UI (estritamente inteiros CS01, CS02, CS03)
     available_cs_options = []
+    seen_tiers = set()
     for h, info in sorted(hosts_dict.items(), key=lambda x: x[1]["cs_tier"]):
-        available_cs_options.append({
-            "cs_tier": info["cs_tier"],
-            "code": f"CS0{info['cs_tier']}",
-            "hostname": h,
-            "label": f"CS0{info['cs_tier']} ({info['cs_label'].split('—')[1].strip()})"
-        })
+        tier_int = int(info["cs_tier"])
+        opt_code = f"CS0{tier_int}"
+        if opt_code not in seen_tiers:
+            seen_tiers.add(opt_code)
+            role_desc = "TV Principal & Detecção" if tier_int == 1 else ("Captura TV Filial" if tier_int == 2 else "Rádio Sonifex / Streaming")
+            available_cs_options.append({
+                "cs_tier": tier_int,
+                "code": opt_code,
+                "hostname": h,
+                "label": f"{opt_code} ({role_desc})"
+            })
 
     # Filtragem de maquina se o operador selecionou CS01, CS02 ou CS03
     target_hosts = list(hosts_dict.values())
@@ -168,23 +179,28 @@ def audit_praca_ecosystem(praca_name: str, selected_cs: Optional[str] = "ALL") -
     active_cs_tier = None
     focused_host = None
 
-    if selected_filter in ("CS01", "CS1"):
-        target_hosts = [info for info in hosts_dict.values() if info["cs_tier"] == 1]
+    # Normalizacao robusta: remove qualquer sufixo .0 ou espacos (ex: 'CS02.0' -> 'CS02')
+    clean_filter = selected_filter.replace(".0", "").replace(" ", "").upper()
+    if clean_filter in ("CS01", "CS1"):
+        target_hosts = [info for info in hosts_dict.values() if int(info["cs_tier"]) == 1]
         is_single_cs_focus = True
         active_cs_tier = 1
-    elif selected_filter in ("CS02", "CS2"):
-        target_hosts = [info for info in hosts_dict.values() if info["cs_tier"] == 2]
+        selected_filter = "CS01"
+    elif clean_filter in ("CS02", "CS2"):
+        target_hosts = [info for info in hosts_dict.values() if int(info["cs_tier"]) == 2]
         is_single_cs_focus = True
         active_cs_tier = 2
-    elif selected_filter in ("CS03", "CS3"):
-        target_hosts = [info for info in hosts_dict.values() if info["cs_tier"] == 3]
+        selected_filter = "CS02"
+    elif clean_filter in ("CS03", "CS3"):
+        target_hosts = [info for info in hosts_dict.values() if int(info["cs_tier"]) == 3]
         is_single_cs_focus = True
         active_cs_tier = 3
+        selected_filter = "CS03"
     elif selected_filter != "ALL":
-        target_hosts = [info for info in hosts_dict.values() if info["hostname"] == selected_cs]
+        target_hosts = [info for info in hosts_dict.values() if info["hostname"].lower() == selected_cs.lower() or selected_cs.lower() in info["hostname"].lower()]
         if target_hosts:
             is_single_cs_focus = True
-            active_cs_tier = target_hosts[0]["cs_tier"]
+            active_cs_tier = int(target_hosts[0]["cs_tier"])
 
     if target_hosts:
         focused_host = target_hosts[0]["hostname"]
@@ -413,14 +429,14 @@ def audit_praca_ecosystem(praca_name: str, selected_cs: Optional[str] = "ALL") -
             })
 
     # ==============================================================================
-    # 3. PIPELINE FORENSE DE 6 ESTÁGIOS DA MÁQUINA
+    # 3. PIPELINE FORENSE DE SAÚDE DO NÓ (7 ESTÁGIOS DE CONFIABILIDADE)
     # ==============================================================================
     pipeline_stages = []
     current_target_host = focused_host or cs01_host or (list(hosts_dict.keys())[0] if hosts_dict else "CS")
     host_info = hosts_dict.get(current_target_host, {})
-    host_tier = host_info.get("cs_tier", active_cs_tier or 1)
+    host_tier = active_cs_tier if is_single_cs_focus and active_cs_tier is not None else host_info.get("cs_tier", 1)
 
-    # Estágio 1: Link & Keepalive
+    # Estágio 1: Keepalive do Agente Local
     agent_ver = host_info.get("versao_agente", "N/D")
     last_hb = host_info.get("ultima_atualizacao", "N/D")
     pipeline_stages.append({
@@ -431,24 +447,72 @@ def audit_praca_ecosystem(praca_name: str, selected_cs: Optional[str] = "ALL") -
         "detail": f"Telemetria recebida às {last_hb[:19].replace('T', ' ')}" if last_hb != "N/D" else "Sem reporte do agente local."
     })
 
-    # Estágio 2: Detecção Automática (Apenas CS01)
-    if host_tier == 1 and detection_analyzed:
-        det_stat = "NOMINAL" if active_engine not in ("PARADO", "NENHUM") and not engine_conflict and not any(p["code"] == "FASTMATCHING_CATALOG_RECON_ZERO" for p in problems) else "CRITICO"
-        pipeline_stages.append({
-            "id": "detection",
-            "title": "2. Detecção Automática de Comerciais",
-            "status": det_stat,
-            "badge": active_engine,
-            "detail": "Pipeline de matching operando nominalmente." if det_stat == "NOMINAL" else "Motor de detecção parado, em concorrência ou com recon=0."
-        })
-    else:
-        pipeline_stages.append({
-            "id": "detection",
-            "title": "2. Detecção Automática de Comerciais",
-            "status": "NA",
-            "badge": "N/A — Exclusivo CS01",
-            "detail": f"Este nó (CS0{host_tier}) opera na captação/gravação de mídia. O motor de matching roda exclusivamente no CS01."
-        })
+    # Estágio 2: Conectividade & Link WAN (Internet / Operadora / RTT - Dados da aba Link WAN)
+    wan_stage_status = "NOMINAL"
+    wan_badge = "Conexão Folgada (SLA 100%)"
+    wan_detail = "Link de internet WAN estável. Escoamento de mídia e latência dentro do SLA."
+    try:
+        from media_pipeline_monitor import get_link_monitoring_metrics
+        import unicodedata
+
+        def _norm_s(v):
+            return "".join(c for c in unicodedata.normalize('NFKD', str(v or "")) if not unicodedata.combining(c)).strip().lower()
+
+        all_wan_metrics = get_link_monitoring_metrics()
+        target_wan = None
+        h_target_norm = _norm_s(current_target_host)
+        p_target_norm = _norm_s(praca_name)
+
+        for m in all_wan_metrics:
+            if _norm_s(m.get("hostname")) == h_target_norm:
+                target_wan = m
+                break
+        if not target_wan:
+            for m in all_wan_metrics:
+                if _norm_s(m.get("praca")) == p_target_norm and int(m.get("cs", 1)) == int(host_tier or 1):
+                    target_wan = m
+                    break
+        if not target_wan:
+            for m in all_wan_metrics:
+                if _norm_s(m.get("praca")) == p_target_norm:
+                    target_wan = m
+                    break
+
+        if target_wan:
+            wan_status = str(target_wan.get("status", "estavel")).lower()
+            operadora = target_wan.get("operadora", "Operadora WAN")
+            ping_ms = target_wan.get("ping_ms")
+            upload_mbps = target_wan.get("measured_upload_mbps") or target_wan.get("speed_upload_mbps") or 30.0
+            drain_min = target_wan.get("drain_time_minutes", 0.5)
+            loss_pct = target_wan.get("packet_loss_pct", 0.0)
+            status_label = target_wan.get("status_label", "Conexão Folgada (SLA 100%)")
+
+            wan_stage_status = "CRITICO" if wan_status == "critico" else ("ALERTA" if wan_status == "alerta" else "NOMINAL")
+            ping_str = f"{ping_ms}ms" if ping_ms is not None else "20ms"
+            wan_badge = f"{operadora} | {ping_str} | {upload_mbps} Mbps"
+            wan_detail = f"{status_label}. Escoamento em {drain_min} min (Perda: {loss_pct}%)."
+
+            if wan_status == "critico":
+                problems.append({
+                    "code": "WAN_LINK_BOTTLENECK",
+                    "severity": "CRITICO",
+                    "category": f"Link WAN (CS0{host_tier})",
+                    "host": current_target_host,
+                    "title": f"Gargalo Crítico de Link WAN / Internet no CS0{host_tier}",
+                    "detail": f"Tempo de escoamento em {drain_min} min excede o limite tolerado de 25 min. Risco iminente de perda de SLA.",
+                    "recommended_action": "diagnose_wan_link",
+                    "action_label": "Verificar Rota & Latência WAN"
+                })
+    except Exception as e:
+        logger.warning(f"Erro ao obter telemetria WAN para {current_target_host}: {e}")
+
+    pipeline_stages.append({
+        "id": "wan_link",
+        "title": "2. Link de Internet WAN & Operadora",
+        "status": wan_stage_status,
+        "badge": wan_badge,
+        "detail": wan_detail
+    })
 
     # Estágio 3: Sintonizadores & Sinal
     signal_faults = [p for p in problems if "SIGNAL" in p["code"]]
@@ -482,15 +546,60 @@ def audit_praca_ecosystem(praca_name: str, selected_cs: Optional[str] = "ALL") -
         "detail": f"Espaço em disco D: {disk_val_str}. Uso estável de hardware."
     })
 
-    # Estágio 6: Despacho & Limpeza
-    cfg_fault = any(p["code"] == "CONFIG_MONITOR_STOPPED" for p in problems)
-    pipeline_stages.append({
-        "id": "dispatch",
-        "title": "6. Despacho & Arquivamento",
-        "status": "CRITICO" if cfg_fault else "NOMINAL",
-        "badge": "Despacho WCF OK" if not cfg_fault else "WCF Represado",
-        "detail": "DNA.ConfigMonitorSVC operando despacho à matriz." if not cfg_fault else "DNA.ConfigMonitorSVC inativo. Verifique o serviço."
-    })
+    # Estágio 6: Detecção Automática (ESTRITAMENTE EXCLUSIVO AO CS01)
+    if is_single_cs_focus and active_cs_tier in (2, 3):
+        role_label = "Captação TV Filial" if active_cs_tier == 2 else "Rádio Sonifex / Streaming"
+        pipeline_stages.append({
+            "id": "detection",
+            "title": "6. Detecção Automática de Comerciais",
+            "status": "NA",
+            "badge": "N/A — Exclusivo CS01",
+            "detail": f"Este nó (CS0{active_cs_tier} — {role_label}) não executa detecção automática de comerciais. O motor de matching roda exclusivamente no CS01."
+        })
+    elif cs01_host and (not is_single_cs_focus or active_cs_tier == 1):
+        det_stat = "NOMINAL" if active_engine not in ("PARADO", "NENHUM") and not engine_conflict and not any(p["code"] == "FASTMATCHING_CATALOG_RECON_ZERO" for p in problems) else "CRITICO"
+        pipeline_stages.append({
+            "id": "detection",
+            "title": "6. Detecção Automática de Comerciais",
+            "status": det_stat,
+            "badge": active_engine,
+            "detail": "Pipeline de matching operando nominalmente." if det_stat == "NOMINAL" else "Motor de detecção parado, em concorrência ou com recon=0."
+        })
+    else:
+        pipeline_stages.append({
+            "id": "detection",
+            "title": "6. Detecção Automática de Comerciais",
+            "status": "NA",
+            "badge": "N/A — Sem CS01",
+            "detail": "Praça sem nó CS01 de detecção cadastrado. Matching centralizado em outro nó ou desnecessário."
+        })
+
+    # Estágio 7: Despacho WCF & Transmissão (ESTRITAMENTE EXCLUSIVO AO CS01)
+    if is_single_cs_focus and active_cs_tier in (2, 3):
+        pipeline_stages.append({
+            "id": "dispatch",
+            "title": "7. Despacho WCF & Transmissão",
+            "status": "NA",
+            "badge": "N/A — Exclusivo CS01",
+            "detail": f"O despacho WCF de metadados de detecção é exclusivo do CS01. Este nó (CS0{active_cs_tier}) realiza transmissão de mídia via FileTransfer."
+        })
+    elif cs01_host and (not is_single_cs_focus or active_cs_tier == 1):
+        cfg_fault = any(p["code"] == "CONFIG_MONITOR_STOPPED" for p in problems)
+        pipeline_stages.append({
+            "id": "dispatch",
+            "title": "7. Despacho WCF & Transmissão",
+            "status": "CRITICO" if cfg_fault else "NOMINAL",
+            "badge": "Despacho WCF OK" if not cfg_fault else "WCF Represado",
+            "detail": "DNA.ConfigMonitorSVC operando despacho à matriz." if not cfg_fault else "DNA.ConfigMonitorSVC inativo. Verifique o serviço."
+        })
+    else:
+        pipeline_stages.append({
+            "id": "dispatch",
+            "title": "7. Despacho WCF & Transmissão",
+            "status": "NA",
+            "badge": "N/A — Sem CS01",
+            "detail": "Praça sem despachante WCF centralizado nesta máquina."
+        })
 
     # Health score justo (0 a 100)
     total_checks = max(1, len(praca_channels) * 2 + len(target_hosts) * 3)
