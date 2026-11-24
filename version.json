@@ -1,8 +1,8 @@
 {
-  "version": "3.9.106",
+  "version": "3.9.107",
   "agent_version": "1.0.21.5",
   "commit_sha": "auto",
-  "updated_at": "2026-11-24T06:55:00.000000",
-  "description": "v3.9.106 - Sincronização e Coerência Fila N1 vs Matriz SLA: unificação de incidentes offline (CS01 e CS02) e exibição completa de P2 no pill Todos.",
-  "release_notes": "v3.9.106: Corrige a divergência entre a Fila de Incidentes N1 e a Matriz de SLA. 1) Hosts CS01 desconectados (ex: Vitória da Conquista CS01) agora recebem status COMM_LOST imediato e geram incidente P1 de Host Desconectado na Fila N1 em paridade com CS02. 2) O seletor de severidade P2 passa a vir marcado por padrão e o clique no pill 'Todos' garante a exibição de todas as ocorrências sem bloqueio silencioso. 3) Diagnóstico completo dos logs de Parintins comprovando que a versão local ainda tenta atualizar o SharePoint via Microsoft Graph e é rejeitada com HTTP 429 Throttling e itemNotFound."
+  "updated_at": "2026-11-24T12:10:00.000000",
+  "description": "v3.9.107 - Correção LogRotate FastMatching (apontamento fma.log em D: com rotate 3 e reinício seletivo de serviço).",
+  "release_notes": "v3.9.107: Implementa o script oficial e orquestrador de frota para corrigir o logrotate.conf em todos os Capture Sites. Corrige o caminho de C:\\ para D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMatchingSvc\\fma.log e reduz a retenção de 10 para 3 dias (rotate 3), desobstruindo o disco e contendo o crescimento excessivo de fma.log. Aplica a regra de reinício condicional do FastMatchingSvc exclusivamente nas praças onde o serviço estiver ativo (Running), preservando intactos os nós parados ou desinstalados."
 }
