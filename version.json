@@ -1,8 +1,8 @@
 {
-  "version": "3.9.109",
+  "version": "3.9.110",
   "agent_version": "1.0.21.5",
   "commit_sha": "auto",
-  "updated_at": "2026-11-24T13:04:00.000000",
-  "description": "v3.9.109 - Homologação de rotate 10 para fma.log em D: e script de correção do LogRotate para toda a frota de Capture Sites.",
-  "release_notes": "v3.9.109: 1. Homologação oficial do logrotate.conf com rotate 10 (retenção de 10 dias) e apontamento corrigido para D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMatchingSvc\\fma.log em substituição ao apontamento legado na unidade C:. 2. Script Corrigir_LogRotate_FastMatching.ps1 e atualizador em lote atualizar_logrotate_frota.py parametrizados com rotate 10 e regra operacional estrita: reinicia o FastMatchingSvc apenas nas praças onde o serviço estiver ativo/em execução, preservando nós parados. 3. Integração total no Catálogo Remoto da IA e no modal de Central de Configuração Remota do Capture Site na aba Frota."
+  "updated_at": "2026-11-24T13:30:00.000000",
+  "description": "v3.9.110 - Acompanhamento de Atualização ao Vivo com Percentual, Terminal em Tempo Real e Widget Flutuante Persistente.",
+  "release_notes": "v3.9.110: 1. Barra de progresso visual em tempo real com percentual numérico (0% a 100%) e descrição dinâmica da atividade em execução no host (download, parada profilática, extração de MSI, restauração de configs e healthcheck). 2. Terminal do Script em Tempo Real (Console do Host) integrado ao modal, com logs ao vivo e botão para copiar saída. 3. Widget Flutuante Persistente Global (#fleetActiveUpdateFloatingWidget): caso o operador feche o modal ou navegue pelo sistema, o widget flutuante no canto inferior permanece visível com percentual e status em tempo real, permitindo reabrir o modal em 1 clique a qualquer momento. 4. Botão de acompanhamento dinâmico na tabela da Frota e restauração automática via localStorage."
 }

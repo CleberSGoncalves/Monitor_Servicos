@@ -702,11 +702,19 @@ function renderFleetEvolutionTable() {
             govBadge = `<span style="color: #f87171; font-weight: 600;">Desatualizado</span>`;
         }
 
-        // Ação de Atualização Direta (1 clique via Google Cloud) + Botão de Remover Máquina (Desinstalar e Excluir da Telemetria)
+        // Ação de Atualização Direta (1 clique via Google Cloud) + Botão de Acompanhar ao Vivo se em andamento
+        const savedActive = getSavedActiveFleetUpdate();
+        const isBeingUpdated = (h.acao_solicitada === "Atualizar") || (savedActive && savedActive.host === h.hostname);
         const needsUpdate = (!isUp || h.status_atualizacao === "Desatualizado");
-        const updateBtn = needsUpdate
-            ? `<button class="btn-sm btn-primary" onclick="dispatchSingleHostUpdate('${h.hostname}', '${currentGovernanceService}', '${h.versao_desejada || targetVer}')" style="padding: 3px 8px; font-size: 11px; font-weight: 700; background: #0284c7; border: 1px solid #38bdf8; border-radius: 4px; color: #fff; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" title="Disparar atualização direta via Google Cloud Firestore: v${h.versao_desejada || targetVer}"><i class="fas fa-bolt"></i> Atualizar</button>`
-            : `<button class="btn-sm" onclick="dispatchSingleHostUpdate('${h.hostname}', '${currentGovernanceService}', '${h.versao_desejada || targetVer}')" style="padding: 3px 8px; font-size: 11px; font-weight: 600; background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.35); border-radius: 4px; color: #34d399; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" title="Em dia! Clique se desejar forçar reinstalação via Google Cloud"><i class="fas fa-check-circle"></i> Em Dia</button>`;
+        
+        let updateBtn = "";
+        if (isBeingUpdated) {
+            updateBtn = `<button class="btn-sm btn-primary" onclick="openFleetUpdateProgressModal('${h.hostname}', '${currentGovernanceService}', '${h.versao_desejada || targetVer}')" style="padding: 3px 8px; font-size: 11px; font-weight: 700; background: linear-gradient(135deg, #0284c7, #2563eb); border: 1px solid #38bdf8; border-radius: 4px; color: #fff; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; box-shadow: 0 0 10px rgba(56,189,248,0.4);" title="Atualização em andamento! Clique para acompanhar ao vivo"><i class="fas fa-spinner fa-spin"></i> Acompanhar ao Vivo</button>`;
+        } else if (needsUpdate) {
+            updateBtn = `<button class="btn-sm btn-primary" onclick="dispatchSingleHostUpdate('${h.hostname}', '${currentGovernanceService}', '${h.versao_desejada || targetVer}')" style="padding: 3px 8px; font-size: 11px; font-weight: 700; background: #0284c7; border: 1px solid #38bdf8; border-radius: 4px; color: #fff; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" title="Disparar atualização direta via Google Cloud Firestore: v${h.versao_desejada || targetVer}"><i class="fas fa-bolt"></i> Atualizar</button>`;
+        } else {
+            updateBtn = `<button class="btn-sm" onclick="dispatchSingleHostUpdate('${h.hostname}', '${currentGovernanceService}', '${h.versao_desejada || targetVer}')" style="padding: 3px 8px; font-size: 11px; font-weight: 600; background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.35); border-radius: 4px; color: #34d399; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" title="Em dia! Clique se desejar forçar reinstalação via Google Cloud"><i class="fas fa-check-circle"></i> Em Dia</button>`;
+        }
 
         const removeHostBtn = `<button class="btn-sm" onclick="removeHostFromFleet('${h.hostname}', '${h.praca}')" style="padding: 3px 7px; font-size: 11px; background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.4); border-radius: 4px; color: #f87171; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;" title="Desinstalar serviço na máquina remota e remover [${h.hostname}] da telemetria"><i class="fas fa-trash-alt"></i> Remover</button>`;
 
@@ -1385,12 +1393,31 @@ let currentUpdateProgressTargetVersion = null;
 let currentUpdateProgressTimerInterval = null;
 let currentUpdateProgressPollInterval = null;
 let updateProgressStartTime = null;
+let lastKnownUpdateStatusData = null;
 
 async function openFleetUpdateProgressModal(host, serviceName, targetVersion = null) {
     currentUpdateProgressHost = host;
     currentUpdateProgressService = serviceName || currentGovernanceService || "Atria Capture";
     currentUpdateProgressTargetVersion = targetVersion || (cachedFleetEvolutionData ? cachedFleetEvolutionData.target_version : "2.0.0.2");
-    updateProgressStartTime = Date.now();
+    
+    // Recupera startTime do localStorage se for o mesmo host/serviço para não zerar o relógio
+    const savedActive = getSavedActiveFleetUpdate();
+    if (savedActive && savedActive.host === host && savedActive.serviceName === currentUpdateProgressService && savedActive.startTime) {
+        updateProgressStartTime = savedActive.startTime;
+    } else {
+        updateProgressStartTime = Date.now();
+    }
+
+    // Persiste no localStorage para navegação persistente e recarregamento
+    saveActiveFleetUpdate({
+        host: host,
+        serviceName: currentUpdateProgressService,
+        targetVersion: currentUpdateProgressTargetVersion,
+        startTime: updateProgressStartTime
+    });
+
+    // Oculta o widget flutuante enquanto o modal principal estiver aberto
+    hideActiveUpdateFloatingWidget();
 
     const modal = document.getElementById("fleetUpdateProgressModal");
     if (!modal) return;
@@ -1438,6 +1465,126 @@ function closeFleetUpdateProgressModal() {
     }
     const modal = document.getElementById("fleetUpdateProgressModal");
     if (modal) modal.style.display = "none";
+
+    // Se a atualização AINDA ESTIVER EM ANDAMENTO, reativa o Widget Flutuante persistente!
+    if (lastKnownUpdateStatusData && !lastKnownUpdateStatusData.is_finished) {
+        showActiveUpdateFloatingWidget(lastKnownUpdateStatusData);
+        startBackgroundFloatingPoll();
+    }
+}
+
+function getSavedActiveFleetUpdate() {
+    try {
+        const raw = localStorage.getItem("active_fleet_update");
+        if (!raw) return null;
+        const data = JSON.parse(raw);
+        // Expirar após 45 minutos se esquecido
+        if (Date.now() - (data.startTime || 0) > 45 * 60 * 1000) {
+            localStorage.removeItem("active_fleet_update");
+            return null;
+        }
+        return data;
+    } catch (e) {
+        return null;
+    }
+}
+
+function saveActiveFleetUpdate(obj) {
+    try {
+        localStorage.setItem("active_fleet_update", JSON.stringify(obj));
+    } catch (e) {}
+}
+
+function clearSavedActiveFleetUpdate() {
+    try {
+        localStorage.removeItem("active_fleet_update");
+    } catch (e) {}
+}
+
+let backgroundFloatingPollInterval = null;
+function startBackgroundFloatingPoll() {
+    if (backgroundFloatingPollInterval) clearInterval(backgroundFloatingPollInterval);
+    backgroundFloatingPollInterval = setInterval(async () => {
+        const saved = getSavedActiveFleetUpdate();
+        if (!saved || !saved.host) {
+            clearInterval(backgroundFloatingPollInterval);
+            backgroundFloatingPollInterval = null;
+            return;
+        }
+        try {
+            const targetParam = saved.targetVersion ? `&target_version=${encodeURIComponent(saved.targetVersion)}` : "";
+            const resp = await fetch(`/api/fleet/action/status?host=${encodeURIComponent(saved.host)}&service_name=${encodeURIComponent(saved.serviceName)}${targetParam}&_t=${Date.now()}`, {
+                headers: { "Authorization": `Bearer ${getFleetAuthToken()}` }
+            });
+            if (resp.ok) {
+                const data = await resp.json();
+                lastKnownUpdateStatusData = data;
+                showActiveUpdateFloatingWidget(data);
+                if (data.is_finished) {
+                    clearInterval(backgroundFloatingPollInterval);
+                    backgroundFloatingPollInterval = null;
+                    clearSavedActiveFleetUpdate();
+                }
+            }
+        } catch (e) {}
+    }, 6000);
+}
+
+function showActiveUpdateFloatingWidget(data) {
+    const widget = document.getElementById("fleetActiveUpdateFloatingWidget");
+    if (!widget) return;
+
+    const hostText = document.getElementById("floatingUpdateHostText");
+    const svcText = document.getElementById("floatingUpdateServiceText");
+    const pctBadge = document.getElementById("floatingUpdatePercentBadge");
+
+    if (data) {
+        if (hostText) hostText.innerText = `${data.praca || data.hostname} CS ${data.cs || 1}`;
+        if (svcText) svcText.innerText = `${data.service_name} ➔ v${data.versao_desejada}`;
+        if (pctBadge) {
+            pctBadge.innerText = `${data.progress_percent || 0}%`;
+            pctBadge.className = data.is_finished && data.is_success ? "badge badge-green" : "badge badge-blue";
+        }
+    }
+    widget.style.display = "flex";
+}
+
+function hideActiveUpdateFloatingWidget() {
+    const widget = document.getElementById("fleetActiveUpdateFloatingWidget");
+    if (widget) widget.style.display = "none";
+}
+
+function dismissActiveUpdateFloatingWidget(evt) {
+    if (evt) evt.stopPropagation();
+    hideActiveUpdateFloatingWidget();
+    clearSavedActiveFleetUpdate();
+    if (backgroundFloatingPollInterval) {
+        clearInterval(backgroundFloatingPollInterval);
+        backgroundFloatingPollInterval = null;
+    }
+}
+
+function reopenActiveUpdateModal() {
+    const saved = getSavedActiveFleetUpdate();
+    if (saved && saved.host) {
+        openFleetUpdateProgressModal(saved.host, saved.serviceName, saved.targetVersion);
+        return;
+    }
+    if (currentUpdateProgressHost) {
+        openFleetUpdateProgressModal(currentUpdateProgressHost, currentUpdateProgressService, currentUpdateProgressTargetVersion);
+    }
+}
+
+window.reopenActiveUpdateModal = reopenActiveUpdateModal;
+window.dismissActiveUpdateFloatingWidget = dismissActiveUpdateFloatingWidget;
+window.copyUpProgTerminalLogs = copyUpProgTerminalLogs;
+
+function copyUpProgTerminalLogs() {
+    const box = document.getElementById("upProgTerminalBox");
+    if (!box) return;
+    navigator.clipboard.writeText(box.innerText).then(() => {
+        if (typeof showToast === "function") showToast("Logs do script copiados para a área de transferência!", "success");
+    });
 }
 
 async function refreshFleetUpdateProgressLive() {
@@ -1454,6 +1601,7 @@ async function refreshFleetUpdateProgressLive() {
         });
         if (!resp.ok) return;
         const data = await resp.json();
+        lastKnownUpdateStatusData = data;
         renderFleetUpdateProgressData(data);
     } catch (e) {
         console.warn("[FleetUpdateProgress] Erro ao obter status:", e);
@@ -1484,6 +1632,60 @@ function renderFleetUpdateProgressData(data) {
                            (data.badge_color === "red" ? "badge badge-red" :
                            (data.badge_color === "blue" ? "badge badge-blue" : "badge badge-yellow"));
         badgeEl.innerText = data.status_badge;
+    }
+
+    // NOVO: Percentual de Progresso e Barra Visual Dinâmica
+    const pct = typeof data.progress_percent === "number" ? data.progress_percent : 0;
+    const pctText = document.getElementById("upProgPercentText");
+    if (pctText) pctText.innerText = `${pct}%`;
+    const pBar = document.getElementById("upProgressBar");
+    if (pBar) {
+        pBar.style.width = `${Math.min(100, Math.max(5, pct))}%`;
+        if (data.is_finished && data.is_success) {
+            pBar.style.background = "#10b981";
+        } else if (data.is_failed) {
+            pBar.style.background = "#ef4444";
+        } else {
+            pBar.style.background = "linear-gradient(90deg, #0284c7, #38bdf8, #10b981)";
+        }
+    }
+
+    // NOVO: Script em Execução & Atividade Granular em Tempo Real
+    const scriptEl = document.getElementById("upProgScriptName");
+    if (scriptEl && data.script_name) scriptEl.innerText = data.script_name;
+
+    const actEl = document.getElementById("upProgCurrentActivity");
+    if (actEl) {
+        const iconSpinner = (data.is_finished && data.is_success) ? 
+            '<i class="fas fa-check-circle" style="color: #10b981; font-size: 13px;"></i>' : 
+            (data.is_failed ? '<i class="fas fa-times-circle" style="color: #ef4444; font-size: 13px;"></i>' : '<i class="fas fa-spinner fa-spin" style="color: #38bdf8; font-size: 12px;"></i>');
+        actEl.innerHTML = `${iconSpinner} <span>${data.current_activity || 'Executando atualização silenciosa no host...'}</span>`;
+    }
+
+    // NOVO: Terminal do Script em Tempo Real (Saída do Host)
+    const termBox = document.getElementById("upProgTerminalBox");
+    if (termBox && data.terminal_logs && Array.isArray(data.terminal_logs)) {
+        termBox.innerText = data.terminal_logs.join("\n");
+        termBox.scrollTop = termBox.scrollHeight;
+    }
+    const liveBadge = document.getElementById("upProgTerminalLiveBadge");
+    if (liveBadge) {
+        if (data.is_finished && data.is_success) {
+            liveBadge.className = "badge badge-green";
+            liveBadge.innerText = "✓ Concluído";
+        } else if (data.is_failed) {
+            liveBadge.className = "badge badge-red";
+            liveBadge.innerText = "✕ Interrompido";
+        } else {
+            liveBadge.className = "badge badge-green";
+            liveBadge.innerText = "● Ao Vivo";
+        }
+    }
+
+    // Atualiza dados no Widget Flutuante se estiver visível
+    const floatingWidget = document.getElementById("fleetActiveUpdateFloatingWidget");
+    if (floatingWidget && floatingWidget.style.display !== "none") {
+        showActiveUpdateFloatingWidget(data);
     }
 
     // Mensagem de explicação
@@ -3038,5 +3240,28 @@ window.switchHostConfigTab = switchHostConfigTab;
 window.updateLogRotateSnippetPreview = updateLogRotateSnippetPreview;
 window.generateHostConfigPreview = generateHostConfigPreview;
 window.saveHostConfig = saveHostConfig;
+
+// Auto-restauração do Widget Flutuante de Atualização Ativa ao carregar/recarregar a página
+function initActiveFleetUpdateRestoration() {
+    const saved = getSavedActiveFleetUpdate();
+    if (saved && saved.host) {
+        showActiveUpdateFloatingWidget({
+            hostname: saved.host,
+            praca: saved.host.split("-")[0] || saved.host,
+            cs: 1,
+            service_name: saved.serviceName || "Atria Capture",
+            versao_desejada: saved.targetVersion || "2.0.0.2",
+            progress_percent: 45
+        });
+        startBackgroundFloatingPoll();
+    }
+}
+
+if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initActiveFleetUpdateRestoration);
+} else {
+    initActiveFleetUpdateRestoration();
+}
+
 
 

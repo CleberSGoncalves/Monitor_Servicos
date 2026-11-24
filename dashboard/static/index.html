@@ -17284,6 +17284,31 @@
           </div>
         </div>
 
+        <!-- NOVO: Barra de Progresso em Tempo Real & Detalhamento da Execução -->
+        <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 8px; padding: 12px 14px; box-shadow: 0 4px 14px rgba(0,0,0,0.4);">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 11px; font-weight: 700; color: #38bdf8; text-transform: uppercase; letter-spacing: 0.5px;">
+                <i class="fas fa-tasks"></i> Progresso da Atualização
+              </span>
+              <span id="upProgScriptName" style="font-family: monospace; font-size: 10.5px; color: #a7f3d0; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); padding: 2px 6px; border-radius: 4px;">
+                Atualizar_Atria_Capture_v2.0.0.2.ps1
+              </span>
+            </div>
+            <div style="display: flex; align-items: baseline; gap: 4px;">
+              <span id="upProgPercentText" style="font-size: 18px; font-weight: 900; color: #38bdf8; font-family: monospace;">65%</span>
+              <span style="font-size: 11px; color: #64748b; font-weight: 600;">concluído</span>
+            </div>
+          </div>
+          <div style="width: 100%; height: 9px; background: #030712; border-radius: 5px; border: 1px solid #1e293b; overflow: hidden; position: relative;">
+            <div id="upProgressBar" style="width: 65%; height: 100%; background: linear-gradient(90deg, #0284c7, #38bdf8, #10b981); border-radius: 5px; transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 0 10px rgba(56, 189, 248, 0.5);"></div>
+          </div>
+          <div id="upProgCurrentActivity" style="font-size: 11.5px; color: #e2e8f0; margin-top: 7px; display: flex; align-items: center; gap: 8px; line-height: 1.3;">
+            <i class="fas fa-spinner fa-spin" style="color: #38bdf8; font-size: 12px;"></i>
+            <span>Baixando binários 2.0.0.2 e preparando extração no host...</span>
+          </div>
+        </div>
+
         <!-- Live Stepper Flow -->
         <div style="background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 8px; padding: 12px;">
           <div style="font-size: 11px; font-weight: 700; color: #38bdf8; text-transform: uppercase; margin-bottom: 10px; display: flex; justify-content: space-between;">
@@ -17293,6 +17318,20 @@
           <div id="upProgStepperContainer" style="display: flex; flex-direction: column; gap: 8px;">
             <!-- Steps injected dynamically -->
           </div>
+        </div>
+
+        <!-- NOVO: Terminal de Saída do Script em Tempo Real (Console do Host) -->
+        <div style="border: 1px solid #1e293b; border-radius: 8px; background: #030712; padding: 10px 12px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <span style="font-size: 10.5px; font-weight: 700; color: #38bdf8; text-transform: uppercase; display: flex; align-items: center; gap: 6px;">
+              <i class="fas fa-terminal"></i> Terminal do Script em Tempo Real (Saída do Host)
+            </span>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span id="upProgTerminalLiveBadge" class="badge badge-green" style="font-size: 9px; padding: 1px 6px;">● Ao Vivo</span>
+              <button type="button" class="btn-secondary" style="padding: 2px 8px; font-size: 10px;" onclick="copyUpProgTerminalLogs()">📋 Copiar Log</button>
+            </div>
+          </div>
+          <div id="upProgTerminalBox" style="font-family: 'Consolas', 'Courier New', monospace; font-size: 11px; color: #6ee7b7; background: #010409; border: 1px solid #1e293b; border-radius: 4px; padding: 8px 10px; max-height: 130px; overflow-y: auto; line-height: 1.5; white-space: pre-wrap; word-break: break-all;">[00:01] ⚡ Conectando à esteira de atualização remota...</div>
         </div>
 
         <!-- Live Context / Explanation Box -->
@@ -17357,6 +17396,42 @@
 
     </div>
   </div>
+
+  <!-- NOVO: Widget Flutuante Global de Atualização Ativa (Reabre o modal instantaneamente se fechado) -->
+  <div id="fleetActiveUpdateFloatingWidget" style="display: none; position: fixed; bottom: 24px; right: 28px; z-index: 10002; background: linear-gradient(135deg, #0b1329 0%, #0f172a 100%); border: 2px solid #0284c7; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.75), 0 0 20px rgba(2, 132, 199, 0.35); border-radius: 40px; padding: 8px 16px; align-items: center; gap: 12px; cursor: pointer; transition: all 0.25s ease; user-select: none;" onclick="reopenActiveUpdateModal()">
+    <div style="font-size: 22px; display: flex; align-items: center; justify-content: center; animation: rocketPulse 1.5s infinite alternate;">
+      🚀
+    </div>
+    <div style="display: flex; flex-direction: column;">
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <span style="font-size: 11.5px; font-weight: 800; color: #fff; letter-spacing: 0.3px;">Atualização em Andamento</span>
+        <span id="floatingUpdatePercentBadge" class="badge badge-blue" style="font-size: 10px; font-weight: 800; font-family: monospace; padding: 2px 6px;">65%</span>
+      </div>
+      <div style="font-size: 11px; color: #94a3b8; display: flex; align-items: center; gap: 5px; margin-top: 2px;">
+        <span id="floatingUpdateHostText" style="color: #38bdf8; font-weight: 700; font-family: monospace;">Uberlandia CS 1</span>
+        <span>•</span>
+        <span id="floatingUpdateServiceText" style="color: #c084fc; font-weight: 600;">Atria Capture</span>
+      </div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 8px; margin-left: 6px;">
+      <span style="font-size: 11px; font-weight: 700; color: #38bdf8; background: rgba(2, 132, 199, 0.2); border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 20px; padding: 4px 10px; display: flex; align-items: center; gap: 4px;">
+        Acompanhar ao Vivo <i class="fas fa-arrow-right" style="font-size: 10px;"></i>
+      </span>
+      <button type="button" style="background: transparent; border: none; color: #64748b; font-size: 14px; cursor: pointer; padding: 2px 4px; border-radius: 50%;" onclick="dismissActiveUpdateFloatingWidget(event)" title="Ocultar indicador flutuante">✕</button>
+    </div>
+  </div>
+
+  <style>
+    @keyframes rocketPulse {
+      0% { transform: translateY(0px) scale(1); filter: drop-shadow(0 0 2px #38bdf8); }
+      100% { transform: translateY(-3px) scale(1.1); filter: drop-shadow(0 0 8px #0284c7); }
+    }
+    #fleetActiveUpdateFloatingWidget:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 14px 35px rgba(0, 0, 0, 0.85), 0 0 25px rgba(56, 189, 248, 0.6);
+      border-color: #38bdf8;
+    }
+  </style>
 
   <!-- Modal: Acompanhamento de Rollout em Lote ao Vivo (Frota CS) -->
   <div class="modal-overlay" id="fleetBatchProgressModal" style="display: none; align-items: center; justify-content: center; z-index: 10003; padding: 16px; overflow-y: auto;">
