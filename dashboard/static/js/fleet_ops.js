@@ -589,6 +589,7 @@ async function loadFleetUpdateEvolution(forceRefresh = false) {
 
         // 6. Renderizar a Tabela
         renderFleetEvolutionTable();
+        populateHostConfigSelectors();
 
         if (forceRefresh && typeof showToast === "function") {
             showToast(`Telemetria de evolução de ${svc} atualizada!`, "success");
@@ -709,15 +710,17 @@ function renderFleetEvolutionTable() {
 
         const removeHostBtn = `<button class="btn-sm" onclick="removeHostFromFleet('${h.hostname}', '${h.praca}')" style="padding: 3px 7px; font-size: 11px; background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.4); border-radius: 4px; color: #f87171; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;" title="Desinstalar serviço na máquina remota e remover [${h.hostname}] da telemetria"><i class="fas fa-trash-alt"></i> Remover</button>`;
 
-        const actionBtn = `<div style="display: inline-flex; align-items: center; gap: 6px; justify-content: center;">${updateBtn}${removeHostBtn}</div>`;
+        const configBtn = `<button class="btn-sm" onclick="openHostConfigModal('${h.hostname}', '${h.praca}', ${h.cs || 1})" style="padding: 3px 8px; font-size: 11px; background: rgba(56,189,248,0.15); border: 1px solid rgba(56,189,248,0.4); border-radius: 4px; color: #38bdf8; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" title="Configurações do Capture Site (Multiplexes, AppConfig, LogRotate)"><i class="fas fa-sliders-h"></i> Config</button>`;
+
+        const actionBtn = `<div style="display: inline-flex; align-items: center; gap: 5px; justify-content: center;">${updateBtn}${configBtn}${removeHostBtn}</div>`;
 
         return `
             <tr style="border-bottom: 1px solid rgba(148,163,184,0.1); transition: background 0.15s ease;" onmouseover="this.style.background='rgba(51,65,85,0.3)'" onmouseout="this.style.background='transparent'">
-                <td style="padding: 8px 12px; font-weight: 600; color: #f8fafc;">
-                    ${h.praca} <span style="font-size: 10px; color: #64748b; font-weight: normal; margin-left: 4px;">CS ${h.cs || 1}</span>
+                <td style="padding: 8px 12px; font-weight: 600; color: #f8fafc; cursor: pointer;" onclick="openHostConfigModal('${h.hostname}', '${h.praca}', ${h.cs || 1})" title="Clique para abrir as configurações do Capture Site">
+                    <span style="color: #38bdf8; text-decoration: underline; text-decoration-color: rgba(56,189,248,0.4);">${h.praca}</span> <span style="font-size: 10px; color: #64748b; font-weight: normal; margin-left: 4px;">CS ${h.cs || 1}</span>
                 </td>
-                <td style="padding: 8px 12px; font-family: monospace; font-size: 11px; color: #cbd5e1;">
-                    ${h.hostname}
+                <td style="padding: 8px 12px; font-family: monospace; font-size: 11px; color: #cbd5e1; cursor: pointer;" onclick="openHostConfigModal('${h.hostname}', '${h.praca}', ${h.cs || 1})" title="Clique para abrir as configurações do Capture Site">
+                    <span style="color: #f8fafc;">${h.hostname}</span> <i class="fas fa-sliders-h" style="font-size: 9px; color: #38bdf8; margin-left: 4px; opacity: 0.7;"></i>
                 </td>
                 <td style="padding: 8px 12px; text-align: center;">
                     ${verBadge}
@@ -947,10 +950,26 @@ function openFleetSafetyModal(config) {
     // Exibe ou oculta a chave de migração FastMatching/FileCleaner para Atria Capture / FastMatching
     const svcForMig = (config.serviceName || (typeof currentGovernanceService !== "undefined" ? currentGovernanceService : "") || "").toLowerCase();
     const isAtriaOrFma = svcForMig.includes("atria") || svcForMig.includes("dtvcapture") || svcForMig.includes("fastmatch");
+
+    // Regra rígida de Engenharia: CS02 e CS03 NÃO possuem detecção (exclusivo CS01).
+    // Se a máquina selecionada for CS02 ou CS03, ocultar sumariamente a chave de migração.
+    let isCS01 = true;
+    if (typeof config.cs !== "undefined" && config.cs !== null) {
+        isCS01 = Number(config.cs) === 1;
+    } else if (hostsList.length === 1) {
+        const singleH = hostsList[0];
+        const hObj = (cachedFleetEvolutionData?.hosts || []).find(x => x.hostname?.toLowerCase() === singleH?.toLowerCase());
+        if (hObj && typeof hObj.cs !== "undefined") {
+            isCS01 = Number(hObj.cs) === 1;
+        } else if (singleH.includes("-CS2") || singleH.includes("-CS3") || singleH.includes("-DT02") || singleH.includes("-DT03") || singleH.includes("-DT2") || singleH.includes("-DT3")) {
+            isCS01 = false;
+        }
+    }
+
     const migContainer = document.getElementById("safetyModalAtriaMigrationContainer");
     const chkMigrate = document.getElementById("chkMigrateFastMatchingAndCleaner");
     if (migContainer) {
-        migContainer.style.display = isAtriaOrFma ? "block" : "none";
+        migContainer.style.display = (isAtriaOrFma && isCS01) ? "block" : "none";
     }
     if (chkMigrate) {
         chkMigrate.checked = false;
@@ -1010,9 +1029,12 @@ window.onSafetyConfirmCheckboxChange = onSafetyConfirmCheckboxChange;
 window.confirmFleetSafetyModal = confirmFleetSafetyModal;
 
 async function dispatchSingleHostUpdate(hostname, serviceName, targetVersion) {
+    const hObj = (cachedFleetEvolutionData?.hosts || []).find(x => x.hostname?.toLowerCase() === hostname?.toLowerCase());
+    const hostCs = hObj ? hObj.cs : undefined;
     openFleetSafetyModal({
         actionType: "UPDATE_SINGLE",
         serviceName: serviceName,
+        cs: hostCs,
         title: `Confirmar Atualização Individual — ${hostname}`,
         badgeText: "⚡ ATUALIZAÇÃO INDIVIDUAL DE CAPTURE SITE",
         hosts: [hostname],
@@ -2529,5 +2551,492 @@ window.runPackagePreAudit = runPackagePreAudit;
 window.submitPublishPackage = submitPublishPackage;
 window.copyRepoShaToClipboard = copyRepoShaToClipboard;
 window.downloadPackageFile = downloadPackageFile;
+
+// ==============================================================================
+// MODAL DE CONFIGURAÇÃO REMOTA DO CAPTURE SITE (Multiplexes, AppConfig, LogRotate)
+// ==============================================================================
+
+let currentLoadedHostConfig = null;
+
+function populateHostConfigSelectors() {
+    const selPraca = document.getElementById("selectHostConfigPraca");
+    const selMachine = document.getElementById("selectHostConfigMachine");
+    if (!selPraca || !selMachine || !cachedFleetEvolutionData?.hosts) return;
+
+    const hosts = cachedFleetEvolutionData.hosts || [];
+    const pracas = [...new Set(hosts.map(h => h.praca).filter(Boolean))].sort();
+    const currentPracaVal = selPraca.value;
+
+    selPraca.innerHTML = `<option value="">Selecione a Praça (${pracas.length})...</option>` +
+        pracas.map(p => `<option value="${p}">${p}</option>`).join("");
+
+    if (pracas.includes(currentPracaVal)) {
+        selPraca.value = currentPracaVal;
+    }
+
+    filterHostConfigMachines();
+}
+
+function onHostConfigPracaChange(praca) {
+    filterHostConfigMachines();
+}
+
+function onHostConfigCSChange(cs) {
+    filterHostConfigMachines();
+}
+
+function filterHostConfigMachines() {
+    const selPraca = document.getElementById("selectHostConfigPraca");
+    const selCS = document.getElementById("selectHostConfigCS");
+    const selMachine = document.getElementById("selectHostConfigMachine");
+    if (!selMachine) return;
+
+    const selectedPraca = selPraca ? selPraca.value : "";
+    const selectedCS = selCS ? selCS.value : "ALL";
+    const hosts = cachedFleetEvolutionData?.hosts || [];
+
+    let filtered = hosts;
+    if (selectedPraca) {
+        filtered = filtered.filter(h => (h.praca || "").toLowerCase() === selectedPraca.toLowerCase());
+    }
+    if (selectedCS && selectedCS !== "ALL") {
+        filtered = filtered.filter(h => String(h.cs || 1) === String(selectedCS));
+    }
+
+    if (filtered.length === 0) {
+        selMachine.innerHTML = `<option value="">Nenhuma máquina encontrada</option>`;
+        return;
+    }
+
+    selMachine.innerHTML = `<option value="">Selecione a Máquina (${filtered.length})...</option>` +
+        filtered.map(h => {
+            const role = Number(h.cs || 1) === 1 ? "CS01 Detecção" : `CS${h.cs || 2} Mídia`;
+            return `<option value="${h.hostname}">${h.hostname} — ${h.praca} (${role})</option>`;
+        }).join("");
+
+    if (filtered.length === 1) {
+        selMachine.selectedIndex = 1;
+    }
+}
+
+function openSelectedHostConfigModal() {
+    const selMachine = document.getElementById("selectHostConfigMachine");
+    const hostname = selMachine ? selMachine.value : "";
+    if (!hostname) {
+        if (typeof showToast === "function") {
+            showToast("Selecione uma máquina no seletor para abrir as configurações.", "warning");
+        } else {
+            alert("Selecione uma máquina no seletor para abrir as configurações.");
+        }
+        return;
+    }
+
+    const hosts = cachedFleetEvolutionData?.hosts || [];
+    const hObj = hosts.find(h => (h.hostname || "").toLowerCase() === hostname.toLowerCase());
+    const praca = hObj ? hObj.praca : "";
+    const cs = hObj ? (hObj.cs || 1) : 1;
+
+    openHostConfigModal(hostname, praca, cs);
+}
+
+async function openHostConfigModal(hostname, praca = "", cs = 1) {
+    const modal = document.getElementById("modalHostConfig");
+    if (!modal) return;
+
+    const badgeH = document.getElementById("badgeHostConfigHostname");
+    if (badgeH) badgeH.innerText = hostname;
+    const txtP = document.getElementById("hostConfigTextPraca");
+    if (txtP) txtP.innerText = praca || "Detectando...";
+    const txtCS = document.getElementById("hostConfigTextCS");
+    if (txtCS) txtCS.innerText = `CS 0${cs || 1}`;
+
+    const badgeRole = document.getElementById("badgeHostConfigRole");
+    if (badgeRole) {
+        if (Number(cs) === 1) {
+            badgeRole.innerText = "CS01 Primário (Detecção & Gravação)";
+            badgeRole.style.background = "rgba(16, 185, 129, 0.2)";
+            badgeRole.style.color = "#34d399";
+            badgeRole.style.borderColor = "rgba(16, 185, 129, 0.4)";
+        } else if (Number(cs) === 2) {
+            badgeRole.innerText = "CS02 Backup (Gravação MP4 Contínua)";
+            badgeRole.style.background = "rgba(56, 189, 248, 0.2)";
+            badgeRole.style.color = "#38bdf8";
+            badgeRole.style.borderColor = "rgba(56, 189, 248, 0.4)";
+        } else {
+            badgeRole.innerText = `CS0${cs} Satélite / Rádio`;
+            badgeRole.style.background = "rgba(148, 163, 184, 0.2)";
+            badgeRole.style.color = "#cbd5e1";
+            badgeRole.style.borderColor = "rgba(148, 163, 184, 0.4)";
+        }
+    }
+
+    switchHostConfigTab("channels");
+    modal.style.display = "flex";
+
+    const tbody = document.getElementById("hostConfigChannelsTableBody");
+    if (tbody) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #94a3b8; padding: 25px;"><i class="fas fa-spinner fa-spin" style="font-size: 20px; color: #38bdf8; margin-bottom: 8px;"></i><br>Carregando telemetria operacional de ${hostname}...</td></tr>`;
+    }
+
+    try {
+        const token = getFleetAuthToken();
+        const resp = await fetch(`/api/fleet/host-config/${encodeURIComponent(hostname)}`, {
+            headers: token ? { "Authorization": `Bearer ${token}` } : {}
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        currentLoadedHostConfig = data;
+
+        if (txtP && data.praca) txtP.innerText = data.praca;
+        if (txtCS && data.cs) txtCS.innerText = `CS 0${data.cs}`;
+
+        renderHostConfigChannelsTable(data.channels || [], data.cs);
+
+        const appCfg = data.app_config || {};
+        const elApiPort = document.getElementById("cfgAppApiPort");
+        if (elApiPort) elApiPort.value = appCfg.api_port || 9000;
+        const elMosPort = document.getElementById("cfgAppMosaicPort");
+        if (elMosPort) elMosPort.value = appCfg.mosaic_port || 8080;
+        const elVid = document.getElementById("cfgAppVideoDir");
+        if (elVid) elVid.value = appCfg.video_dir || "D:\\MediaDNA_V2\\Data\\video";
+        const elVidBkp = document.getElementById("cfgAppVideoBkpDir");
+        if (elVidBkp) elVidBkp.value = appCfg.video_bkp_dir || "D:\\MediaDNA_V2\\Data\\video_bkp";
+        const elEmu = document.getElementById("cfgAppEmuDir");
+        if (elEmu) elEmu.value = appCfg.emu_dir || "D:\\MediaDNA_V2\\Data\\emu";
+
+        const lrCfg = data.logrotate || {};
+        const elLrTarget = document.getElementById("cfgLogRotateTarget");
+        if (elLrTarget) elLrTarget.value = lrCfg.target_log_path || "D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMatchingSvc\\fma.log";
+        const elLrDays = document.getElementById("cfgLogRotateDays");
+        if (elLrDays) elLrDays.value = String(lrCfg.rotate_days || 3);
+        const elLrFreq = document.getElementById("cfgLogRotateFreq");
+        if (elLrFreq) elLrFreq.value = lrCfg.frequency || "daily";
+
+        updateLogRotateSnippetPreview();
+
+    } catch (err) {
+        console.error("[HostConfig] Erro ao carregar configurações:", err);
+        if (tbody) {
+            tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #f87171; padding: 25px;"><i class="fas fa-exclamation-triangle"></i> Falha ao carregar configurações: ${err.message}</td></tr>`;
+        }
+    }
+}
+
+function closeHostConfigModal() {
+    const modal = document.getElementById("modalHostConfig");
+    if (modal) modal.style.display = "none";
+    currentLoadedHostConfig = null;
+}
+
+function switchHostConfigTab(tabName) {
+    const tabs = ["channels", "appconfig", "logrotate", "preview"];
+    tabs.forEach(t => {
+        const btn = document.getElementById(`btnTabHost${t.charAt(0).toUpperCase() + t.slice(1)}`);
+        const content = document.getElementById(`tabContentHost${t.charAt(0).toUpperCase() + t.slice(1)}`);
+        if (btn) btn.classList.toggle("active", t === tabName);
+        if (content) content.style.display = (t === tabName) ? "block" : "none";
+    });
+
+    if (tabName === "preview") {
+        generateHostConfigPreview();
+    }
+    if (tabName === "logrotate") {
+        updateLogRotateSnippetPreview();
+    }
+}
+
+function updateLogRotateSnippetPreview() {
+    const pre = document.getElementById("previewLogRotateSnippet");
+    if (!pre) return;
+    const target = document.getElementById("cfgLogRotateTarget")?.value || "D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMatchingSvc\\fma.log";
+    const days = document.getElementById("cfgLogRotateDays")?.value || "3";
+    const freq = document.getElementById("cfgLogRotateFreq")?.value || "daily";
+    pre.innerText = `${target} {\n        ${freq}\n\t\tdateext\n\t\tdateformat .%Y%m%d\n\t\tmissingok\n\t\trotate ${days}\n}`;
+}
+
+function renderHostConfigChannelsTable(channels, hostCS = 1) {
+    const tbody = document.getElementById("hostConfigChannelsTableBody");
+    if (!tbody) return;
+
+    if (!channels || channels.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #94a3b8; padding: 20px;">Nenhum canal sintonizado identificado para este Capture Site.</td></tr>`;
+        return;
+    }
+
+    const isCS01 = Number(hostCS) === 1;
+
+    tbody.innerHTML = channels.map((ch, idx) => {
+        const q = ch.qualidade != null ? ch.qualidade : "--";
+        const f = ch.forca != null ? ch.forca : "--";
+        const signalBadge = q !== "--"
+            ? `<span style="color: #34d399; font-weight: 700;">${q}%</span> <span style="font-size: 10px; color: #94a3b8;">(${f}dB)</span>`
+            : `<span style="color: #94a3b8;">N/A</span>`;
+
+        const emuChecked = ch.emu_is_recording ? "checked" : "";
+        const mp4Checked = ch.mp4_is_recording ? "checked" : "";
+        const emuDisabledNotice = !isCS01 ? `title="CS02/CS03 opera como backup/mídia pura. EMU é exclusivo do CS01."` : "";
+
+        return `
+            <tr style="border-bottom: 1px solid rgba(148,163,184,0.1); transition: background 0.15s ease;" onmouseover="this.style.background='rgba(51,65,85,0.25)'" onmouseout="this.style.background='transparent'">
+                <td style="padding: 8px 12px; font-weight: 700; color: #f8fafc;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 14px;">📺</span>
+                        <div>
+                            <div>${ch.name}</div>
+                            <div style="font-size: 10px; color: #64748b; font-family: monospace;">Cod: ${ch.channel_code || "N/A"}</div>
+                        </div>
+                    </div>
+                </td>
+                <td style="padding: 8px 12px; font-size: 11px; color: #cbd5e1;">
+                    <div>${ch.frequency || "N/A"}</div>
+                    <div style="font-size: 10px; color: #38bdf8;">${ch.network_type || "Digital Terrestre"}</div>
+                </td>
+                <td style="padding: 8px 12px; text-align: center; font-size: 11px;">
+                    <div>Tuner #${ch.tuner_id >= 0 ? ch.tuner_id : 0}</div>
+                    <div>${signalBadge}</div>
+                </td>
+                <td style="padding: 8px 12px; text-align: center;">
+                    <label style="cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+                        <input type="checkbox" id="chkChMp4_${idx}" ${mp4Checked} style="accent-color: #38bdf8; width: 15px; height: 15px; cursor: pointer;">
+                        <span style="font-size: 11px; color: #cbd5e1;">Gravar</span>
+                    </label>
+                </td>
+                <td style="padding: 8px 12px; text-align: center;" ${emuDisabledNotice}>
+                    <label style="cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+                        <input type="checkbox" id="chkChEmu_${idx}" ${emuChecked} style="accent-color: #10b981; width: 15px; height: 15px; cursor: pointer;">
+                        <span style="font-size: 11px; font-weight: 600; color: ${ch.emu_is_recording ? '#34d399' : '#94a3b8'};">EMU</span>
+                    </label>
+                </td>
+                <td style="padding: 8px 12px;">
+                    <select id="selChEmuProf_${idx}" style="background: #0f172a; color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 6px; padding: 4px 8px; font-size: 11px; font-weight: 700; width: 100%; cursor: pointer;">
+                        <option value="EMU MediaDNA 1min" selected>EMU MediaDNA 1min (Homologado FastMatching)</option>
+                        <option value="EMU MediaDNA 2min">EMU MediaDNA 2min</option>
+                        <option value="EMU Custom">EMU Custom</option>
+                    </select>
+                </td>
+            </tr>
+        `;
+    }).join("");
+}
+
+function generateHostConfigPreview() {
+    const txtArea = document.getElementById("txtHostConfigScriptPreview");
+    if (!txtArea || !currentLoadedHostConfig) return;
+
+    const hostname = currentLoadedHostConfig.hostname || "CS-GENERIC";
+    const channels = currentLoadedHostConfig.channels || [];
+    const lrTarget = document.getElementById("cfgLogRotateTarget")?.value || "D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMatchingSvc\\fma.log";
+    const lrDays = document.getElementById("cfgLogRotateDays")?.value || "3";
+    const lrFreq = document.getElementById("cfgLogRotateFreq")?.value || "daily";
+
+    let psUpdates = channels.map((ch, idx) => {
+        const chkMp4 = document.getElementById(`chkChMp4_${idx}`);
+        const chkEmu = document.getElementById(`chkChEmu_${idx}`);
+        const selProf = document.getElementById(`selChEmuProf_${idx}`);
+        const isMp4 = chkMp4 ? chkMp4.checked : ch.mp4_is_recording;
+        const isEmu = chkEmu ? chkEmu.checked : ch.emu_is_recording;
+        const prof = selProf ? selProf.value : (ch.emu_profile_name || "EMU MediaDNA 1min");
+        const safeName = ch.name.replace(/'/g, "''");
+
+        return `    # Canal: ${safeName}
+    $p = $doc.SelectNodes("//Programs[translate(normalize-space(Name), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz') = '${safeName.toLowerCase()}']");
+    if ($p) {
+        foreach ($item in $p) {
+            $eNode = $item.SelectSingleNode('EMU_IsRecording');
+            if (-not $eNode) { $eNode = $doc.CreateElement('EMU_IsRecording'); $item.AppendChild($eNode) | Out-Null };
+            $eNode.InnerText = if ($${isEmu}) { 'true' } else { 'false' };
+            $pNode = $item.SelectSingleNode('EMU_ProfileName');
+            if (-not $pNode) { $pNode = $doc.CreateElement('EMU_ProfileName'); $item.AppendChild($pNode) | Out-Null };
+            $pNode.InnerText = '${prof}';
+            $mNode = $item.SelectSingleNode('Mp4_IsRecording');
+            if (-not $mNode) { $mNode = $doc.CreateElement('Mp4_IsRecording'); $item.AppendChild($mNode) | Out-Null };
+            $mNode.InnerText = if ($${isMp4}) { 'true' } else { 'false' };
+            $chCount++;
+        }
+    }`;
+    }).join("\n");
+
+    txtArea.value = `# ==========================================================================
+# CENTRAL CS NOC: APLICACAO DE CONFIGURACOES REMOTAS NO CAPTURE SITE
+# Host: ${hostname} | Praça: ${currentLoadedHostConfig.praca} (CS0${currentLoadedHostConfig.cs})
+# ==========================================================================
+$ErrorActionPreference = 'Continue';
+[System.Text.Encoding]::RegisterProvider([System.Text.CodePagesEncodingProvider]::Instance);
+$enc1252 = [System.Text.Encoding]::GetEncoding('Windows-1252');
+
+Write-Host '[1/5] Encerrando processos do Atria Capture para escrita segura dos XMLs...';
+cmd.exe /c "taskkill /f /t /im DigitalTVCapture.exe /im DigitalTVReceiver.exe /im AtriaCapture.exe >nul 2>&1";
+Start-Sleep -Seconds 1;
+
+Write-Host '[2/5] Realizando backup profilatico (.bak) das configuracoes atuais...';
+$stamp = Get-Date -Format 'yyyyMMdd_HHmmss';
+$muxCandidates = @(
+    'D:\\MediaDNA_V2\\Applications\\DTVCapture64\\Config\\Multiplexes.xml',
+    'D:\\MediaDNA_V2\\Data\\Config\\Multiplexes.xml',
+    'C:\\DTV\\DTVCapture\\Config\\Multiplexes.xml'
+) | Where-Object { Test-Path $_ };
+foreach ($m in $muxCandidates) { Copy-Item -Path $m -Destination "$m.bak_$stamp" -Force -ErrorAction SilentlyContinue };
+
+Write-Host '[3/5] Aplicando novas diretrizes de canais e perfis EMU em Multiplexes.xml...';
+foreach ($mPath in $muxCandidates) {
+    try {
+        $raw = [System.IO.File]::ReadAllText($mPath, $enc1252);
+        $clean = [System.Text.RegularExpressions.Regex]::Replace($raw, '[\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f]', '');
+        [xml]$doc = New-Object System.Xml.XmlDocument;
+        $doc.LoadXml($clean);
+        $chCount = 0;
+
+${psUpdates}
+
+        $settings = New-Object System.Xml.XmlWriterSettings;
+        $settings.Encoding = $enc1252;
+        $settings.Indent = $true;
+        $w = [System.Xml.XmlWriter]::Create($mPath, $settings);
+        $doc.Save($w);
+        $w.Dispose();
+        Write-Host "[OK] Multiplexes.xml atualizado com sucesso em $mPath ($chCount ajustes).";
+    } catch {
+        Write-Host ('[ERRO] Falha ao atualizar Multiplexes.xml em ' + $mPath + ': ' + $_.Exception.Message);
+    }
+}
+
+Write-Host '[4/5] Aplicando configuracao oficial do LogRotate (${lrTarget} + rotate ${lrDays})...';
+$lrContent = @'
+${lrTarget} {
+        ${lrFreq}
+		dateext
+		dateformat .%Y%m%d
+		missingok
+		rotate ${lrDays}
+}
+'@;
+$lrPaths = @(
+    'D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMatchingSvc\\LogRotate\\logrotate.conf',
+    'D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMachingSvc\\LogRotate\\logrotate.conf',
+    'C:\\DTV\\DTVCapture\\FastMatchingSvc\\LogRotate\\logrotate.conf'
+);
+foreach ($lp in $lrPaths) {
+    $dir = Split-Path $lp -Parent;
+    if (Test-Path $dir) {
+        Set-Content -Path $lp -Value $lrContent -Encoding Ascii -Force;
+        Write-Host "[OK] logrotate.conf atualizado em $lp";
+    }
+}
+
+$fmaSvc = Get-Service -Name FastMatchingSvc -ErrorAction SilentlyContinue;
+if ($fmaSvc -and $fmaSvc.Status -eq 'Running') {
+    Restart-Service -Name FastMatchingSvc -Force -ErrorAction SilentlyContinue;
+    Write-Host '[OK] FastMatchingSvc reiniciado para aplicar ajustes de log.';
+}
+
+Write-Host '[5/5] Reabrindo Atria Capture no ambiente interativo...';
+$exeCandidates = @(
+    'D:\\MediaDNA_V2\\Applications\\DTVCapture64\\DigitalTVCapture.exe',
+    'C:\\DTV\\DTVCapture\\DigitalTVCapture.exe'
+);
+$exe = $exeCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1;
+if ($exe) {
+    schtasks /delete /tn 'Start_Atria_Interactive' /f >$null 2>&1;
+    schtasks /create /tn 'Start_Atria_Interactive' /tr "\`"$exe\`"" /sc once /st 00:00 /it /f >$null 2>&1;
+    schtasks /run /tn 'Start_Atria_Interactive' >$null 2>&1;
+    Write-Host "[OK] Atria Capture reaberto com sucesso via tarefa interativa.";
+}
+Write-Host '==========================================================================';
+Write-Host '[SUCESSO] Configuracoes operacionais aplicadas e Atria Capture reiniciado!';`;
+}
+
+async function saveHostConfig() {
+    if (!currentLoadedHostConfig) return;
+
+    const hostname = currentLoadedHostConfig.hostname;
+    const channels = currentLoadedHostConfig.channels || [];
+    const reason = (document.getElementById("inpHostConfigReason")?.value || "Ajuste de perfil EMU e parâmetros operacionais").trim();
+
+    const updatedChannels = channels.map((ch, idx) => {
+        const chkMp4 = document.getElementById(`chkChMp4_${idx}`);
+        const chkEmu = document.getElementById(`chkChEmu_${idx}`);
+        const selProf = document.getElementById(`selChEmuProf_${idx}`);
+        return {
+            name: ch.name,
+            mp4_is_recording: chkMp4 ? chkMp4.checked : ch.mp4_is_recording,
+            emu_is_recording: chkEmu ? chkEmu.checked : ch.emu_is_recording,
+            emu_profile_name: selProf ? selProf.value : (ch.emu_profile_name || "EMU MediaDNA 1min")
+        };
+    });
+
+    const appConfig = {
+        api_port: parseInt(document.getElementById("cfgAppApiPort")?.value || "9000", 10),
+        mosaic_port: parseInt(document.getElementById("cfgAppMosaicPort")?.value || "8080", 10),
+        video_dir: (document.getElementById("cfgAppVideoDir")?.value || "D:\\MediaDNA_V2\\Data\\video").trim(),
+        video_bkp_dir: (document.getElementById("cfgAppVideoBkpDir")?.value || "D:\\MediaDNA_V2\\Data\\video_bkp").trim(),
+        emu_dir: (document.getElementById("cfgAppEmuDir")?.value || "D:\\MediaDNA_V2\\Data\\emu").trim()
+    };
+
+    const logrotate = {
+        target_log_path: (document.getElementById("cfgLogRotateTarget")?.value || "D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMatchingSvc\\fma.log").trim(),
+        rotate_days: parseInt(document.getElementById("cfgLogRotateDays")?.value || "3", 10),
+        frequency: document.getElementById("cfgLogRotateFreq")?.value || "daily"
+    };
+
+    const btnSave = document.getElementById("btnSaveHostConfig");
+    const iconSave = document.getElementById("iconSaveHostConfig");
+    if (btnSave) btnSave.disabled = true;
+    if (iconSave) iconSave.className = "fas fa-spinner fa-spin";
+
+    try {
+        const token = getFleetAuthToken();
+        const resp = await fetch(`/api/fleet/host-config/${encodeURIComponent(hostname)}`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...(token ? { "Authorization": `Bearer ${token}` } : {})
+            },
+            body: JSON.stringify({
+                channels: updatedChannels,
+                app_config: appConfig,
+                logrotate: logrotate,
+                reason: reason
+            })
+        });
+
+        const resData = await resp.json();
+        if (!resp.ok || !resData.success) {
+            throw new Error(resData.detail || resData.message || `HTTP ${resp.status}`);
+        }
+
+        if (typeof showToast === "function") {
+            showToast(`Configurações de ${hostname} aplicadas com sucesso! Atria Capture foi reiniciado.`, "success");
+        } else {
+            alert(`Configurações de ${hostname} aplicadas com sucesso! Atria Capture foi reiniciado.`);
+        }
+
+        closeHostConfigModal();
+        if (typeof loadFleetUpdateEvolution === "function") {
+            loadFleetUpdateEvolution(true);
+        }
+    } catch (err) {
+        console.error("[HostConfig] Erro ao salvar configurações:", err);
+        if (typeof showToast === "function") {
+            showToast(`Erro ao aplicar configurações: ${err.message}`, "error");
+        } else {
+            alert(`Erro ao aplicar configurações: ${err.message}`);
+        }
+    } finally {
+        if (btnSave) btnSave.disabled = false;
+        if (iconSave) iconSave.className = "fas fa-save";
+    }
+}
+
+window.populateHostConfigSelectors = populateHostConfigSelectors;
+window.onHostConfigPracaChange = onHostConfigPracaChange;
+window.onHostConfigCSChange = onHostConfigCSChange;
+window.filterHostConfigMachines = filterHostConfigMachines;
+window.openSelectedHostConfigModal = openSelectedHostConfigModal;
+window.openHostConfigModal = openHostConfigModal;
+window.closeHostConfigModal = closeHostConfigModal;
+window.switchHostConfigTab = switchHostConfigTab;
+window.updateLogRotateSnippetPreview = updateLogRotateSnippetPreview;
+window.generateHostConfigPreview = generateHostConfigPreview;
+window.saveHostConfig = saveHostConfig;
 
 

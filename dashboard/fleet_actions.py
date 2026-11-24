@@ -272,13 +272,79 @@ def get_fleet_update_evolution(target_version: str = "1.0.21.2") -> Dict[str, An
     }
 
 
+def build_emu_profile_hardening_snippet(target_dir: str = r"D:\MediaDNA_V2\Applications\DTVCapture64") -> str:
+    """
+    Gera snippet PowerShell defensivo para garantir que em todos os arquivos Multiplexes.xml
+    (na pasta do Atria e na pasta Data\\Config), os canais com gravação EMU ativa
+    (<EMU_IsRecording>true</EMU_IsRecording>) utilizem obrigatoriamente o perfil oficial:
+    <EMU_ProfileName>EMU MediaDNA 1min</EMU_ProfileName>.
+    """
+    return (
+        "# ------------------------------------------------------------------\n"
+        "# BLINDAGEM DE DETECCAO AUTOMATICA: EMU_ProfileName -> 'EMU MediaDNA 1min'\n"
+        "# ------------------------------------------------------------------\n"
+        "Write-Host '[EMU_HARDENING] Validando perfil de canais com gravacao EMU em Multiplexes.xml...';\n"
+        f"$muxCandidates = @('{target_dir}\\Config\\Multiplexes.xml', 'D:\\MediaDNA_V2\\Applications\\DTVCapture64\\Config\\Multiplexes.xml', 'D:\\MediaDNA_V2\\Data\\Config\\Multiplexes.xml', 'C:\\DTV\\DTVCapture\\Config\\Multiplexes.xml', 'C:\\MediaDNA_V2\\Applications\\DTVCapture64\\Config\\Multiplexes.xml');\n"
+        "$muxFiles = $muxCandidates | Where-Object { Test-Path $_ } | Select-Object -Unique;\n"
+        "foreach ($mPath in $muxFiles) {\n"
+        "    try {\n"
+        "        [System.Text.Encoding]::RegisterProvider([System.Text.CodePagesEncodingProvider]::Instance);\n"
+        "        $enc1252 = [System.Text.Encoding]::GetEncoding('Windows-1252');\n"
+        "        $rawXml = [System.IO.File]::ReadAllText($mPath, $enc1252);\n"
+        "        $cleanXml = [System.Text.RegularExpressions.Regex]::Replace($rawXml, '[\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f]', '');\n"
+        "        [xml]$doc = New-Object System.Xml.XmlDocument;\n"
+        "        $doc.LoadXml($cleanXml);\n"
+        "        $changed = $false;\n"
+        "        $progNodes = $doc.SelectNodes(\"//Programs[translate(normalize-space(EMU_IsRecording), 'TRUE', 'true') = 'true']\");\n"
+        "        if ($progNodes -and $progNodes.Count -gt 0) {\n"
+        "            foreach ($p in $progNodes) {\n"
+        "                $pName = if ($p.SelectSingleNode('Name')) { $p.SelectSingleNode('Name').InnerText } else { 'Canal' };\n"
+        "                $profNode = $p.SelectSingleNode('EMU_ProfileName');\n"
+        "                if (-not $profNode) {\n"
+        "                    $profNode = $doc.CreateElement('EMU_ProfileName');\n"
+        "                    $p.AppendChild($profNode) | Out-Null;\n"
+        "                };\n"
+        "                if ($profNode.InnerText -ne 'EMU MediaDNA 1min') {\n"
+        "                    $profNode.InnerText = 'EMU MediaDNA 1min';\n"
+        "                    $changed = $true;\n"
+        "                    Write-Host \"[EMU_HARDENING] Canal '$pName' ajustado para perfil 'EMU MediaDNA 1min' em $mPath\";\n"
+        "                };\n"
+        "                $destNode = $p.SelectSingleNode('EMU_DestPath');\n"
+        "                if (-not $destNode) {\n"
+        "                    $destNode = $doc.CreateElement('EMU_DestPath');\n"
+        "                    $p.AppendChild($destNode) | Out-Null;\n"
+        "                };\n"
+        "                if (-not $destNode.InnerText) { $destNode.InnerText = 'D:\\MediaDNA_V2\\Data\\emu'; $changed = $true; };\n"
+        "            };\n"
+        "        };\n"
+        "        if ($changed) {\n"
+        "            Copy-Item -Path $mPath -Destination \"$mPath.bak\" -Force -ErrorAction SilentlyContinue;\n"
+        "            $settings = New-Object System.Xml.XmlWriterSettings;\n"
+        "            $settings.Encoding = $enc1252;\n"
+        "            $settings.Indent = $true;\n"
+        "            $w = [System.Xml.XmlWriter]::Create($mPath, $settings);\n"
+        "            $doc.Save($w);\n"
+        "            $w.Dispose();\n"
+        "            Write-Host \"[EMU_HARDENING] Multiplexes.xml salvo e blindado com sucesso: $mPath\";\n"
+        "        } else {\n"
+        "            Write-Host \"[EMU_HARDENING] Todos os canais com EMU ativo ja possuem perfil 'EMU MediaDNA 1min' em $mPath\";\n"
+        "        };\n"
+        "    } catch {\n"
+        "        Write-Host ('[AVISO] Nao foi possivel atualizar Multiplexes.xml em ' + $mPath + ': ' + $_.Exception.Message);\n"
+        "    };\n"
+        "};\n"
+    )
+
+
 def build_fastmatching_cleaner_migration_snippet(target_dir: str = r"D:\MediaDNA_V2\Applications\DTVCapture64") -> str:
     """
     Gera o snippet PowerShell para migração definitiva de stack:
     1. Desinstala e encerra DNA.DetectionSVC e DNA.TrackingSVC (.NET legados)
     2. Configura FastMatchingSvc como Automático e inicia
     3. Configura FileCleaner como Automático e inicia
+    4. Aplica blindagem no Multiplexes.xml (<EMU_ProfileName>EMU MediaDNA 1min</EMU_ProfileName>)
     """
+    emu_snippet = build_emu_profile_hardening_snippet(target_dir)
     return (
         "# ------------------------------------------------------------------\n"
         "# MIGRACAO DE STACK: Desinstalacao de DNA.DetectionSVC / TrackingSVC e Ativacao de FastMatching + FileCleaner\n"
@@ -330,7 +396,8 @@ def build_fastmatching_cleaner_migration_snippet(target_dir: str = r"D:\MediaDNA
         "        Start-Service -Name FileCleaner -ErrorAction SilentlyContinue;\n"
         "    };\n"
         "};\n"
-        "Write-Host '[MIGRACAO] Stack concluida: FastMatchingSvc e FileCleaner em Execucao (Automatico), DetectionSVC e TrackingSVC desinstalados.';\n"
+        f"{emu_snippet}"
+        "Write-Host '[MIGRACAO] Stack concluida: FastMatchingSvc e FileCleaner em Execucao (Automatico), DetectionSVC e TrackingSVC desinstalados, Multiplexes.xml blindado.';\n"
     )
 
 
@@ -409,6 +476,8 @@ def build_service_raw_script(service_name: str, target_version: str, migrate_to_
             "    $fmaDir = if (Test-Path \"$targetDir\\FastMatchingSvc\") { \"$targetDir\\FastMatchingSvc\" } else { \"$targetDir\\FastMachingSvc\" };\n"
             "    Copy-Item -Path \"$cfgBackup\\config.json\" -Destination $fmaDir -Force -ErrorAction SilentlyContinue;\n"
             "};\n"
+            "# 10.5 Migracao de Stack e Blindagem do Perfil EMU (EMU MediaDNA 1min) antes da abertura do Atria\n"
+            f"{mig_code}"
             "# 11. Reiniciar FastMatchingSvc oficial\n"
             "Start-Service -Name FastMatchingSvc -ErrorAction SilentlyContinue;\n"
             "# 12. Liberacao da trava do agente local\n"
@@ -420,7 +489,6 @@ def build_service_raw_script(service_name: str, target_version: str, migrate_to_
             "    schtasks /create /tn 'Start_Atria_Interactive' /tr \"`\"$exe`\"\" /sc once /st 00:00 /it /f >$null 2>&1;\n"
             "    schtasks /run /tn 'Start_Atria_Interactive' >$null 2>&1;\n"
             "};\n"
-            f"{mig_code}"
             f"Write-Host '[OK] Atria Capture atualizado com sucesso para {target_v} e reiniciado em ' $targetDir;\n"
         )
 

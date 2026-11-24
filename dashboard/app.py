@@ -28,6 +28,7 @@ gestão de incidentes, limiares de alerta customizáveis e Motor de IA Proativa.
 """
 import os
 import sys
+from datetime import datetime, timezone
 import logging
 from pathlib import Path
 from typing import Dict, Any, List, Optional
@@ -562,6 +563,352 @@ async def get_pending_url_actions_by_host(hostname: str):
     return res
 
 
+class HostChannelConfigItem(BaseModel):
+    name: str
+    emu_is_recording: Optional[bool] = None
+    emu_profile_name: Optional[str] = "EMU MediaDNA 1min"
+    mp4_is_recording: Optional[bool] = None
+
+
+class HostAppConfigItem(BaseModel):
+    api_port: Optional[int] = 9000
+    video_dir: Optional[str] = r"D:\MediaDNA_V2\Data\video"
+    emu_dir: Optional[str] = r"D:\MediaDNA_V2\Data\emu"
+
+
+class HostLogrotateConfigItem(BaseModel):
+    target_log_path: Optional[str] = r"D:\MediaDNA_V2\Applications\DTVCapture64\FastMatchingSvc\fma.log"
+    rotate_days: Optional[int] = 3
+    frequency: Optional[str] = "daily"
+
+
+class HostConfigUpdateRequest(BaseModel):
+    channels: Optional[List[HostChannelConfigItem]] = []
+    app_config: Optional[HostAppConfigItem] = None
+    logrotate: Optional[HostLogrotateConfigItem] = None
+    reason: Optional[str] = "Atualização de parâmetros operacionais do Capture Site (Multiplexes / EMU / LogRotate)"
+
+
+@app.get("/api/fleet/host-config/{hostname}")
+async def get_host_config_endpoint(hostname: str, user: dict = Depends(get_current_user)):
+    """
+    Retorna o inventário completo de configuração operacional do Capture Site:
+    Canais e regras EMU (Multiplexes.xml), diretórios e portas (AppConfig.xml) e
+    retenção de log de matching (logrotate.conf).
+    """
+    data = get_cached_data()
+    services = data.get("services", [])
+    all_channels = data.get("channels", [])
+    h_clean = hostname.strip().lower()
+
+    host_match = None
+    praca = "Desconhecida"
+    cs = 1
+    id_host = 0
+
+    for s in services:
+        sh = str(s.get("hostname", "")).strip().lower()
+        if sh == h_clean:
+            host_match = s
+            praca = s.get("cidade", "") or s.get("praca", "") or praca
+            try:
+                cs = int(float(s.get("cs", 1) or 1))
+            except Exception:
+                cs = 1
+            try:
+                id_host = int(float(s.get("id_host", 0) or 0))
+            except Exception:
+                id_host = 0
+            break
+
+    if not host_match:
+        for c in all_channels:
+            ch_h = str(c.get("hostname", "") or c.get("host", "")).strip().lower()
+            if ch_h == h_clean:
+                praca = c.get("cidade", "") or c.get("praca", "") or praca
+                try:
+                    cs = int(float(c.get("cs", 1) or 1))
+                except Exception:
+                    cs = 1
+                try:
+                    id_host = int(float(c.get("id_host", 0) or 0))
+                except Exception:
+                    id_host = 0
+                break
+
+    host_channels = []
+    seen_ch = set()
+    for c in all_channels:
+        ch_h = str(c.get("hostname", "") or c.get("host", "")).strip().lower()
+        ch_praca = str(c.get("cidade", "") or c.get("praca", "")).strip().lower()
+        try:
+            ch_cs = int(float(c.get("cs", 1) or 1))
+        except Exception:
+            ch_cs = 1
+
+        if (ch_h and ch_h == h_clean) or (praca and ch_praca == praca.lower() and ch_cs == cs):
+            name = c.get("canal", "") or c.get("veiculo", "") or c.get("nome", "Canal")
+            if not name or name.lower() in seen_ch:
+                continue
+            seen_ch.add(name.lower())
+
+            g_mp4 = str(c.get("gravando_mp4", "")).lower()
+            mp4_is_rec = "sim" in g_mp4 or "gravando" in g_mp4
+            emu_is_rec = (cs == 1)
+
+            host_channels.append({
+                "id": str(c.get("id", len(host_channels) + 1)),
+                "name": name,
+                "frequency": str(c.get("frequencia", "N/A")),
+                "channel_code": str(c.get("channel_code", "") or f"V{100 + len(host_channels)}"),
+                "network_type": str(c.get("meio", "Digital Terrestre")),
+                "tuner_id": int(float(c.get("tuner_id", -1) or -1)),
+                "qualidade": c.get("qualidade_sinal"),
+                "forca": c.get("forca_sinal"),
+                "mp4_is_recording": mp4_is_rec,
+                "mp4_dest_path": str(c.get("pasta_mp4", "") or r"D:\MediaDNA_V2\Data\video"),
+                "emu_is_recording": emu_is_rec,
+                "emu_profile_name": "EMU MediaDNA 1min",
+                "emu_dest_path": r"D:\MediaDNA_V2\Data\emu"
+            })
+
+    if not host_channels:
+        host_channels.append({
+            "id": "1",
+            "name": "Canal Principal",
+            "frequency": "587143",
+            "channel_code": "V101",
+            "network_type": "Digital Terrestre",
+            "tuner_id": 0,
+            "qualidade": 90,
+            "forca": 40,
+            "mp4_is_recording": True,
+            "mp4_dest_path": r"D:\MediaDNA_V2\Data\video",
+            "emu_is_recording": (cs == 1),
+            "emu_profile_name": "EMU MediaDNA 1min",
+            "emu_dest_path": r"D:\MediaDNA_V2\Data\emu"
+        })
+
+    return {
+        "hostname": hostname,
+        "praca": praca,
+        "cs": cs,
+        "id_host": id_host,
+        "channels": host_channels,
+        "app_config": {
+            "api_port": 9000,
+            "mosaic_port": 8080,
+            "video_dir": r"D:\MediaDNA_V2\Data\video",
+            "video_bkp_dir": r"D:\MediaDNA_V2\Data\video_bkp",
+            "emu_dir": r"D:\MediaDNA_V2\Data\emu",
+            "log_dir": r"D:\MediaDNA_V2\Applications\DTVCapture64\Logs",
+            "wcf_url": "https://mediadna.ibope.com/mediadnawcfcs/RemoteHostsService.svc",
+            "watchdog_timeout_sec": 30
+        },
+        "logrotate": {
+            "target_log_path": r"D:\MediaDNA_V2\Applications\DTVCapture64\FastMatchingSvc\fma.log",
+            "rotate_days": 3,
+            "frequency": "daily",
+            "dateext": True,
+            "missingok": True
+        }
+    }
+
+
+@app.post("/api/fleet/host-config/{hostname}")
+async def update_host_config_endpoint(
+    hostname: str,
+    req: HostConfigUpdateRequest,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Gera e dispara o script PowerShell atômico para atualização das configurações do CS:
+    1. Encerra graciosamente o Atria Capture.
+    2. Realiza backup automático com timestamp (.bak).
+    3. Aplica os novos parâmetros no Multiplexes.xml (perfil EMU, gravação MP4/EMU).
+    4. Ajusta o logrotate.conf com a rotação configurada (ex: 3 dias).
+    5. Reinicia o FastMatchingSvc se aplicável.
+    6. Reabre o Atria Capture interativamente via agendador de tarefas.
+    """
+    if user.get("role") == "n1":
+        raise HTTPException(status_code=403, detail="Perfil N1 não possui permissão para alterar configurações de estações.")
+
+    h_clean = hostname.strip()
+    if not h_clean:
+        raise HTTPException(status_code=400, detail="Hostname inválido.")
+
+    # 1. Monta blocos PowerShell para cada canal ajustado
+    ch_updates_ps = []
+    for ch in req.channels or []:
+        c_name = ch.name.replace("'", "''")
+        emu_rec_val = "$true" if ch.emu_is_recording else "$false"
+        emu_prof_val = (ch.emu_profile_name or "EMU MediaDNA 1min").replace("'", "''")
+        mp4_rec_val = "$true" if ch.mp4_is_recording else "$false"
+
+        snippet = f"""
+        $p = $doc.SelectNodes("//Programs[translate(normalize-space(Name), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz') = '{c_name.lower()}']");
+        if ($p -and $p.Count -gt 0) {{
+            foreach ($item in $p) {{
+                # Ajuste EMU_IsRecording
+                $eNode = $item.SelectSingleNode('EMU_IsRecording');
+                if (-not $eNode) {{ $eNode = $doc.CreateElement('EMU_IsRecording'); $item.AppendChild($eNode) | Out-Null }};
+                $eNode.InnerText = if ({emu_rec_val}) {{ 'true' }} else {{ 'false' }};
+
+                # Ajuste EMU_ProfileName
+                $pNode = $item.SelectSingleNode('EMU_ProfileName');
+                if (-not $pNode) {{ $pNode = $doc.CreateElement('EMU_ProfileName'); $item.AppendChild($pNode) | Out-Null }};
+                $pNode.InnerText = '{emu_prof_val}';
+
+                # Ajuste EMU_DestPath
+                $dNode = $item.SelectSingleNode('EMU_DestPath');
+                if (-not $dNode) {{ $dNode = $doc.CreateElement('EMU_DestPath'); $item.AppendChild($dNode) | Out-Null }};
+                if (-not $dNode.InnerText) {{ $dNode.InnerText = 'D:\\MediaDNA_V2\\Data\\emu' }};
+
+                # Ajuste Mp4_IsRecording
+                $mNode = $item.SelectSingleNode('Mp4_IsRecording');
+                if (-not $mNode) {{ $mNode = $doc.CreateElement('Mp4_IsRecording'); $item.AppendChild($mNode) | Out-Null }};
+                $mNode.InnerText = if ({mp4_rec_val}) {{ 'true' }} else {{ 'false' }};
+
+                $chCount++;
+            }}
+        }}"""
+        ch_updates_ps.append(snippet)
+
+    ch_block = "\n".join(ch_updates_ps) if ch_updates_ps else "# Nenhum canal modificado especificamente\n"
+
+    # Parâmetros de logrotate
+    lr_cfg = req.logrotate or HostLogrotateConfigItem()
+    lr_target = (lr_cfg.target_log_path or r"D:\MediaDNA_V2\Applications\DTVCapture64\FastMatchingSvc\fma.log").replace("'", "''")
+    lr_freq = (lr_cfg.frequency or "daily").replace("'", "''")
+    lr_rotate = int(lr_cfg.rotate_days or 3)
+
+    script = f"""# ==========================================================================
+# CENTRAL CS NOC: APLICACAO DE CONFIGURACOES REMOTAS NO CAPTURE SITE
+# Host: {h_clean} | Timestamp: {datetime.now(timezone.utc).isoformat()}
+# ==========================================================================
+$ErrorActionPreference = 'Continue';
+[System.Text.Encoding]::RegisterProvider([System.Text.CodePagesEncodingProvider]::Instance);
+$enc1252 = [System.Text.Encoding]::GetEncoding('Windows-1252');
+
+Write-Host '[1/5] Encerrando processos do Atria Capture para escrita segura dos XMLs...';
+cmd.exe /c "taskkill /f /t /im DigitalTVCapture.exe /im DigitalTVReceiver.exe /im AtriaCapture.exe >nul 2>&1";
+Start-Sleep -Seconds 1;
+
+# 2. Backup profilático das configurações atuais
+Write-Host '[2/5] Realizando backup profilatico (.bak) das configuracoes atuais...';
+$stamp = Get-Date -Format 'yyyyMMdd_HHmmss';
+$muxCandidates = @(
+    'D:\\MediaDNA_V2\\Applications\\DTVCapture64\\Config\\Multiplexes.xml',
+    'D:\\MediaDNA_V2\\Data\\Config\\Multiplexes.xml',
+    'C:\\DTV\\DTVCapture\\Config\\Multiplexes.xml'
+) | Where-Object {{ Test-Path $_ }};
+foreach ($m in $muxCandidates) {{ Copy-Item -Path $m -Destination "$m.bak_$stamp" -Force -ErrorAction SilentlyContinue }};
+
+# 3. Atualização de Canais e Regras EMU em Multiplexes.xml
+Write-Host '[3/5] Aplicando novas diretrizes de canais e EMU em Multiplexes.xml...';
+foreach ($mPath in $muxCandidates) {{
+    try {{
+        $raw = [System.IO.File]::ReadAllText($mPath, $enc1252);
+        $clean = [System.Text.RegularExpressions.Regex]::Replace($raw, '[\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f]', '');
+        [xml]$doc = New-Object System.Xml.XmlDocument;
+        $doc.LoadXml($clean);
+        $chCount = 0;
+
+        {ch_block}
+
+        $settings = New-Object System.Xml.XmlWriterSettings;
+        $settings.Encoding = $enc1252;
+        $settings.Indent = $true;
+        $w = [System.Xml.XmlWriter]::Create($mPath, $settings);
+        $doc.Save($w);
+        $w.Dispose();
+        Write-Host "[OK] Multiplexes.xml atualizado com sucesso em $mPath ($chCount ajustes).";
+    }} catch {{
+        Write-Host ('[ERRO] Falha ao atualizar Multiplexes.xml em ' + $mPath + ': ' + $_.Exception.Message);
+    }}
+}}
+
+# 4. Atualização de logrotate.conf para FastMatching
+Write-Host '[4/5] Aplicando configuracao oficial do LogRotate ({lr_target} + rotate {lr_rotate})...';
+$lrContent = @'
+{lr_target} {{
+        {lr_freq}
+		dateext
+		dateformat .%Y%m%d
+		missingok
+		rotate {lr_rotate}
+}}
+'@;
+$lrPaths = @(
+    'D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMatchingSvc\\LogRotate\\logrotate.conf',
+    'D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMachingSvc\\LogRotate\\logrotate.conf',
+    'C:\\DTV\\DTVCapture\\FastMatchingSvc\\LogRotate\\logrotate.conf'
+);
+foreach ($lp in $lrPaths) {{
+    $dir = Split-Path $lp -Parent;
+    if (Test-Path $dir) {{
+        Set-Content -Path $lp -Value $lrContent -Encoding Ascii -Force;
+        Write-Host "[OK] logrotate.conf atualizado em $lp";
+    }}
+}}
+
+$fmaSvc = Get-Service -Name FastMatchingSvc -ErrorAction SilentlyContinue;
+if ($fmaSvc -and $fmaSvc.Status -eq 'Running') {{
+    Restart-Service -Name FastMatchingSvc -Force -ErrorAction SilentlyContinue;
+    Write-Host '[OK] FastMatchingSvc reiniciado para aplicar ajustes de log.';
+}}
+
+# 5. Reabertura do Atria Capture interativo
+Write-Host '[5/5] Reabrindo Atria Capture no ambiente interativo...';
+$exeCandidates = @(
+    'D:\\MediaDNA_V2\\Applications\\DTVCapture64\\DigitalTVCapture.exe',
+    'C:\\DTV\\DTVCapture\\DigitalTVCapture.exe'
+);
+$exe = $exeCandidates | Where-Object {{ Test-Path $_ }} | Select-Object -First 1;
+if ($exe) {{
+    schtasks /delete /tn 'Start_Atria_Interactive' /f >$null 2>&1;
+    schtasks /create /tn 'Start_Atria_Interactive' /tr "`"$exe`"" /sc once /st 00:00 /it /f >$null 2>&1;
+    schtasks /run /tn 'Start_Atria_Interactive' >$null 2>&1;
+    Write-Host "[OK] Atria Capture reaberto com sucesso via tarefa interativa.";
+}} else {{
+    Write-Host '[AVISO] DigitalTVCapture.exe nao encontrado para reabertura automatica.';
+}}
+Write-Host '==========================================================================';
+Write-Host '[SUCESSO] Configuracoes operacionais aplicadas e Atria Capture reiniciado!';
+"""
+
+    operator_tag = f"{user.get('full_name', user.get('username'))} ({user.get('username')})"
+    try:
+        from remote_commands import dispatch_remote_command
+        from version_governance import record_fleet_audit_event
+        res = dispatch_remote_command(
+            hosts=[h_clean],
+            shell_type="powershell",
+            command_script=script,
+            command_title=f"Configuração Capture Site ({h_clean})",
+            requested_by=operator_tag
+        )
+        record_fleet_audit_event(
+            user=user,
+            action_type="HOST_CONFIG_UPDATE",
+            target=h_clean,
+            service_name="Atria Capture & Multiplexes",
+            reason=req.reason or "Ajuste de perfil EMU, Multiplexes e LogRotate",
+            command_preview=script,
+            status="Sucesso",
+            details=f"ID Execução: {res} | Canais configurados: {len(req.channels or [])} | LogRotate: rotate {lr_rotate}",
+        )
+        return {
+            "success": True,
+            "execution_id": res,
+            "message": f"Configurações para {h_clean} enviadas com sucesso! Atria será reiniciado na estação.",
+            "script_preview": script
+        }
+    except Exception as e:
+        logger.error(f"Erro ao disparar atualização de configuração para {h_clean}: {e}", exc_info=True)
+        return JSONResponse(status_code=500, content={"success": False, "detail": f"Erro interno ao disparar comando: {str(e)}"})
+
+
 @app.get("/api/fleet/channels")
 async def get_channels(city: Optional[str] = None, outage_only: bool = False, user: dict = Depends(get_current_user)):
     data = get_cached_data()
@@ -952,22 +1299,42 @@ async def dispatch_governance_update_endpoint(
         # Garante que o manifest.json no GCS está alinhado com a versão alvo
         update_gcs_manifest_version(req.service_name, target_v)
 
-        raw_script = build_service_raw_script(req.service_name, target_v, migrate_to_fastmatching=bool(req.migrate_to_fastmatching))
+        # Regra de Engenharia: CS02 e CS03 não possuem detecção (exclusivo CS01).
+        # Apenas CS01 pode migrar stack de detecção (FastMatching + FileCleaner).
+        c_data = get_cached_data()
+        services_cache = c_data.get("services", [])
+        host_cs_map = {}
+        for s in services_cache:
+            sh = str(s.get("hostname", "")).strip().upper()
+            if sh and sh not in host_cs_map:
+                try:
+                    host_cs_map[sh] = int(float(s.get("cs", 1) or 1))
+                except Exception:
+                    host_cs_map[sh] = 1
+
+        script_cs01 = build_service_raw_script(req.service_name, target_v, migrate_to_fastmatching=bool(req.migrate_to_fastmatching))
+        script_cs_backup = build_service_raw_script(req.service_name, target_v, migrate_to_fastmatching=False)
         operator = f"{user.get('full_name') or user.get('username') or 'Operador NOC'} ({user.get('username', 'admin')})"
 
         def _dispatch_one(h: str):
+            h_clean = h.strip()
+            h_upper = h_clean.upper()
+            cs_val = host_cs_map.get(h_upper, 1)
+            is_secondary_cs = (cs_val > 1) or any(k in h_upper for k in ["-CS2", "-CS02", "-CS3", "-CS03", "-DT02", "-DT2", "-DT03", "-DT3"])
+            chosen_script = script_cs_backup if is_secondary_cs else script_cs01
+
             cid = f"upd_{uuid.uuid4().hex[:8]}"
             ok = dispatch_remote_command_to_firestore(
                 command_id=cid,
-                hostname=h,
+                hostname=h_clean,
                 service_name=req.service_name,
                 action="Atualizar",
                 target_version=target_v,
                 shell_type="powershell",
-                script=raw_script,
+                script=chosen_script,
                 requested_by=operator,
             )
-            return h, ok
+            return h_clean, ok
 
         dispatched = []
         failed = []
