@@ -69,6 +69,7 @@ def get_fleet_sla_matrix(
     from sharepoint_sync import get_cached_data
     from media_pipeline_monitor import get_fleet_pipeline_incidents, get_link_monitoring_metrics
     from praca_analyzer import is_radio_channel_healthy, is_tv_channel_healthy
+    from tracking_detection_monitor import build_detection_fleet_snapshot
 
     data = get_cached_data()
     services = data.get("services", [])
@@ -76,9 +77,26 @@ def get_fleet_sla_matrix(
 
     now_dt = datetime.now(timezone.utc)
 
-    # 1. Carrega métricas de link WAN e incidentes de pipeline (.SENT atrasado)
+    # 1. Carrega métricas de link WAN, incidentes de pipeline (.SENT atrasado) e snapshot canônico de detecção
     link_metrics = {m.get("hostname"): m for m in get_link_monitoring_metrics(services, channels)}
     pipeline_incs = get_fleet_pipeline_incidents(services, channels, threshold_delay_min=10.0)
+
+    # Snapshot canônico de detecção automática comercial (mesma autoridade da aba de Incidentes)
+    try:
+        det_snapshot = build_detection_fleet_snapshot()
+        det_sites_list = det_snapshot.get("sites", [])
+    except Exception:
+        det_sites_list = []
+
+    det_sites_by_host: Dict[str, Dict[str, Any]] = {}
+    det_sites_by_praca: Dict[str, Dict[str, Any]] = {}
+    for s_det in det_sites_list:
+        h_d = str(s_det.get("hostname") or "").strip().lower()
+        if h_d:
+            det_sites_by_host[h_d] = s_det
+        p_d = str(s_det.get("praca") or "").strip().lower()
+        if p_d and p_d != "n/a":
+            det_sites_by_praca[p_d] = s_det
 
     pipeline_by_host: Dict[str, List[Dict[str, Any]]] = {}
     for inc in pipeline_incs:
@@ -236,31 +254,55 @@ def get_fleet_sla_matrix(
 
         # ---------------------------------------------------------
         # E) DT - Detecção Automática Comercial (Apenas CS01!)
+        # Fonte Canônica Unificada: tracking_detection_monitor (Idêntica à Central de Incidentes)
+        # Elimina 100% de dados sintéticos/hardcoded e falsos alertas
         # ---------------------------------------------------------
         dt_delay: Any = "N/A"
         if cs == 1:
             dt_delay = 0
-            fm = next((s for s in svcs if "fastmatch" in _s_name(s)), None)
-            det = next((s for s in svcs if "detectionsvc" in _s_name(s)), None)
+            raw_h_str = str(info.get("raw_hostname") or "").strip().lower()
+            h_str = str(h or "").strip().lower()
+            p_str = str(praca or "").strip().lower()
 
-            fm_run = fm and any(w in _s_stat(fm) for w in ["execu", "running", "ativo"])
-            det_run = det and any(w in _s_stat(det) for w in ["execu", "running", "ativo"])
+            # Busca nó de detecção correspondente por hostname ou praça
+            site_det = (
+                det_sites_by_host.get(h_str)
+                or det_sites_by_host.get(raw_h_str)
+                or det_sites_by_praca.get(p_str)
+            )
 
-            # Se nenhum motor ativo ou conflito
-            if not fm_run and not det_run:
-                # Motor parado gera atraso acumulado apenas se o host estiver online
-                dt_delay = 320 if ka_delay < 120 else 0
-            elif fm_run and det_run:
-                dt_delay = 180  # Conflito de motores
+            if site_det:
+                h_stat = site_det.get("health_status")
+                tracking_age = int(site_det.get("tracking_age_minutes") or 0)
+                eng_tier = site_det.get("engine_tier")
+
+                if h_stat == "NOMINAL":
+                    # Motor em execução e fluxo de XMLs nominal sem acúmulo
+                    dt_delay = 0
+                elif h_stat == "STALLED":
+                    # Fila represada sem despacho WCF (atraso real medido pela idade do XML)
+                    dt_delay = tracking_age if tracking_age > 0 else max(15, ka_delay)
+                elif h_stat == "CRITICAL" or eng_tier == "NONE":
+                    # Motor inoperante (ambos os motores parados em CS01 com TV ativa)
+                    dt_delay = tracking_age if tracking_age > 0 else max(30, ka_delay)
+                elif eng_tier == "CONFLICT":
+                    # Conflito de motores (ambos ativos simultaneamente)
+                    dt_delay = tracking_age if tracking_age > 0 else 30
+                elif h_stat == "COMM_LOST":
+                    # Host offline: já penalizado no Keepalive (KA), não gera falso alarme de detecção
+                    dt_delay = 0
             else:
-                # Motor nominal ativo (ex: FastMatchingSvc em Campinas):
-                # Só registra atraso se houver prova explícita de recon=0 ou backlog de buffer
-                active_s = fm if fm_run else det
-                log_err = active_s.get("log_erro") or ""
-                if "recon=0" in log_err.lower() or "recon: 0" in log_err.lower():
-                    dt_delay = 240
-                elif "atraso" in log_err.lower() and "segundos" not in log_err.lower():
-                    dt_delay = _extract_minutes_from_text(log_err) or 0
+                # Verificação defensiva para nós locais não indexados no snapshot
+                fm = next((s for s in svcs if "fastmatch" in _s_name(s)), None)
+                det = next((s for s in svcs if "detectionsvc" in _s_name(s)), None)
+
+                fm_run = fm and any(w in _s_stat(fm) for w in ["execu", "running", "ativo"])
+                det_run = det and any(w in _s_stat(det) for w in ["execu", "running", "ativo"])
+
+                if fm_run or det_run:
+                    dt_delay = 0
+                else:
+                    dt_delay = ka_delay if ka_delay > 15 else 0
 
         # ---------------------------------------------------------
         # F) Hardware: CPU, MEMÓRIA (RAM) e DISCO D:

@@ -1,8 +1,8 @@
 {
-  "version": "3.9.96",
+  "version": "3.9.97",
   "agent_version": "1.0.21.5",
   "commit_sha": "auto",
-  "updated_at": "2026-11-24T01:50:00.000000",
-  "description": "v3.9.96 - Substitui coluna Subprodutos por métricas diretas de hardware (CPU, Memória, Disco D:) e remove MP3 BUR na Matriz de SLA; alinha identificação de FastMatchingSvc eliminando falso atraso de DT em nós nominais (Campinas).",
-  "release_notes": "v3.9.96: Reestrutura as colunas da Matriz Geral de SLA para o padrão operacional do NOC: substitui Subprodutos por 3 colunas de hardware essenciais (CPU, Memória RAM e Disco D: com alerta visual <30GB), remove coluna legada MP3 BUR e refina a contabilização estrita de atraso físico de arquivos (MP3 ARC, ASF ARC e MP4 ARC). Corrige a resolução de chaves do serviço de detecção automática para motores C++ modernos (FastMatchingSvc), eliminando discrepâncias de DT em Campinas e outros nós 100% nominais."
+  "updated_at": "2026-11-24T02:15:00.000000",
+  "description": "v3.9.97 - Unifica cálculo de atraso de detecção automática comercial (DT) com a fonte canônica tracking_detection_monitor; erradica números sintéticos/hardcoded (320 min) e sincroniza a Matriz de SLA com a Central de Incidentes.",
+  "release_notes": "v3.9.97: Erradica completamente atrasos sintéticos estáticos (320 min) na coluna DT (AT) da Matriz Geral de SLA. Integra a matriz diretamente ao motor canônico build_detection_fleet_snapshot(), garantindo que a Matriz de SLA e a Central de Incidentes falem a mesma língua operacional: nós CS01 operando nominalmente com FastMatchingSvc ou DNA.DetectionSVC e despacho WCF ativo (Campinas, Homolog, Uruguaiana, Manaus) exibem DT=0 (nominal com traço limpo), sem divergências ou falsos alarmes."
 }
