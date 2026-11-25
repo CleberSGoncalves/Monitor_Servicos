@@ -15,14 +15,18 @@ from fleet_actions import (
 
 
 def test_emu_profile_hardening_snippet_generation():
-    """Valida a geração do snippet PowerShell para forçar 'EMU MediaDNA 1min'."""
-    snippet = build_emu_profile_hardening_snippet(r"D:\MediaDNA_V2\Applications\DTVCapture64")
-    assert "EMU_HARDENING" in snippet
-    assert "EMU MediaDNA 1min" in snippet
-    assert "Multiplexes.xml" in snippet
-    assert "EMU_IsRecording" in snippet
-    assert "EMU_ProfileName" in snippet
-    assert "Copy-Item -Path $mPath -Destination \"$mPath.bak\"" in snippet
+    """Valida a geração do snippet PowerShell para 'emu_mdna' (legado) e 'EMU MediaDNA 1min' (FastMatching)."""
+    snippet_leg = build_emu_profile_hardening_snippet(r"D:\MediaDNA_V2\Applications\DTVCapture64", target_profile="emu_mdna")
+    assert "EMU_HARDENING" in snippet_leg
+    assert "emu_mdna" in snippet_leg
+    assert "Multiplexes.xml" in snippet_leg
+
+    snippet_fast = build_emu_profile_hardening_snippet(r"D:\MediaDNA_V2\Applications\DTVCapture64", target_profile="emu_mdna_1min")
+    assert "EMU_HARDENING" in snippet_fast
+    assert "EMU MediaDNA 1min" in snippet_fast
+    assert "Multiplexes.xml" in snippet_fast
+    assert "EMU_IsRecording" in snippet_fast
+    assert "EMU_ProfileName" in snippet_fast
 
 
 def test_atria_update_script_with_migration_places_hardening_before_interactive_start():
