@@ -3376,8 +3376,8 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
     }
 
     recent_detections = []
-    re_det = re.compile(r"""(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}):\s+\[(.*?)\]\(.*?\)\s+NEW DETECTION\s+(\d+),.*?,.*?,(\d+)ms,['\"](.*?)['\"].*?ProcTimeMs\s+(\d+)""", re.IGNORECASE)
-    re_del = re.compile(r"""(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}):.*?DELAYED NEW DETECTION CANDIDATE\s+(\d+),.*?,.*?,(\d+)ms,['\"](.*?)['\"].*?,(\d+)""", re.IGNORECASE)
+    re_det = re.compile(r"""(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}):\s+\[(.*?)\](?:\(.*?\))?\s+NEW DETECTION\s+(\d+),\s*.*?,.*?,?\s*(\d+)ms,\s*['\"](.*?)['\"].*?ProcTimeMs\s+(\d+)""", re.IGNORECASE)
+    re_del = re.compile(r"""(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}):.*?DELAYED NEW DETECTION CANDIDATE\s+(\d+),\s*.*?,.*?,?\s*(\d+)ms,\s*['\"](.*?)['\"].*?,\s*(\d+)""", re.IGNORECASE)
 
     for line in reversed(log_lines):
         m_ok = re_det.search(line)

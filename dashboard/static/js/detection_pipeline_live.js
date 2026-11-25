@@ -24,7 +24,10 @@ async function openDetectionPipelineLiveModal(hostname, praca) {
     fmaLiveCurrentPraca = praca || "";
 
     const modal = document.getElementById("detectionPipelineLiveModal");
-    if (!modal) return;
+    if (!modal) {
+        console.error("[FmaLive] Elemento modal detectionPipelineLiveModal não encontrado no DOM.");
+        return;
+    }
 
     modal.style.display = "flex";
 
@@ -176,10 +179,10 @@ function renderFmaLiveDashboard(data) {
     const bodyEl = document.getElementById("fmaLiveModalBody");
     if (!bodyEl) return;
 
-    const diag = data.diagnosis;
-    const spots = data.spots_status;
-    const emu = data.emu_status;
-    const perf = data.engine_performance;
+    const diag = data.diagnosis || {};
+    const spots = data.spots_status || {};
+    const emu = data.emu_status || {};
+    const perf = data.engine_performance || {};
     const detections = data.recent_detections || [];
     const logs = data.raw_logs || [];
 
@@ -194,15 +197,15 @@ function renderFmaLiveDashboard(data) {
             <div>
                 <div style="font-size: 13px; font-weight: 800; color: ${diagBadgeCol}; text-transform: uppercase; display: flex; align-items: center; gap: 6px;">
                     <span>${diag.color === 'green' ? '✅' : (diag.color === 'yellow' ? '⚠️' : '🚨')}</span>
-                    ${escapeHtml(diag.title)}
+                    ${escapeHtml(diag.title || 'Status do Pipeline')}
                 </div>
                 <div style="font-size: 11.5px; color: #cbd5e1; margin-top: 3px;">
-                    ${escapeHtml(diag.description)}
+                    ${escapeHtml(diag.description || '')}
                 </div>
             </div>
             <div style="text-align: right;">
                 <div style="font-size: 10px; color: #94a3b8; font-weight: 700; text-transform: uppercase;">Ação Recomendada:</div>
-                <div style="font-size: 11.5px; color: #f8fafc; font-weight: 700; max-width: 380px;">${escapeHtml(diag.recommended_action)}</div>
+                <div style="font-size: 11.5px; color: #f8fafc; font-weight: 700; max-width: 380px;">${escapeHtml(diag.recommended_action || 'Nenhuma intervenção necessária.')}</div>
             </div>
         </div>
 
@@ -216,7 +219,7 @@ function renderFmaLiveDashboard(data) {
                     <span>${perf.is_running ? '🟢' : '🔴'}</span> ${perf.is_running ? 'FastMatching' : 'Parado'}
                 </div>
                 <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">
-                    Status: <strong style="color: #f8fafc;">${escapeHtml(perf.status_text)}</strong> • CPU CS: ${escapeHtml(perf.host_cpu)}
+                    Status: <strong style="color: #f8fafc;">${escapeHtml(perf.status_text || 'Desconhecido')}</strong> • CPU CS: ${escapeHtml(perf.host_cpu || 'N/A')}
                 </div>
             </div>
 
@@ -224,10 +227,10 @@ function renderFmaLiveDashboard(data) {
             <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid ${spots.loaded ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'}; border-radius: 8px; padding: 12px;">
                 <div style="font-size: 10px; font-weight: 800; color: #38bdf8; text-transform: uppercase;">Catálogo &amp; Spots SGG</div>
                 <div style="font-size: 18px; font-weight: 800; color: #f8fafc; margin-top: 4px;">
-                    ${spots.total_spots_loaded.toLocaleString()} spots
+                    ${(spots.total_spots_loaded || 0).toLocaleString()} spots
                 </div>
                 <div style="font-size: 11px; color: ${spots.status_color === 'green' ? '#4ade80' : '#f87171'}; margin-top: 4px; font-weight: 700;">
-                    ${escapeHtml(spots.status_label)} ${spots.recon_count !== null ? `(recon=${spots.recon_count})` : ''}
+                    ${escapeHtml(spots.status_label || 'Aguardando')} ${spots.recon_count !== null && spots.recon_count !== undefined ? `(recon=${spots.recon_count})` : ''}
                 </div>
             </div>
 
@@ -235,10 +238,10 @@ function renderFmaLiveDashboard(data) {
             <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid ${emu.flow_color === 'green' ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'}; border-radius: 8px; padding: 12px;">
                 <div style="font-size: 10px; font-weight: 800; color: #facc15; text-transform: uppercase;">Geração de .EMU (1 min)</div>
                 <div style="font-size: 18px; font-weight: 800; color: #f8fafc; margin-top: 4px;">
-                    ${emu.generation_rate_cpm.toFixed(1)} <span style="font-size: 12px; color: #94a3b8; font-weight: 600;">arquivos/min</span>
+                    ${(Number(emu.generation_rate_cpm) || 0).toFixed(1)} <span style="font-size: 12px; color: #94a3b8; font-weight: 600;">arquivos/min</span>
                 </div>
                 <div style="font-size: 11px; color: ${emu.flow_color === 'green' ? '#4ade80' : '#f87171'}; margin-top: 4px; font-weight: 700;">
-                    ${escapeHtml(emu.flow_label)}
+                    ${escapeHtml(emu.flow_label || 'Sem dados')}
                 </div>
             </div>
 
@@ -246,10 +249,10 @@ function renderFmaLiveDashboard(data) {
             <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 12px;">
                 <div style="font-size: 10px; font-weight: 800; color: #c084fc; text-transform: uppercase;">Varredura &amp; Memória</div>
                 <div style="font-size: 18px; font-weight: 800; color: #f8fafc; margin-top: 4px;">
-                    ${perf.proc_time_ms_avg} ms <span style="font-size: 12px; color: #94a3b8; font-weight: 600;">ProcTime médio</span>
+                    ${perf.proc_time_ms_avg || 18} ms <span style="font-size: 12px; color: #94a3b8; font-weight: 600;">ProcTime médio</span>
                 </div>
                 <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">
-                    Working Set: <strong style="color: #38bdf8;">${perf.ram_working_set_mb} MB</strong> • Fingers: ${perf.num_fingers.toLocaleString()}
+                    Working Set: <strong style="color: #38bdf8;">${perf.ram_working_set_mb || 0} MB</strong> • Fingers: ${(perf.num_fingers || 0).toLocaleString()}
                 </div>
             </div>
 

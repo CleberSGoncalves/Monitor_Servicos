@@ -92,3 +92,33 @@ def test_api_fma_live_endpoint_mocked():
         assert data["status_geral"] == "NOMINAL"
         assert data["spots"]["total_catalog"] == 12480
         assert len(data["detections"]["recent_matches"]) == 1
+
+def test_pipeline_live_modal_dom_elements():
+    """Valida a presença obrigatória do modal detectionPipelineLiveModal e do botão global no HTML."""
+    from bs4 import BeautifulSoup
+    index_path = os.path.join(dashboard_dir, "static", "index.html")
+    with open(index_path, "r", encoding="utf-8") as f:
+        soup = BeautifulSoup(f.read(), "html.parser")
+
+    # 1. Botão do topo para abrir o modal
+    btn_global = soup.find(id="btnOpenDetectionLiveGlobal")
+    assert btn_global is not None, "Botão btnOpenDetectionLiveGlobal não encontrado no HTML"
+    assert "openDetectionPipelineLiveModal" in btn_global.get("onclick", "")
+
+    # 2. Container do Modal
+    modal = soup.find(id="detectionPipelineLiveModal")
+    assert modal is not None, "Modal detectionPipelineLiveModal não encontrado no HTML"
+
+    # 3. Elementos internos vitais
+    select_host = soup.find(id="fmaLiveHostSelect")
+    assert select_host is not None, "Seletor fmaLiveHostSelect não encontrado dentro do modal"
+
+    modal_body = soup.find(id="fmaLiveModalBody")
+    assert modal_body is not None, "Container fmaLiveModalBody não encontrado dentro do modal"
+
+    auto_refresh = soup.find(id="fmaLiveAutoRefreshToggle")
+    assert auto_refresh is not None, "Toggle fmaLiveAutoRefreshToggle não encontrado dentro do modal"
+
+    footer_status = soup.find(id="fmaLiveFooterStatus")
+    assert footer_status is not None, "Status fmaLiveFooterStatus não encontrado dentro do modal"
+

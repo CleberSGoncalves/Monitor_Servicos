@@ -8788,6 +8788,63 @@
         </div>
       </div>
 
+      <!-- MODAL DE PIPELINE LIVE (fma.log & FLUXO DE EMU) -->
+      <div id="detectionPipelineLiveModal" onclick="if(event.target === this) closeDetectionPipelineLiveModal()" style="display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(6px); z-index: 10000; align-items: center; justify-content: center; padding: 20px;">
+        <div style="background: #0b1329; border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 14px; max-width: 1140px; width: 100%; max-height: 92vh; overflow-y: auto; box-shadow: 0 25px 60px rgba(0, 0, 0, 0.85); padding: 22px; display: flex; flex-direction: column; gap: 16px;">
+          
+          <!-- Header do Modal -->
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255, 255, 255, 0.1); padding-bottom: 14px; flex-wrap: wrap; gap: 12px;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <span style="font-size: 26px;">📡</span>
+              <div>
+                <h3 style="font-size: 16px; font-weight: 800; color: #f8fafc; margin: 0; display: flex; align-items: center; gap: 8px;">
+                  Pipeline Live — FastMatching &amp; EMU
+                  <span style="background: rgba(14, 165, 233, 0.2); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px;">TEMPO REAL</span>
+                </h3>
+                <div id="fmaLiveSubtitle" style="font-size: 11px; color: #94a3b8; font-family: monospace; margin-top: 2px;">Coleta ativa de fma.log, catálogo SGG e buffer .EMU</div>
+              </div>
+            </div>
+
+            <!-- Controles do Topo (Seletor de CS01 + Auto-Refresh + Fechar) -->
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-size: 11px; color: #94a3b8; font-weight: 600;">Host CS01:</span>
+                <select id="fmaLiveHostSelect" onchange="onFmaLiveHostChange(this.value)" style="background: #1e293b; color: #f8fafc; border: 1px solid rgba(56, 189, 248, 0.4); padding: 6px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; outline: none; cursor: pointer; min-width: 240px; max-width: 320px;">
+                  <option value="">Carregando nós CS01...</option>
+                </select>
+              </div>
+
+              <label style="display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #cbd5e1; cursor: pointer; background: rgba(30, 41, 59, 0.6); padding: 5px 9px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.1);">
+                <input type="checkbox" id="fmaLiveAutoRefreshToggle" checked onchange="toggleFmaLiveAutoRefresh(this.checked)">
+                <span>Auto-Refresh (3s)</span>
+              </label>
+
+              <button onclick="closeDetectionPipelineLiveModal()" style="background: none; border: none; color: #94a3b8; font-size: 22px; cursor: pointer; padding: 4px 8px; line-height: 1;" title="Fechar">✕</button>
+            </div>
+          </div>
+
+          <!-- Corpo do Modal (Injetado Dinamicamente por detection_pipeline_live.js) -->
+          <div id="fmaLiveModalBody" style="display: flex; flex-direction: column; gap: 14px;">
+            <div style="text-align: center; padding: 50px 20px; color: #94a3b8;">
+              <div style="font-size: 30px; margin-bottom: 10px;">📡</div>
+              <div style="font-size: 14px; font-weight: 700; color: #f8fafc;">Carregando telemetria ao vivo...</div>
+            </div>
+          </div>
+
+          <!-- Footer do Modal -->
+          <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 14px; flex-wrap: wrap; gap: 10px;">
+            <div id="fmaLiveFooterStatus" style="font-size: 11px; color: #64748b; font-family: monospace;">Aguardando conexão...</div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <button id="btnFmaHealRecon" onclick="triggerFmaLiveHeal('recon')" style="display: none; background: linear-gradient(135deg, #ef4444, #b91c1c); color: #fff; border: none; padding: 7px 14px; border-radius: 6px; font-size: 12px; font-weight: 700; cursor: pointer;">🚨 Auto-Cura Recon=0</button>
+              <button onclick="copyFmaLiveLogs()" style="background: #1e293b; color: #94a3b8; border: 1px solid rgba(255, 255, 255, 0.15); padding: 7px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer;">📋 Copiar Logs</button>
+              <button onclick="refreshFmaLiveData()" style="background: #1e293b; color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); padding: 7px 14px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer;">🔄 Atualizar</button>
+              <button onclick="closeDetectionPipelineLiveModal()" style="background: #334155; color: #fff; border: none; padding: 7px 18px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer;">Fechar</button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
     </section>
 
 
@@ -20739,7 +20796,7 @@
   <script src="/static/js/detection_monitor.js?v=3.9.94"></script>
   <script src="/static/js/praca_analyzer.js?v=3.9.104"></script>
   <script src="/static/js/sla_matrix.js?v=3.9.102"></script>
-  <script src="/static/js/detection_pipeline_live.js?v=3.9.111"></script>
+  <script src="/static/js/detection_pipeline_live.js?v=3.9.115"></script>
 
 
   <!-- MODAL DE ACOMPANHAMENTO AO VIVO DE CONFIGURAÇÃO / UPDATE (COM CANCELAR) -->
