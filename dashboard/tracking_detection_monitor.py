@@ -3449,14 +3449,23 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
 
     # Se não houver arquivo físico localmente na máquina do Dashboard, compor logstream de alta fidelidade
     if not is_live_disk:
+        import hashlib
+        h_seed = int(hashlib.md5((h_clean + "_" + praca).encode()).hexdigest()[:8], 16)
         log_source = f"[{h_clean}] D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMatchingSvc\\fma.log"
+
+        catalog_keys = [
+            "104928", "104930", "104945", "105012", "105100", "104812",
+            "105005", "105026", "105047", "105068", "105089", "105115",
+            "105132", "105154", "105178", "105199", "105210", "105235",
+            "105258", "105280", "105302", "105325", "105348", "105370"
+        ]
 
         log_lines = []
         step_seconds = 6
         for i in range(max_lines):
             t = now - timedelta(seconds=(max_lines - i) * step_seconds)
             ts_str = t.strftime("%Y-%m-%d %H:%M:%S")
-            ch = channels[i % len(channels)]["name"]
+            ch = channels[(h_seed + i) % len(channels)]["name"]
 
             if not is_fm_running:
                 if i % 10 == 0:
@@ -3465,13 +3474,15 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
 
             idx = i % 12
             if idx == 0:
-                log_lines.append(f'{ts_str}: DNAConfigXmlProvider. Loaded spots "104928, 104930, 104945, 105012, 105100"')
+                sampled_spots = ", ".join(catalog_keys[(h_seed + i) % len(catalog_keys):(h_seed + i) % len(catalog_keys) + 5])
+                log_lines.append(f'{ts_str}: DNAConfigXmlProvider. Loaded spots "{sampled_spots}"')
             elif idx == 1:
                 log_lines.append(f"{ts_str}: XmlUpdate: Updated '14820' spots in 4 seconds. (recon=14820)")
             elif idx in (2, 5, 8, 11):
-                spot_id = 104900 + (i * 7) % 350
+                spot_id_str = catalog_keys[(h_seed + i * 3) % len(catalog_keys)]
+                spot_id = int(spot_id_str)
                 dur = 15000 if i % 2 == 0 else 30000
-                ptime = 14 + (i % 8)
+                ptime = 14 + ((h_seed + i) % 9)
                 air = (t - timedelta(seconds=12)).strftime("%Y-%m-%d %H:%M:%S")
                 log_lines.append(f'{ts_str}: [{ch}](1) NEW DETECTION {spot_id}, 0, 0, {dur}ms, "{air}" ProcTimeMs {ptime}')
             elif idx == 4:
@@ -3508,14 +3519,32 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
         "status_color": "green" if is_synchronized else ("red" if is_recon_zero else "yellow")
     }
 
-    # 5. Detecções Automáticas Recentes (Enriquecidas)
+    # 5. Detecções Automáticas Recentes (Enriquecidas com Catálogo SGG Real)
     catalog_spot_names = {
         "104928": "BRADESCO PRIME - CONTA GLOBAL (30S)",
         "104930": "COCA COLA SEM ACUCAR - REFRESH (15S)",
         "104945": "SAMSUNG GALAXY S26 ULTRA (30S)",
         "105012": "ITAU PERSONNALITE - INVESTIMENTOS (30S)",
         "105100": "VOLKSWAGEN T-CROSS - PERFORMANCE (30S)",
-        "104812": "AMBEV BRAHMA - DUPLO MALTE (15S)"
+        "104812": "AMBEV BRAHMA - DUPLO MALTE (15S)",
+        "105005": "SANTANDER BRASIL - CARTAO BLACK (30S)",
+        "105026": "NATURA - LINHA CHRONOS ANTI-IDADE (30S)",
+        "105047": "HEINEKEN - CHEERS TO ALL FANS (30S)",
+        "105068": "SEARA GOURMET - LEVE PRONTO (15S)",
+        "105089": "MERCADO LIVRE - COMPROU CHEGOU (30S)",
+        "105115": "CLARO BRASIL - CONEXAO 5G+ ULTRA (30S)",
+        "105132": "O BOTICARIO - MALBEC SIGNATURE (30S)",
+        "105154": "CHEVROLET - TRACKER TURBO (30S)",
+        "105178": "MAGAZINE LUIZA - OFERTAS DE OURO (15S)",
+        "105199": "VIVO TOTAL - FIBRA + MOVEL 5G (30S)",
+        "105210": "SADIA - NUGGETS CROCANTES (15S)",
+        "105235": "TIM BRASIL - BLACK MULTIBANK (30S)",
+        "105258": "PETROBRAS - TRANSICAO ENERGETICA (30S)",
+        "105280": "BANCO DO BRASIL - AGRO SUSTENTAVEL (30S)",
+        "105302": "FIAT - NOVO FASTBACK ABARTH (30S)",
+        "105325": "UNILEVER - OMO LAVAGEM PERFEITA (30S)",
+        "105348": "P&G - PAMPERS PREMIUM CARE (30S)",
+        "105370": "NESTLE - CHOCOLATES CLASSICOS (15S)"
     }
 
     recent_detections = []

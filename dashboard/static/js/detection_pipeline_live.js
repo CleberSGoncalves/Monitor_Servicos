@@ -264,6 +264,32 @@ function renderFmaLiveDashboard(data) {
 
         </div>
 
+        <!-- 2.5 QUADRO DEDICADO DE VEÍCULOS & EMISSORAS MONITORADAS NA PRAÇA -->
+        <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 12px 16px; margin-bottom: 14px; display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                <div style="font-size: 12px; font-weight: 800; color: #38bdf8; text-transform: uppercase; display: flex; align-items: center; gap: 6px;">
+                    <span>📡</span> Emissoras & Veículos Monitorados na Praça (${escapeHtml(fmaLiveCurrentPraca)})
+                </div>
+                <div style="font-size: 10.5px; color: #94a3b8;">
+                    Total de <strong>${(data.channels_detail || []).length || (data.monitored_channels || []).length} canais</strong> com gravação contínua e ingestão de áudio .EMU
+                </div>
+            </div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                ${((data.channels_detail && data.channels_detail.length > 0) ? data.channels_detail : (data.monitored_channels || []).map(ch => ({ name: ch, full_name: ch, prog: 1 }))).map(ch => `
+                    <div style="background: rgba(30, 41, 59, 0.8); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; padding: 8px 12px; display: flex; align-items: center; gap: 10px; min-width: 170px;">
+                        <div style="width: 32px; height: 32px; border-radius: 6px; background: rgba(14, 165, 233, 0.2); border: 1px solid rgba(56, 189, 248, 0.4); display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 800; color: #38bdf8;">
+                            📺
+                        </div>
+                        <div>
+                            <div style="font-size: 12px; font-weight: 800; color: #f8fafc;">${escapeHtml(ch.name || ch)}</div>
+                            <div style="font-size: 10px; color: #94a3b8;">${escapeHtml(ch.full_name || ch.name || ch)}</div>
+                            <div style="font-size: 9.5px; color: #4ade80; font-weight: 700; margin-top: 1px;">● Detecção Ativa (Prog ${ch.prog || 1})</div>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+
         <!-- 3. DETECÇÕES RECENTES EM TEMPO REAL & INDICADORES DE FLUXO -->
         <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 14px;">
 

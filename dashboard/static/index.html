@@ -20980,14 +20980,12 @@
             <!-- Bloco 2: Regra de Canais e Veículos Gravados por Praça -->
             <div style="background: rgba(15, 23, 42, 0.9); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 16px;">
               <div style="font-size: 13px; font-weight: 800; color: #facc15; text-transform: uppercase; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
-                <span>📡</span> 2. Canais e Veículos por Praça (Por que Cascavel não possui SBT?)
+                <span>📡</span> 2. Matriz de Veículos e Emissoras por Praça (Sintonia & MUX Local)
               </div>
               <div style="font-size: 11.5px; color: #cbd5e1; line-height: 1.5;">
-                Cada Capture Site CS01 sintoniza e grava exclusivamente os canais autorizados pela engenharia local e que possuem sintonizador TBS/antena dedicados na cidade:<br>
-                &bull; <strong>Cascavel (PR):</strong> Grava estritamente <strong>Rede Globo</strong> (RPC TV Cascavel), <strong>Record TV</strong> (RIC TV Oeste) e <strong>Rede Bandeirantes</strong> (TV Tarobá). <u>O SBT não é gravado nesta praça</u>.<br>
-                &bull; <strong>Londrina / Maringá:</strong> Possuem gravação de 4 canais (Globo, Record, Band e SBT / Rede Massa).<br>
-                &bull; <strong>Pelotas / Passo Fundo:</strong> Monitoram 2 canais (Globo e RedeTV / Record).<br>
-                <em>Regra do Sistema: Ao selecionar qualquer praça no seletor, a esteira restringe os logs, estatísticas de EMU e matches exclusivamente aos canais reais daquela localidade.</em>
+                Cada praça de captação (CS01) sintoniza e grava exclusivamente os canais autorizados pela engenharia local através de sintonizadores e antenas dedicadas na localidade (ex: Globo regional, Record TV, Band, SBT, RedeTV). O quadro de veículos exibe os canais ativos da praça selecionada, garantindo que nenhum canal inexistente seja listado.<br>
+                &bull; <strong>Engenharia de MUX:</strong> O Atria Capture consome os canais configurados no <code>Multiplexes.xml</code> e <code>AppConfig.xml</code> de cada servidor de captação físico.<br>
+                &bull; <strong>Regra do Pipeline:</strong> Ao selecionar qualquer praça no seletor, a esteira restringe os logs, estatísticas de EMU e matches acústicos exclusivamente aos canais reais configurados para aquela localidade.
               </div>
             </div>
 
