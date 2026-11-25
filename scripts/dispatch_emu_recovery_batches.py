@@ -116,15 +116,26 @@ def dispatch_batch(batch_idx: int) -> dict:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Disparo de Lote de Reversao EMU")
-    parser.add_argument("--batch", type=int, default=1, help="Numero do lote a ser disparado (1 a 18)")
+    parser.add_argument("--batch", type=int, default=0, help="Numero do lote a ser disparado (1 a 18)")
+    parser.add_argument("--all", action="store_true", help="Dispara todas as 87 pracas legadas (Lotes 1 a 18) imediatamente")
     parser.add_argument("--status", action="store_true", help="Exibe o status dos lotes disparados")
     args = parser.parse_args()
     
     if args.status:
         state = load_state()
         print(json.dumps(state, indent=2, ensure_ascii=False))
+    elif args.all:
+        print(f"\n=== DISPARANDO TODAS AS 87 PRACAS LEGADAS ({len(LEGACY_BATCHES)} LOTES) IMEDIATAMENTE ===")
+        dispatched_results = []
+        for b_idx in range(1, len(LEGACY_BATCHES) + 1):
+            res = dispatch_batch(b_idx)
+            dispatched_results.append(res)
+            print(f"[OK] Lote {b_idx:02d}/{len(LEGACY_BATCHES)} disparado | Exec ID: {res['exec_id']} | Hosts: {', '.join(res['hosts'])}")
+            time.sleep(0.3)
+        print(f"\n>>> CONCLUIDO: {len(dispatched_results)} lotes disparados para um total de {sum(r['hosts_count'] for r in dispatched_results)} hosts!")
     else:
-        res = dispatch_batch(args.batch)
+        target_batch = args.batch if args.batch > 0 else 1
+        res = dispatch_batch(target_batch)
         print("\n=== LOTE DISPARADO COM SUCESSO ===")
         print(f"Exec ID       : {res['exec_id']}")
         print(f"Lote          : {res['batch_index']} de {len(LEGACY_BATCHES)}")
