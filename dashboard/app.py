@@ -251,6 +251,8 @@ def on_startup():
     try:
         from remote_commands import init_remote_command_db
         init_remote_command_db()
+        from dashboard.rollback_manager import init_rollback_journal_db
+        init_rollback_journal_db()
     except Exception as e:
         logger.warning(f"Aviso ao inicializar banco de comandos remotos no startup: {e}")
     # Inicia sincronização contínua com SharePoint em thread daemon não bloqueante (5 min)
@@ -275,6 +277,75 @@ async def healthcheck():
         "last_sync": data.get("last_sync"),
         "total_hosts": data.get("stats", {}).get("total_hosts", 0)
     }
+
+
+
+
+# ==============================================================================
+# ENDPOINTS DO PLANO DE ROLLBACK CATASTRÓFICO PARA CAPTURE SITES
+# ==============================================================================
+@app.get("/api/fleet/rollback/journal")
+async def get_fleet_rollback_journal(
+    hostname: Optional[str] = None,
+    action_type: Optional[str] = None,
+    status: Optional[str] = None,
+    limit: int = 100,
+    user: dict = Depends(get_current_user)
+):
+    """Retorna o histórico de ações no journal de rollback catastrófico."""
+    from dashboard.rollback_manager import get_rollback_journal
+    records = get_rollback_journal(hostname=hostname, action_type=action_type, status=status, limit=limit)
+    return {"success": True, "total": len(records), "records": records}
+
+
+@app.get("/api/fleet/rollback/preview/{action_id}")
+async def get_fleet_rollback_preview(
+    action_id: str,
+    user: dict = Depends(get_current_user)
+):
+    """Retorna a pré-visualização do script PowerShell e snapshot de reversão."""
+    from dashboard.rollback_manager import preview_rollback
+    res = preview_rollback(action_id)
+    if not res.get("success"):
+        raise HTTPException(status_code=404, detail=res.get("error", "Ação não encontrada"))
+    return res
+
+
+@app.post("/api/fleet/rollback/execute/{action_id}")
+async def post_fleet_rollback_execute(
+    action_id: str,
+    user: dict = Depends(get_current_user)
+):
+    """Executa a reversão catastrófica de emergência para o host."""
+    from dashboard.rollback_manager import execute_rollback
+    operator = user.get("username") if user else "NOC Operator"
+    res = execute_rollback(action_id, operator=operator)
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("error", "Falha ao executar rollback"))
+    return res
+
+
+@app.post("/api/rdp/launch")
+@app.get("/api/rdp/launch")
+async def launch_rdp_native(target: str, port: int = 3389):
+    """Abre instantaneamente o cliente Remote Desktop nativo do Windows (mstsc.exe) para o IP alvo."""
+    import subprocess
+    import shutil
+    
+    clean_target = (target or "").strip()
+    if not clean_target:
+        raise HTTPException(status_code=400, detail="Target IP or hostname required")
+    
+    addr = clean_target if port == 3389 else f"{clean_target}:{port}"
+    mstsc_path = shutil.which("mstsc.exe") or "mstsc.exe"
+    
+    try:
+        subprocess.Popen([mstsc_path, f"/v:{addr}"], shell=False)
+        logger.info(f"[RDP_LAUNCH] MSTSC iniciado com sucesso para {addr}")
+        return {"status": "ok", "message": f"MSTSC iniciado com sucesso para {addr}", "target": addr}
+    except Exception as e:
+        logger.error(f"[RDP_LAUNCH] Erro ao iniciar MSTSC para {addr}: {e}")
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 
 # Endpoints de Autenticação e Usuários
@@ -1545,6 +1616,19 @@ Write-Host '[SUCESSO] Configuracoes operacionais aplicadas e Atria Capture reini
             status="Sucesso",
             details=f"ID Execução: {res} | Canais configurados: {len(req.channels or [])} | LogRotate: rotate {lr_rotate}",
         )
+        try:
+            from dashboard.rollback_manager import record_action_for_rollback
+            record_action_for_rollback(
+                action_id=str(res),
+                action_type="host_config",
+                hostname=h_clean,
+                praca=req.reason or "",
+                operator=operator,
+                snapshot_before={"channels_count": len(req.channels or []), "reason": req.reason},
+                action_payload={"reason": req.reason, "channels_count": len(req.channels or [])}
+            )
+        except Exception as e_rb:
+            logger.warning(f"Erro ao registrar host_config no rollback_manager: {e_rb}")
         return {
             "success": True,
             "execution_id": res,
@@ -2018,6 +2102,20 @@ async def dispatch_governance_update_endpoint(
                 script=chosen_script,
                 requested_by=operator,
             )
+            try:
+                from dashboard.rollback_manager import record_action_for_rollback
+                _act_type = "atria_update" if "atria" in req.service_name.lower() or "capture" in req.service_name.lower() else "service_update"
+                record_action_for_rollback(
+                    action_id=cid,
+                    action_type=_act_type,
+                    hostname=h_clean,
+                    praca="",
+                    operator=operator,
+                    snapshot_before={"service_name": req.service_name, "versao_anterior": host_info.get("versao_instalada", "N/A")},
+                    action_payload={"target_version": target_v, "service_name": req.service_name}
+                )
+            except Exception as _e_rb:
+                logger.warning(f"Erro ao registrar update no rollback_manager: {_e_rb}")
             return h_clean, ok
 
         dispatched = []

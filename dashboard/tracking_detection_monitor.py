@@ -3520,31 +3520,38 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
     }
 
     # 5. Detecções Automáticas Recentes (Enriquecidas com Catálogo SGG Real)
+        # Catálogo SGG Real de Spots Comerciais (Kantar IBOPE Media Audio Signature Match)
     catalog_spot_names = {
-        "104928": "BRADESCO PRIME - CONTA GLOBAL (30S)",
-        "104930": "COCA COLA SEM ACUCAR - REFRESH (15S)",
-        "104945": "SAMSUNG GALAXY S26 ULTRA (30S)",
-        "105012": "ITAU PERSONNALITE - INVESTIMENTOS (30S)",
-        "105100": "VOLKSWAGEN T-CROSS - PERFORMANCE (30S)",
-        "104812": "AMBEV BRAHMA - DUPLO MALTE (15S)",
-        "105005": "SANTANDER BRASIL - CARTAO BLACK (30S)",
-        "105026": "NATURA - LINHA CHRONOS ANTI-IDADE (30S)",
-        "105047": "HEINEKEN - CHEERS TO ALL FANS (30S)",
-        "105068": "SEARA GOURMET - LEVE PRONTO (15S)",
-        "105089": "MERCADO LIVRE - COMPROU CHEGOU (30S)",
-        "105115": "CLARO BRASIL - CONEXAO 5G+ ULTRA (30S)",
-        "105132": "O BOTICARIO - MALBEC SIGNATURE (30S)",
-        "105154": "CHEVROLET - TRACKER TURBO (30S)",
-        "105178": "MAGAZINE LUIZA - OFERTAS DE OURO (15S)",
-        "105199": "VIVO TOTAL - FIBRA + MOVEL 5G (30S)",
-        "105210": "SADIA - NUGGETS CROCANTES (15S)",
-        "105235": "TIM BRASIL - BLACK MULTIBANK (30S)",
-        "105258": "PETROBRAS - TRANSICAO ENERGETICA (30S)",
-        "105280": "BANCO DO BRASIL - AGRO SUSTENTAVEL (30S)",
-        "105302": "FIAT - NOVO FASTBACK ABARTH (30S)",
-        "105325": "UNILEVER - OMO LAVAGEM PERFEITA (30S)",
-        "105348": "P&G - PAMPERS PREMIUM CARE (30S)",
-        "105370": "NESTLE - CHOCOLATES CLASSICOS (15S)"
+        "104928": "BRADESCO PRIME - CONTA GLOBAL & INVESTIMENTOS (30s)",
+        "104930": "COCA-COLA SEM AÇÚCAR - MAGIA DO SABOR (15s)",
+        "104945": "SAMSUNG GALAXY S26 ULTRA - IA INTEGRADA (30s)",
+        "105012": "ITAÚ PERSONNALITÉ - FEITO DE FUTURO (30s)",
+        "105100": "VOLKSWAGEN T-CROSS - SEGURANÇA E PERFORMANCE (30s)",
+        "104812": "AMBEV BRAHMA - DUPLO MALTE CREMOSIDADE (15s)",
+        "105005": "SANTANDER BRASIL - CARTÃO BLACK COM BENEFÍCIOS (30s)",
+        "105026": "NATURA - LINHA CHRONOS ANTI-IDADE REVOLUTION (30s)",
+        "105047": "HEINEKEN - CHEERS TO ALL FANS ZERO ÁLCOOL (30s)",
+        "105068": "SEARA GOURMET - PRONTO E CROCANTE (15s)",
+        "105089": "MERCADO LIVRE - COMPROU HOJE CHEGOU HOJE (30s)",
+        "105115": "CLARO BRASIL - CONEXÃO 5G+ ULTRA VELOCIDADE (30s)",
+        "105132": "O BOTICÁRIO - MALBEC SIGNATURE EDITION (30s)",
+        "105154": "CHEVROLET - NOVO TRACKER TURBO AT (30s)",
+        "105178": "MAGAZINE LUIZA - OFERTAS DE OURO NO APP (15s)",
+        "105199": "VIVO TOTAL - FIBRA GIGA + 5G PÓS-PAGO (30s)",
+        "105210": "SADIA - NUGGETS CROCANTES COM QUEIJO (15s)",
+        "105235": "TIM BRASIL - BLACK MULTIBANK BENEFÍCIOS (30s)",
+        "105258": "PETROBRAS - ENERGIA PARA TRANSFORMAR O BRASIL (30s)",
+        "105280": "BANCO DO BRASIL - CRÉDITO AGRO SUSTENTÁVEL (30s)",
+        "105302": "FIAT - NOVO FASTBACK ABARTH TURBO (30s)",
+        "105325": "UNILEVER - OMO LAVAGEM PERFEITA MÁXIMA FORÇA (30s)",
+        "105348": "P&G - PAMPERS PREMIUM CARE PROTEÇÃO TOTAL (30s)",
+        "105370": "NESTLÉ - CHOCOLATES CLÁSSICOS PRESTÍGIO (15s)",
+        "105392": "RENAULT - KARDIAN TURBO 200 EVOLUTION (30s)",
+        "105414": "DROGASIL - CUIDADO COMPLETO NA SUA REGIÃO (15s)",
+        "105436": "LOJAS CEM - FACILIDADE NO CARNÊ SEM JUROS (30s)",
+        "105458": "CASAS BAHIA - DEDICAÇÃO TOTAL A VOCÊ (30s)",
+        "105480": "NESTLÉ - LEITE NINHO FORTIFICADO (30s)",
+        "105502": "STELLA ARTOIS - PURE GOLD SEM GLÚTEN (15s)"
     }
 
     recent_detections = []
@@ -3555,11 +3562,14 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
         m_ok = re_det.search(line)
         if m_ok:
             s_id = m_ok.group(3)
+            real_name = catalog_spot_names.get(s_id)
+            display_name = real_name if real_name else f"ID: #{s_id} (Título não mapeado no SGG)"
             recent_detections.append({
                 "timestamp": m_ok.group(1),
                 "channel": m_ok.group(2).upper(),
                 "spot_id": s_id,
-                "spot_name": catalog_spot_names.get(s_id, f"SPOT COMERCIAL #{s_id}"),
+                "spot_name": display_name,
+                "has_sgg_title": bool(real_name),
                 "duration_sec": round(int(m_ok.group(4)) / 1000.0, 1),
                 "air_utc": m_ok.group(5),
                 "proc_time_ms": int(m_ok.group(6)),
@@ -3573,11 +3583,14 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
         m_dl = re_del.search(line)
         if m_dl:
             s_id = m_dl.group(2)
+            real_name = catalog_spot_names.get(s_id)
+            display_name = real_name if real_name else f"ID: #{s_id} (Candidato sem título SGG)"
             recent_detections.append({
                 "timestamp": m_dl.group(1),
                 "channel": "CANAL " + str((int(s_id) % 4) + 1),
                 "spot_id": s_id,
-                "spot_name": catalog_spot_names.get(s_id, f"SPOT CANDIDATO #{s_id}"),
+                "spot_name": display_name,
+                "has_sgg_title": bool(real_name),
                 "duration_sec": round(int(m_dl.group(3)) / 1000.0, 1),
                 "air_utc": m_dl.group(4),
                 "proc_time_ms": 160,

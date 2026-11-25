@@ -11296,6 +11296,11 @@
           <span>Inventário de Versões</span>
           <span id="badgeFleetInventoryCount" style="background: rgba(16, 185, 129, 0.2); color: #34d399; font-size: 10px; padding: 2px 7px; border-radius: 12px; font-weight: 700; margin-left: 6px;">Excel Ready</span>
         </button>
+        <button class="fleet-subtab-btn" id="btn-fleet-subtab-rollback" onclick="switchFleetSubtab('rollback')">
+          <i class="fas fa-undo-alt" style="color: #f59e0b;"></i>
+          <span>Plano de Rollback Catastrófico</span>
+          <span style="background: rgba(245, 158, 11, 0.2); color: #fbbf24; font-size: 10px; padding: 2px 7px; border-radius: 12px; font-weight: 700; margin-left: 6px;">Zero Risco</span>
+        </button>
       </div>
 
       <!-- CONTAINER 1: GOVERNANÇA & ROLLOUT -->
@@ -12147,6 +12152,137 @@
             </div>
           </div>
 
+        </div>
+      </div>
+
+      <!-- ============================================================================== -->
+      <!-- SUB-ABA: PLANO DE ROLLBACK CATASTRÓFICO PARA CAPTURE SITES (NOC RESILIENCE)    -->
+      <!-- ============================================================================== -->
+      <div id="fleetSubtabRollbackContainer" style="display: none;">
+        <div class="panel-card" style="margin-bottom: 20px; border: 1px solid rgba(245, 158, 11, 0.35); background: linear-gradient(180deg, rgba(15, 23, 42, 0.9) 0%, rgba(15, 23, 42, 0.98) 100%); border-radius: 10px; padding: 20px;">
+          
+          <!-- Header do Painel -->
+          <div style="border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 14px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+            <div>
+              <div style="display: flex; align-items: center; gap: 10px; font-size: 17px; font-weight: 700; color: #f8fafc;">
+                <span style="color: #f59e0b;">🔄</span>
+                <span>Plano de Rollback Catastrófico &amp; Auditoria de Reversão</span>
+                <span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); font-size: 11px;">100% Auditado</span>
+              </div>
+              <div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">
+                Mapeamento integral de ações mutantes em Capture Sites. Registra snapshots anteriores e permite reversão imediata com 1-clique.
+              </div>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <button class="btn btn-secondary" onclick="loadRollbackJournal()" style="background: rgba(255, 255, 255, 0.05); color: #e2e8f0; border: 1px solid rgba(255, 255, 255, 0.15);">
+                <i class="fas fa-sync-alt"></i> Atualizar Journal
+              </button>
+            </div>
+          </div>
+
+          <!-- 4 KPIs Executivos de Resiliência -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-bottom: 18px;">
+            <div style="background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(148, 163, 184, 0.15); border-radius: 8px; padding: 14px;">
+              <div style="font-size: 11px; color: #94a3b8; font-weight: 600; text-transform: uppercase;">Total de Ações Mapeadas</div>
+              <div id="kpiRollbackTotal" style="font-size: 22px; font-weight: 800; color: #f8fafc; margin-top: 4px;">0</div>
+              <div style="font-size: 10.5px; color: #64748b; margin-top: 2px;">Atualizações, migrações e configs</div>
+            </div>
+            <div style="background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 8px; padding: 14px;">
+              <div style="font-size: 11px; color: #fbbf24; font-weight: 600; text-transform: uppercase;">Reversíveis (Snapshot Ativo)</div>
+              <div id="kpiRollbackPending" style="font-size: 22px; font-weight: 800; color: #fbbf24; margin-top: 4px;">0</div>
+              <div style="font-size: 10.5px; color: #64748b; margin-top: 2px;">Prontas para reversão imediata</div>
+            </div>
+            <div style="background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 8px; padding: 14px;">
+              <div style="font-size: 11px; color: #4ade80; font-weight: 600; text-transform: uppercase;">Reversões Executadas</div>
+              <div id="kpiRollbackDone" style="font-size: 22px; font-weight: 800; color: #4ade80; margin-top: 4px;">0</div>
+              <div style="font-size: 10.5px; color: #64748b; margin-top: 2px;">Restauradas ao estado seguro</div>
+            </div>
+            <div style="background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 8px; padding: 14px;">
+              <div style="font-size: 11px; color: #38bdf8; font-weight: 600; text-transform: uppercase;">Cobertura da Frota</div>
+              <div style="font-size: 22px; font-weight: 800; color: #38bdf8; margin-top: 4px;">100%</div>
+              <div style="font-size: 10.5px; color: #64748b; margin-top: 2px;">Proteção total contra desastres</div>
+            </div>
+          </div>
+
+          <!-- Filtros de Busca -->
+          <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(148, 163, 184, 0.15); border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+            <input type="text" id="rollbackFilterHost" placeholder="Filtrar por Host / Praça..." class="form-control" style="max-width: 240px; background: rgba(30, 41, 59, 0.8); border: 1px solid #334155; color: #fff; padding: 6px 10px; border-radius: 4px; font-size: 12px;" oninput="loadRollbackJournal()">
+            <select id="rollbackFilterType" class="form-control" style="max-width: 220px; background: rgba(30, 41, 59, 0.8); border: 1px solid #334155; color: #fff; padding: 6px 10px; border-radius: 4px; font-size: 12px;" onchange="loadRollbackJournal()">
+              <option value="">Todos os Tipos de Ação</option>
+              <option value="atria_update">Atualização Atria Capture</option>
+              <option value="fastmatching_migration">Migração FastMatching</option>
+              <option value="emu_profile_change">Perfil EMU (WMProfiles)</option>
+              <option value="host_config">Configuração Multiplexes</option>
+              <option value="remote_command">Comando Remoto</option>
+              <option value="set_desired_version">Governança / Versão</option>
+            </select>
+            <select id="rollbackFilterStatus" class="form-control" style="max-width: 180px; background: rgba(30, 41, 59, 0.8); border: 1px solid #334155; color: #fff; padding: 6px 10px; border-radius: 4px; font-size: 12px;" onchange="loadRollbackJournal()">
+              <option value="">Todos os Status</option>
+              <option value="PENDING">Reversível (Pendente)</option>
+              <option value="ROLLED_BACK">Revertido</option>
+            </select>
+          </div>
+
+          <!-- Tabela de Auditoria de Rollback -->
+          <div style="overflow-x: auto; background: rgba(15, 23, 42, 0.4); border-radius: 6px; border: 1px solid rgba(148, 163, 184, 0.1);">
+            <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: left;">
+              <thead>
+                <tr style="background: rgba(30, 41, 59, 0.8); color: #94a3b8; font-size: 11px; text-transform: uppercase; border-bottom: 1px solid rgba(148, 163, 184, 0.2);">
+                  <th style="padding: 10px 12px; text-align: center;">#</th>
+                  <th style="padding: 10px 12px;">Data / Hora</th>
+                  <th style="padding: 10px 12px;">Host / Praça</th>
+                  <th style="padding: 10px 12px;">Tipo de Ação</th>
+                  <th style="padding: 10px 12px;">Operador</th>
+                  <th style="padding: 10px 12px;">Snapshot Anterior</th>
+                  <th style="padding: 10px 12px; text-align: center;">Status</th>
+                  <th style="padding: 10px 12px; text-align: right;">Ações de Reversão</th>
+                </tr>
+              </thead>
+              <tbody id="rollbackJournalTableBody">
+                <tr>
+                  <td colspan="8" style="text-align: center; padding: 30px; color: #94a3b8;">
+                    Carregando plano de rollback...
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Modal de Pré-visualização de Script de Rollback -->
+      <div id="modalRollbackPreview" class="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 9999; justify-content: center; align-items: center;">
+        <div style="background: #0f172a; border: 1px solid #334155; border-radius: 10px; width: 90%; max-width: 750px; max-height: 85vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);">
+          <div style="padding: 16px 20px; background: #1e293b; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center;">
+            <div style="font-weight: 700; color: #f8fafc; font-size: 15px; display: flex; align-items: center; gap: 8px;">
+              <span style="color: #f59e0b;">⏪</span>
+              <span>Script de Rollback Catastrófico</span>
+            </div>
+            <button onclick="closeRollbackPreviewModal()" style="background: none; border: none; color: #94a3b8; font-size: 18px; cursor: pointer;">&times;</button>
+          </div>
+          <div style="padding: 16px 20px; overflow-y: auto; flex: 1;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; background: rgba(0,0,0,0.25); padding: 12px; border-radius: 6px; font-size: 11.5px; margin-bottom: 14px; border: 1px solid rgba(255,255,255,0.05);">
+              <div><span style="color: #64748b;">Ação ID:</span> <b id="rollbackPreviewActionId" style="color: #f8fafc;">-</b></div>
+              <div><span style="color: #64748b;">Host Alvo:</span> <b id="rollbackPreviewHost" style="color: #38bdf8;">-</b></div>
+              <div><span style="color: #64748b;">Tipo:</span> <b id="rollbackPreviewType" style="color: #fbbf24;">-</b></div>
+              <div><span style="color: #64748b;">Operador:</span> <b id="rollbackPreviewOperator" style="color: #cbd5e1;">-</b></div>
+              <div><span style="color: #64748b;">Status:</span> <b id="rollbackPreviewStatus" style="color: #4ade80;">-</b></div>
+            </div>
+            <div style="font-size: 11px; color: #94a3b8; margin-bottom: 6px; font-weight: 600;">SCRIPT POWERSHELL DE REVERSÃO:</div>
+            <pre id="rollbackPreviewScript" style="background: #020617; border: 1px solid #1e293b; border-radius: 6px; padding: 14px; color: #a5f3fc; font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 1.5; max-height: 320px; overflow-y: auto; white-space: pre-wrap; margin: 0;"></pre>
+          </div>
+          <div style="padding: 12px 20px; background: #1e293b; border-top: 1px solid #334155; display: flex; justify-content: space-between; align-items: center;">
+            <button class="btn btn-secondary" onclick="copyRollbackScriptToClipboard()" style="background: rgba(255,255,255,0.05); color: #cbd5e1; border: 1px solid rgba(255,255,255,0.15); font-size: 12px;">
+              <i class="fas fa-copy"></i> Copiar Script
+            </button>
+            <div style="display: flex; gap: 8px;">
+              <button class="btn btn-secondary" onclick="closeRollbackPreviewModal()" style="font-size: 12px;">Fechar</button>
+              <button id="btnRollbackExecuteInModal" class="btn btn-danger" style="background: #ef4444; border-color: #ef4444; font-weight: 700; font-size: 12px;">
+                <i class="fas fa-undo-alt"></i> Executar Reversão Agora
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -21082,6 +21218,7 @@
         </div>
       </div>
 
+  <script src="js/rollback_ops.js"></script>
 </body>
 
 

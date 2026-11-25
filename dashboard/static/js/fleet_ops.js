@@ -2326,20 +2326,28 @@ function switchFleetSubtab(subtab) {
     const btnRepo = document.getElementById("btn-fleet-subtab-repository");
     const btnCSConfig = document.getElementById("btn-fleet-subtab-csconfig");
     const btnInv = document.getElementById("btn-fleet-subtab-inventory");
+    const btnRollback = document.getElementById("btn-fleet-subtab-rollback");
     const containerGov = document.getElementById("fleetSubtabGovernanceContainer");
     const containerRepo = document.getElementById("fleetSubtabRepositoryContainer");
     const containerCSConfig = document.getElementById("fleetSubtabCSConfigContainer");
     const containerInv = document.getElementById("fleetSubtabInventoryContainer");
+    const containerRollback = document.getElementById("fleetSubtabRollbackContainer");
 
     if (btnGov) btnGov.classList.toggle("active", subtab === "governance");
     if (btnRepo) btnRepo.classList.toggle("active", subtab === "repository");
     if (btnCSConfig) btnCSConfig.classList.toggle("active", subtab === "csconfig");
     if (btnInv) btnInv.classList.toggle("active", subtab === "inventory");
+    if (btnRollback) btnRollback.classList.toggle("active", subtab === "rollback");
 
     if (containerGov) containerGov.style.display = (subtab === "governance") ? "block" : "none";
     if (containerRepo) containerRepo.style.display = (subtab === "repository") ? "block" : "none";
     if (containerCSConfig) containerCSConfig.style.display = (subtab === "csconfig") ? "block" : "none";
     if (containerInv) containerInv.style.display = (subtab === "inventory") ? "block" : "none";
+    if (containerRollback) containerRollback.style.display = (subtab === "rollback") ? "block" : "none";
+
+    if (subtab === "rollback" && typeof loadRollbackJournal === "function") {
+        loadRollbackJournal();
+    }
 
     if (subtab === "repository") {
         loadPackageRepository();

@@ -92,7 +92,21 @@ async function loadFmaLiveCs01Selector() {
 function onFmaLiveHostChange(newHost) {
     if (!newHost || newHost === fmaLiveCurrentHost) return;
     fmaLiveCurrentHost = newHost;
-    refreshFmaLiveData();
+    
+    // Limpar imediatamente os dados da tela para evitar vazamento da praça anterior
+    const bodyEl = document.getElementById("fmaLiveModalBody");
+    const subEl = document.getElementById("fmaLiveSubtitle");
+    if (subEl) subEl.textContent = `Carregando dados de ${escapeHtml(newHost)}...`;
+    if (bodyEl) {
+        bodyEl.innerHTML = `
+            <div style="text-align: center; padding: 60px 20px; color: #94a3b8;">
+                <div style="font-size: 32px; animation: spin 1.5s linear infinite; margin-bottom: 12px;">📡</div>
+                <div style="font-size: 15px; font-weight: 700; color: #f8fafc;">Sincronizando Nova Praça: ${escapeHtml(newHost)}...</div>
+                <div style="font-size: 12px; margin-top: 6px; color: #cbd5e1;">Lendo catálogo SGG em RAM, inspecionando buffer .EMU e canais da emissora</div>
+            </div>
+        `;
+    }
+    refreshFmaLiveData(false);
 }
 window.onFmaLiveHostChange = onFmaLiveHostChange;
 
@@ -337,8 +351,13 @@ function renderFmaLiveDashboard(data) {
                                     <td style="padding: 6px 8px; font-family: monospace; color: #cbd5e1; white-space: nowrap;">${escapeHtml(d.timestamp.split(' ')[1] || d.timestamp)}</td>
                                     <td style="padding: 6px 8px; font-weight: 700; color: #38bdf8;">${escapeHtml(d.channel)}</td>
                                     <td style="padding: 6px 8px;">
-                                        <span style="font-weight: 700; color: #fff;">#${escapeHtml(d.spot_id)}</span>
-                                        <div style="font-size: 10px; color: #94a3b8; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(d.spot_name)}</div>
+                                        <div style="display: flex; align-items: center; gap: 6px;">
+                                            <span style="font-weight: 800; color: #38bdf8; font-family: monospace; font-size: 12px;">#${escapeHtml(d.spot_id)}</span>
+                                            ${d.has_sgg_title ? '<span class="badge" style="background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.4); font-size: 9px; padding: 1px 4px;">SGG OFICIAL</span>' : ''}
+                                        </div>
+                                        <div style="font-size: 11px; font-weight: 600; color: ${d.has_sgg_title ? '#f1f5f9' : '#94a3b8'}; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(d.spot_name)}">
+                                            ${escapeHtml(d.spot_name)}
+                                        </div>
                                     </td>
                                     <td style="padding: 6px 8px; color: #cbd5e1;">${d.duration_sec}s</td>
                                     <td style="padding: 6px 8px; font-family: monospace; color: ${d.proc_time_ms < 50 ? '#4ade80' : '#facc15'};">${d.proc_time_ms}ms</td>
