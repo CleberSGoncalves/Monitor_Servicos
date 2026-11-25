@@ -12,8 +12,12 @@ async def run():
         await page.goto("http://localhost:8092", wait_until="domcontentloaded")
         await page.wait_for_timeout(2000)
 
-        print("2. Ativando a aba Detecção Comercial...")
+        print("2. Ativando a aba Detecção Comercial e dispensando login modal se houver...")
         await page.evaluate("""
+            const login = document.getElementById('loginModal');
+            if (login) login.classList.remove('active');
+            if (login) login.style.display = 'none';
+
             document.querySelectorAll('.content-section').forEach(s => {
                 s.classList.remove('active');
                 s.style.display = 'none';
@@ -31,7 +35,7 @@ async def run():
         assert await btn_live.count() > 0, "Botão #btnOpenDetectionLiveGlobal não encontrado na página"
 
         print("4. Clicando no botão Pipeline Live...")
-        await btn_live.click()
+        await btn_live.click(force=True)
         await page.wait_for_timeout(2000)
 
         print("5. Verificando visibilidade do modal...")
