@@ -293,10 +293,179 @@ function renderInventoryGranularTable(data) {
     }).join("");
 }
 
+let currentInventoryViewMode = "executive"; // "executive" ou "matrix"
+let cachedMatrixData = null;
+
+function setInventoryViewMode(mode) {
+    currentInventoryViewMode = mode;
+    const btnExec = document.getElementById("btnInvViewExecutive");
+    const btnMat = document.getElementById("btnInvViewMatrix");
+    const secExec = document.getElementById("invExecutiveViewsContainer");
+    const secMat = document.getElementById("invMatrixContainer");
+
+    if (mode === "matrix") {
+        if (btnExec) {
+            btnExec.classList.remove("active");
+            btnExec.style.background = "rgba(30, 41, 59, 0.8)";
+            btnExec.style.borderColor = "rgba(148, 163, 184, 0.3)";
+            btnExec.style.color = "#94a3b8";
+        }
+        if (btnMat) {
+            btnMat.classList.add("active");
+            btnMat.style.background = "rgba(16, 185, 129, 0.2)";
+            btnMat.style.borderColor = "#10b981";
+            btnMat.style.color = "#34d399";
+        }
+        if (secExec) secExec.style.display = "none";
+        if (secMat) secMat.style.display = "block";
+        loadFleetMatrix();
+    } else {
+        if (btnExec) {
+            btnExec.classList.add("active");
+            btnExec.style.background = "rgba(56, 189, 248, 0.2)";
+            btnExec.style.borderColor = "#38bdf8";
+            btnExec.style.color = "#38bdf8";
+        }
+        if (btnMat) {
+            btnMat.classList.remove("active");
+            btnMat.style.background = "rgba(30, 41, 59, 0.8)";
+            btnMat.style.borderColor = "rgba(148, 163, 184, 0.3)";
+            btnMat.style.color = "#94a3b8";
+        }
+        if (secExec) secExec.style.display = "block";
+        if (secMat) secMat.style.display = "none";
+        loadFleetInventory(false);
+    }
+}
+
+async function loadFleetMatrix() {
+    const countrySelect = document.getElementById("invFilterCountry");
+    const searchInput = document.getElementById("invSearchText");
+    const country = countrySelect ? countrySelect.value : "";
+    const searchText = searchInput ? searchInput.value.trim() : "";
+
+    const spinner = document.getElementById("invLoadingSpinner");
+    if (spinner) spinner.style.display = "inline-block";
+
+    try {
+        const params = new URLSearchParams();
+        if (country && country !== "all") params.append("country", country);
+        if (searchText) params.append("search", searchText);
+        params.append("_t", Date.now());
+
+        const resp = await fetch(`/api/fleet/inventory/matrix?${params.toString()}`, {
+            headers: {
+                ...(getInventoryAuthToken() ? { "Authorization": `Bearer ${getInventoryAuthToken()}` } : {})
+            }
+        });
+
+        if (!resp.ok) {
+            console.error("[FleetInventory] Falha ao consultar matriz:", resp.status);
+            return;
+        }
+
+        const data = await resp.json();
+        cachedMatrixData = data;
+        renderInventoryMatrixTable(data);
+
+        const badgeMatrix = document.getElementById("invMatrixTotalBadge");
+        if (badgeMatrix && data.total_hosts !== undefined) {
+            badgeMatrix.innerText = `${data.total_hosts} Hosts Mapeados`;
+        }
+    } catch (e) {
+        console.error("[FleetInventory] Erro ao carregar matriz:", e);
+    } finally {
+        if (spinner) spinner.style.display = "none";
+    }
+}
+
+function renderInventoryMatrixTable(data) {
+    const theadRow = document.getElementById("invMatrixHeaderRow");
+    const tbody = document.getElementById("invMatrixTableBody");
+    if (!theadRow || !tbody) return;
+
+    const cols = data.columns || [];
+    const rows = data.rows || [];
+
+    // 1. Constrói cabeçalho dinâmico
+    let hdrHtml = `
+        <th style="padding: 10px 12px; text-align: left; background: #0f172a; position: sticky; left: 0; z-index: 4;">País</th>
+        <th style="padding: 10px 12px; text-align: left; background: #0f172a; position: sticky; left: 80px; z-index: 4;">Praça</th>
+        <th style="padding: 10px 12px; text-align: left; background: #0f172a; position: sticky; left: 200px; z-index: 4;">Host / Blade</th>
+        <th style="padding: 10px 12px; text-align: center; background: #0f172a; position: sticky; left: 330px; z-index: 4; border-right: 2px solid rgba(148, 163, 184, 0.3);">CS</th>
+    `;
+
+    cols.forEach(col => {
+        // Formata o nome do serviço para cabeçalho mais compacto
+        const shortName = col.replace("DNA.", "").replace("SVC", "");
+        hdrHtml += `
+            <th style="padding: 10px 12px; text-align: center; font-size: 11px; color: #38bdf8; min-width: 130px; border-right: 1px solid rgba(148, 163, 184, 0.15);" title="${col}">
+                ${shortName}
+            </th>
+        `;
+    });
+    theadRow.innerHTML = hdrHtml;
+
+    // 2. Constrói linhas dos hosts
+    if (rows.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="${4 + cols.length}" style="text-align: center; padding: 30px; color: #94a3b8;">Nenhum host encontrado para os filtros selecionados.</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = rows.map((r, idx) => {
+        const isEven = (idx % 2 === 0);
+        const rowBg = isEven ? "rgba(15, 23, 42, 0.5)" : "transparent";
+        const stickyBg = isEven ? "#0f172a" : "#090d16";
+
+        let rowHtml = `
+            <tr style="background: ${rowBg}; border-bottom: 1px solid rgba(148, 163, 184, 0.1);">
+                <td style="padding: 8px 12px; font-size: 12px; color: #e2e8f0; position: sticky; left: 0; background: ${stickyBg}; z-index: 2;">
+                    ${r.pais_flag} ${r.pais}
+                </td>
+                <td style="padding: 8px 12px; font-weight: 600; color: #f8fafc; font-size: 12px; position: sticky; left: 80px; background: ${stickyBg}; z-index: 2;">
+                    ${r.praca}
+                </td>
+                <td style="padding: 8px 12px; font-family: monospace; font-size: 12px; color: #38bdf8; font-weight: 700; position: sticky; left: 200px; background: ${stickyBg}; z-index: 2;">
+                    ${r.hostname}
+                </td>
+                <td style="padding: 8px 12px; text-align: center; position: sticky; left: 330px; background: ${stickyBg}; z-index: 2; border-right: 2px solid rgba(148, 163, 184, 0.3);">
+                    <span style="font-size: 11px; padding: 2px 6px; border-radius: 4px; background: rgba(56, 189, 248, 0.12); color: #38bdf8; font-weight: 700;">CS${r.cs}</span>
+                </td>
+        `;
+
+        cols.forEach(col => {
+            const svcInfo = r.servicos[col] || { version: "-", is_homologated: false, badge_class: "badge-muted" };
+            const ver = svcInfo.version;
+
+            let cellContent = "";
+            if (ver === "-" || ver === "Não Instalado") {
+                cellContent = `<span style="color: #64748b; font-size: 11px;">-</span>`;
+            } else if (svcInfo.is_homologated) {
+                cellContent = `<span style="display: inline-block; padding: 2px 6px; border-radius: 4px; background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.4); font-family: monospace; font-size: 11px; font-weight: 700;">v${ver}</span>`;
+            } else {
+                cellContent = `<span style="display: inline-block; padding: 2px 6px; border-radius: 4px; background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.4); font-family: monospace; font-size: 11px; font-weight: 600;">v${ver}</span>`;
+            }
+
+            rowHtml += `
+                <td style="padding: 6px 10px; text-align: center; border-right: 1px solid rgba(148, 163, 184, 0.1);">
+                    ${cellContent}
+                </td>
+            `;
+        });
+
+        rowHtml += `</tr>`;
+        return rowHtml;
+    }).join("");
+}
+
 function handleInventoryFilterChange() {
     clearTimeout(inventoryDebounceTimer);
     inventoryDebounceTimer = setTimeout(() => {
-        loadFleetInventory(false);
+        if (currentInventoryViewMode === "matrix") {
+            loadFleetMatrix();
+        } else {
+            loadFleetInventory(false);
+        }
     }, 150);
 }
 
@@ -398,6 +567,8 @@ function navigateToFleetInventory(serviceName = null, country = null, evt = null
 }
 
 window.loadFleetInventory = loadFleetInventory;
+window.loadFleetMatrix = loadFleetMatrix;
+window.setInventoryViewMode = setInventoryViewMode;
 window.handleInventoryFilterChange = handleInventoryFilterChange;
 window.exportFleetInventoryToExcel = exportFleetInventoryToExcel;
 window.copyExecutiveInventoryTable = copyExecutiveInventoryTable;

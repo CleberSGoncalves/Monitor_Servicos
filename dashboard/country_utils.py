@@ -103,7 +103,7 @@ def normalize_country_name(country_raw: Optional[str], default: str = "Brasil") 
 def infer_country_from_record(record: Dict[str, Any], default: str = "Brasil") -> str:
     """
     Infere o país a partir de qualquer registro de serviço, host ou canal.
-    Verifica campos explícitos (Pais, Title), prefixo de hostname e fallback.
+    Verifica campos explícitos (Pais, Title), identificadores de praça/host e fallback.
     """
     # 1. Campo explícito de País
     p = record.get("pais") or record.get("Pais") or record.get("pais_nome")
@@ -119,12 +119,32 @@ def infer_country_from_record(record: Dict[str, Any], default: str = "Brasil") -
         if norm and norm.lower() not in ["n/a", "dna", "service", "central"]:
             return norm
 
-    # 3. Prefixo do Hostname (ex: BRRS-..., ARBA-..., CLST-...)
-    h = str(record.get("hostname") or record.get("host") or "").strip()
+    # 3. String de identificação completa (hostname, host_display, praca)
+    h_str = str(record.get("host_display") or record.get("hostname") or record.get("host") or "").strip()
+    praca_str = str(record.get("praca") or "").strip()
+    combined = (h_str + " " + praca_str).upper()
+
+    if "GUATEMALA" in combined or "CGT" in combined or "GTCG" in combined:
+        return "Guatemala"
+    if "COSTA RICA" in combined or "CRSJ" in combined:
+        return "Costa Rica"
+    if "PANAMA" in combined or "PANAMÁ" in combined or "CPAN" in combined:
+        return "Panamá"
+    if "URUGUA" in combined or "MONTEVIDEO" in combined or "UY" in combined:
+        return "Uruguai"
+    if any(k in combined for k in ["ARGENTINA", "ARBA", "BUENOS", "DATCO"]):
+        return "Argentina"
+    if any(k in combined for k in ["COLOMBIA", "COLÔMBIA", "COBO", "BOGOTÁ", "BOGOTA", "MEDELLIN", "CALI", "BARRANQUILLA", "BUCARAMANGA", "PEREIRA", "_COL"]):
+        return "Colômbia"
+    if any(k in combined for k in ["PERU", "PERÚ", "PELM", "LIMA", "AREQUIPA", "CHICLAYO", "CUSCO", "HUANCAYO", "PIURA", "TRUJILLO"]):
+        return "Peru"
+
+    # 4. Prefixo do Hostname (ex: BRRS-..., ARBA-..., CLST-...)
+    h = h_str
     if len(h) >= 2 and h[:2].isalpha():
         prefix = h[:2].lower()
         if prefix in COUNTRY_PREFIX_MAP and (len(h) == 2 or h[2] in "-_"):
             return COUNTRY_PREFIX_MAP[prefix]
 
-    # 4. Fallback padrão
+    # 5. Fallback padrão
     return default

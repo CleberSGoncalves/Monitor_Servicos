@@ -12003,80 +12003,141 @@
             </div>
           </div>
 
-          <!-- QUADRO 1: DISTRIBUIÇÃO EXECUTIVA POR VERSÃO (ESTILO MARCIO / REPORT) -->
-          <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px; padding: 16px; margin-bottom: 24px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
-              <div>
-                <h4 style="margin: 0; font-size: 14px; font-weight: 700; color: #f8fafc; display: flex; align-items: center; gap: 8px;">
-                  <span>📊</span> Matriz de Distribuição Oficial de Versões (Resumo Executivo)
-                </h4>
-                <div style="font-size: 12px; color: #94a3b8; margin-top: 2px;">
-                  Visão consolidada em formato de relatório para liderança técnica, diretoria e auditorias de SLA.
+          <!-- SELETOR DE MODO DE VISUALIZAÇÃO: EXECUTIVO VS MATRIZ COMPLETA (MARCIO / VERSOES LATAM.XLSX) -->
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 12px; flex-wrap: wrap; gap: 10px;">
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <button id="btnInvViewExecutive" class="btn btn-secondary active" onclick="setInventoryViewMode('executive')" style="font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; padding: 7px 16px; border-radius: 6px; cursor: pointer; background: rgba(56, 189, 248, 0.2); border: 1px solid #38bdf8; color: #38bdf8;">
+                <i class="fas fa-chart-pie"></i>
+                <span>Visão Executiva por Serviço (Distribuição &amp; Detalhe)</span>
+              </button>
+              <button id="btnInvViewMatrix" class="btn btn-secondary" onclick="setInventoryViewMode('matrix')" style="font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; padding: 7px 16px; border-radius: 6px; cursor: pointer; background: rgba(30, 41, 59, 0.8); border: 1px solid rgba(148, 163, 184, 0.3); color: #94a3b8;">
+                <i class="fas fa-table"></i>
+                <span>Matriz Multi-Serviço LATAM &amp; Brasil (Todos os Serviços / Versoes LATAM.xlsx)</span>
+              </button>
+            </div>
+            <span style="font-size: 11px; color: #94a3b8;">
+              <i class="fas fa-info-circle" style="color: #38bdf8;"></i> Alterne entre a análise por serviço ou a matriz completa de versões
+            </span>
+          </div>
+
+          <!-- BLOCO 1: VISÃO EXECUTIVA POR SERVIÇO (QUADROS 1 E 2) -->
+          <div id="invExecutiveViewsContainer">
+            <!-- QUADRO 1: DISTRIBUIÇÃO EXECUTIVA POR VERSÃO (ESTILO MARCIO / REPORT) -->
+            <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px; padding: 16px; margin-bottom: 24px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
+                <div>
+                  <h4 style="margin: 0; font-size: 14px; font-weight: 700; color: #f8fafc; display: flex; align-items: center; gap: 8px;">
+                    <span>📊</span> Matriz de Distribuição Oficial de Versões (Resumo Executivo)
+                  </h4>
+                  <div style="font-size: 12px; color: #94a3b8; margin-top: 2px;">
+                    Visão consolidada em formato de relatório para liderança técnica, diretoria e auditorias de SLA.
+                  </div>
                 </div>
+                <span style="font-size: 11px; color: #38bdf8; font-weight: 600;">
+                  <i class="fas fa-check-double"></i> Dados 100% calculados sem mocks
+                </span>
               </div>
-              <span style="font-size: 11px; color: #38bdf8; font-weight: 600;">
-                <i class="fas fa-check-double"></i> Dados 100% calculados sem mocks
-              </span>
+
+              <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                  <thead>
+                    <tr style="background: rgba(30, 41, 59, 0.8); border-bottom: 2px solid rgba(56, 189, 248, 0.4); text-transform: uppercase; font-size: 11px; color: #94a3b8;">
+                      <th style="padding: 10px 14px; text-align: left;">Versão</th>
+                      <th style="padding: 10px 14px; text-align: right;">Quantidade de Servidores</th>
+                      <th style="padding: 10px 14px; text-align: right;">Percentual (%)</th>
+                      <th style="padding: 10px 14px; text-align: left;">Proporção Visual</th>
+                      <th style="padding: 10px 14px; text-align: center;">Status de Homologação</th>
+                    </tr>
+                  </thead>
+                  <tbody id="invExecutiveTableBody">
+                    <tr>
+                      <td colspan="5" style="text-align: center; padding: 25px; color: #94a3b8;">
+                        <i class="fas fa-spinner fa-spin"></i> Carregando inventário executivo...
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
 
-            <div style="overflow-x: auto;">
-              <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
-                <thead>
-                  <tr style="background: rgba(30, 41, 59, 0.8); border-bottom: 2px solid rgba(56, 189, 248, 0.4); text-transform: uppercase; font-size: 11px; color: #94a3b8;">
-                    <th style="padding: 10px 14px; text-align: left;">Versão</th>
-                    <th style="padding: 10px 14px; text-align: right;">Quantidade de Servidores</th>
-                    <th style="padding: 10px 14px; text-align: right;">Percentual (%)</th>
-                    <th style="padding: 10px 14px; text-align: left;">Proporção Visual</th>
-                    <th style="padding: 10px 14px; text-align: center;">Status de Homologação</th>
-                  </tr>
-                </thead>
-                <tbody id="invExecutiveTableBody">
-                  <tr>
-                    <td colspan="5" style="text-align: center; padding: 25px; color: #94a3b8;">
-                      <i class="fas fa-spinner fa-spin"></i> Carregando inventário executivo...
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+            <!-- QUADRO 2: LISTAGEM GRANULAR COMPLETA DOS SERVIDORES -->
+            <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px; padding: 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
+                <div>
+                  <h4 style="margin: 0; font-size: 14px; font-weight: 700; color: #f8fafc; display: flex; align-items: center; gap: 8px;">
+                    <span>🖥️</span> Detalhamento Granular por Máquina (Capture Sites)
+                  </h4>
+                  <div style="font-size: 12px; color: #94a3b8; margin-top: 2px;">
+                    Localização exata, IPs, versão instalada, versão desejada e telemetria de cada host.
+                  </div>
+                </div>
+                <span id="invGranularTotalBadge" style="font-size: 12px; font-weight: 700; color: #38bdf8; background: rgba(56, 189, 248, 0.15); padding: 3px 10px; border-radius: 12px; border: 1px solid rgba(56, 189, 248, 0.3);">
+                  -- Máquinas
+                </span>
+              </div>
+
+              <div style="overflow-x: auto; max-height: 520px; overflow-y: auto;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                  <thead style="position: sticky; top: 0; background: #0f172a; z-index: 2;">
+                    <tr style="border-bottom: 2px solid rgba(148, 163, 184, 0.25); text-transform: uppercase; font-size: 11px; color: #94a3b8;">
+                      <th style="padding: 10px 12px; text-align: left;">País</th>
+                      <th style="padding: 10px 12px; text-align: left;">Praça</th>
+                      <th style="padding: 10px 12px; text-align: left;">Hostname</th>
+                      <th style="padding: 10px 12px; text-align: center;">CS</th>
+                      <th style="padding: 10px 12px; text-align: left;">Serviço</th>
+                      <th style="padding: 10px 12px; text-align: center;">Versão Instalada</th>
+                      <th style="padding: 10px 12px; text-align: center;">Versão Alvo</th>
+                      <th style="padding: 10px 12px; text-align: center;">Status Serviço</th>
+                      <th style="padding: 10px 12px; text-align: center;">Governança</th>
+                      <th style="padding: 10px 12px; text-align: center;">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody id="invGranularTableBody">
+                    <tr>
+                      <td colspan="10" style="text-align: center; padding: 25px; color: #94a3b8;">
+                        <i class="fas fa-spinner fa-spin"></i> Carregando lista detalhada...
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
 
-          <!-- QUADRO 2: LISTAGEM GRANULAR COMPLETA DOS SERVIDORES -->
-          <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px; padding: 16px;">
+          <!-- BLOCO 2: MATRIZ MULTI-SERVIÇOS LATAM & BRASIL (TODOS OS SERVIÇOS / PIVOT GRID) -->
+          <div id="invMatrixContainer" style="display: none; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px; padding: 16px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
               <div>
                 <h4 style="margin: 0; font-size: 14px; font-weight: 700; color: #f8fafc; display: flex; align-items: center; gap: 8px;">
-                  <span>🖥️</span> Detalhamento Granular por Máquina (Capture Sites)
+                  <span>📑</span> Matriz Multi-Serviço LATAM &amp; Brasil (Visão Cruzada de Versões)
                 </h4>
                 <div style="font-size: 12px; color: #94a3b8; margin-top: 2px;">
-                  Localização exata, IPs, versão instalada, versão desejada e telemetria de cada host.
+                  Estrutura oficial com todos os serviços em colunas lado a lado, idêntica à planilha <code>Versoes LATAM.xlsx</code>.
                 </div>
               </div>
-              <span id="invGranularTotalBadge" style="font-size: 12px; font-weight: 700; color: #38bdf8; background: rgba(56, 189, 248, 0.15); padding: 3px 10px; border-radius: 12px; border: 1px solid rgba(56, 189, 248, 0.3);">
-                -- Máquinas
-              </span>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span id="invMatrixTotalBadge" style="font-size: 12px; font-weight: 700; color: #10b981; background: rgba(16, 185, 129, 0.15); padding: 3px 10px; border-radius: 12px; border: 1px solid rgba(16, 185, 129, 0.3);">
+                  -- Hosts Mapeados
+                </span>
+              </div>
             </div>
 
-            <div style="overflow-x: auto; max-height: 520px; overflow-y: auto;">
-              <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
-                <thead style="position: sticky; top: 0; background: #0f172a; z-index: 2;">
-                  <tr style="border-bottom: 2px solid rgba(148, 163, 184, 0.25); text-transform: uppercase; font-size: 11px; color: #94a3b8;">
-                    <th style="padding: 10px 12px; text-align: left;">País</th>
-                    <th style="padding: 10px 12px; text-align: left;">Praça</th>
-                    <th style="padding: 10px 12px; text-align: left;">Hostname</th>
-                    <th style="padding: 10px 12px; text-align: center;">CS</th>
-                    <th style="padding: 10px 12px; text-align: left;">Serviço</th>
-                    <th style="padding: 10px 12px; text-align: center;">Versão Instalada</th>
-                    <th style="padding: 10px 12px; text-align: center;">Versão Alvo</th>
-                    <th style="padding: 10px 12px; text-align: center;">Status Serviço</th>
-                    <th style="padding: 10px 12px; text-align: center;">Governança</th>
-                    <th style="padding: 10px 12px; text-align: center;">Ações</th>
+            <!-- Tabela Pivot Multi-Serviço -->
+            <div style="overflow-x: auto; max-height: 560px; overflow-y: auto; border: 1px solid rgba(148, 163, 184, 0.15); border-radius: 6px;">
+              <table style="width: 100%; border-collapse: collapse; font-size: 12px; white-space: nowrap;">
+                <thead style="position: sticky; top: 0; background: #0f172a; z-index: 3;">
+                  <tr id="invMatrixHeaderRow" style="border-bottom: 2px solid rgba(16, 185, 129, 0.4); text-transform: uppercase; font-size: 11px; color: #94a3b8;">
+                    <th style="padding: 10px 12px; text-align: left; background: #0f172a; position: sticky; left: 0; z-index: 4;">País</th>
+                    <th style="padding: 10px 12px; text-align: left; background: #0f172a; position: sticky; left: 90px; z-index: 4;">Praça</th>
+                    <th style="padding: 10px 12px; text-align: left; background: #0f172a; position: sticky; left: 210px; z-index: 4;">Host / Blade</th>
+                    <th style="padding: 10px 12px; text-align: center; background: #0f172a; position: sticky; left: 340px; z-index: 4; border-right: 2px solid rgba(148, 163, 184, 0.3);">CS</th>
+                    <!-- As colunas de serviços serão injetadas dinamicamente aqui -->
                   </tr>
                 </thead>
-                <tbody id="invGranularTableBody">
+                <tbody id="invMatrixTableBody">
                   <tr>
-                    <td colspan="10" style="text-align: center; padding: 25px; color: #94a3b8;">
-                      <i class="fas fa-spinner fa-spin"></i> Carregando lista detalhada...
+                    <td colspan="15" style="text-align: center; padding: 35px; color: #94a3b8;">
+                      <i class="fas fa-spinner fa-spin"></i> Carregando matriz multi-serviços...
                     </td>
                   </tr>
                 </tbody>

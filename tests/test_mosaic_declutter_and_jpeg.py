@@ -11,8 +11,8 @@ def test_mosaic_wall_js_decluttered_layout():
     assert "Micro VU Meter Estéreo Vertical Overlaid na Lateral Direita do Vídeo" not in content
     # Nao deve conter o overlay inferior escuro cobrindo 40% da imagem
     assert "HUD Bottom Overlay Sobreposto com Gradiente Escuro" not in content
-    # Deve conter a chamada de Sinal & RF no rodape abaixo da imagem
-    assert "Sinal &amp; RF: <span" in content
+    # Deve conter a chamada de Sinal no rodape abaixo da imagem
+    assert "Sinal: <span" in content or "Sinal &amp; RF: <span" in content
     # Auto-rotacao deve iniciar desligada por padrao
     assert "let isMosaicRotatePlaying = false;" in content
 

@@ -442,8 +442,9 @@ async def get_services(country: Optional[str] = None, city: Optional[str] = None
 async def get_fleet_catalog(user: dict = Depends(get_current_user)):
     """Retorna catalogo consolidado e ultra-rapido de todas as pracas, hosts e canais da frota, com suporte multi-país."""
     from country_utils import infer_country_from_record, get_country_flag
+    from fleet_inventory import get_all_fleet_services
     data = get_cached_data()
-    services = data.get("services", [])
+    services = get_all_fleet_services()
     channels = data.get("channels", [])
 
     paises_set = set()
@@ -531,6 +532,20 @@ async def api_get_fleet_inventory(
         service_name=service_name,
         country=country,
         status_filter=status_filter,
+        search=search
+    )
+
+
+@app.get("/api/fleet/inventory/matrix")
+async def api_get_fleet_inventory_matrix(
+    country: Optional[str] = None,
+    search: Optional[str] = None,
+    user: dict = Depends(get_current_user)
+):
+    """Retorna a Matriz Multi-Serviço completa (Pivot Table) idêntica a 'Versoes LATAM.xlsx'."""
+    from fleet_inventory import get_fleet_matrix_data
+    return get_fleet_matrix_data(
+        country=country,
         search=search
     )
 
