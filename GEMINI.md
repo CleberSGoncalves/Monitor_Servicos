@@ -40,3 +40,13 @@
 >    - [x] **Atualização em lote da coluna `Versao_Desejada` para a nova versão na lista do SharePoint** para todos os hosts correspondentes.
 >    - [x] Execução e aprovação da suíte de testes automatizados (`pytest tests/ -v`).
 >    - [x] Sincronização obrigatória com o GitHub (`git push origin main`).
+
+---
+
+## 🚫 PROIBIÇÃO ABSOLUTA DE LINKS E DEPENDÊNCIA DO SHAREPOINT (ZERO DEPENDÊNCIA EXTERNA)
+
+> [!CAUTION]
+> **O SHAREPOINT SERÁ DESCONTINUADO — PROIBIÇÃO DE LINKS PARA ADGBL.SHAREPOINT.COM NO PORTAL**
+> 
+> O objetivo central da migração para o Google Workspace / Google Sites é a **eliminação completa e definitiva do SharePoint**.
+> Em nenhuma hipótese telas, botões de ação ("Abrir", "Visualizar"), bibliotecas ou planilhas podem apontar para `adgbl.sharepoint.com`. Todo o acervo deve ser mantido e servido de forma 100% autônoma pelo repositório local e Google Workspace.

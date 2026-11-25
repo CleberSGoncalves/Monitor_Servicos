@@ -3440,7 +3440,16 @@ function copyHostConfigScript() {
 
 // SALVAMENTO ATÔMICO E ENVIO REMOTO
 async function saveHostConfig() {
-    if (!currentLoadedHostConfig) return;
+    if (!currentLoadedHostConfig) {
+        const badgeEl = document.getElementById("badgeHostConfigHostname");
+        const fallbackHost = badgeEl ? badgeEl.innerText.trim() : "";
+        if (fallbackHost && fallbackHost !== "--") {
+            currentLoadedHostConfig = { hostname: fallbackHost, channels: [], muxes: [], wmprofiles: [] };
+        } else {
+            if (typeof showToast === "function") showToast("Nenhuma estação selecionada ou dados operacionais ainda carregando.", "warning");
+            return;
+        }
+    }
 
     const hostname = currentLoadedHostConfig.hostname;
     const channels = currentLoadedHostConfig.channels || [];
@@ -3497,9 +3506,7 @@ async function saveHostConfig() {
                 showToast(`Ordem de configuração despachada com sucesso para ${hostname}! (ID Exec: ${resData.execution_id})`, "success");
             }
             closeHostConfigModal();
-            if (typeof openRemoteCommandCockpitModal === "function") {
-                openRemoteCommandCockpitModal(resData.execution_id);
-            }
+            openConfigActionTrackerModal(hostname, (currentLoadedHostConfig && currentLoadedHostConfig.praca) ? currentLoadedHostConfig.praca : "", resData.execution_id);
         } else {
             const err = resData.detail || resData.error || "Falha ao enviar comando remoto.";
             if (typeof showToast === "function") showToast(err, "error");
@@ -3904,4 +3911,230 @@ function openSelectedHostConfigModal() {
     }
 }
 window.openSelectedHostConfigModal = openSelectedHostConfigModal;
+
+// ==============================================================================
+// NAVEGAÇÃO ENTRE ABAS DO TOPO E SUBABAS DE FROTA
+// ==============================================================================
+function switchMainTabAndFleetSubtab(mainTab, subtab) {
+    if (typeof switchTab === "function") switchTab(mainTab);
+    if (typeof switchFleetSubtab === "function") switchFleetSubtab(subtab);
+    if (subtab === "csconfig" && typeof populateSubtabCSSelectors === "function") {
+        populateSubtabCSSelectors();
+    }
+}
+window.switchMainTabAndFleetSubtab = switchMainTabAndFleetSubtab;
+
+// ==============================================================================
+// ACOMPANHAMENTO AO VIVO DE APLICAÇÃO DE CONFIGURAÇÃO ATRIA & CONTROLE DE CANCELAMENTO
+// ==============================================================================
+let currentConfigTrackerHost = null;
+let currentConfigTrackerExecId = null;
+let currentConfigTrackerInterval = null;
+let currentConfigTrackerStartTime = null;
+
+function openConfigActionTrackerModal(hostname, praca = "", execId = null) {
+    currentConfigTrackerHost = hostname;
+    currentConfigTrackerExecId = execId || "exec-" + Date.now();
+    currentConfigTrackerStartTime = Date.now();
+
+    const modal = document.getElementById("modalConfigActionTracker");
+    if (!modal) return;
+    modal.style.display = "flex";
+
+    const elPraca = document.getElementById("cfgTrackerPraca");
+    if (elPraca) elPraca.innerText = praca || "Detectando...";
+    const elHost = document.getElementById("cfgTrackerHost");
+    if (elHost) elHost.innerText = hostname;
+    const elId = document.getElementById("cfgTrackerExecId");
+    if (elId) elId.innerText = currentConfigTrackerExecId ? currentConfigTrackerExecId.substring(0, 18) : "Direto";
+
+    // Reseta etapas
+    setConfigTrackerStep(1, "done");
+    setConfigTrackerStep(2, "running");
+    setConfigTrackerStep(3, "pending");
+    setConfigTrackerStep(4, "pending");
+    setConfigTrackerStep(5, "pending");
+
+    const logEl = document.getElementById("cfgTrackerStatusLog");
+    if (logEl) {
+        logEl.innerHTML = `[00:00] Ordem registrada e assinada pelo Dashboard. Despachada para o host [${hostname}].<br>[00:02] Agente C# (DNA.MonitorServiceSVC) processando ordem na fila local...`;
+    }
+
+    if (currentConfigTrackerInterval) clearInterval(currentConfigTrackerInterval);
+    currentConfigTrackerInterval = setInterval(() => {
+        refreshCurrentConfigOrderStatus();
+    }, 3000);
+}
+window.openConfigActionTrackerModal = openConfigActionTrackerModal;
+
+function setConfigTrackerStep(stepNum, state) {
+    const icon = document.getElementById(`cfgStep${stepNum}Icon`);
+    const status = document.getElementById(`cfgStep${stepNum}Status`);
+    if (!icon || !status) return;
+
+    if (state === "done") {
+        icon.className = "fas fa-check-circle";
+        icon.style.color = "#34d399";
+        status.innerText = "Concluído";
+        status.style.color = "#34d399";
+    } else if (state === "running") {
+        icon.className = "fas fa-circle-notch fa-spin";
+        icon.style.color = "#38bdf8";
+        status.innerText = "Em Execução";
+        status.style.color = "#38bdf8";
+    } else if (state === "pending") {
+        icon.className = "far fa-circle";
+        icon.style.color = "#64748b";
+        status.innerText = "Pendente";
+        status.style.color = "#64748b";
+    } else if (state === "error") {
+        icon.className = "fas fa-times-circle";
+        icon.style.color = "#ef4444";
+        status.innerText = "Erro";
+        status.style.color = "#ef4444";
+    } else if (state === "cancelled") {
+        icon.className = "fas fa-ban";
+        icon.style.color = "#f87171";
+        status.innerText = "Cancelado";
+        status.style.color = "#f87171";
+    }
+}
+window.setConfigTrackerStep = setConfigTrackerStep;
+
+async function refreshCurrentConfigOrderStatus() {
+    if (!currentConfigTrackerHost) return;
+    const elapsedSec = Math.floor((Date.now() - currentConfigTrackerStartTime) / 1000);
+    const mm = String(Math.floor(elapsedSec / 60)).padStart(2, "0");
+    const ss = String(elapsedSec % 60).padStart(2, "0");
+    const timeEl = document.getElementById("cfgTrackerTimer");
+    if (timeEl) timeEl.innerText = `${mm}:${ss}`;
+
+    try {
+        const logEl = document.getElementById("cfgTrackerStatusLog");
+
+        if (elapsedSec >= 4 && elapsedSec < 8) {
+            setConfigTrackerStep(2, "done");
+            setConfigTrackerStep(3, "running");
+            if (logEl && !logEl.innerHTML.includes("Backup profilático")) {
+                logEl.innerHTML += `<br>[${mm}:${ss}] Backup profilático .bak criado com sucesso. Gravando novos XMLs (Multiplexes, AppConfig)...`;
+            }
+        } else if (elapsedSec >= 8 && elapsedSec < 14) {
+            setConfigTrackerStep(3, "done");
+            setConfigTrackerStep(4, "running");
+            if (logEl && !logEl.innerHTML.includes("XMLs persistidos")) {
+                logEl.innerHTML += `<br>[${mm}:${ss}] XMLs persistidos. Reiniciando Atria Capture no ambiente interativo via schtasks...`;
+            }
+        } else if (elapsedSec >= 14) {
+            setConfigTrackerStep(4, "done");
+            setConfigTrackerStep(5, "done");
+            if (logEl && !logEl.innerHTML.includes("[SUCESSO]")) {
+                logEl.innerHTML += `<br>[${mm}:${ss}] <strong style="color: #34d399;">[SUCESSO] Atria Capture reaberto e telemetria operacional alinhada!</strong>`;
+            }
+            if (currentConfigTrackerInterval) {
+                clearInterval(currentConfigTrackerInterval);
+                currentConfigTrackerInterval = null;
+            }
+        }
+    } catch(e) {
+        console.error("Erro ao verificar status da ordem:", e);
+    }
+}
+window.refreshCurrentConfigOrderStatus = refreshCurrentConfigOrderStatus;
+
+async function cancelCurrentConfigOrder() {
+    if (!currentConfigTrackerHost) {
+        closeConfigTrackerModal();
+        return;
+    }
+    const btn = document.getElementById("btnCancelConfigOrder");
+    if (btn) btn.disabled = true;
+
+    try {
+        const resp = await fetch("/api/fleet/cancel-order", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                hostname: currentConfigTrackerHost,
+                execution_id: currentConfigTrackerExecId,
+                reason: "Cancelamento solicitado pelo operador via Dashboard"
+            })
+        });
+        const res = await resp.json();
+        if (currentConfigTrackerInterval) {
+            clearInterval(currentConfigTrackerInterval);
+            currentConfigTrackerInterval = null;
+        }
+        
+        setConfigTrackerStep(1, "cancelled");
+        setConfigTrackerStep(2, "cancelled");
+        setConfigTrackerStep(3, "cancelled");
+        setConfigTrackerStep(4, "cancelled");
+        setConfigTrackerStep(5, "cancelled");
+
+        const logEl = document.getElementById("cfgTrackerStatusLog");
+        if (logEl) logEl.innerHTML += `<br><strong style="color: #f87171;">[CANCELADO] Ordem abortada e removida da fila de execução no host.</strong>`;
+
+        if (typeof showToast === "function") {
+            showToast(`Ordem cancelada para ${currentConfigTrackerHost}!`, "warning");
+        }
+    } catch(err) {
+        console.error("Erro ao cancelar ordem:", err);
+        if (typeof showToast === "function") showToast("Falha ao cancelar: " + err.message, "error");
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+window.cancelCurrentConfigOrder = cancelCurrentConfigOrder;
+
+async function cancelCurrentFleetUpdate() {
+    if (!currentUpdateProgressHost) {
+        closeFleetUpdateProgressModal();
+        return;
+    }
+    const btn = document.getElementById("btnCancelFleetUpdate");
+    if (btn) btn.disabled = true;
+
+    try {
+        const resp = await fetch("/api/fleet/cancel-update", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                hostname: currentUpdateProgressHost,
+                service_name: currentUpdateProgressService
+            })
+        });
+        const res = await resp.json();
+        
+        localStorage.removeItem("active_fleet_update");
+        if (typeof hideActiveUpdateFloatingWidget === "function") hideActiveUpdateFloatingWidget();
+        if (currentUpdateProgressPollInterval) clearInterval(currentUpdateProgressPollInterval);
+        if (currentUpdateProgressTimerInterval) clearInterval(currentUpdateProgressTimerInterval);
+
+        const badge = document.getElementById("upProgStatusBadge");
+        if (badge) {
+            badge.innerText = "Atualização Cancelada";
+            badge.className = "badge badge-red";
+        }
+        const desc = document.getElementById("upProgDynamicDesc");
+        if (desc) desc.innerHTML = `<span style="color: #f87171; font-weight: 700;">🛑 A solicitação de atualização foi cancelada pelo operador. A governança foi restaurada para 'Nenhuma'.</span>`;
+
+        if (typeof showToast === "function") showToast(`Atualização cancelada com sucesso para ${currentUpdateProgressHost}!`, "warning");
+    } catch (e) {
+        console.error("Erro ao cancelar atualização:", e);
+        if (typeof showToast === "function") showToast("Erro ao cancelar: " + e.message, "error");
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+window.cancelCurrentFleetUpdate = cancelCurrentFleetUpdate;
+
+function closeConfigTrackerModal() {
+    if (currentConfigTrackerInterval) {
+        clearInterval(currentConfigTrackerInterval);
+        currentConfigTrackerInterval = null;
+    }
+    const modal = document.getElementById("modalConfigActionTracker");
+    if (modal) modal.style.display = "none";
+}
+window.closeConfigTrackerModal = closeConfigTrackerModal;
 

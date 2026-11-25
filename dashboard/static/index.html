@@ -2816,6 +2816,11 @@
             </button>
           </div>
         </div>
+
+        <!-- 6. Botão Direto no Menu Superior: Configuração CS -->
+        <button class="nav-btn" data-tab="fleet-csconfig" id="topNavBtnCSConfig" title="Central de Configuração CS (ATRIA & MediaDNA)">
+          <span>⚙️</span> Configuração CS
+        </button>
       </nav>
     </div>
 
@@ -17534,6 +17539,9 @@
           Auto-atualizar a cada 4 segundos
         </label>
         <div style="display: flex; gap: 8px;">
+          <button type="button" class="btn-danger" id="btnCancelFleetUpdate" onclick="cancelCurrentFleetUpdate()" style="background: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444; color: #f87171; padding: 6px 12px; font-size: 12px; font-weight: 700; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;" title="Cancelar andamento da atualização no host">
+            <i class="fas fa-stop-circle"></i> Cancelar Atualização
+          </button>
           <button type="button" class="btn-secondary" style="padding: 6px 12px; font-size: 12px;" onclick="refreshFleetUpdateProgressLive()">
             <i class="fas fa-sync-alt" id="upProgRefreshIcon"></i> Verificar Agora
           </button>
@@ -18397,13 +18405,13 @@
 
 
 
-  <script src="/static/js/app.js?v=3.9.91"></script>
+  <script src="/static/js/app.js?v=3.9.112"></script>
 
-  <script src="/static/js/ai_insights.js?v=3.9.91"></script>
+  <script src="/static/js/ai_insights.js?v=3.9.112"></script>
 
-  <script src="/static/js/fleet_ops.js?v=3.9.91"></script>
+  <script src="/static/js/fleet_ops.js?v=3.9.112"></script>
 
-  <script src="/static/js/remote_commands.js?v=3.9.91"></script>
+  <script src="/static/js/remote_commands.js?v=3.9.112"></script>
 
   <script src="/static/js/signals_analysis.js?v=3.9.91"></script>
 
@@ -20088,7 +20096,7 @@
 
   <!-- SUPER MODAL ATRIA (MediaDNA): CONFIGURAÇÃO COMPLETA DO CAPTURE SITE -->
   <div class="modal-overlay" id="modalHostConfig" style="display: none; align-items: center; justify-content: center; z-index: 10050; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.92); backdrop-filter: blur(8px);">
-    <div class="modal-content" style="max-width: 1420px; width: 98%; max-height: 96vh; background: #060b18; border: 1px solid #38bdf8; border-radius: 12px; box-shadow: 0 25px 70px rgba(0, 0, 0, 0.98); padding: 20px; display: flex; flex-direction: column;">
+    <div class="modal-content" style="max-width: 1560px; width: 95vw; height: 92vh; max-height: 94vh; background: #060b18; border: 1px solid #38bdf8; border-radius: 12px; box-shadow: 0 25px 70px rgba(0, 0, 0, 0.98); padding: 22px; display: flex; flex-direction: column; overflow: hidden;">
       
       <!-- HEADER DO SUPER MODAL -->
       <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(56, 189, 248, 0.3); padding-bottom: 12px; margin-bottom: 12px;">
@@ -20454,6 +20462,123 @@
   <script src="/static/js/praca_analyzer.js?v=3.9.104"></script>
   <script src="/static/js/sla_matrix.js?v=3.9.102"></script>
   <script src="/static/js/detection_pipeline_live.js?v=3.9.111"></script>
+
+
+  <!-- MODAL DE ACOMPANHAMENTO AO VIVO DE CONFIGURAÇÃO / UPDATE (COM CANCELAR) -->
+  <div class="modal-overlay" id="modalConfigActionTracker" style="display: none; align-items: center; justify-content: center; z-index: 10060; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.92); backdrop-filter: blur(8px);">
+    <div class="modal-content" style="max-width: 680px; width: 95%; background: #060b18; border: 1px solid #38bdf8; border-radius: 12px; box-shadow: 0 25px 70px rgba(0, 0, 0, 0.98); padding: 22px; display: flex; flex-direction: column;">
+      
+      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(56, 189, 248, 0.3); padding-bottom: 12px; margin-bottom: 16px;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <div style="font-size: 24px; color: #38bdf8; background: rgba(56, 189, 248, 0.15); padding: 6px 12px; border-radius: 8px; border: 1px solid rgba(56, 189, 248, 0.3);">
+            <i class="fas fa-tasks" id="iconConfigTrackerHeader"></i>
+          </div>
+          <div>
+            <div id="configTrackerTitle" style="font-size: 17px; font-weight: 800; color: #f8fafc;">Acompanhamento de Aplicação de Configuração</div>
+            <div id="configTrackerSubtitle" style="font-size: 12px; color: #94a3b8; margin-top: 2px;">Monitoramento em tempo real do ciclo de vida da ordem</div>
+          </div>
+        </div>
+        <button type="button" onclick="closeConfigTrackerModal()" style="background: none; border: none; color: #94a3b8; font-size: 22px; cursor: pointer; padding: 0 6px;">&times;</button>
+      </div>
+
+      <!-- CARDS DE METADADOS DA OPERAÇÃO -->
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 18px;">
+        <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px; padding: 10px;">
+          <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 700;">Praça / CS</div>
+          <div id="cfgTrackerPraca" style="font-size: 13px; font-weight: 700; color: #38bdf8; margin-top: 2px;">--</div>
+        </div>
+        <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px; padding: 10px;">
+          <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 700;">Servidor Host</div>
+          <div id="cfgTrackerHost" style="font-size: 12px; font-family: monospace; font-weight: 700; color: #f8fafc; margin-top: 2px;">--</div>
+        </div>
+        <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px; padding: 10px;">
+          <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 700;">ID Execução</div>
+          <div id="cfgTrackerExecId" style="font-size: 11px; font-family: monospace; font-weight: 700; color: #a78bfa; margin-top: 2px;">--</div>
+        </div>
+      </div>
+
+      <!-- ESTEIRA DE EXECUÇÃO EM 5 ETAPAS -->
+      <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 10px; padding: 16px; margin-bottom: 18px;">
+        <div style="font-size: 12px; font-weight: 700; color: #38bdf8; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
+          <span>⚡ ESTEIRA DE APLICAÇÃO ATÔMICA &amp; REINÍCIO</span>
+          <span id="cfgTrackerElapsed" style="font-size: 11px; color: #94a3b8; font-family: monospace;">00:00</span>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 10px;" id="cfgTrackerStepsContainer">
+          <!-- Etapa 1 -->
+          <div id="cfgStep1" style="display: flex; align-items: center; gap: 12px; padding: 8px 12px; background: rgba(56, 189, 248, 0.1); border-left: 3px solid #38bdf8; border-radius: 4px;">
+            <i class="fas fa-check-circle" style="color: #38bdf8;" id="cfgStep1Icon"></i>
+            <div style="flex: 1;">
+              <div style="font-size: 12px; font-weight: 700; color: #f8fafc;">Etapa 1: Ordem Enfileirada pelo Dashboard</div>
+              <div style="font-size: 11px; color: #94a3b8;">Payload assinado via HMAC-SHA256 registrado na fila do host.</div>
+            </div>
+            <span style="font-size: 10px; color: #38bdf8; font-weight: 700;" id="cfgStep1Status">Enfileirado</span>
+          </div>
+
+          <!-- Etapa 2 -->
+          <div id="cfgStep2" style="display: flex; align-items: center; gap: 12px; padding: 8px 12px; background: rgba(30, 41, 59, 0.5); border-left: 3px solid #475569; border-radius: 4px;">
+            <i class="fas fa-circle-notch fa-spin" style="color: #fbbf24;" id="cfgStep2Icon"></i>
+            <div style="flex: 1;">
+              <div style="font-size: 12px; font-weight: 700; color: #f8fafc;">Etapa 2: Reconhecimento pelo Agente C# (DNA.MonitorServiceSVC)</div>
+              <div style="font-size: 11px; color: #94a3b8;">Agente local no host faz o polling e valida a assinatura da ordem.</div>
+            </div>
+            <span style="font-size: 10px; color: #fbbf24; font-weight: 700;" id="cfgStep2Status">Aguardando</span>
+          </div>
+
+          <!-- Etapa 3 -->
+          <div id="cfgStep3" style="display: flex; align-items: center; gap: 12px; padding: 8px 12px; background: rgba(30, 41, 59, 0.5); border-left: 3px solid #475569; border-radius: 4px;">
+            <i class="far fa-circle" style="color: #64748b;" id="cfgStep3Icon"></i>
+            <div style="flex: 1;">
+              <div style="font-size: 12px; font-weight: 700; color: #f8fafc;">Etapa 3: Backup Profilático (.bak) e Escrita dos XMLs</div>
+              <div style="font-size: 11px; color: #94a3b8;">Gravação atômica em Multiplexes.xml, AppConfig.xml e WMProfiles/.</div>
+            </div>
+            <span style="font-size: 10px; color: #64748b; font-weight: 700;" id="cfgStep3Status">Pendente</span>
+          </div>
+
+          <!-- Etapa 4 -->
+          <div id="cfgStep4" style="display: flex; align-items: center; gap: 12px; padding: 8px 12px; background: rgba(30, 41, 59, 0.5); border-left: 3px solid #475569; border-radius: 4px;">
+            <i class="far fa-circle" style="color: #64748b;" id="cfgStep4Icon"></i>
+            <div style="flex: 1;">
+              <div style="font-size: 12px; font-weight: 700; color: #f8fafc;">Etapa 4: Reinício Seguro do ATRIA Capture</div>
+              <div style="font-size: 11px; color: #94a3b8;">Finalização limpa e reabertura interativa via schtasks no host.</div>
+            </div>
+            <span style="font-size: 10px; color: #64748b; font-weight: 700;" id="cfgStep4Status">Pendente</span>
+          </div>
+
+          <!-- Etapa 5 -->
+          <div id="cfgStep5" style="display: flex; align-items: center; gap: 12px; padding: 8px 12px; background: rgba(30, 41, 59, 0.5); border-left: 3px solid #475569; border-radius: 4px;">
+            <i class="far fa-circle" style="color: #64748b;" id="cfgStep5Icon"></i>
+            <div style="flex: 1;">
+              <div style="font-size: 12px; font-weight: 700; color: #f8fafc;">Etapa 5: Validação de Telemetria e Canais Ativos</div>
+              <div style="font-size: 11px; color: #94a3b8;">Auditoria de status de sintonização e gravação após restart.</div>
+            </div>
+            <span style="font-size: 10px; color: #64748b; font-weight: 700;" id="cfgStep5Status">Pendente</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- LOG DE STATUS EM TEMPO REAL -->
+      <div id="cfgTrackerStatusLog" style="background: #020617; border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px; padding: 12px; font-family: monospace; font-size: 11px; color: #cbd5e1; margin-bottom: 18px; max-height: 90px; overflow-y: auto;">
+        [00:00] Ordem registrada e assinada pelo Dashboard. Aguardando reconhecimento pelo agente...
+      </div>
+
+      <!-- BOTÕES DE CONTROLE (INCLUINDO CANCELAR ANDAMENTO) -->
+      <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(148, 163, 184, 0.15); padding-top: 14px;">
+        <button type="button" id="btnCancelConfigOrder" onclick="cancelCurrentConfigOrder()" style="background: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444; color: #f87171; padding: 8px 16px; border-radius: 6px; font-size: 12px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+          <i class="fas fa-stop-circle"></i> <span>Cancelar Andamento</span>
+        </button>
+        <div style="display: flex; gap: 10px;">
+          <button type="button" onclick="refreshCurrentConfigOrderStatus()" class="btn-secondary" style="padding: 8px 14px; font-size: 12px;">
+            <i class="fas fa-sync-alt"></i> Atualizar Agora
+          </button>
+          <button type="button" onclick="closeConfigTrackerModal()" class="btn-primary" style="padding: 8px 18px; font-size: 12px;">
+            Fechar
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
 
 </body>
 

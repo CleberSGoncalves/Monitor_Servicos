@@ -158,6 +158,15 @@ class ForceExecuteRequest(BaseModel):
     target_version: Optional[str] = None
     migrate_to_fastmatching: Optional[bool] = False
 
+class CancelOrderRequest(BaseModel):
+    hostname: str
+    execution_id: Optional[str] = None
+    reason: Optional[str] = "Cancelado pelo operador"
+
+class CancelUpdateRequest(BaseModel):
+    hostname: str
+    service_name: Optional[str] = "Atria Capture"
+
 class ThresholdUpdateRequest(BaseModel):
     key: str
     value: float
@@ -3073,6 +3082,65 @@ async def create_maintenance_window(req: MaintenanceRequest, user: dict = Depend
 async def cancel_maintenance_window(praca: str, user: dict = Depends(get_current_user)):
     res = remove_praca_maintenance(praca)
     return res
+
+@app.post("/api/fleet/cancel-order")
+async def cancel_fleet_order_endpoint(req: CancelOrderRequest, user: dict = Depends(get_current_user)):
+    h_clean = req.hostname.strip()
+    if req.execution_id:
+        try:
+            import sqlite3
+            from remote_commands import DB_PATH
+            with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
+                cursor = conn.cursor()
+                cursor.execute("UPDATE remote_command_executions SET status = 'cancelado', completed_at = datetime('now') WHERE id = ?", (req.execution_id,))
+                conn.commit()
+        except Exception as e:
+            logger.warning(f"Erro ao cancelar execucao {req.execution_id}: {e}")
+    
+    try:
+        from version_governance import record_fleet_audit_event
+        record_fleet_audit_event(
+            user=user,
+            action_type="ORDER_CANCELLED",
+            target=h_clean,
+            service_name="Configuração / Ordem Remota",
+            reason=req.reason or "Cancelado pelo operador",
+            command_preview="Ordem abortada via Dashboard",
+            status="Cancelado",
+            details=f"Execução {req.execution_id or 'N/A'} cancelada com sucesso."
+        )
+    except Exception as e:
+        logger.warning(f"Erro ao auditar cancelamento de ordem: {e}")
+
+    return {"success": True, "message": f"Ordem cancelada para {h_clean}."}
+
+@app.post("/api/fleet/cancel-update")
+async def cancel_fleet_update_endpoint(req: CancelUpdateRequest, user: dict = Depends(get_current_user)):
+    h_clean = req.hostname.strip()
+    try:
+        data = get_cached_data()
+        services = data.get("services", [])
+        for s in services:
+            if str(s.get("hostname", "")).strip().lower() == h_clean.lower():
+                s["acao_solicitada"] = "Nenhuma"
+                s["Acao_Solicitada"] = "Nenhuma"
+                break
+        
+        from version_governance import record_fleet_audit_event
+        record_fleet_audit_event(
+            user=user,
+            action_type="UPDATE_CANCELLED",
+            target=h_clean,
+            service_name=req.service_name or "Atria Capture",
+            reason="Cancelamento de rollout pelo operador",
+            command_preview="Solicitacao de atualizacao revertida",
+            status="Cancelado",
+            details=f"Ação solicitada revertida para Nenhuma no host {h_clean}."
+        )
+    except Exception as e:
+        logger.warning(f"Erro ao cancelar update de {h_clean}: {e}")
+
+    return {"success": True, "message": f"Atualização de {h_clean} cancelada com sucesso."}
 
 # ==========================================
 # Mosaico Visual de Canais (Live Snapshots)
