@@ -363,8 +363,23 @@ function copyExecutiveInventoryTable() {
     });
 }
 
-function navigateToFleetInventory(serviceName = null, country = null) {
-    if (typeof switchTab === "function") switchTab("fleet");
+function navigateToFleetInventory(serviceName = null, country = null, evt = null) {
+    if (evt) {
+        try {
+            evt.preventDefault();
+            evt.stopPropagation();
+        } catch (_) {}
+    }
+    const fleetSec = document.getElementById("tab-fleet");
+    if (fleetSec) {
+        document.querySelectorAll(".content-section").forEach(s => s.classList.remove("active"));
+        fleetSec.classList.add("active");
+    }
+    document.querySelectorAll(".nav-btn").forEach(b => {
+        const t = b.getAttribute("data-tab");
+        b.classList.toggle("active", t === "fleet-inventory" || t === "fleet");
+    });
+    if (typeof updateNavDropdownStates === "function") updateNavDropdownStates();
     if (typeof switchFleetSubtab === "function") switchFleetSubtab("inventory");
 
     if (serviceName) {
@@ -376,6 +391,10 @@ function navigateToFleetInventory(serviceName = null, country = null) {
         if (cSelect) cSelect.value = country;
     }
     loadFleetInventory(true);
+    setTimeout(() => {
+        const c = document.getElementById("fleetSubtabInventoryContainer");
+        if (c) c.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 150);
 }
 
 window.loadFleetInventory = loadFleetInventory;

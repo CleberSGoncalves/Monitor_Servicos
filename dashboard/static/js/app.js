@@ -890,7 +890,8 @@ function setupTabNavigation() {
 
 
 
-            const targetSec = (tabName === "fleet-csconfig") ? document.getElementById("tab-fleet") : document.getElementById(`tab-${tabName}`);
+            const isFleetSubtab = (tabName === "fleet-csconfig" || tabName === "fleet-inventory");
+            const targetSec = isFleetSubtab ? document.getElementById("tab-fleet") : document.getElementById(`tab-${tabName}`);
 
             if (targetSec) targetSec.classList.add("active");
 
@@ -899,6 +900,13 @@ function setupTabNavigation() {
                 if (typeof populateSubtabCSSelectors === "function") populateSubtabCSSelectors();
                 setTimeout(() => {
                     const c = document.getElementById("fleetSubtabCSConfigContainer");
+                    if (c) c.scrollIntoView({ behavior: "smooth", block: "start" });
+                }, 150);
+            } else if (tabName === "fleet-inventory") {
+                if (typeof switchFleetSubtab === "function") switchFleetSubtab("inventory");
+                if (typeof loadFleetInventory === "function") loadFleetInventory(true);
+                setTimeout(() => {
+                    const c = document.getElementById("fleetSubtabInventoryContainer");
                     if (c) c.scrollIntoView({ behavior: "smooth", block: "start" });
                 }, 150);
             }

@@ -1,8 +1,8 @@
 {
-  "version": "3.9.111",
-  "agent_version": "1.0.21.5",
+  "version": "3.9.112",
+  "agent_version": "1.0.21.6",
   "commit_sha": "auto",
-  "updated_at": "2026-11-24T17:21:00.000000",
-  "description": "v3.9.111 - Super Modal Atria Capture Site, Hardening Incondicional de Perfis EMU e Detection Pipeline Live (fma.log).",
-  "release_notes": "v3.9.111: 1. Correção definitiva de perfil EMU em Uberlândia: Encoding 1252 compatível com PowerShell 5.1 e aplicação incondicional de 'EMU MediaDNA 1min' em updates do Atria Capture. 2. Super Modal ATRIA no Painel de Frota: 6 abas (Muxes, Canais & Gravação com 15 colunas e alertas de perfis, Application Options General & AutoDetection SVC, Editor e Catálogo de WMProfiles com aplicação em 1 clique, LogRotate e Prévia de Script). 3. Detection Pipeline Live: monitoramento em tempo real do motor FastMatching (fma.log), catálogo de spots, novas detecções e fluxo contínuo de geração de fatias EMU. 4. Diagnóstico forense de virada comercial em Ponta Porã e integração plug-and-play do instalador do agente."
+  "updated_at": "2026-11-25T09:40:00.000000",
+  "description": "v3.9.112 - Correção do roteamento do Inventário CS e desativação estrita de Auto-Healing em manutenção/ATRIA fechado.",
+  "release_notes": "v3.9.112: 1. Correção do Inventário CS: roteamento da aba 'fleet-inventory' integrado ao '#tab-fleet' e subtab '#fleetSubtabInventoryContainer' com carga imediata de matriz executiva. 2. Blindagem de Manutenção no Capture Site: desativação incondicional de auto-restart do Atria Capture (GUI) pelo Auto-Healing. 3. Suspensão total de Auto-Healing de qualquer serviço no Capture Site quando ATRIA estiver fechado (técnicos realizando manutenção ou teste isolado). 4. Detecção e respeito estrito a travas de manutenção locais e modo manutenção da praça no servidor e agente."
 }

@@ -375,7 +375,7 @@ namespace WinServiceFleetAgent.Core
                         ExeName = s.Def.ExeName
                     });
                 }
-                string currentAgentVer = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "1.0.21.5";
+                string currentAgentVer = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "1.0.21.6";
                 await _cloudClient.SendTelemetryAsync(metadata.Praca, metadata.CS, allBatchItems, null, metrics, currentAgentVer, metadata.IdHost);
             }
             catch (Exception exCloud)
@@ -387,20 +387,48 @@ namespace WinServiceFleetAgent.Core
 
             bool isFastMatchingRunning = serviceStatuses.Any(s => s.Def.ServiceName.Contains("FastMatching", StringComparison.OrdinalIgnoreCase) && s.Status.Equals("Em Execução", StringComparison.OrdinalIgnoreCase));
             bool isDetectionRunning = serviceStatuses.Any(s => s.Def.ServiceName.Contains("DetectionSVC", StringComparison.OrdinalIgnoreCase) && s.Status.Equals("Em Execução", StringComparison.OrdinalIgnoreCase));
-            bool isAtriaRunning = serviceStatuses.Any(s => s.Def.ServiceName.Contains("Atria", StringComparison.OrdinalIgnoreCase) && s.Status.Equals("Em Execução", StringComparison.OrdinalIgnoreCase));
+            bool hasAtriaConfigured = serviceStatuses.Any(s => s.Def.ServiceName.Contains("Atria", StringComparison.OrdinalIgnoreCase) || s.IsStandalone);
+            bool isAtriaRunning = serviceStatuses.Any(s => (s.Def.ServiceName.Contains("Atria", StringComparison.OrdinalIgnoreCase) || s.IsStandalone) && s.Status.Equals("Em Execução", StringComparison.OrdinalIgnoreCase));
+
+            // Checagem de travas de manutenção locais
+            string tempMaintLock = Path.Combine(Path.GetTempPath(), "dna_maintenance.lock");
+            string atriaLockFile = Path.Combine(Path.GetTempPath(), "dna_atria_updating.lock");
+            string dataMaintLock1 = @"D:\MediaDNA_V2\data\maintenance.lock";
+            string dataMaintLock2 = @"C:\DTV\data\maintenance.lock";
+            string dataMaintLock3 = @"C:\MediaDNA_V2\data\maintenance.lock";
+            bool isLocalMaintenance = File.Exists(tempMaintLock) || File.Exists(atriaLockFile) || File.Exists(dataMaintLock1) || File.Exists(dataMaintLock2) || File.Exists(dataMaintLock3);
 
             // Avaliação de AutoRestart para serviços detectados como Parado
             foreach (var srvInfo in serviceStatuses)
             {
                 var srv = srvInfo.Def;
                 string statusServico = srvInfo.Status;
-                bool isStandaloneApp = srvInfo.IsStandalone;
+                bool isStandaloneApp = srvInfo.IsStandalone || srv.ServiceName.Contains("Atria", StringComparison.OrdinalIgnoreCase);
 
                 if (statusServico.Equals("Parado", StringComparison.OrdinalIgnoreCase))
                 {
                     string autoRestartSetting = srv.ServiceName.Equals("FastMatchingSvc", StringComparison.OrdinalIgnoreCase) ? "Não" : "Sim";
                     if (batchAutoRestartMap.TryGetValue(srv.ServiceName, out var ar)) autoRestartSetting = ar;
                     else if (cleanAutoRestartMap.TryGetValue(srv.ServiceName, out var car)) autoRestartSetting = car;
+
+                    // REGRA DE OURO 1: ATRIA Capture é aplicação interativa de desktop (GUI). NUNCA auto-reiniciar ATRIA no Auto-Healing!
+                    if (isStandaloneApp)
+                    {
+                        autoRestartSetting = "Não";
+                    }
+
+                    // REGRA DE OURO 2: Se ATRIA Capture está no Capture Site e não está em execução (técnicos fecharam para manutenção ou teste),
+                    // É ESTRITAMENTE PROIBIDO ativar Auto-Healing para QUALQUER serviço ou aplicação no Capture Site!
+                    if (hasAtriaConfigured && !isAtriaRunning)
+                    {
+                        autoRestartSetting = "Não";
+                    }
+
+                    // REGRA DE OURO 3: Se houver trava de manutenção local ativa no host, nenhum serviço é auto-reiniciado
+                    if (isLocalMaintenance)
+                    {
+                        autoRestartSetting = "Não";
+                    }
 
                     // Exclusão mútua estrita: nunca iniciar DetectionSVC/TrackingSVC se FastMatching estiver ativo ou em CS02/CS03
                     if ((srv.ServiceName.Contains("DetectionSVC", StringComparison.OrdinalIgnoreCase) ||
@@ -422,14 +450,6 @@ namespace WinServiceFleetAgent.Core
 
                     bool isAutoRestartEnabled = autoRestartSetting.Equals("Sim", StringComparison.OrdinalIgnoreCase) ||
                                                 autoRestartSetting.Equals("True", StringComparison.OrdinalIgnoreCase);
-
-                    // Trava de atualização ativa: se uma atualização remota pelo dashboard estiver em andamento, suspende AutoRestart do Atria
-                    string atriaLockFile = Path.Combine(Path.GetTempPath(), "dna_atria_updating.lock");
-                    if (isStandaloneApp && File.Exists(atriaLockFile))
-                    {
-                        FileLogger.Log($"[FleetOrchestrator] ⏸️ AutoRestart de '{srv.ServiceName}' suspenso: atualização remota do dashboard em andamento.");
-                        continue;
-                    }
 
                     if (isAutoRestartEnabled)
                     {
@@ -453,9 +473,8 @@ namespace WinServiceFleetAgent.Core
                                 bool restarted = false;
                                 if (isStandaloneApp)
                                 {
-                                    AtriaInstaller.StartAtriaApplication(srv.InstallPath, srv.ExeName);
-                                    await Task.Delay(4000);
-                                    restarted = InteractiveProcessLauncher.IsAtriaRunningInUserSession();
+                                    // Standalone apps não são auto-iniciados por design
+                                    restarted = false;
                                 }
                                 else
                                 {
@@ -476,7 +495,22 @@ namespace WinServiceFleetAgent.Core
                     }
                     else
                     {
-                        FileLogger.Log($"[FleetOrchestrator] ℹ️ '{srv.ServiceName}' está PARADO, mas AutoRestart está configurado como '{autoRestartSetting}'. Nenhuma tentativa de inicialização necessária.");
+                        if (isStandaloneApp)
+                        {
+                            FileLogger.Log($"[FleetOrchestrator] ℹ️ ATRIA Capture está PARADO. AutoRestart desativado permanentemente por design de engenharia (manutenção/sessão interativa manual).");
+                        }
+                        else if (hasAtriaConfigured && !isAtriaRunning)
+                        {
+                            FileLogger.Log($"[FleetOrchestrator] ⏸️ Auto-Healing suspenso para '{srv.ServiceName}': ATRIA Capture está FECHADO no Capture Site (técnicos em manutenção/teste). Nenhum serviço será reiniciado.");
+                        }
+                        else if (isLocalMaintenance)
+                        {
+                            FileLogger.Log($"[FleetOrchestrator] ⏸️ Auto-Healing suspenso para '{srv.ServiceName}': Host em manutenção local detectado.");
+                        }
+                        else
+                        {
+                            FileLogger.Log($"[FleetOrchestrator] ℹ️ '{srv.ServiceName}' está PARADO, mas AutoRestart está configurado como '{autoRestartSetting}'. Nenhuma tentativa de inicialização necessária.");
+                        }
                     }
                 }
             }

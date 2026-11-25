@@ -27,10 +27,11 @@ from config import (
 )
 from sharepoint_sync import get_graph_token, get_cached_data, get_graph_rate_limit_health
 from version_governance import get_desired_versions, _is_version_up_to_date
+from maintenance_manager import is_praca_in_maintenance
 
 logger = logging.getLogger("fleet_auto_healing")
 
-TARGET_AGENT_VERSION = "1.0.21.5"
+TARGET_AGENT_VERSION = "1.0.21.6"
 AUTO_HEALING_LOG_FILE = DATA_DIR / "auto_healing_history.json"
 
 
@@ -146,11 +147,30 @@ def audit_and_diagnose_fleet() -> Dict[str, Any]:
 
         # Verifica serviços críticos parados respeitando a arquitetura CS01/CS02 e exclusão mútua FastMatching vs DetectionSVC
         if data["comm_state"] == "ONLINE" and data["hours_offline"] <= 0.33:
+            # 1. Checagem de Modo Manutenção na Praça
+            in_maint = is_praca_in_maintenance(p)
+
+            # 2. Checagem de ATRIA Capture no host:
+            # Se o host tem ATRIA configurado e ATRIA não está em execução,
+            # os técnicos estão em manutenção/teste isolado: NENHUM serviço pode ser auto-reiniciado!
+            svcs_dict = data["services"]
+            has_atria = any("atria" in s.lower() for s in svcs_dict.keys())
+            atria_running = any(
+                "atria" in s.lower() and ("execu" in str(info.get("status") or "").lower() or "running" in str(info.get("status") or "").lower())
+                for s, info in svcs_dict.items()
+            )
+
+            if in_maint or (has_atria and not atria_running):
+                data["eligible_service_restart"] = False
+                data["stopped_critical_services"] = []
+                data["in_maintenance"] = True
+                data["maintenance_reason"] = "Praça em Manutenção" if in_maint else "ATRIA Fechado / Manutenção no Capture Site"
+                continue
+
             try:
                 cs_num = int(float(data.get("cs") or 1))
             except Exception:
                 cs_num = 1
-            svcs_dict = data["services"]
             cfg_st = str((svcs_dict.get("DNA.ConfigMonitorSVC") or {}).get("status") or "").lower()
             if "parado" in cfg_st or "stopped" in cfg_st:
                 data["stopped_critical_services"].append("DNA.ConfigMonitorSVC")
@@ -158,12 +178,15 @@ def audit_and_diagnose_fleet() -> Dict[str, Any]:
                 stopped_services_count += 1
 
             if cs_num == 1:
-                fm_st = str((svcs_dict.get("FastMatchingSvc") or {}).get("status") or "").lower()
-                det_st = str((svcs_dict.get("DNA.DetectionSVC") or {}).get("status") or "").lower()
+                fm_info = svcs_dict.get("FastMatchingSvc") or svcs_dict.get("FastMatching") or {}
+                det_info = svcs_dict.get("DNA.DetectionSVC") or svcs_dict.get("DetectionSVC") or {}
+                fm_st = str(fm_info.get("status") or "").lower()
+                det_st = str(det_info.get("status") or "").lower()
                 fm_run = "execu" in fm_st or "running" in fm_st
                 det_run = "execu" in det_st or "running" in det_st
                 if not fm_run and not det_run and ("parado" in fm_st or "parado" in det_st):
-                    data["stopped_critical_services"].append("Motor de Detecção CS01")
+                    target_svc_name = "FastMatchingSvc" if "FastMatchingSvc" in svcs_dict else ("FastMatching" if "FastMatching" in svcs_dict else "DNA.DetectionSVC")
+                    data["stopped_critical_services"].append(target_svc_name)
                     data["eligible_service_restart"] = True
                     stopped_services_count += 1
 
@@ -253,6 +276,16 @@ def execute_auto_healing_batch(max_hosts: int = 50) -> Dict[str, Any]:
 
         # 2. Auto-Restart de Serviços Críticos Parados
         if h["eligible_service_restart"]:
+            if is_praca_in_maintenance(praca):
+                continue
+            has_atria = any("atria" in s.lower() for s in h["services"])
+            atria_running = any(
+                "atria" in s.lower() and ("execu" in str(info.get("status") or "").lower() or "running" in str(info.get("status") or "").lower())
+                for s, info in h["services"].items()
+            )
+            if has_atria and not atria_running:
+                continue
+
             for s_name in h["stopped_critical_services"]:
                 s_id = h["services"][s_name].get("id")
                 if s_id:
