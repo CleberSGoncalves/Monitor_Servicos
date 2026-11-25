@@ -2779,6 +2779,13 @@
                 <div class="nav-item-desc">Inventário e update de agentes</div>
               </div>
             </button>
+            <button class="nav-btn nav-dropdown-item" data-tab="fleet-inventory" onclick="navigateToFleetInventory()" title="Inventário executivo de versões de serviços e exportação para Excel">
+              <span class="nav-item-icon">📋</span>
+              <div class="nav-item-content">
+                <div class="nav-item-title">Inventário de Versões</div>
+                <div class="nav-item-desc">Matriz de versões e exportação Excel</div>
+              </div>
+            </button>
             <button class="nav-btn nav-dropdown-item" data-tab="fleet-csconfig" title="Central de Configuração Remota do Capture Site (Multiplexes, Canais, Perfis EMU e XMLs)">
               <span class="nav-item-icon">⚙️</span>
               <div class="nav-item-content">
@@ -11282,6 +11289,11 @@
           <span>Configuração CS (ATRIA)</span>
           <span style="background: rgba(16, 185, 129, 0.2); color: #34d399; font-size: 10px; padding: 2px 7px; border-radius: 12px; font-weight: 700; margin-left: 6px;">Multiplexes &amp; Perfis</span>
         </button>
+        <button class="fleet-subtab-btn" id="btn-fleet-subtab-inventory" onclick="switchFleetSubtab('inventory')">
+          <i class="fas fa-clipboard-list" style="color: #10b981;"></i>
+          <span>Inventário de Versões</span>
+          <span id="badgeFleetInventoryCount" style="background: rgba(16, 185, 129, 0.2); color: #34d399; font-size: 10px; padding: 2px 7px; border-radius: 12px; font-weight: 700; margin-left: 6px;">Excel Ready</span>
+        </button>
       </div>
 
       <!-- CONTAINER 1: GOVERNANÇA & ROLLOUT -->
@@ -11864,6 +11876,212 @@
             <i class="fas fa-satellite-dish" style="font-size: 36px; color: rgba(56, 189, 248, 0.3); margin-bottom: 12px; display: block;"></i>
             <div style="font-size: 14px; font-weight: 700; color: #94a3b8;">Nenhum Capture Site carregado no momento</div>
             <div style="font-size: 12px; color: #64748b; margin-top: 4px;">Selecione a praça e o servidor nos campos acima e clique em <b>Carregar XMLs</b> ou abra no SuperModal.</div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- CONTAINER 4: INVENTÁRIO DE VERSÕES & SERVIÇOS (EXCEL READY & MULTI-PAÍS) -->
+      <div id="fleetSubtabInventoryContainer" style="display: none;">
+        <div class="panel-card" style="margin-bottom: 20px; border: 1px solid rgba(16, 185, 129, 0.35); background: linear-gradient(180deg, rgba(15, 23, 42, 0.9) 0%, rgba(15, 23, 42, 0.98) 100%); border-radius: 10px; padding: 20px;">
+          
+          <!-- Header do Painel -->
+          <div style="border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 14px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+            <div>
+              <div style="display: flex; align-items: center; gap: 10px; font-size: 17px; font-weight: 700; color: #f8fafc;">
+                <span style="color: #10b981;">📋</span>
+                <span>Inventário Executivo &amp; Granular de Versões da Frota</span>
+                <span style="background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); font-size: 11px; padding: 3px 10px; border-radius: 20px; font-weight: 700;">Multi-País &bull; Excel Export</span>
+                <span id="invLoadingSpinner" style="display: none; color: #38bdf8; font-size: 14px;"><i class="fas fa-spinner fa-spin"></i></span>
+              </div>
+              <div id="invScopeSubtitle" style="font-size: 12px; color: #94a3b8; margin-top: 4px;">
+                Matriz executiva de adoção de versões e listagem detalhada de todos os servidores para auditoria de engenharia e SLA.
+              </div>
+            </div>
+            
+            <!-- Botões de Ação no Topo -->
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+              <button class="btn btn-primary" onclick="exportFleetInventoryToExcel()" style="background: linear-gradient(135deg, #059669, #10b981); border: 1px solid #34d399; color: #fff; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 6px; box-shadow: 0 0 12px rgba(16, 185, 129, 0.3); cursor: pointer;" title="Exportar inventário completo formatado para arquivo Excel nativo (.xlsx)">
+                <i class="fas fa-file-excel" style="font-size: 15px;"></i>
+                <span>Exportar para Excel (.xlsx)</span>
+              </button>
+              <button class="btn btn-secondary" onclick="copyExecutiveInventoryTable()" style="background: rgba(30, 41, 59, 0.8); border: 1px solid rgba(148, 163, 184, 0.3); color: #e2e8f0; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 6px; cursor: pointer;" title="Copiar tabela de distribuição formatada para colar no Teams ou E-mail">
+                <i class="fas fa-copy"></i>
+                <span>Copiar Padrão Executivo</span>
+              </button>
+              <button class="btn btn-secondary" onclick="loadFleetInventory(true)" style="background: rgba(30, 41, 59, 0.8); border: 1px solid rgba(148, 163, 184, 0.3); color: #38bdf8; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 6px; cursor: pointer;" title="Recarregar dados do inventário">
+                <i class="fas fa-sync-alt"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- Barra de Filtros do Inventário -->
+          <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(148, 163, 184, 0.15); border-radius: 8px; padding: 14px 16px; margin-bottom: 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; align-items: flex-end;">
+            
+            <!-- 1. Filtro de Serviço -->
+            <div>
+              <label style="font-size: 11px; text-transform: uppercase; color: #94a3b8; font-weight: 700; display: block; margin-bottom: 4px;">Serviço Alvo</label>
+              <select id="invFilterService" class="form-input" style="width: 100%; font-weight: 600;" onchange="handleInventoryFilterChange()">
+                <option value="Atria Capture" selected>Atria Capture</option>
+                <option value="DNA.MonitorServiceSVC">DNA.MonitorServiceSVC</option>
+                <option value="DNA.MediaRecorderSVC">DNA.MediaRecorderSVC</option>
+                <option value="FastMatchingSvc">FastMatchingSvc</option>
+                <option value="DNA.DetectionSVC">DNA.DetectionSVC</option>
+                <option value="DNA.FiletransferSVC">DNA.FiletransferSVC</option>
+                <option value="DNA.ConfigMonitorSVC">DNA.ConfigMonitorSVC</option>
+                <option value="DNA.TimeSyncSVC">DNA.TimeSyncSVC</option>
+                <option value="DNA.MediaConverterSVC">DNA.MediaConverterSVC</option>
+                <option value="Tanium Client">Tanium Client</option>
+                <option value="Zabbix Agent">Zabbix Agent</option>
+                <option value="all">⚡ Todos os Serviços (Visão Geral)</option>
+              </select>
+            </div>
+
+            <!-- 2. Filtro Dinâmico de País -->
+            <div>
+              <label style="font-size: 11px; text-transform: uppercase; color: #94a3b8; font-weight: 700; display: block; margin-bottom: 4px;">País / Escopo Geográfico</label>
+              <select id="invFilterCountry" class="form-input" style="width: 100%; font-weight: 600;" onchange="handleInventoryFilterChange()">
+                <option value="all">🌍 Todos os Países (LATAM)</option>
+                <option value="Brasil" selected>🇧🇷 Brasil</option>
+              </select>
+            </div>
+
+            <!-- 3. Filtro de Status -->
+            <div>
+              <label style="font-size: 11px; text-transform: uppercase; color: #94a3b8; font-weight: 700; display: block; margin-bottom: 4px;">Status Operacional</label>
+              <select id="invFilterStatus" class="form-input" style="width: 100%;" onchange="handleInventoryFilterChange()">
+                <option value="all">Todos os Status</option>
+                <option value="execucao">🟢 Em Execução</option>
+                <option value="parado">🔴 Parado</option>
+                <option value="inexistente">⚪ Não Instalado / Inexistente</option>
+                <option value="atualizado">✅ Versão Atualizada</option>
+                <option value="desatualizado">⚠️ Versão Desatualizada</option>
+              </select>
+            </div>
+
+            <!-- 4. Busca Textual -->
+            <div>
+              <label style="font-size: 11px; text-transform: uppercase; color: #94a3b8; font-weight: 700; display: block; margin-bottom: 4px;">Busca por Praça / Host / IP</label>
+              <div style="position: relative;">
+                <input type="text" id="invSearchText" class="form-input" style="width: 100%; padding-left: 30px;" placeholder="Ex: Uberlandia, SMME, 2.0.0.2..." oninput="handleInventoryFilterChange()">
+                <i class="fas fa-search" style="position: absolute; left: 10px; top: 10px; color: #64748b; font-size: 12px;"></i>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Cards de Métricas e SLA do Inventário -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; margin-bottom: 24px;">
+            <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px; padding: 14px 16px;">
+              <div style="font-size: 11px; text-transform: uppercase; color: #94a3b8; font-weight: 700;">Total Servidores Avaliados</div>
+              <div id="invKpiTotalHosts" style="font-size: 24px; font-weight: 800; color: #f8fafc; margin-top: 4px;">--</div>
+              <div style="font-size: 11px; color: #64748b; margin-top: 2px;">Servidores físicos / VMs ativas</div>
+            </div>
+
+            <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 8px; padding: 14px 16px;">
+              <div style="font-size: 11px; text-transform: uppercase; color: #10b981; font-weight: 700;">Adoção Homologada Oficial</div>
+              <div id="invKpiAdoptionRate" style="font-size: 24px; font-weight: 800; color: #10b981; margin-top: 4px;">--%</div>
+              <div style="font-size: 11px; color: #64748b; margin-top: 2px;">Meta da Engenharia: 100%</div>
+            </div>
+
+            <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 8px; padding: 14px 16px;">
+              <div style="font-size: 11px; text-transform: uppercase; color: #38bdf8; font-weight: 700;">Na Versão Homologada</div>
+              <div id="invKpiHomologatedCount" style="font-size: 24px; font-weight: 800; color: #38bdf8; margin-top: 4px;">--</div>
+              <div style="font-size: 11px; color: #64748b; margin-top: 2px;">Instalações prontas e em conformidade</div>
+            </div>
+
+            <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 8px; padding: 14px 16px;">
+              <div style="font-size: 11px; text-transform: uppercase; color: #f59e0b; font-weight: 700;">Em Versão Legada / Obsoleta</div>
+              <div id="invKpiLegacyCount" style="font-size: 24px; font-weight: 800; color: #f59e0b; margin-top: 4px;">--</div>
+              <div style="font-size: 11px; color: #64748b; margin-top: 2px;">Prontas para atualização via esteira</div>
+            </div>
+
+            <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 8px; padding: 14px 16px;">
+              <div style="font-size: 11px; text-transform: uppercase; color: #ef4444; font-weight: 700;">Não Instalado / Ausente</div>
+              <div id="invKpiNotInstalledCount" style="font-size: 24px; font-weight: 800; color: #ef4444; margin-top: 4px;">--</div>
+              <div style="font-size: 11px; color: #64748b; margin-top: 2px;">Requer provisionamento</div>
+            </div>
+          </div>
+
+          <!-- QUADRO 1: DISTRIBUIÇÃO EXECUTIVA POR VERSÃO (ESTILO MARCIO / REPORT) -->
+          <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px; padding: 16px; margin-bottom: 24px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
+              <div>
+                <h4 style="margin: 0; font-size: 14px; font-weight: 700; color: #f8fafc; display: flex; align-items: center; gap: 8px;">
+                  <span>📊</span> Matriz de Distribuição Oficial de Versões (Resumo Executivo)
+                </h4>
+                <div style="font-size: 12px; color: #94a3b8; margin-top: 2px;">
+                  Visão consolidada em formato de relatório para liderança técnica, diretoria e auditorias de SLA.
+                </div>
+              </div>
+              <span style="font-size: 11px; color: #38bdf8; font-weight: 600;">
+                <i class="fas fa-check-double"></i> Dados 100% calculados sem mocks
+              </span>
+            </div>
+
+            <div style="overflow-x: auto;">
+              <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                <thead>
+                  <tr style="background: rgba(30, 41, 59, 0.8); border-bottom: 2px solid rgba(56, 189, 248, 0.4); text-transform: uppercase; font-size: 11px; color: #94a3b8;">
+                    <th style="padding: 10px 14px; text-align: left;">Versão</th>
+                    <th style="padding: 10px 14px; text-align: right;">Quantidade de Servidores</th>
+                    <th style="padding: 10px 14px; text-align: right;">Percentual (%)</th>
+                    <th style="padding: 10px 14px; text-align: left;">Proporção Visual</th>
+                    <th style="padding: 10px 14px; text-align: center;">Status de Homologação</th>
+                  </tr>
+                </thead>
+                <tbody id="invExecutiveTableBody">
+                  <tr>
+                    <td colspan="5" style="text-align: center; padding: 25px; color: #94a3b8;">
+                      <i class="fas fa-spinner fa-spin"></i> Carregando inventário executivo...
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- QUADRO 2: LISTAGEM GRANULAR COMPLETA DOS SERVIDORES -->
+          <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px; padding: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
+              <div>
+                <h4 style="margin: 0; font-size: 14px; font-weight: 700; color: #f8fafc; display: flex; align-items: center; gap: 8px;">
+                  <span>🖥️</span> Detalhamento Granular por Máquina (Capture Sites)
+                </h4>
+                <div style="font-size: 12px; color: #94a3b8; margin-top: 2px;">
+                  Localização exata, IPs, versão instalada, versão desejada e telemetria de cada host.
+                </div>
+              </div>
+              <span id="invGranularTotalBadge" style="font-size: 12px; font-weight: 700; color: #38bdf8; background: rgba(56, 189, 248, 0.15); padding: 3px 10px; border-radius: 12px; border: 1px solid rgba(56, 189, 248, 0.3);">
+                -- Máquinas
+              </span>
+            </div>
+
+            <div style="overflow-x: auto; max-height: 520px; overflow-y: auto;">
+              <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                <thead style="position: sticky; top: 0; background: #0f172a; z-index: 2;">
+                  <tr style="border-bottom: 2px solid rgba(148, 163, 184, 0.25); text-transform: uppercase; font-size: 11px; color: #94a3b8;">
+                    <th style="padding: 10px 12px; text-align: left;">País</th>
+                    <th style="padding: 10px 12px; text-align: left;">Praça</th>
+                    <th style="padding: 10px 12px; text-align: left;">Hostname</th>
+                    <th style="padding: 10px 12px; text-align: center;">CS</th>
+                    <th style="padding: 10px 12px; text-align: left;">Serviço</th>
+                    <th style="padding: 10px 12px; text-align: center;">Versão Instalada</th>
+                    <th style="padding: 10px 12px; text-align: center;">Versão Alvo</th>
+                    <th style="padding: 10px 12px; text-align: center;">Status Serviço</th>
+                    <th style="padding: 10px 12px; text-align: center;">Governança</th>
+                    <th style="padding: 10px 12px; text-align: center;">Ações</th>
+                  </tr>
+                </thead>
+                <tbody id="invGranularTableBody">
+                  <tr>
+                    <td colspan="10" style="text-align: center; padding: 25px; color: #94a3b8;">
+                      <i class="fas fa-spinner fa-spin"></i> Carregando lista detalhada...
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
 
         </div>
@@ -18405,11 +18623,10 @@
 
 
 
-  <script src="/static/js/app.js?v=3.9.112"></script>
-
-  <script src="/static/js/ai_insights.js?v=3.9.112"></script>
-
-  <script src="/static/js/fleet_ops.js?v=3.9.113"></script>
+  <script src="/static/js/app.js?v=3.9.114"></script>
+  <script src="/static/js/ai_insights.js?v=3.9.114"></script>
+  <script src="/static/js/fleet_ops.js?v=3.9.114"></script>
+  <script src="/static/js/fleet_inventory.js?v=3.9.114"></script>
 
   <script src="/static/js/remote_commands.js?v=3.9.112"></script>
 

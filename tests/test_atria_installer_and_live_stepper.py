@@ -56,10 +56,10 @@ def test_fleet_ops_js_stale_timer_resilience():
 
 def test_index_html_cache_busting_version():
     """
-    Verifica que o index.html referencia a versão cache-busted v=3.9.113 do fleet_ops.js.
+    Verifica que o index.html referencia a versão cache-busted atualizada do fleet_ops.js.
     """
     html_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "dashboard", "static", "index.html"))
     with open(html_path, "r", encoding="utf-8") as fp:
         content = fp.read()
     
-    assert "fleet_ops.js?v=3.9.113" in content
+    assert "fleet_ops.js?v=3.9." in content

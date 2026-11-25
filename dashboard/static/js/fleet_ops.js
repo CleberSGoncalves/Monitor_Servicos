@@ -2325,17 +2325,21 @@ function switchFleetSubtab(subtab) {
     const btnGov = document.getElementById("btn-fleet-subtab-governance");
     const btnRepo = document.getElementById("btn-fleet-subtab-repository");
     const btnCSConfig = document.getElementById("btn-fleet-subtab-csconfig");
+    const btnInv = document.getElementById("btn-fleet-subtab-inventory");
     const containerGov = document.getElementById("fleetSubtabGovernanceContainer");
     const containerRepo = document.getElementById("fleetSubtabRepositoryContainer");
     const containerCSConfig = document.getElementById("fleetSubtabCSConfigContainer");
+    const containerInv = document.getElementById("fleetSubtabInventoryContainer");
 
     if (btnGov) btnGov.classList.toggle("active", subtab === "governance");
     if (btnRepo) btnRepo.classList.toggle("active", subtab === "repository");
     if (btnCSConfig) btnCSConfig.classList.toggle("active", subtab === "csconfig");
+    if (btnInv) btnInv.classList.toggle("active", subtab === "inventory");
 
     if (containerGov) containerGov.style.display = (subtab === "governance") ? "block" : "none";
     if (containerRepo) containerRepo.style.display = (subtab === "repository") ? "block" : "none";
     if (containerCSConfig) containerCSConfig.style.display = (subtab === "csconfig") ? "block" : "none";
+    if (containerInv) containerInv.style.display = (subtab === "inventory") ? "block" : "none";
 
     if (subtab === "repository") {
         loadPackageRepository();
@@ -2343,6 +2347,8 @@ function switchFleetSubtab(subtab) {
         loadFleetGovernanceSummary();
     } else if (subtab === "csconfig") {
         populateSubtabCSSelectors();
+    } else if (subtab === "inventory") {
+        if (typeof loadFleetInventory === "function") loadFleetInventory();
     }
 }
 

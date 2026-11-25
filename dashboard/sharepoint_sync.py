@@ -1,4 +1,5 @@
 from signals_analysis import record_channels_telemetry_snapshot
+from country_utils import infer_country_from_record, normalize_country_name
 
 import time
 
@@ -215,6 +216,14 @@ def sanitize_and_recalculate_cache(force_refresh_time: bool = False, save_to_dis
             _cached_data["services"] = services
         except Exception:
             pass
+
+        # Higienização e Enriquecimento Multi-País (LATAM & Global)
+        for s in services:
+            if not s.get("pais"):
+                s["pais"] = infer_country_from_record(s)
+        for c in channels:
+            if not c.get("pais"):
+                c["pais"] = infer_country_from_record(c)
 
         # Higienização de Falsos Alertas de CPU Congelada do SharePoint (>= 90% em nós CS2/CS3)
         for s in services:
@@ -696,6 +705,8 @@ def sync_fleet_data(force_sharepoint: bool = False):
                 "id": it.get("id"),
 
                 "title": f.get("Title", "Brasil"),
+
+                "pais": infer_country_from_record(f),
 
                 "hostname": f.get("Hostname", "N/A"),
 

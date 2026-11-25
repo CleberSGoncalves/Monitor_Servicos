@@ -1107,30 +1107,58 @@ function setupTabNavigation() {
 
 
 
+function getCountryFlag(country) {
+    if (!country) return "🌐";
+    const c = String(country).toLowerCase().trim();
+    if (c.includes("brasil") || c === "br") return "🇧🇷";
+    if (c.includes("argentina") || c === "ar") return "🇦🇷";
+    if (c.includes("chile") || c === "cl") return "🇨🇱";
+    if (c.includes("colomb") || c === "co") return "🇨🇴";
+    if (c.includes("costa rica") || c === "cr") return "🇨🇷";
+    if (c.includes("panam") || c === "pa") return "🇵🇦";
+    if (c.includes("mexic") || c === "mx") return "🇲🇽";
+    if (c.includes("urugu") || c === "uy") return "🇺🇾";
+    if (c.includes("paragu") || c === "py") return "🇵🇾";
+    if (c.includes("peru") || c === "pe") return "🇵🇪";
+    if (c.includes("central")) return "🌎";
+    return "🌐";
+}
+window.getCountryFlag = getCountryFlag;
+
+function updateCityDropdownForCountry(country) {
+    const filterCity = document.getElementById("filterCity");
+    if (!filterCity || !window.FleetCatalog) return;
+    const cur = filterCity.value;
+    let pracas = window.FleetCatalog.pracas || [];
+    if (country && country !== "all" && window.FleetCatalog.pracas_by_pais && window.FleetCatalog.pracas_by_pais[country]) {
+        pracas = window.FleetCatalog.pracas_by_pais[country];
+    }
+    filterCity.innerHTML = `<option value="">🏙️ Todas as Praças / Cidades (${pracas.length})</option>` +
+        pracas.map(p => `<option value="${p}" ${p.toLowerCase() === cur.toLowerCase() ? 'selected' : ''}>${p}</option>`).join("");
+}
+window.updateCityDropdownForCountry = updateCityDropdownForCountry;
+
 function setupFilters() {
-
-
-
     const cityFilter = document.getElementById("filterCity");
-
-
-
     const statusFilter = document.getElementById("filterStatus");
+    const countryFilter = document.getElementById("filterCountry");
 
+    if (countryFilter) {
+        countryFilter.addEventListener("change", () => {
+            updateCityDropdownForCountry(countryFilter.value);
+            loadAllData();
+            if (typeof loadFleetInventory === "function") {
+                const invC = document.getElementById("invFilterCountry");
+                if (invC) invC.value = countryFilter.value || "all";
+                if (document.getElementById("fleetSubtabInventoryContainer")?.style.display !== "none") {
+                    loadFleetInventory();
+                }
+            }
+        });
+    }
 
-
-
-
-
-
-    cityFilter.addEventListener("change", () => loadAllData());
-
-
-
-    statusFilter.addEventListener("change", () => loadAllData());
-
-
-
+    if (cityFilter) cityFilter.addEventListener("change", () => loadAllData());
+    if (statusFilter) statusFilter.addEventListener("change", () => loadAllData());
 }
 
 
@@ -1548,14 +1576,10 @@ async function loadAllData(isSilent = false) {
 
 
 async function loadSummaryKPIs(forceRecalc = false) {
-
-
-
     const refreshParam = forceRecalc ? "&refresh=1" : "";
-
-
-
-    const resp = await fetch(`/api/fleet/summary?_t=${Date.now()}${refreshParam}`, {
+    const countryVal = document.getElementById("filterCountry")?.value || "";
+    const countryParam = countryVal ? `&country=${encodeURIComponent(countryVal)}` : "";
+    const resp = await fetch(`/api/fleet/summary?_t=${Date.now()}${refreshParam}${countryParam}`, {
 
 
 
@@ -2240,13 +2264,9 @@ let allCachedServices = [];
 
 
 async function loadServicesTable() {
-
-
-
-    let url = `/api/fleet/services?_t=${Date.now()}&`;
-
-
-
+    const countryVal = document.getElementById("filterCountry")?.value || "";
+    const countryParam = countryVal ? `country=${encodeURIComponent(countryVal)}&` : "";
+    let url = `/api/fleet/services?_t=${Date.now()}&${countryParam}`;
     const resp = await fetch(url, { cache: "no-store", headers: getAuthToken() ? { "Authorization": `Bearer ${getAuthToken()}` } : {} });
 
 
@@ -2428,29 +2448,49 @@ window.syncFleetCatalog = syncFleetCatalog;
 
 
 function applyFleetCatalogToAllDropdowns(cat) {
-
-
-
     if (!cat || !cat.pracas || cat.pracas.length === 0) return;
 
-
-
     const sortedPracas = cat.pracas;
-
-
-
     const sortedHosts = cat.hosts;
 
+    // 0. Filtro Global de Países (filterCountry) - Suporte dinâmico a novos países (LATAM & Global)
+    const filterCountry = document.getElementById("filterCountry");
+    if (filterCountry && cat.paises && cat.paises.length > 0) {
+        const curCountry = filterCountry.value;
+        let cOpts = `<option value="">🌍 Todos os Países (${cat.paises.length})</option>`;
+        cat.paises.forEach(p => {
+            const flag = typeof getCountryFlag === "function" ? getCountryFlag(p) : "🌐";
+            const isSel = (curCountry && curCountry.toLowerCase() === p.toLowerCase()) || (!curCountry && p.toLowerCase() === "brasil");
+            cOpts += `<option value="${p}" ${isSel ? 'selected' : ''}>${flag} ${p}</option>`;
+        });
+        filterCountry.innerHTML = cOpts;
+    }
 
+    const mosaicCountry = document.getElementById("mosaicFilterCountry");
+    if (mosaicCountry && cat.paises && cat.paises.length > 0) {
+        const curM = mosaicCountry.value;
+        let mOpts = `<option value="all">🌍 Todos os Países (LATAM)</option>`;
+        cat.paises.forEach(p => {
+            const flag = typeof getCountryFlag === "function" ? getCountryFlag(p) : "🌐";
+            const isSel = (curM && curM.toLowerCase() === p.toLowerCase()) || (!curM && p.toLowerCase() === "brasil");
+            mOpts += `<option value="${p}" ${isSel ? 'selected' : ''}>${flag} ${p}</option>`;
+        });
+        mosaicCountry.innerHTML = mOpts;
+    }
 
-
-
-
+    const mapCountry = document.getElementById("mapFilterCountry");
+    if (mapCountry && cat.paises && cat.paises.length > 0) {
+        const curMap = mapCountry.value;
+        let mapOpts = `<option value="all">🌍 Todos os Países (LATAM)</option>`;
+        cat.paises.forEach(p => {
+            const flag = typeof getCountryFlag === "function" ? getCountryFlag(p) : "🌐";
+            const isSel = (curMap && curMap.toLowerCase() === p.toLowerCase()) || (!curMap && p.toLowerCase() === "brasil");
+            mapOpts += `<option value="${p}" ${isSel ? 'selected' : ''}>${flag} ${p}</option>`;
+        });
+        mapCountry.innerHTML = mapOpts;
+    }
 
     // 1. Visão Geral (filterCity)
-
-
-
     const brandSub = document.getElementById("brandSubtitlePracas");
 
 
@@ -3342,8 +3382,10 @@ function setChannelsActiveMeio(meio) {
 window.setChannelsActiveMeio = setChannelsActiveMeio;
 
 async function loadChannelsTable() {
+    const country = document.getElementById("filterCountry")?.value || "";
     const city = document.getElementById("filterCity")?.value || "";
     let url = `/api/fleet/channels?`;
+    if (country) url += `country=${encodeURIComponent(country)}&`;
     if (city) url += `city=${encodeURIComponent(city)}&`;
 
     try {

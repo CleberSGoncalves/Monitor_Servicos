@@ -394,14 +394,27 @@ async def create_user(req: UserCreateRequest, user: dict = Depends(get_current_u
 
 # Endpoints de Telemetria e Monitoração da Frota
 @app.get("/api/fleet/summary")
-async def get_summary(refresh: Optional[int] = 0, user: dict = Depends(get_current_user)):
+async def get_summary(country: Optional[str] = None, refresh: Optional[int] = 0, user: dict = Depends(get_current_user)):
     if refresh:
         sanitize_and_recalculate_cache(force_refresh_time=True)
     data = get_cached_data()
+    services = data.get("services", [])
+    channels = data.get("channels", [])
+    from country_utils import infer_country_from_record, normalize_country_name
+    from sharepoint_sync import recalculate_fleet_stats
+    
+    clean_country = normalize_country_name(country, default="") if country and country.lower() not in ["all", "todos", ""] else ""
+    if clean_country:
+        filtered_services = [s for s in services if infer_country_from_record(s).lower() == clean_country.lower()]
+        filtered_channels = [c for c in channels if infer_country_from_record(c).lower() == clean_country.lower()]
+        stats = recalculate_fleet_stats(filtered_services, filtered_channels)
+    else:
+        stats = data.get("stats", {})
+
     return {
-        "stats": data.get("stats", {}),
+        "stats": stats,
         "last_sync": data.get("last_sync"),
-        "recent_outages": data.get("recent_outages", [])[:10]
+        "recent_outages": [c for c in data.get("recent_outages", []) if not clean_country or infer_country_from_record(c).lower() == clean_country.lower()][:10]
     }
 
 
@@ -427,20 +440,26 @@ async def get_services(country: Optional[str] = None, city: Optional[str] = None
 
 @app.get("/api/fleet/catalog")
 async def get_fleet_catalog(user: dict = Depends(get_current_user)):
-    """Retorna catalogo consolidado e ultra-rapido de todas as pracas, hosts e canais da frota."""
+    """Retorna catalogo consolidado e ultra-rapido de todas as pracas, hosts e canais da frota, com suporte multi-país."""
+    from country_utils import infer_country_from_record, get_country_flag
     data = get_cached_data()
     services = data.get("services", [])
     channels = data.get("channels", [])
 
+    paises_set = set()
     pracas_set = set()
+    pracas_by_pais = {}
     hosts_map = {}
     channels_by_praca = {}
     outages_by_praca = set()
 
     for s in services:
+        cntry = infer_country_from_record(s)
+        paises_set.add(cntry)
         p = (s.get("praca") or "").strip()
         if p and p.lower() not in ["n/a", "não informado", "nao informado", "indefinida", "geral"]:
             pracas_set.add(p)
+            pracas_by_pais.setdefault(cntry, set()).add(p)
         h = s.get("hostname") or s.get("host")
         if h and h not in hosts_map:
             hosts_map[h] = {
@@ -448,13 +467,18 @@ async def get_fleet_catalog(user: dict = Depends(get_current_user)):
                 "praca": p or "N/A",
                 "cs": int(float(s.get("cs", 1) or 1)),
                 "ip": s.get("ip") or s.get("ip_local") or "",
-                "status": s.get("status_servico", "Desconhecido")
+                "status": s.get("status_servico", "Desconhecido"),
+                "pais": cntry,
+                "pais_flag": get_country_flag(cntry)
             }
 
     for c in channels:
+        c_cntry = infer_country_from_record(c)
+        paises_set.add(c_cntry)
         p = (c.get("cidade") or c.get("praca") or "").strip()
         if p and p.lower() not in ["n/a", "não informado", "nao informado"]:
             pracas_set.add(p)
+            pracas_by_pais.setdefault(c_cntry, set()).add(p)
         if c.get("has_outage"):
             outages_by_praca.add(p)
         ch_name = (c.get("canal") or "").strip()
@@ -469,13 +493,18 @@ async def get_fleet_catalog(user: dict = Depends(get_current_user)):
                     "has_outage": bool(c.get("has_outage")),
                     "qualidade": c.get("qualidade_sinal", 0),
                     "forca": c.get("forca_sinal", 0),
-                    "tuner_id": c.get("tuner_id", -1)
+                    "tuner_id": c.get("tuner_id", -1),
+                    "pais": c_cntry
                 })
 
+    sorted_paises = sorted(list(paises_set))
     sorted_pracas = sorted(list(pracas_set), key=lambda x: x.lower())
-    sorted_hosts = sorted(hosts_map.values(), key=lambda x: (x["praca"].lower(), x["hostname"].lower()))
+    sorted_hosts = sorted(hosts_map.values(), key=lambda x: (x.get("pais", "").lower(), x["praca"].lower(), x["hostname"].lower()))
 
     return {
+        "paises": sorted_paises,
+        "paises_detail": [{"name": p, "flag": get_country_flag(p)} for p in sorted_paises],
+        "pracas_by_pais": {k: sorted(list(v)) for k, v in pracas_by_pais.items()},
         "pracas": sorted_pracas,
         "hosts": sorted_hosts,
         "channels_by_praca": channels_by_praca,
@@ -483,6 +512,58 @@ async def get_fleet_catalog(user: dict = Depends(get_current_user)):
         "total_pracas": len(sorted_pracas),
         "total_hosts": len(sorted_hosts)
     }
+
+
+# =========================================================================
+# ENDPOINTS OFICIAIS DE INVENTÁRIO DE VERSÕES & EXPORTAÇÃO EXCEL (.XLSX)
+# =========================================================================
+@app.get("/api/fleet/inventory")
+async def api_get_fleet_inventory(
+    service_name: Optional[str] = "Atria Capture",
+    country: Optional[str] = None,
+    status_filter: Optional[str] = None,
+    search: Optional[str] = None,
+    user: dict = Depends(get_current_user)
+):
+    """Retorna a matriz de inventário de versões de serviços (resumo executivo e lista granular)."""
+    from fleet_inventory import get_fleet_inventory_data
+    return get_fleet_inventory_data(
+        service_name=service_name,
+        country=country,
+        status_filter=status_filter,
+        search=search
+    )
+
+
+@app.get("/api/fleet/inventory/export-excel")
+async def api_export_fleet_inventory_excel(
+    service_name: Optional[str] = "Atria Capture",
+    country: Optional[str] = None,
+    status_filter: Optional[str] = None,
+    search: Optional[str] = None,
+    user: dict = Depends(get_current_user)
+):
+    """Gera e faz o download de planilha Excel (.xlsx) altamente formatada com 2 abas (Resumo + Detalhado)."""
+    from fleet_inventory import generate_fleet_inventory_excel
+    from fastapi.responses import Response
+    xlsx_bytes = generate_fleet_inventory_excel(
+        service_name=service_name,
+        country=country,
+        status_filter=status_filter,
+        search=search
+    )
+    clean_svc = (service_name or "Geral").replace(" ", "_").replace(".", "_")
+    cntry_tag = f"_{(country or 'LATAM').replace(' ', '_')}" if country else ""
+    ts = datetime.now().strftime("%Y%m%d_%H%M")
+    filename = f"Inventario_Versoes_{clean_svc}{cntry_tag}_{ts}.xlsx"
+    return Response(
+        content=xlsx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Access-Control-Expose-Headers": "Content-Disposition"
+        }
+    )
 
 
 @app.get("/api/fleet/host-service-ids/{hostname}")
@@ -1481,14 +1562,18 @@ async def get_fma_live_endpoint(
 
 
 @app.get("/api/fleet/channels")
-async def get_channels(city: Optional[str] = None, outage_only: bool = False, user: dict = Depends(get_current_user)):
+async def get_channels(country: Optional[str] = None, city: Optional[str] = None, outage_only: bool = False, user: dict = Depends(get_current_user)):
+    from country_utils import infer_country_from_record, normalize_country_name
     data = get_cached_data()
     channels = data.get("channels", [])
     
+    clean_country = normalize_country_name(country, default="") if country and country.lower() not in ["all", "todos", ""] else ""
+    if clean_country:
+        channels = [c for c in channels if infer_country_from_record(c).lower() == clean_country.lower()]
     if city:
-        channels = [c for c in channels if city.lower() in c["cidade"].lower()]
+        channels = [c for c in channels if city.lower() in str(c.get("cidade") or c.get("praca") or "").lower()]
     if outage_only:
-        channels = [c for c in channels if c["has_outage"]]
+        channels = [c for c in channels if c.get("has_outage")]
         
     return channels
 
