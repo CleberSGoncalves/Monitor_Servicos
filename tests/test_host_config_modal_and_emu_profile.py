@@ -15,7 +15,7 @@ from fleet_actions import (
 
 
 def test_emu_profile_hardening_snippet_generation():
-    """Valida a geração do snippet PowerShell para 'emu_mdna' (legado) e 'EMU MediaDNA 1min' (FastMatching)."""
+    """Valida a geração do snippet PowerShell para 'emu_mdna' (legado) e 'emu_mdna_1min' (FastMatching)."""
     snippet_leg = build_emu_profile_hardening_snippet(r"D:\MediaDNA_V2\Applications\DTVCapture64", target_profile="emu_mdna")
     assert "EMU_HARDENING" in snippet_leg
     assert "emu_mdna" in snippet_leg
@@ -23,16 +23,15 @@ def test_emu_profile_hardening_snippet_generation():
 
     snippet_fast = build_emu_profile_hardening_snippet(r"D:\MediaDNA_V2\Applications\DTVCapture64", target_profile="emu_mdna_1min")
     assert "EMU_HARDENING" in snippet_fast
-    assert "EMU MediaDNA 1min" in snippet_fast
+    assert "emu_mdna_1min" in snippet_fast
     assert "Multiplexes.xml" in snippet_fast
-    assert "EMU_IsRecording" in snippet_fast
     assert "EMU_ProfileName" in snippet_fast
 
 
 def test_atria_update_script_with_migration_places_hardening_before_interactive_start():
     """
     Valida que ao atualizar Atria com chave migrate_to_fastmatching=True:
-    1. A blindagem de EMU Profile e remoção de legados ocorre ANTES do Start_Atria_Interactive.
+    1. A blindagem de EMU Profile (emu_mdna_1min) e remoção de legados ocorre ANTES do Start_Atria_Interactive.
     2. O Atria sobe já lendo a configuração corrigida.
     """
     raw_script = build_service_raw_script(
@@ -40,12 +39,12 @@ def test_atria_update_script_with_migration_places_hardening_before_interactive_
         target_version="2.0.0.2",
         migrate_to_fastmatching=True
     )
-    assert "EMU MediaDNA 1min" in raw_script
+    assert "emu_mdna_1min" in raw_script
     assert "DNA.DetectionSVC" in raw_script
     assert "FastMatchingSvc" in raw_script
     assert "FileCleaner" in raw_script
 
-    idx_emu = raw_script.find("EMU MediaDNA 1min")
+    idx_emu = raw_script.find("emu_mdna_1min")
     idx_start_atria = raw_script.find("Start_Atria_Interactive")
     assert idx_emu != -1
     assert idx_start_atria != -1
@@ -269,9 +268,9 @@ def test_super_modal_atria_muxes_channels_and_app_options():
 
 def test_uberlandia_emu_profile_hardening_scenario():
     """
-    Testa o cenário forense de Uberlândia onde o perfil anterior era 'EMU MDNA':
-    O snippet gerado substitui de forma infalível o perfil legado para 'EMU MediaDNA 1min'
-    mesmo que a migração não esteja ativada no update do Atria.
+    Testa o cenário onde migrate_to_fastmatching=False:
+    O snippet gerado mantém o perfil 'emu_mdna' e desativa FastMatching/FileCleaner,
+    preservando Detection e Tracking como preconizado pelo usuário.
     """
     script_atria = build_service_raw_script(
         service_name="Atria Capture",
@@ -280,8 +279,8 @@ def test_uberlandia_emu_profile_hardening_scenario():
     )
     # A blindagem de perfil EMU DEVE estar presente incondicionalmente no Atria Capture
     assert "EMU_HARDENING" in script_atria
-    assert "EMU MediaDNA 1min" in script_atria
+    assert "emu_mdna" in script_atria
     assert "Multiplexes.xml" in script_atria
     assert "Start_Atria_Interactive" in script_atria
     # Valida ordem: blindagem antes de iniciar Atria
-    assert script_atria.find("EMU MediaDNA 1min") < script_atria.find("Start_Atria_Interactive")
+    assert script_atria.find("emu_mdna") < script_atria.find("Start_Atria_Interactive")

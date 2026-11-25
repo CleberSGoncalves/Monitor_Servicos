@@ -278,74 +278,68 @@ def build_emu_profile_hardening_snippet(target_dir: str = r"D:\MediaDNA_V2\Appli
     (na pasta do Atria, em Config\\ e na pasta Data\\Config), os canais com gravação EMU ativa
     ou configurada utilizem o perfil correto:
     - Praças legadas (Detection + Tracking): 'emu_mdna'
-    - Praças modernas (FastMatching + FileCleaner): 'EMU MediaDNA 1min'
+    - Praças modernas (FastMatching + FileCleaner): 'emu_mdna_1min'
+    Aplica substituição global via Regex e DOM defensivo.
     """
-    prof_label = "EMU MediaDNA 1min" if "1min" in target_profile.lower() else "emu_mdna"
+    prof_label = "emu_mdna_1min" if "1min" in target_profile.lower() else "emu_mdna"
     return (
         "# ------------------------------------------------------------------\n"
         f"# BLINDAGEM DE PERFIL EMU: EMU_ProfileName -> '{prof_label}'\n"
         "# ------------------------------------------------------------------\n"
-        f"Write-Host '[EMU_HARDENING] Validando perfil de canais com gravacao EMU -> {prof_label} em Multiplexes.xml...';\n"
+        f"Write-Host '[EMU_HARDENING] Aplicando perfil de gravacao EMU -> {prof_label} em Multiplexes.xml...';\n"
         f"$muxCandidates = @('{target_dir}\\Config\\Multiplexes.xml', '{target_dir}\\Multiplexes.xml', 'D:\\MediaDNA_V2\\Applications\\DTVCapture64\\Config\\Multiplexes.xml', 'D:\\MediaDNA_V2\\Applications\\DTVCapture64\\Multiplexes.xml', 'D:\\MediaDNA_V2\\Data\\Config\\Multiplexes.xml', 'C:\\DTV\\DTVCapture\\Config\\Multiplexes.xml', 'C:\\DTV\\DTVCapture\\Multiplexes.xml', 'C:\\MediaDNA_V2\\Applications\\DTVCapture64\\Config\\Multiplexes.xml', 'C:\\MediaDNA_V2\\Applications\\DTVCapture64\\Multiplexes.xml', 'D:\\MediaDNA_V2\\Applications\\DTVCapture\\Config\\Multiplexes.xml');\n"
         "$muxFiles = $muxCandidates | Where-Object { Test-Path $_ } | Select-Object -Unique;\n"
         "foreach ($mPath in $muxFiles) {\n"
         "    try {\n"
         "        $enc1252 = try { [System.Text.Encoding]::GetEncoding(1252) } catch { [System.Text.Encoding]::Default };\n"
         "        $rawXml = [System.IO.File]::ReadAllText($mPath, $enc1252);\n"
-        "        $cleanXml = [System.Text.RegularExpressions.Regex]::Replace($rawXml, '[\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f]', '');\n"
+        "        # 1. Substituicao global direta via Regex em todas as tags de perfil EMU (garantia absoluta)\n"
+        f"        $updatedXml = [regex]::Replace($rawXml, '(?i)<EMU_ProfileName>[^<]*</EMU_ProfileName>', '<EMU_ProfileName>{prof_label}</EMU_ProfileName>');\n"
+        f"        $updatedXml = [regex]::Replace($updatedXml, '(?i)<EMUProfileName>[^<]*</EMUProfileName>', '<EMUProfileName>{prof_label}</EMUProfileName>');\n"
+        "        # 2. Parse DOM para canais que ainda nao tenham a tag EMU_ProfileName criada\n"
+        "        $cleanXml = [System.Text.RegularExpressions.Regex]::Replace($updatedXml, '[\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f]', '');\n"
         "        [xml]$doc = New-Object System.Xml.XmlDocument;\n"
         "        $doc.LoadXml($cleanXml);\n"
-        "        $changed = $false;\n"
         "        $progNodes = $doc.SelectNodes('//Programs');\n"
         "        if (-not $progNodes -or $progNodes.Count -eq 0) { $progNodes = $doc.SelectNodes('//*[local-name()=\"Programs\"]') };\n"
         "        if ($progNodes -and $progNodes.Count -gt 0) {\n"
         "            foreach ($p in $progNodes) {\n"
-        "                $pName = if ($p.SelectSingleNode('Name')) { $p.SelectSingleNode('Name').InnerText } else { 'Canal' };\n"
         "                $profNode = $p.SelectSingleNode('EMU_ProfileName');\n"
-        "                $emuRec = $p.SelectSingleNode('EMU_IsRecording');\n"
-        "                if (-not $emuRec) { $emuRec = $p.SelectSingleNode('Emu_IsRecording') };\n"
-        "                $isEmuActive = ($emuRec -and ($emuRec.InnerText.Trim() -match '^(?i:true|1)$')) -or ($profNode -and [string]::IsNullOrWhiteSpace($profNode.InnerText) -eq $false);\n"
-        "                if ($isEmuActive) {\n"
-        "                    if (-not $profNode) {\n"
-        "                        $profNode = $doc.CreateElement('EMU_ProfileName');\n"
-        "                        $p.AppendChild($profNode) | Out-Null;\n"
-        "                    };\n"
-        f"                    if ($profNode.InnerText -ne '{prof_label}') {{\n"
-        "                        $oldP = $profNode.InnerText;\n"
-        f"                        $profNode.InnerText = '{prof_label}';\n"
-        "                        $changed = $true;\n"
-        f"                        Write-Host \"[EMU_HARDENING] Canal '$pName' perfil ajustado de '$oldP' para '{prof_label}' em $mPath\";\n"
-        "                    };\n"
-        "                    $destNode = $p.SelectSingleNode('EMU_DestPath');\n"
-        "                    if (-not $destNode) {\n"
-        "                        $destNode = $doc.CreateElement('EMU_DestPath');\n"
-        "                        $p.AppendChild($destNode) | Out-Null;\n"
-        "                    };\n"
-        "                    if (-not $destNode.InnerText) { $destNode.InnerText = 'D:\\MediaDNA_V2\\Data\\emu'; $changed = $true; };\n"
+        "                if (-not $profNode) {\n"
+        f"                    $profNode = $doc.CreateElement('EMU_ProfileName');\n"
+        f"                    $profNode.InnerText = '{prof_label}';\n"
+        "                    $p.AppendChild($profNode) | Out-Null;\n"
+        "                } else {\n"
+        f"                    $profNode.InnerText = '{prof_label}';\n"
+        "                };\n"
+        "                $destNode = $p.SelectSingleNode('EMU_DestPath');\n"
+        "                if (-not $destNode) {\n"
+        "                    $destNode = $doc.CreateElement('EMU_DestPath');\n"
+        "                    $destNode.InnerText = 'D:\\MediaDNA_V2\\Data\\emu';\n"
+        "                    $p.AppendChild($destNode) | Out-Null;\n"
+        "                } elseif (-not $destNode.InnerText) {\n"
+        "                    $destNode.InnerText = 'D:\\MediaDNA_V2\\Data\\emu';\n"
         "                };\n"
         "            };\n"
         "        };\n"
-        "        if ($changed) {\n"
-        "            Copy-Item -Path $mPath -Destination \"$mPath.bak\" -Force -ErrorAction SilentlyContinue;\n"
-        "            $settings = New-Object System.Xml.XmlWriterSettings;\n"
-        "            $settings.Encoding = $enc1252;\n"
-        "            $settings.Indent = $true;\n"
-        "            $w = [System.Xml.XmlWriter]::Create($mPath, $settings);\n"
-        "            $doc.Save($w);\n"
-        "            $w.Dispose();\n"
-        "            Write-Host \"[EMU_HARDENING] Multiplexes.xml salvo e blindado com sucesso (DOM): $mPath\";\n"
-        "        } else {\n"
-        f"            Write-Host \"[EMU_HARDENING] Todos os canais com EMU ativo ja possuem perfil '{prof_label}' em $mPath\";\n"
-        "        };\n"
+        "        Copy-Item -Path $mPath -Destination \"$mPath.bak\" -Force -ErrorAction SilentlyContinue;\n"
+        "        $settings = New-Object System.Xml.XmlWriterSettings;\n"
+        "        $settings.Encoding = $enc1252;\n"
+        "        $settings.Indent = $true;\n"
+        "        $w = [System.Xml.XmlWriter]::Create($mPath, $settings);\n"
+        "        $doc.Save($w);\n"
+        "        $w.Dispose();\n"
+        f"        Write-Host \"[EMU_HARDENING] Multiplexes.xml salvo e blindado com sucesso (perfil '{prof_label}'): $mPath\";\n"
         "    } catch {\n"
-        "        Write-Host ('[AVISO] Parse XML falhou em ' + $mPath + ': ' + $_.Exception.Message + '. Tentando Regex defensivo...');\n"
+        f"        Write-Host ('[AVISO] Parse XML falhou em ' + $mPath + ': ' + $_.Exception.Message + '. Forcando substituicao Regex direta...');\n"
         "        try {\n"
         "            $enc1252 = try { [System.Text.Encoding]::GetEncoding(1252) } catch { [System.Text.Encoding]::Default };\n"
         "            $rawXml = [System.IO.File]::ReadAllText($mPath, $enc1252);\n"
         f"            $newXml = [regex]::Replace($rawXml, '(?i)<EMU_ProfileName>[^<]*</EMU_ProfileName>', '<EMU_ProfileName>{prof_label}</EMU_ProfileName>');\n"
+        f"            $newXml = [regex]::Replace($newXml, '(?i)<EMUProfileName>[^<]*</EMUProfileName>', '<EMUProfileName>{prof_label}</EMUProfileName>');\n"
         "            Copy-Item -Path $mPath -Destination \"$mPath.bak\" -Force -ErrorAction SilentlyContinue;\n"
         "            [System.IO.File]::WriteAllText($mPath, $newXml, $enc1252);\n"
-        "            Write-Host \"[EMU_HARDENING] Multiplexes.xml blindado via Regex defensiva no catch: $mPath\";\n"
+        f"            Write-Host \"[EMU_HARDENING] Multiplexes.xml blindado via Regex defensiva: $mPath\";\n"
         "        } catch {\n"
         "            Write-Host ('[ERRO] Contingencia Regex falhou em ' + $mPath + ': ' + $_.Exception.Message);\n"
         "        };\n"
@@ -356,34 +350,40 @@ def build_emu_profile_hardening_snippet(target_dir: str = r"D:\MediaDNA_V2\Appli
 
 def build_fastmatching_cleaner_migration_snippet(target_dir: str = r"D:\MediaDNA_V2\Applications\DTVCapture64") -> str:
     """
-    Gera o snippet PowerShell para migração definitiva de stack:
-    1. Desinstala e encerra DNA.DetectionSVC e DNA.TrackingSVC (.NET legados)
+    Gera o snippet PowerShell para migração definitiva de stack (quando migrate_to_fastmatching == True):
+    1. Desinstala / desativa e encerra DNA.DetectionSVC e DNA.TrackingSVC (.NET legados)
     2. Configura FastMatchingSvc como Automático e inicia
     3. Configura FileCleaner como Automático e inicia
-    4. Aplica blindagem no Multiplexes.xml (<EMU_ProfileName>EMU MediaDNA 1min</EMU_ProfileName>)
+    4. Aplica blindagem no Multiplexes.xml (<EMU_ProfileName>emu_mdna_1min</EMU_ProfileName>)
     """
     emu_snippet = build_emu_profile_hardening_snippet(target_dir, target_profile="emu_mdna_1min")
     return (
         "# ------------------------------------------------------------------\n"
         "# MIGRACAO DE STACK: Desinstalacao de DNA.DetectionSVC / TrackingSVC e Ativacao de FastMatching + FileCleaner\n"
         "# ------------------------------------------------------------------\n"
-        "Write-Host '[MIGRACAO] Chave ativada: Desinstalando servicos legados (.NET) e ativando FastMatching + FileCleaner...';\n"
-        "# 1. Parada e desinstalacao de DNA.DetectionSVC\n"
+        "Write-Host '[MIGRACAO] Chave ativada: Desinstalando/desativando servicos legados (.NET) e ativando FastMatching + FileCleaner...';\n"
+        "# 1. Parada forçada e desativação de DNA.DetectionSVC\n"
+        "cmd.exe /c \"taskkill /f /im DNA.DetectionSVC.exe >nul 2>&1\";\n"
         "Stop-Service -Name DNA.DetectionSVC -Force -ErrorAction SilentlyContinue;\n"
         "sc.exe stop DNA.DetectionSVC 2>&1 | Out-Null;\n"
         "sc.exe config DNA.DetectionSVC start= disabled 2>&1 | Out-Null;\n"
-        "$detUn = 'D:\\MediaDNA_V2\\Applications\\DNA.DetectionSVC\\DNA.DetectionSVC.exe';\n"
-        "if (Test-Path $detUn) { Start-Process $detUn -ArgumentList '/uninstall' -Wait -ErrorAction SilentlyContinue };\n"
+        "Set-Service -Name DNA.DetectionSVC -StartupType Disabled -ErrorAction SilentlyContinue;\n"
+        "$detPaths = @('D:\\MediaDNA_V2\\Applications\\DNA.DetectionSVC\\DNA.DetectionSVC.exe', 'C:\\MediaDNA_V2\\Applications\\DNA.DetectionSVC\\DNA.DetectionSVC.exe');\n"
+        "$detUn = $detPaths | Where-Object { Test-Path $_ } | Select-Object -First 1;\n"
+        "if ($detUn) { Start-Process $detUn -ArgumentList '/uninstall' -Wait -ErrorAction SilentlyContinue };\n"
         "sc.exe delete DNA.DetectionSVC 2>&1 | Out-Null;\n"
-        "# 2. Parada e desinstalacao de DNA.TrackingSVC\n"
+        "# 2. Parada forçada e desativação de DNA.TrackingSVC\n"
+        "cmd.exe /c \"taskkill /f /im DNA.TrackingSVC.exe >nul 2>&1\";\n"
         "Stop-Service -Name DNA.TrackingSVC -Force -ErrorAction SilentlyContinue;\n"
         "sc.exe stop DNA.TrackingSVC 2>&1 | Out-Null;\n"
         "sc.exe config DNA.TrackingSVC start= disabled 2>&1 | Out-Null;\n"
-        "$trkUn = 'D:\\MediaDNA_V2\\Applications\\DNA.TrackingSVC\\DNA.TrackingSVC.exe';\n"
-        "if (Test-Path $trkUn) { Start-Process $trkUn -ArgumentList '/uninstall' -Wait -ErrorAction SilentlyContinue };\n"
+        "Set-Service -Name DNA.TrackingSVC -StartupType Disabled -ErrorAction SilentlyContinue;\n"
+        "$trkPaths = @('D:\\MediaDNA_V2\\Applications\\DNA.TrackingSVC\\DNA.TrackingSVC.exe', 'C:\\MediaDNA_V2\\Applications\\DNA.TrackingSVC\\DNA.TrackingSVC.exe');\n"
+        "$trkUn = $trkPaths | Where-Object { Test-Path $_ } | Select-Object -First 1;\n"
+        "if ($trkUn) { Start-Process $trkUn -ArgumentList '/uninstall' -Wait -ErrorAction SilentlyContinue };\n"
         "sc.exe delete DNA.TrackingSVC 2>&1 | Out-Null;\n"
         "# 3. Configuracao e inicializacao do FastMatchingSvc como Automatico\n"
-        f"$fmaCandidates = @(\"{target_dir}\\FastMatchingSvc\\FastMatchingSvc.exe\", \"{target_dir}\\FastMachingSvc\\FastMatchingSvc.exe\", 'D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMatchingSvc\\FastMatchingSvc.exe');\n"
+        f"$fmaCandidates = @(\"{target_dir}\\FastMatchingSvc\\FastMatchingSvc.exe\", \"{target_dir}\\FastMachingSvc\\FastMatchingSvc.exe\", 'D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMatchingSvc\\FastMatchingSvc.exe', 'C:\\DTV\\DTVCapture\\FastMatchingSvc\\FastMatchingSvc.exe');\n"
         "$fmaExe = $fmaCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1;\n"
         "if ($fmaExe) {\n"
         "    sc.exe config FastMatchingSvc binPath= `\"$fmaExe`\" start= auto 2>&1 | Out-Null;\n"
@@ -411,11 +411,50 @@ def build_fastmatching_cleaner_migration_snippet(target_dir: str = r"D:\MediaDNA
         "        $cDir = Split-Path $foundCleaner -Parent;\n"
         "        Start-Process $foundCleaner -ArgumentList '/install' -WorkingDirectory $cDir -Wait -ErrorAction SilentlyContinue;\n"
         "        sc.exe create FileCleaner binPath= `\"$foundCleaner`\" start= auto 2>&1 | Out-Null;\n"
+        "        sc.exe config FileCleaner start= auto 2>&1 | Out-Null;\n"
         "        Start-Service -Name FileCleaner -ErrorAction SilentlyContinue;\n"
         "    };\n"
         "};\n"
         f"{emu_snippet}"
-        "Write-Host '[MIGRACAO] Stack concluida: FastMatchingSvc e FileCleaner em Execucao (Automatico), DetectionSVC e TrackingSVC desinstalados, Multiplexes.xml blindado.';\n"
+        "Write-Host '[MIGRACAO] Stack concluida: FastMatchingSvc e FileCleaner em Execucao (Automatico), DetectionSVC e TrackingSVC desinstalados/desativados, Multiplexes.xml perfil emu_mdna_1min.';\n"
+    )
+
+
+def build_legacy_stack_migration_snippet(target_dir: str = r"D:\MediaDNA_V2\Applications\DTVCapture64") -> str:
+    """
+    Gera o snippet PowerShell para manter e blindar a stack legada (quando migrate_to_fastmatching == False):
+    1. Desativa e encerra FastMatchingSvc e FileCleaner
+    2. Configura DNA.DetectionSVC e DNA.TrackingSVC como Automático e inicia
+    3. Aplica blindagem no Multiplexes.xml (<EMU_ProfileName>emu_mdna</EMU_ProfileName>)
+    """
+    emu_snippet = build_emu_profile_hardening_snippet(target_dir, target_profile="emu_mdna")
+    return (
+        "# ------------------------------------------------------------------\n"
+        "# OPERACAO LEGADA: Manter DetectionSVC + TrackingSVC e Desativar FastMatching + FileCleaner\n"
+        "# ------------------------------------------------------------------\n"
+        "Write-Host '[LEGADO] Chave desmarcada: Mantendo servicos legados (.NET) e desativando FastMatching + FileCleaner...';\n"
+        "# 1. Parada forçada e desativação de FastMatchingSvc e FileCleaner\n"
+        "cmd.exe /c \"taskkill /f /im FastMatchingSvc.exe /im FileCleaner.exe >nul 2>&1\";\n"
+        "Stop-Service -Name FastMatchingSvc, FastMachingSvc, FileCleaner, DNA.FileCleanerSVC -Force -ErrorAction SilentlyContinue;\n"
+        "sc.exe stop FastMatchingSvc 2>&1 | Out-Null;\n"
+        "sc.exe stop FastMachingSvc 2>&1 | Out-Null;\n"
+        "sc.exe stop FileCleaner 2>&1 | Out-Null;\n"
+        "sc.exe stop DNA.FileCleanerSVC 2>&1 | Out-Null;\n"
+        "sc.exe config FastMatchingSvc start= disabled 2>&1 | Out-Null;\n"
+        "sc.exe config FastMachingSvc start= disabled 2>&1 | Out-Null;\n"
+        "sc.exe config FileCleaner start= disabled 2>&1 | Out-Null;\n"
+        "sc.exe config DNA.FileCleanerSVC start= disabled 2>&1 | Out-Null;\n"
+        "Set-Service -Name FastMatchingSvc -StartupType Disabled -ErrorAction SilentlyContinue;\n"
+        "Set-Service -Name FileCleaner -StartupType Disabled -ErrorAction SilentlyContinue;\n"
+        "# 2. Reconfiguração e inicialização de DNA.DetectionSVC e DNA.TrackingSVC como Automático\n"
+        "sc.exe config DNA.DetectionSVC start= auto 2>&1 | Out-Null;\n"
+        "sc.exe config DNA.TrackingSVC start= auto 2>&1 | Out-Null;\n"
+        "Set-Service -Name DNA.DetectionSVC -StartupType Automatic -ErrorAction SilentlyContinue;\n"
+        "Set-Service -Name DNA.TrackingSVC -StartupType Automatic -ErrorAction SilentlyContinue;\n"
+        "Start-Service -Name DNA.DetectionSVC -ErrorAction SilentlyContinue;\n"
+        "Start-Service -Name DNA.TrackingSVC -ErrorAction SilentlyContinue;\n"
+        f"{emu_snippet}"
+        "Write-Host '[LEGADO] Stack legada confirmada: DNA.DetectionSVC e TrackingSVC em Execucao (Automatico), FastMatchingSvc e FileCleaner Desativados, Multiplexes.xml perfil emu_mdna.';\n"
     )
 
 
@@ -423,7 +462,8 @@ def build_service_raw_script(service_name: str, target_version: str, migrate_to_
     """
     Retorna o script PowerShell puro (sem encapsulamento de processo) para execução
     direta e elevada pelo agente C# (RemoteCommandExecutor / Fila_Comandos).
-    Se migrate_to_fastmatching=True, desinstala DNA.DetectionSVC / TrackingSVC e ativa FastMatching + FileCleaner.
+    Se migrate_to_fastmatching=True, desinstala DNA.DetectionSVC / TrackingSVC e ativa FastMatching + FileCleaner (perfil emu_mdna_1min).
+    Se migrate_to_fastmatching=False, mantém DNA.DetectionSVC / TrackingSVC ativos e desativa FastMatching + FileCleaner (perfil emu_mdna).
     """
     s_clean = service_name.strip()
     s_lower = s_clean.lower()
@@ -433,7 +473,7 @@ def build_service_raw_script(service_name: str, target_version: str, migrate_to_
     if "atria" in s_lower or "dtvcapture" in s_lower:
         dest_d = r"D:\MediaDNA_V2\Applications\DTVCapture64"
         dest_c = r"C:\DTV\DTVCapture"
-        mig_code = build_fastmatching_cleaner_migration_snippet(dest_d) if migrate_to_fastmatching else build_emu_profile_hardening_snippet(dest_d, target_profile="emu_mdna")
+        mig_code = build_fastmatching_cleaner_migration_snippet(dest_d) if migrate_to_fastmatching else build_legacy_stack_migration_snippet(dest_d)
         return (
             "$ErrorActionPreference = 'Continue';\n"
             "$ProgressPreference = 'SilentlyContinue';\n"
@@ -504,10 +544,9 @@ def build_service_raw_script(service_name: str, target_version: str, migrate_to_
             "    $fmaDir = if (Test-Path \"$targetDir\\FastMatchingSvc\") { \"$targetDir\\FastMatchingSvc\" } else { \"$targetDir\\FastMachingSvc\" };\n"
             "    Copy-Item -Path \"$cfgBackup\\config.json\" -Destination $fmaDir -Force -ErrorAction SilentlyContinue;\n"
             "};\n"
-            "# 10.5 Migracao de Stack e Blindagem do Perfil EMU (EMU MediaDNA 1min) antes da abertura do Atria\n"
+            "# 10.5 Migracao de Stack e Blindagem do Perfil EMU (emu_mdna_1min vs emu_mdna)\n"
             f"{mig_code}"
-            "# 11. Reiniciar FastMatchingSvc oficial\n"
-            "Start-Service -Name FastMatchingSvc -ErrorAction SilentlyContinue;\n"
+            + ("Start-Service -Name FastMatchingSvc -ErrorAction SilentlyContinue;\n" if migrate_to_fastmatching else "# FastMatchingSvc mantido desativado (operacao legada)\n") +
             "# 12. Liberacao da trava do agente local\n"
             "Remove-Item -Path $lockFile -Force -ErrorAction SilentlyContinue;\n"
             "# 13. Reabertura do Atria Capture no ambiente interativo\n"
@@ -525,7 +564,7 @@ def build_service_raw_script(service_name: str, target_version: str, migrate_to_
         dest_d = r"D:\MediaDNA_V2\Applications\DTVCapture64\FastMatchingSvc"
         dest_d_alt = r"D:\MediaDNA_V2\Applications\DTVCapture64\FastMachingSvc"
         dest_c = r"C:\DTV\DTVCapture\FastMatchingSvc"
-        mig_code = build_fastmatching_cleaner_migration_snippet(dest_d) if migrate_to_fastmatching else build_emu_profile_hardening_snippet(dest_d, target_profile="emu_mdna")
+        mig_code = build_fastmatching_cleaner_migration_snippet(dest_d) if migrate_to_fastmatching else build_legacy_stack_migration_snippet(dest_d)
         return (
             "$ErrorActionPreference = 'Continue';\n"
             "$ProgressPreference = 'SilentlyContinue';\n"

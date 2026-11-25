@@ -11,31 +11,52 @@ from app import app, DispatchServiceUpdateRequest
 
 
 def test_build_service_raw_script_without_migration_flag():
-    """Valida que sem a chave ativada o script preserva o comportamento padrao sem desinstalar os servicos legados."""
+    """Valida que sem a chave ativada (legado) o script garante perfil emu_mdna, desativa FastMatching + FileCleaner e ativa Detection + Tracking."""
     script = build_service_raw_script("Atria Capture", "2.0.0.2", migrate_to_fastmatching=False)
     assert "dna_atria_updating.lock" in script
     assert "DigitalTVCapture.exe" in script
-    # Nao deve deletar servicos legados
-    assert "sc.exe delete DNA.DetectionSVC" not in script
-    assert "sc.exe delete DNA.TrackingSVC" not in script
-    assert "FileCleaner" not in script
+    
+    # 1. Deve aplicar perfil emu_mdna (blocos de 15 min)
+    assert "emu_mdna" in script
+    assert "<EMU_ProfileName>emu_mdna</EMU_ProfileName>" in script
+
+    # 2. Deve desativar FastMatchingSvc e FileCleaner
+    assert "sc.exe config FastMatchingSvc start= disabled" in script
+    assert "sc.exe config FileCleaner start= disabled" in script
+    assert "Set-Service -Name FastMatchingSvc -StartupType Disabled" in script
+    assert "Set-Service -Name FileCleaner -StartupType Disabled" in script
+
+    # 3. Deve garantir DNA.DetectionSVC e DNA.TrackingSVC ativos como Automático
+    assert "sc.exe config DNA.DetectionSVC start= auto" in script
+    assert "sc.exe config DNA.TrackingSVC start= auto" in script
+    assert "Start-Service -Name DNA.DetectionSVC" in script
+    assert "Start-Service -Name DNA.TrackingSVC" in script
 
 
 def test_build_service_raw_script_with_migration_flag():
-    """Valida que com a chave ativada o script inclui a desinstalacao do Detection/Tracking e ativacao de FastMatching + FileCleaner."""
+    """Valida que com a chave ativada o script garante perfil emu_mdna_1min, desinstala/desativa Detection/Tracking e ativa FastMatching + FileCleaner."""
     script = build_service_raw_script("Atria Capture", "2.0.0.2", migrate_to_fastmatching=True)
-    # Deve desinstalar DetectionSVC e TrackingSVC
+    
+    # 1. Deve aplicar perfil emu_mdna_1min (blocos de 1 min)
+    assert "emu_mdna_1min" in script
+    assert "<EMU_ProfileName>emu_mdna_1min</EMU_ProfileName>" in script
+
+    # 2. Deve desinstalar/desativar DetectionSVC e TrackingSVC
+    assert "taskkill /f /im DNA.DetectionSVC.exe" in script
+    assert "taskkill /f /im DNA.TrackingSVC.exe" in script
     assert "sc.exe delete DNA.DetectionSVC" in script
     assert "sc.exe delete DNA.TrackingSVC" in script
     assert "Stop-Service -Name DNA.DetectionSVC" in script
     assert "Stop-Service -Name DNA.TrackingSVC" in script
+    assert "Set-Service -Name DNA.DetectionSVC -StartupType Disabled" in script
+    assert "Set-Service -Name DNA.TrackingSVC -StartupType Disabled" in script
 
-    # Deve ativar FastMatchingSvc como Automatico e iniciar
+    # 3. Deve ativar FastMatchingSvc como Automatico e iniciar
     assert "FastMatchingSvc" in script
     assert "Set-Service -Name FastMatchingSvc -StartupType Automatic" in script
     assert "Start-Service -Name FastMatchingSvc" in script
 
-    # Deve ativar FileCleaner como Automatico e iniciar
+    # 4. Deve ativar FileCleaner como Automatico e iniciar
     assert "FileCleaner" in script
     assert "Set-Service -Name $cleanerSvc.Name -StartupType Automatic" in script
     assert "Start-Service -Name FileCleaner" in script

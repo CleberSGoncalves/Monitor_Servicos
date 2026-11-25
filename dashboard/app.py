@@ -2022,13 +2022,55 @@ async def dispatch_governance_update_endpoint(
         c_data = get_cached_data()
         for s in c_data.get("services", []):
             h_curr = str(s.get("hostname") or "").strip().upper()
-            if h_curr in dispatched_set and (
-                s.get("nome_servico", "").strip().lower() == req.service_name.strip().lower()
-                or req.service_name.strip().lower() in s.get("nome_servico", "").strip().lower()
-            ):
-                s["versao_desejada"] = target_v
-                s["acao_solicitada"] = "Atualizar"
-                s["status_atualizacao"] = "Em Progresso"
+            if h_curr in dispatched_set:
+                s_name_low = str(s.get("nome_servico", "")).strip().lower()
+                req_s_low = req.service_name.strip().lower()
+
+                # Serviço alvo da atualização (ex: Atria Capture)
+                if s_name_low == req_s_low or req_s_low in s_name_low:
+                    s["versao_desejada"] = target_v
+                    s["acao_solicitada"] = "Atualizar"
+                    s["status_atualizacao"] = "Em Progresso"
+
+                # Alinhamento automático da stack de detecção (CS01 apenas)
+                cs_num = host_cs_map.get(h_curr, 1)
+                is_primary_cs01 = (cs_num == 1) and not any(k in h_curr for k in ["-CS2", "-CS02", "-CS3", "-CS03", "-DT02", "-DT2", "-DT03", "-DT3"])
+                if is_primary_cs01 and ("atria" in req_s_low or "dtvcapture" in req_s_low or "fastmatch" in req_s_low):
+                    if req.migrate_to_fastmatching:
+                        # Stack Moderna ativada
+                        if "fastmatch" in s_name_low:
+                            s["status_servico"] = "Em Execução"
+                            s["autorestart"] = "Sim"
+                            s["versao_desejada"] = s.get("versao_instalada") or "1.1.0.0"
+                            s["status_atualizacao"] = "Atualizado"
+                            s["acao_solicitada"] = "Nenhuma"
+                        elif "filecleaner" in s_name_low:
+                            s["status_servico"] = "Em Execução"
+                            s["autorestart"] = "Sim"
+                        elif "detection" in s_name_low:
+                            s["status_servico"] = "Desativado"
+                            s["autorestart"] = "Não"
+                            s["acao_solicitada"] = "Nenhuma"
+                        elif "tracking" in s_name_low:
+                            s["status_servico"] = "Desativado"
+                            s["autorestart"] = "Não"
+                            s["acao_solicitada"] = "Nenhuma"
+                    else:
+                        # Stack Legada mantida
+                        if "detection" in s_name_low:
+                            s["status_servico"] = "Em Execução"
+                            s["autorestart"] = "Sim"
+                        elif "tracking" in s_name_low:
+                            s["status_servico"] = "Em Execução"
+                            s["autorestart"] = "Sim"
+                        elif "fastmatch" in s_name_low:
+                            s["status_servico"] = "Desativado"
+                            s["autorestart"] = "Não"
+                            s["acao_solicitada"] = "Nenhuma"
+                        elif "filecleaner" in s_name_low:
+                            s["status_servico"] = "Desativado"
+                            s["autorestart"] = "Não"
+                            s["acao_solicitada"] = "Nenhuma"
 
         sanitize_and_recalculate_cache(save_to_disk=True, force_refresh_time=True)
 
