@@ -1253,11 +1253,18 @@ async def update_host_config_endpoint(
 
     # 2. Monta blocos PowerShell para cada canal ajustado
     ch_updates_ps = []
+    # Perfis EMU que serao criados nesta mesma requisicao (WMProfiles\EMU_<nome>.xml)
+    new_emu_profile_names = set()
+    for _wp in req.wmprofiles or []:
+        _fn = str(getattr(_wp, "filename", "") or "")
+        if _fn.lower().startswith("emu_") and _fn.lower().endswith(".xml"):
+            new_emu_profile_names.add(_fn[4:-4].strip().lower())
     for ch in req.channels or []:
         c_name = ch.name.replace("'", "''")
         emu_rec_val = "$true" if ch.emu_is_recording else "$false"
         emu_prof_val = (ch.emu_profile_name or "EMU MediaDNA 1min").replace("'", "''")
         emu_dest_val = (ch.emu_dest_path or r"D:\MediaDNA_V2\Data\emu").replace("'", "''")
+        emu_new_flag = "$true" if (ch.emu_profile_name or "EMU MediaDNA 1min").strip().lower() in new_emu_profile_names else "$false"
         
         mp4_rec_val = "$true" if ch.mp4_is_recording else "$false"
         mp4_prof_val = (ch.mp4_profile or "MP4_MDNA").replace("'", "''")
@@ -1280,10 +1287,16 @@ async def update_host_config_endpoint(
                 if (-not $eNode) {{ $eNode = $doc.CreateElement('EMU_IsRecording'); $item.AppendChild($eNode) | Out-Null }};
                 $eNode.InnerText = if ({emu_rec_val}) {{ 'true' }} else {{ 'false' }};
 
-                # Ajuste EMU_ProfileName (Obrigatorio EMU MediaDNA 1min)
-                $pNode = $item.SelectSingleNode('EMU_ProfileName');
-                if (-not $pNode) {{ $pNode = $doc.CreateElement('EMU_ProfileName'); $item.AppendChild($pNode) | Out-Null }};
-                $pNode.InnerText = '{emu_prof_val}';
+                # Ajuste EMU_ProfileName SOMENTE se o perfil existir em WMProfiles (EMU_<perfil>.xml) - evita quebrar o Atria
+                $emuProfOk = {emu_new_flag};
+                foreach ($wd in @('D:\\MediaDNA_V2\\Applications\\DTVCapture64\\WMProfiles', 'C:\\DTV\\DTVCapture\\WMProfiles')) {{ if (Test-Path -LiteralPath (Join-Path $wd 'EMU_{emu_prof_val}.xml')) {{ $emuProfOk = $true }} }};
+                if ($emuProfOk) {{
+                    $pNode = $item.SelectSingleNode('EMU_ProfileName');
+                    if (-not $pNode) {{ $pNode = $doc.CreateElement('EMU_ProfileName'); $item.AppendChild($pNode) | Out-Null }};
+                    $pNode.InnerText = '{emu_prof_val}';
+                }} else {{
+                    Write-Host "[ERRO_WMPROFILES] Perfil EMU '{emu_prof_val}' nao existe em WMProfiles. EMU_ProfileName do canal '{c_name}' mantido sem alteracao.";
+                }};
 
                 # Ajuste EMU_DestPath
                 $dNode = $item.SelectSingleNode('EMU_DestPath');

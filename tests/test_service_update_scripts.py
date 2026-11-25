@@ -39,18 +39,18 @@ def test_all_service_raw_scripts_generation():
 
 
 def test_atria_script_hardening_and_interactive():
-    """Valida particularidades do Atria Capture (Task Scheduler interativo e EMU hardening: emu_mdna vs emu_mdna_1min)."""
-    # 1. Sem flag de migração: mantém stack legada com perfil emu_mdna
+    """Valida particularidades do Atria Capture (Task Scheduler interativo e EMU hardening: EMU MDNA vs EMU MediaDNA 1min)."""
+    # 1. Sem flag de migração: mantém stack legada com perfil EMU MDNA
     script_leg = build_service_raw_script("Atria Capture", "2.0.0.2", migrate_to_fastmatching=False)
     assert "DigitalTVCapture.exe" in script_leg
     assert "Start_Atria_Interactive" in script_leg
     assert "schtasks" in script_leg
-    assert "emu_mdna" in script_leg
+    assert "EMU MDNA" in script_leg
     assert "GetEncoding(1252)" in script_leg
 
-    # 2. Com flag de migração: migra stack para FastMatching com perfil emu_mdna_1min
+    # 2. Com flag de migração: migra stack para FastMatching com perfil EMU MediaDNA 1min
     script_fast = build_service_raw_script("Atria Capture", "2.0.0.2", migrate_to_fastmatching=True)
-    assert "emu_mdna_1min" in script_fast
+    assert "EMU MediaDNA 1min" in script_fast
     assert "FastMatchingSvc" in script_fast
     assert "FileCleaner" in script_fast
 

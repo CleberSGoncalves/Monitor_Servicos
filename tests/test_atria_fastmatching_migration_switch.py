@@ -11,14 +11,14 @@ from app import app, DispatchServiceUpdateRequest
 
 
 def test_build_service_raw_script_without_migration_flag():
-    """Valida que sem a chave ativada (legado) o script garante perfil emu_mdna, desativa FastMatching + FileCleaner e ativa Detection + Tracking."""
+    """Valida que sem a chave ativada (legado) o script garante perfil EMU MDNA, desativa FastMatching + FileCleaner e ativa Detection + Tracking."""
     script = build_service_raw_script("Atria Capture", "2.0.0.2", migrate_to_fastmatching=False)
     assert "dna_atria_updating.lock" in script
     assert "DigitalTVCapture.exe" in script
     
-    # 1. Deve aplicar perfil emu_mdna (blocos de 15 min)
-    assert "emu_mdna" in script
-    assert "<EMU_ProfileName>emu_mdna</EMU_ProfileName>" in script
+    # 1. Deve aplicar perfil EMU MDNA (blocos de 15 min)
+    assert "EMU MDNA" in script
+    assert "<EMU_ProfileName>EMU MDNA</EMU_ProfileName>" in script
 
     # 2. Deve desativar FastMatchingSvc e FileCleaner
     assert "sc.exe config FastMatchingSvc start= disabled" in script
@@ -34,12 +34,12 @@ def test_build_service_raw_script_without_migration_flag():
 
 
 def test_build_service_raw_script_with_migration_flag():
-    """Valida que com a chave ativada o script garante perfil emu_mdna_1min, desinstala/desativa Detection/Tracking e ativa FastMatching + FileCleaner."""
+    """Valida que com a chave ativada o script garante perfil EMU MediaDNA 1min, desinstala/desativa Detection/Tracking e ativa FastMatching + FileCleaner."""
     script = build_service_raw_script("Atria Capture", "2.0.0.2", migrate_to_fastmatching=True)
     
-    # 1. Deve aplicar perfil emu_mdna_1min (blocos de 1 min)
-    assert "emu_mdna_1min" in script
-    assert "<EMU_ProfileName>emu_mdna_1min</EMU_ProfileName>" in script
+    # 1. Deve aplicar perfil EMU MediaDNA 1min (blocos de 1 min)
+    assert "EMU MediaDNA 1min" in script
+    assert "<EMU_ProfileName>EMU MediaDNA 1min</EMU_ProfileName>" in script
 
     # 2. Deve desinstalar/desativar DetectionSVC e TrackingSVC
     assert "taskkill /f /im DNA.DetectionSVC.exe" in script

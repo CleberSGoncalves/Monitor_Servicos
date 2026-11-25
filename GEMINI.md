@@ -50,3 +50,16 @@
 > 
 > O objetivo central da migração para o Google Workspace / Google Sites é a **eliminação completa e definitiva do SharePoint**.
 > Em nenhuma hipótese telas, botões de ação ("Abrir", "Visualizar"), bibliotecas ou planilhas podem apontar para `adgbl.sharepoint.com`. Todo o acervo deve ser mantido e servido de forma 100% autônoma pelo repositório local e Google Workspace.
+
+
+---
+
+## 🎛️ REGRA OBRIGATÓRIA DE PERFIL EMU (ATRIA CAPTURE) — WMProfiles
+
+> [!CAUTION]
+> **NUNCA aplicar um EMU_ProfileName que não exista na pasta `WMProfiles` (arquivo `EMU_<perfil>.xml`).** Perfil inexistente quebra o Atria (não sobe e não grava).
+>
+> - FastMatching + FileCleaner: **`EMU MediaDNA 1min`** (`WMProfiles\EMU_EMU MediaDNA 1min.xml`)
+> - Detection + Tracking: **`EMU MDNA`** (`WMProfiles\EMU_EMU MDNA.xml`)
+> - Proibido usar slugs inventados (`emu_mdna_1min`, `emu_mdna`).
+> - Todo script que altere `Multiplexes.xml` deve validar a existência do perfil no host antes (`build_wmprofile_guard_snippet`). Se faltar, não altera nada e a migração de stack é abortada (Detection/Tracking continuam rodando).
