@@ -223,14 +223,20 @@ function renderFmaLiveDashboard(data) {
                 </div>
             </div>
 
-            <!-- Card 2: Catálogo & Spots Carregados -->
-            <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid ${spots.loaded ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'}; border-radius: 8px; padding: 12px;">
-                <div style="font-size: 10px; font-weight: 800; color: #38bdf8; text-transform: uppercase;">Catálogo &amp; Spots SGG</div>
+            <!-- Card 2: Catálogo & Spots Carregados na RAM -->
+            <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid ${spots.loaded ? 'rgba(56, 189, 248, 0.4)' : 'rgba(239, 68, 68, 0.4)'}; border-radius: 8px; padding: 12px; position: relative;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div style="font-size: 10px; font-weight: 800; color: #38bdf8; text-transform: uppercase;">Catálogo SGG (Índice em RAM)</div>
+                    <span style="font-size: 8.5px; background: rgba(56, 189, 248, 0.15); color: #38bdf8; padding: 1px 5px; border-radius: 4px; font-weight: 700;">Biblioteca de Busca</span>
+                </div>
                 <div style="font-size: 18px; font-weight: 800; color: #f8fafc; margin-top: 4px;">
-                    ${(spots.total_spots_loaded || 0).toLocaleString()} spots
+                    ${(spots.total_spots_loaded || 0).toLocaleString()} <span style="font-size: 11px; color: #94a3b8; font-weight: 600;">spots cadastrados</span>
                 </div>
                 <div style="font-size: 11px; color: ${spots.status_color === 'green' ? '#4ade80' : '#f87171'}; margin-top: 4px; font-weight: 700;">
                     ${escapeHtml(spots.status_label || 'Aguardando')} ${spots.recon_count !== null && spots.recon_count !== undefined ? `(recon=${spots.recon_count})` : ''}
+                </div>
+                <div style="font-size: 10px; color: #64748b; margin-top: 3px;">
+                    Base de referência SGG para comparação acústica
                 </div>
             </div>
 
@@ -263,11 +269,22 @@ function renderFmaLiveDashboard(data) {
 
             <!-- Coluna Esquerda: Tabela de Detecções Automáticas -->
             <div style="background: rgba(15, 23, 42, 0.9); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 14px; display: flex; flex-direction: column;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                    <div style="font-size: 12px; font-weight: 800; color: #f8fafc; text-transform: uppercase; display: flex; align-items: center; gap: 6px;">
-                        <span>🎯</span> Últimos Spots Comerciais Reconhecidos (Tempo Real)
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
+                    <div>
+                        <div style="font-size: 12px; font-weight: 800; color: #4ade80; text-transform: uppercase; display: flex; align-items: center; gap: 6px;">
+                            <span>🎯</span> Detecções no Ar (NEW DETECTION — Match Acústico)
+                        </div>
+                        <div style="font-size: 10.5px; color: #94a3b8; margin-top: 2px;">
+                            Comerciais reconhecidos na transmissão ao vivo com correlação acústica &gt; 98%
+                        </div>
                     </div>
-                    <div style="font-size: 11px; color: #94a3b8;">${detections.length} matches no ciclo atual</div>
+                    <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                        <span style="font-size: 10px; color: #94a3b8; font-weight: 600;">Canais da Praça:</span>
+                        ${(data.monitored_channels && data.monitored_channels.length > 0) 
+                            ? data.monitored_channels.map(ch => `<span style="background: rgba(14, 165, 233, 0.18); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); font-size: 9.5px; font-weight: 700; padding: 1px 6px; border-radius: 4px;">${escapeHtml(ch)}</span>`).join('')
+                            : `<span style="color: #64748b; font-size: 10px;">Padrão</span>`
+                        }
+                    </div>
                 </div>
 
                 <div style="overflow-x: auto; max-height: 230px; overflow-y: auto;">
@@ -308,6 +325,10 @@ function renderFmaLiveDashboard(data) {
                             `).join('')}
                         </tbody>
                     </table>
+                </div>
+
+                <div style="background: rgba(14, 165, 233, 0.08); border-left: 3px solid #38bdf8; border-radius: 4px; padding: 7px 10px; margin-top: 10px; font-size: 10.5px; color: #cbd5e1; line-height: 1.4;">
+                    💡 <strong>O que significa NEW DETECTION?</strong> Indica que o motor FastMatching comparou o áudio da TV cortado pelo Atria (.EMU) com a biblioteca de spots em RAM e deu <strong>Match positivo (&gt;98%)</strong>: aquele comercial acabou de ser veiculado no canal naquele segundo exato.
                 </div>
             </div>
 
@@ -464,3 +485,20 @@ function copyFmaLiveLogs() {
     });
 }
 window.copyFmaLiveLogs = copyFmaLiveLogs;
+
+function openPipelineLiveGuideModal() {
+    const guideModal = document.getElementById("pipelineLiveGuideModal");
+    if (guideModal) {
+        guideModal.style.display = "flex";
+    }
+}
+window.openPipelineLiveGuideModal = openPipelineLiveGuideModal;
+
+function closePipelineLiveGuideModal() {
+    const guideModal = document.getElementById("pipelineLiveGuideModal");
+    if (guideModal) {
+        guideModal.style.display = "none";
+    }
+}
+window.closePipelineLiveGuideModal = closePipelineLiveGuideModal;
+

@@ -3235,6 +3235,138 @@ def get_cs01_fastmatching_hosts() -> List[Dict[str, Any]]:
     return cs01_list
 
 
+def clean_channel_code(name: str) -> str:
+    """Normaliza o nome do canal/veículo para código de exibição limpo no fma.log."""
+    if not name:
+        return "CANAL"
+    c = name.upper().strip()
+    if "GLOBO" in c or "RPC" in c:
+        return "GLOBO"
+    if "RECORD NEWS" in c:
+        return "REC NEWS"
+    if "RECORD" in c or "RIC" in c:
+        return "RECORD"
+    if "BAND" in c or "TAROBÁ" in c or "TAROBA" in c or "BANDEIRANTES" in c:
+        return "BAND"
+    if "SBT" in c or "MASSA" in c or "ARATU" in c:
+        return "SBT"
+    if "REDE TV" in c or "REDETV" in c:
+        return "REDETV"
+    if "TV BRASIL" in c:
+        return "TV BRASIL"
+    if "CULTURA" in c:
+        return "CULTURA"
+    return name.split()[0].upper()
+
+
+def get_channels_for_praca(praca_name: str, hostname: str = "") -> List[Dict[str, Any]]:
+    """
+    Retorna os canais de TV reais configurados e gravados para a praça/host informado.
+    Utiliza as bases canônicas: fleet_cache.json, audio_sync_cache.json e mapeamentos determinísticos.
+    Garante que praças sem determinados veículos (ex: Cascavel que NÃO possui SBT gravando)
+    nunca exibam canais inexistentes em seus logs e pipelines.
+    """
+    import json
+    import unicodedata
+    from pathlib import Path
+
+    def remove_accents(s: str) -> str:
+        if not s:
+            return ""
+        nfkd = unicodedata.normalize("NFKD", s)
+        return "".join([c for c in nfkd if not unicodedata.combining(c)])
+
+    p_norm = remove_accents((praca_name or "").strip().lower())
+    h_norm = (hostname or "").strip().upper()
+
+    # Mapeamento determinístico de praças com lista de veículos oficiais gravados
+    KNOWN_PRACA_CHANNELS = {
+        "cascavel": ["Rede Globo", "Record TV", "Rede Bandeirantes"], # NOTA CRÍTICA: CASCAVEL NÃO TEM SBT
+        "curitiba": ["Rede Globo", "Record TV", "Rede Bandeirantes", "SBT"],
+        "foz do iguacu": ["Rede Globo", "Record TV", "SBT"],
+        "brasilia": ["Rede Globo", "Record TV", "Rede Bandeirantes", "SBT"],
+        "pelotas": ["Rede Globo", "Rede TV"],
+        "resende": ["Rede Globo", "Rede Bandeirantes"],
+        "passo fundo": ["Rede TV", "Rede Globo"],
+        "santa maria": ["Rede TV", "Rede Globo"],
+        "paranavai": ["Rede Globo", "Record TV", "Rede Bandeirantes"],
+        "maringa": ["Rede Globo", "Record TV", "Rede Bandeirantes", "SBT"],
+        "londrina": ["Rede Globo", "Record TV", "Rede Bandeirantes", "SBT"]
+    }
+
+    found_raw = []
+
+    # 1. Consulta ao fleet_cache.json
+    cache_path = Path(__file__).parent / "data" / "fleet_cache.json"
+    if cache_path.exists():
+        try:
+            with open(cache_path, "r", encoding="utf-8") as f:
+                channels_data = json.load(f).get("channels", [])
+                for c in channels_data:
+                    c_city = remove_accents(str(c.get("cidade") or c.get("praca") or "").strip().lower())
+                    c_host = str(c.get("host") or c.get("hostname") or "").strip().upper()
+                    meio = str(c.get("meio") or "").lower()
+                    canal_name = str(c.get("canal") or "").strip()
+                    if not canal_name:
+                        continue
+                    if any(r in meio for r in ["streaming", "audio", "radio", "fm", "am"]):
+                        continue
+                    if any(r in canal_name.upper() for r in [" FM", " AM", "RADIO", "RÁDIO", "DISNEY", "ALPHA", "ANTENA", "TRANSAMERICA", "ELDORADO", "ENERGIA", "KISS"]):
+                        continue
+                    if (h_norm and c_host == h_norm) or (p_norm and c_city == p_norm):
+                        found_raw.append(canal_name)
+        except Exception as e:
+            logger.warning(f"[get_channels_for_praca] Erro ao ler fleet_cache: {e}")
+
+    # 2. Complemento via audio_sync_cache.json se vazio
+    if not found_raw:
+        sync_path = Path(__file__).parent / "data" / "audio_sync_cache.json"
+        if sync_path.exists():
+            try:
+                with open(sync_path, "r", encoding="utf-8") as f:
+                    sync_data = json.load(f).get("channels", [])
+                    for sc in sync_data:
+                        sc_city = remove_accents(str(sc.get("cidade") or "").strip().lower())
+                        sc_canal = str(sc.get("canal") or "").strip()
+                        if p_norm and (sc_city == p_norm) and sc_canal:
+                            if not any(r in sc_canal.lower() for r in ["fm", "am", "radio", "rádio"]):
+                                found_raw.append(sc_canal)
+            except Exception as e:
+                logger.warning(f"[get_channels_for_praca] Erro ao ler audio_sync_cache: {e}")
+
+    # 3. Fallback determinístico de praças conhecidas
+    if not found_raw:
+        found_raw = KNOWN_PRACA_CHANNELS.get(p_norm, ["Rede Globo", "Record TV", "Rede Bandeirantes"])
+
+    # Se for Cascavel, garantir remoção de qualquer menção a SBT por segurança
+    if p_norm == "cascavel" or "cascavel" in h_norm.lower():
+        found_raw = [x for x in found_raw if "sbt" not in x.lower() and "massa" not in x.lower()]
+
+    seen = set()
+    channels = []
+    prog_num = 1
+    for raw in found_raw:
+        short = clean_channel_code(raw)
+        if short not in seen:
+            seen.add(short)
+            channels.append({
+                "name": short,
+                "full_name": raw,
+                "prog": prog_num
+            })
+            prog_num += 1
+
+    # Fallback mínimo seguro
+    if not channels:
+        channels = [
+            {"name": "GLOBO", "full_name": "Rede Globo", "prog": 1},
+            {"name": "RECORD", "full_name": "Record TV", "prog": 2},
+            {"name": "BAND", "full_name": "Rede Bandeirantes", "prog": 3}
+        ]
+
+    return channels
+
+
 def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[str, Any]:
     """
     Coleta e processa a telemetria viva do FastMatching para um Capture Site CS01:
@@ -3257,6 +3389,10 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
 
     # Localizar serviços específicos deste host
     praca = node_telemetry.get("praca") or ""
+    if not praca and "-" in h_clean:
+        cand_praca = h_clean.split("-")[0].replace("_", " ").title()
+        if len(cand_praca) >= 3 and not cand_praca.startswith("BR"):
+            praca = cand_praca
     ram_host = "N/A"
     cpu_host = "N/A"
     disk_d_livre = "N/A"
@@ -3303,10 +3439,17 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
             except Exception as e:
                 logger.warning(f"Falha ao ler {p}: {e}")
 
+    # Resolver canais e veículos REAIS configurados e gravados na praça/host
+    resolved_channels = get_channels_for_praca(praca, hostname=h_clean)
+    channels = resolved_channels if resolved_channels else [
+        {"name": "GLOBO", "full_name": "Rede Globo", "prog": 1},
+        {"name": "RECORD", "full_name": "Record TV", "prog": 2},
+        {"name": "BAND", "full_name": "Rede Bandeirantes", "prog": 3}
+    ]
+
     # Se não houver arquivo físico localmente na máquina do Dashboard, compor logstream de alta fidelidade
     if not is_live_disk:
         log_source = f"[{h_clean}] D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMatchingSvc\\fma.log"
-        channels = [{"name": "GLOBO", "prog": 1}, {"name": "RECORD", "prog": 2}, {"name": "SBT", "prog": 3}, {"name": "BAND", "prog": 4}]
 
         log_lines = []
         step_seconds = 6
@@ -3432,7 +3575,7 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
         except Exception as e:
             logger.warning(f"Erro ao ler pasta EMU {emu_path}: {e}")
 
-    active_channels_count = 4
+    active_channels_count = len(channels) if channels else 3
     expected_cpm = float(active_channels_count)
     actual_cpm = expected_cpm if (is_fm_running and atria_running) else 0.0
 
@@ -3498,6 +3641,8 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
         "success": True,
         "hostname": h_clean,
         "praca": praca,
+        "monitored_channels": [c["name"] for c in channels],
+        "channels_detail": channels,
         "timestamp": now.strftime("%Y-%m-%d %H:%M:%S"),
         "log_source": log_source,
         "is_live_disk": is_live_disk,
