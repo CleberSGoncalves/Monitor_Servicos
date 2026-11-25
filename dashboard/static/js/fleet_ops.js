@@ -1075,7 +1075,7 @@ async function dispatchSingleHostUpdate(hostname, serviceName, targetVersion) {
                     await loadFleetAuditLog(false);
                     if (typeof loadServicesTable === "function") loadServicesTable();
                     if (typeof openFleetUpdateProgressModal === "function") {
-                        openFleetUpdateProgressModal(hostname, serviceName, targetVersion);
+                        openFleetUpdateProgressModal(hostname, serviceName, targetVersion, true);
                     }
                 } else {
                     const errMsg = data.detail || data.error || (data.failed_hosts && data.failed_hosts[0]?.error) || "Falha ao disparar ordem de atualização";
@@ -1395,15 +1395,21 @@ let currentUpdateProgressPollInterval = null;
 let updateProgressStartTime = null;
 let lastKnownUpdateStatusData = null;
 
-async function openFleetUpdateProgressModal(host, serviceName, targetVersion = null) {
+async function openFleetUpdateProgressModal(host, serviceName, targetVersion = null, isNewDispatch = false) {
     currentUpdateProgressHost = host;
     currentUpdateProgressService = serviceName || currentGovernanceService || "Atria Capture";
     currentUpdateProgressTargetVersion = targetVersion || (cachedFleetEvolutionData ? cachedFleetEvolutionData.target_version : "2.0.0.2");
     
     // Recupera startTime do localStorage se for o mesmo host/serviço para não zerar o relógio
     const savedActive = getSavedActiveFleetUpdate();
-    if (savedActive && savedActive.host === host && savedActive.serviceName === currentUpdateProgressService && savedActive.startTime) {
-        updateProgressStartTime = savedActive.startTime;
+    if (!isNewDispatch && savedActive && savedActive.host === host && savedActive.serviceName === currentUpdateProgressService && savedActive.startTime) {
+        const elapsedSaved = Date.now() - savedActive.startTime;
+        // Se a gravação anterior tiver mais de 20 minutos ou pertencer a ciclo anterior, reseta o timer
+        if (elapsedSaved > 20 * 60 * 1000) {
+            updateProgressStartTime = Date.now();
+        } else {
+            updateProgressStartTime = savedActive.startTime;
+        }
     } else {
         updateProgressStartTime = Date.now();
     }
@@ -1612,6 +1618,25 @@ async function refreshFleetUpdateProgressLive() {
 
 function renderFleetUpdateProgressData(data) {
     if (!data || !data.success) return;
+
+    // Limpeza de timer e cache se a esteira já terminou ou não está em progresso ativo
+    if (!data.is_in_progress || data.is_finished) {
+        clearSavedActiveFleetUpdate();
+        if (currentUpdateProgressTimerInterval) {
+            clearInterval(currentUpdateProgressTimerInterval);
+            currentUpdateProgressTimerInterval = null;
+        }
+        const timerEl = document.getElementById("upProgTimer");
+        if (timerEl) {
+            if (data.is_finished && data.is_success) {
+                timerEl.innerText = "Tempo total: Concluído ✓";
+            } else if (data.is_finished && data.is_failed) {
+                timerEl.innerText = "Tempo total: Interrompido ✕";
+            } else if (!data.is_in_progress) {
+                timerEl.innerText = "Tempo decorrido: 00:00 (Aguardando)";
+            }
+        }
+    }
 
     // Atualiza cabeçalho e pílulas
     const elPraca = document.getElementById("upProgPraca");
@@ -1834,6 +1859,13 @@ async function executeDirectUpdateFromDashboard() {
         });
         const data = await resp.json();
         if (resp.ok && data.success) {
+            updateProgressStartTime = Date.now();
+            saveActiveFleetUpdate({
+                host: host,
+                serviceName: service,
+                targetVersion: targetVer,
+                startTime: updateProgressStartTime
+            });
             if (btn) {
                 btn.innerHTML = '<i class="fas fa-check-circle" style="color: #34d399;"></i> Disparado com Sucesso!';
                 btn.style.background = "#059669";

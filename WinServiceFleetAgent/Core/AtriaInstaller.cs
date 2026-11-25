@@ -116,6 +116,11 @@ Get-ItemProperty $unKeys -ErrorAction SilentlyContinue | Where-Object { $_.Displ
 $downloadFile = Join-Path $env:TEMP 'atria_setup.ps1'
 Write-Host '[AtriaInstaller] Baixando script de instalacao do Atria...'
 Invoke-WebRequest -Uri '" + AtriaPsScriptUrl + @"' -OutFile $downloadFile -UseBasicParsing
+
+# Blindagem total contra Read-Host e PromptYN em servico Windows nao-interativo (Session 0)
+function global:PromptYN($msg) { return $true }
+function global:Read-Host($msg) { return 'Y' }
+
 Write-Host '[AtriaInstaller] Executando script de instalacao silencioso (/nobackup /lav /ffdshow /nostreamlink /noytdlp)...'
 & $downloadFile /nobackup /lav /ffdshow /nostreamlink /noytdlp
 
