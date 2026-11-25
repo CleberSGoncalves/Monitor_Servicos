@@ -3556,3 +3556,352 @@ if (document.readyState === "loading") {
 
 
 
+
+
+// ==================== SUBABA DE CONFIGURAÇÃO CS (ATRIA) ====================
+let cachedCSConfigData = null;
+let currentCSConfigHost = null;
+
+function openNavCSConfig() {
+    const btn = document.querySelector('.nav-btn[data-tab="fleet-csconfig"]');
+    if (btn) {
+        btn.click();
+    } else {
+        if (typeof switchTab === "function") switchTab("fleet");
+        if (typeof switchFleetSubtab === "function") switchFleetSubtab("csconfig");
+        if (typeof populateSubtabCSSelectors === "function") populateSubtabCSSelectors();
+    }
+}
+window.openNavCSConfig = openNavCSConfig;
+
+async function populateSubtabCSSelectors() {
+    const selPraca = document.getElementById("subtabHostConfigPraca");
+    const selCS = document.getElementById("subtabHostConfigCS");
+    const selMachine = document.getElementById("subtabHostConfigMachine");
+    if (!selPraca || !selMachine) return;
+
+    const pracasSet = new Set();
+    const hostsMap = window._csConfigHostsMap || {};
+
+    // 1. Carga imediata transparente via FleetCatalog existente
+    if (window.FleetCatalog && Array.isArray(window.FleetCatalog.pracas)) {
+        window.FleetCatalog.pracas.forEach(p => {
+            if (p) pracasSet.add(p.trim());
+        });
+        if (Array.isArray(window.FleetCatalog.hosts)) {
+            window.FleetCatalog.hosts.forEach(hObj => {
+                const h = (typeof hObj === "string") ? hObj : (hObj && hObj.hostname ? hObj.hostname : "");
+                const p = (typeof hObj === "object" && hObj && hObj.praca) ? hObj.praca.trim() : ((h.includes("-") ? h.split("-")[0] : h) || "").trim();
+                let cs = (typeof hObj === "object" && hObj && hObj.cs) ? parseInt(hObj.cs) : 1;
+                if (!cs || isNaN(cs)) {
+                    if (h.toUpperCase().includes("CS2")) cs = 2;
+                    else if (h.toUpperCase().includes("CS3")) cs = 3;
+                    else cs = 1;
+                }
+                if (p && h) {
+                    if (!hostsMap[p]) hostsMap[p] = [];
+                    if (!hostsMap[p].some(x => x.hostname === h)) {
+                        hostsMap[p].push({ hostname: h, cs: cs, raw_hostname: (hObj && hObj.raw_hostname ? hObj.raw_hostname : h) });
+                    }
+                }
+            });
+        }
+    }
+
+    function updatePracaDropdown() {
+        window._csConfigHostsMap = hostsMap;
+        const sortedPracas = Array.from(pracasSet).sort((a, b) => a.localeCompare(b, "pt-BR"));
+        const currentVal = selPraca.value;
+        selPraca.innerHTML = `<option value="">-- Selecione uma Praça (${sortedPracas.length}) --</option>` +
+            sortedPracas.map(p => `<option value="${p}">${p}</option>`).join("");
+
+        if (currentVal && sortedPracas.includes(currentVal)) {
+            selPraca.value = currentVal;
+        } else if (sortedPracas.length > 0) {
+            selPraca.value = sortedPracas[0];
+            onSubtabCSPracaChange(sortedPracas[0]);
+        }
+    }
+
+    // Renderização síncrona instantânea (0ms)
+    if (pracasSet.size > 0) {
+        updatePracaDropdown();
+    }
+
+    let services = (typeof allCachedServices !== "undefined" && allCachedServices && allCachedServices.length > 0) ? allCachedServices : [];
+    if (!services || services.length === 0) {
+        try {
+            const token = (typeof getAuthToken === "function") ? getAuthToken() : (localStorage.getItem("fleet_token") || "");
+            const headers = token ? { "Authorization": `Bearer ${token}` } : {};
+            const resp = await fetch(`/api/fleet/services?_t=${Date.now()}`, { headers });
+            if (resp.ok) {
+                services = await resp.json();
+                if (typeof allCachedServices !== "undefined") allCachedServices = services;
+            }
+        } catch (e) {
+            console.warn("[CSConfig] Erro ao carregar serviços para seletores:", e);
+        }
+    }
+
+    if (services && services.length > 0) {
+        services.forEach(s => {
+            const praca = (s.praca || s.cidade || "").trim();
+            const host = (s.hostname || "").trim();
+            let cs = 1;
+            try { cs = parseInt(s.cs || 1); } catch (_) { cs = 1; }
+            if (praca && host) {
+                pracasSet.add(praca);
+                if (!hostsMap[praca]) hostsMap[praca] = [];
+                if (!hostsMap[praca].some(h => h.hostname === host)) {
+                    hostsMap[praca].push({ hostname: host, cs: cs, raw_hostname: s.raw_hostname || host });
+                }
+            }
+        });
+        updatePracaDropdown();
+    }
+}
+window.populateSubtabCSSelectors = populateSubtabCSSelectors;
+
+function onSubtabCSPracaChange(pracaVal) {
+    const selCS = document.getElementById("subtabHostConfigCS");
+    const selMachine = document.getElementById("subtabHostConfigMachine");
+    if (!selMachine) return;
+
+    if (!pracaVal) {
+        selMachine.innerHTML = '<option value="">Selecione uma praça primeiro...</option>';
+        return;
+    }
+
+    const hostsMap = window._csConfigHostsMap || {};
+    const pracaHosts = hostsMap[pracaVal] || [];
+    const csFilter = selCS ? selCS.value : "ALL";
+
+    const filtered = pracaHosts.filter(h => {
+        if (csFilter === "ALL") return true;
+        return String(h.cs) === String(csFilter);
+    });
+
+    if (filtered.length === 0) {
+        selMachine.innerHTML = `<option value="">Nenhum servidor encontrado para CS ${csFilter}</option>`;
+        return;
+    }
+
+    selMachine.innerHTML = filtered.map(h => `<option value="${h.hostname}">${h.hostname} (CS ${h.cs})</option>`).join("");
+    onSubtabCSMachineSelected(selMachine.value);
+}
+window.onSubtabCSPracaChange = onSubtabCSPracaChange;
+
+function onSubtabCSChange(csVal) {
+    const selPraca = document.getElementById("subtabHostConfigPraca");
+    if (selPraca && selPraca.value) {
+        onSubtabCSPracaChange(selPraca.value);
+    }
+}
+window.onSubtabCSChange = onSubtabCSChange;
+
+function onSubtabCSMachineSelected(machineVal) {
+    currentCSConfigHost = machineVal;
+    const badgeHost = document.getElementById("subtabBadgeHostname");
+    const textPraca = document.getElementById("subtabTextPraca");
+    const badgeRole = document.getElementById("subtabBadgeRole");
+
+    if (badgeHost) badgeHost.innerText = machineVal || "-";
+    if (textPraca) {
+        const selPraca = document.getElementById("subtabHostConfigPraca");
+        textPraca.innerText = selPraca ? selPraca.value : "-";
+    }
+    if (badgeRole) {
+        const isCS01 = machineVal && (machineVal.includes("-CS1") || machineVal.includes("-CS01"));
+        badgeRole.innerText = isCS01 ? "CS 01 (Detecção & Gravação)" : "CS 02/03 (Mídia Backup)";
+        badgeRole.style.background = isCS01 ? "rgba(16, 185, 129, 0.2)" : "rgba(56, 189, 248, 0.2)";
+        badgeRole.style.color = isCS01 ? "#34d399" : "#38bdf8";
+    }
+
+    if (machineVal) {
+        loadSubtabHostConfig();
+    }
+}
+window.onSubtabCSMachineSelected = onSubtabCSMachineSelected;
+
+async function loadSubtabHostConfig() {
+    const host = currentCSConfigHost;
+    if (!host) return;
+
+    const viewer = document.getElementById("subtabCSConfigViewer");
+    const emptyState = document.getElementById("subtabCSConfigEmptyState");
+    const tbody = document.getElementById("subtabHostConfigChannelsTbody");
+
+    if (tbody) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 18px; color: #38bdf8;"><i class="fas fa-spinner fa-spin"></i> Lendo arquivos de configuração Multiplexes.xml e AppConfig.xml do host...</td></tr>';
+    }
+
+    try {
+        const resp = await fetch(`/api/fleet/host-config/${encodeURIComponent(host)}?_t=${Date.now()}`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        cachedCSConfigData = data;
+
+        if (viewer) viewer.style.display = "block";
+        if (emptyState) emptyState.style.display = "none";
+
+        renderSubtabChannelsTable(data.host_channels || [], data.cs);
+    } catch (e) {
+        console.warn("[CSConfig] Erro ao carregar configuração do host:", e);
+        if (tbody) {
+            tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 18px; color: #f87171;">⚠️ Falha ao carregar XMLs do host [${host}]: ${e.message}</td></tr>`;
+        }
+    }
+}
+window.loadSubtabHostConfig = loadSubtabHostConfig;
+
+function renderSubtabChannelsTable(channels, csNumber = 1) {
+    const tbody = document.getElementById("subtabHostConfigChannelsTbody");
+    if (!tbody) return;
+
+    if (!channels || channels.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 16px; color: #94a3b8;">Nenhum canal ativo cadastrado para este Capture Site.</td></tr>';
+        return;
+    }
+
+    const isDetectionCS = (csNumber === 1);
+
+    tbody.innerHTML = channels.map((ch, idx) => {
+        const isRec = ch.is_recording_mp4;
+        const isEmu = ch.is_recording_emu;
+        const profile = ch.emu_profile || "EMU MediaDNA 1min";
+        const dest = ch.dest_folder || "D:\\MediaDNA_V2\\Data\\video_bkp";
+
+        const emuBadge = isDetectionCS ?
+            `<input type="checkbox" class="cs-emu-chk" data-idx="${idx}" ${isEmu ? 'checked' : ''} style="cursor: pointer; width: 15px; height: 15px;">` :
+            '<span style="font-size: 10px; color: #64748b; font-style: italic;">Sem Detecção (CS Mídia)</span>';
+
+        const profileSelect = isDetectionCS ? `
+            <select class="form-control cs-profile-sel" data-idx="${idx}" style="background: #0f172a; color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 4px; padding: 4px 8px; font-size: 11px; font-weight: 700;">
+                <option value="EMU MediaDNA 1min" ${profile === 'EMU MediaDNA 1min' ? 'selected' : ''}>EMU MediaDNA 1min</option>
+                <option value="EMU MDNA" ${profile === 'EMU MDNA' ? 'selected' : ''}>EMU MDNA</option>
+                <option value="EMU 30s" ${profile === 'EMU 30s' ? 'selected' : ''}>EMU 30s</option>
+                <option value="FastMatching Spot" ${profile === 'FastMatching Spot' ? 'selected' : ''}>FastMatching Spot</option>
+            </select>
+        ` : '<span style="font-size: 11px; color: #64748b;">N/A (CS Mídia)</span>';
+
+        return `
+            <tr style="border-bottom: 1px solid rgba(148, 163, 184, 0.1);">
+                <td style="text-align: center;">
+                    <input type="checkbox" class="cs-active-chk" data-idx="${idx}" ${ch.active !== false ? 'checked' : ''} style="cursor: pointer; width: 15px; height: 15px;">
+                </td>
+                <td style="font-weight: 700; color: #fff;">
+                    ${ch.name || 'Canal ' + (idx + 1)}
+                </td>
+                <td style="font-family: monospace; color: #94a3b8;">
+                    ${ch.service_id || ch.program_id || '-'}
+                </td>
+                <td style="font-family: monospace; color: #94a3b8;">
+                    ${ch.audio_pid || '8000 Hz'}
+                </td>
+                <td style="text-align: center;">
+                    ${emuBadge}
+                </td>
+                <td>
+                    ${profileSelect}
+                </td>
+                <td style="font-family: monospace; font-size: 11px; color: #94a3b8;">
+                    <input type="text" class="form-control cs-dest-input" data-idx="${idx}" value="${dest}" style="background: #0f172a; color: #f8fafc; border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 4px; padding: 4px 8px; font-size: 11px; width: 100%;">
+                </td>
+            </tr>
+        `;
+    }).join("");
+}
+
+function applyEmuProfileToAllChannels(profileName) {
+    const selects = document.querySelectorAll(".cs-profile-sel");
+    selects.forEach(sel => {
+        sel.value = profileName;
+    });
+    const emuChks = document.querySelectorAll(".cs-emu-chk");
+    emuChks.forEach(chk => {
+        chk.checked = true;
+    });
+    if (typeof showToast === "function") {
+        showToast(`Perfil '${profileName}' aplicado a todos os canais de gravação EMU!`, "success");
+    }
+}
+window.applyEmuProfileToAllChannels = applyEmuProfileToAllChannels;
+
+async function saveAndApplyHostConfig() {
+    const host = currentCSConfigHost;
+    if (!host) {
+        if (typeof showToast === "function") showToast("Selecione um host primeiro.", "warning");
+        return;
+    }
+
+    if (!confirm(`Confirmar aplicação de novas configurações no Capture Site [${host}]?\nO ATRIA será reiniciado com a nova configuração salva com backup (.bak).`)) {
+        return;
+    }
+
+    const rows = document.querySelectorAll("#subtabHostConfigChannelsTbody tr");
+    const channelsPayload = [];
+    rows.forEach((r, idx) => {
+        const actChk = r.querySelector(".cs-active-chk");
+        const emuChk = r.querySelector(".cs-emu-chk");
+        const profSel = r.querySelector(".cs-profile-sel");
+        const destInp = r.querySelector(".cs-dest-input");
+        if (actChk) {
+            channelsPayload.push({
+                index: idx,
+                active: actChk.checked,
+                is_recording_emu: emuChk ? emuChk.checked : false,
+                emu_profile: profSel ? profSel.value : "EMU MediaDNA 1min",
+                dest_folder: destInp ? destInp.value : ""
+            });
+        }
+    });
+
+    try {
+        const resp = await fetch(`/api/fleet/host-config/${encodeURIComponent(host)}`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                hostname: host,
+                channels: channelsPayload
+            })
+        });
+
+        const res = await resp.json();
+        if (resp.ok && res.success) {
+            if (typeof showToast === "function") {
+                showToast(`Configuração enviada com sucesso para [${host}]! ATRIA reiniciando...`, "success");
+            }
+        } else {
+            throw new Error(res.detail || res.error || "Falha ao salvar configuração");
+        }
+    } catch (e) {
+        console.error("[CSConfig] Erro ao salvar:", e);
+        if (typeof showToast === "function") {
+            showToast(`Erro ao aplicar configuração: ${e.message}`, "error");
+        }
+    }
+}
+window.saveAndApplyHostConfig = saveAndApplyHostConfig;
+
+function previewXmlChanges() {
+    if (!cachedCSConfigData) {
+        if (typeof showToast === "function") showToast("Carregue a configuração do host primeiro.", "warning");
+        return;
+    }
+    const host = currentCSConfigHost || "Host";
+    const xml = cachedCSConfigData.xml_preview || `<!-- Multiplexes.xml para ${host} -->\n<Multiplexes>\n  <!-- Configurações ativas aplicadas com sucesso -->\n</Multiplexes>`;
+    alert(`Prévia dos arquivos de configuração (${host}):\n\n` + xml.substring(0, 800) + (xml.length > 800 ? "\n... (restante preservado)" : ""));
+}
+window.previewXmlChanges = previewXmlChanges;
+
+function openSelectedHostConfigModal() {
+    if (typeof openHostConfigModal === "function") {
+        openHostConfigModal(currentCSConfigHost || "Ariquemes-SMME-261-CS1");
+    } else {
+        previewXmlChanges();
+    }
+}
+window.openSelectedHostConfigModal = openSelectedHostConfigModal;
+

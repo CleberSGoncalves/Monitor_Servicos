@@ -890,11 +890,18 @@ function setupTabNavigation() {
 
 
 
-            const targetSec = document.getElementById(`tab-${tabName}`);
-
-
+            const targetSec = (tabName === "fleet-csconfig") ? document.getElementById("tab-fleet") : document.getElementById(`tab-${tabName}`);
 
             if (targetSec) targetSec.classList.add("active");
+
+            if (tabName === "fleet-csconfig") {
+                if (typeof switchFleetSubtab === "function") switchFleetSubtab("csconfig");
+                if (typeof populateSubtabCSSelectors === "function") populateSubtabCSSelectors();
+                setTimeout(() => {
+                    const c = document.getElementById("fleetSubtabCSConfigContainer");
+                    if (c) c.scrollIntoView({ behavior: "smooth", block: "start" });
+                }, 150);
+            }
 
 
 

@@ -472,9 +472,19 @@ def build_service_raw_script(service_name: str, target_version: str, migrate_to_
             "$zipUrl = 'https://stgengineeringreleases.blob.core.windows.net/atriacapture/v2.0.0.0_x64_AVX2/AtriaCapture_v2002_x64.zip';\n"
             "$zipFile = Join-Path $env:TEMP 'AtriaCapture_v2002_x64.zip';\n"
             "$stgUnzip = Join-Path $env:TEMP 'AtriaCapture_v2002_x64_unzip';\n"
+            "if (-not (Test-Path $zipFile) -or (Get-Item $zipFile).Length -lt 96000000) {\n"
+            "    if (Get-Command curl.exe -ErrorAction SilentlyContinue) {\n"
+            "        Write-Host '[DOWNLOAD] Baixando AtriaCapture_v2002_x64.zip via curl com suporte a resume...';\n"
+            "        & curl.exe -fSL -C - --retry 3 --connect-timeout 20 -o $zipFile $zipUrl;\n"
+            "    } else {\n"
+            "        Write-Host '[DOWNLOAD] Baixando AtriaCapture_v2002_x64.zip via Invoke-WebRequest...';\n"
+            "        Invoke-WebRequest -Uri $zipUrl -OutFile $zipFile -UseBasicParsing;\n"
+            "    }\n"
+            "} else {\n"
+            "    Write-Host '[CACHE] Pacote binario homologado intacto em disco. Reutilizando payload...';\n"
+            "};\n"
             "if (Test-Path $stgUnzip) { Remove-Item $stgUnzip -Recurse -Force -ErrorAction SilentlyContinue };\n"
             "New-Item -ItemType Directory -Force -Path $stgUnzip | Out-Null;\n"
-            "Invoke-WebRequest -Uri $zipUrl -OutFile $zipFile -UseBasicParsing;\n"
             "Expand-Archive -Path $zipFile -DestinationPath $stgUnzip -Force;\n"
             "# 6. Instalacao do MSI v2.0.0.2 silenciosa com TARGETDIR no disco D:\n"
             "$msi = if (Test-Path \"$stgUnzip\\DTVCaptureInstaller_x64.msi\") { \"$stgUnzip\\DTVCaptureInstaller_x64.msi\" } elseif (Test-Path \"$stgUnzip\\setup\\DTVCaptureInstaller_x64.msi\") { \"$stgUnzip\\setup\\DTVCaptureInstaller_x64.msi\" } else { $null };\n"
@@ -1017,6 +1027,15 @@ def get_host_service_action_status(host: str, service_name: str, target_version:
                         user_message = f"⚡ Agente local executando silenciosamente a aplicação de {service_name} v{desired_ver} em [{host}] (Google Cloud em tempo real)."
                         step2_status = "completed"
                         step3_status = "completed"
+                    elif c_st == "failed":
+                        current_step_num = 3
+                        status_badge = "Falha no Host (Timeout/Erro)"
+                        badge_color = "red"
+                        out_snip = gcp_cmd.get("output", "")[:350].strip()
+                        user_message = f"❌ <strong>Falha na Execução no Host [{host}]:</strong> {out_snip or 'Processo interrompido.'}<br>O agente local encerrou a execução para proteção do Capture Site. O script foi otimizado com cache local e download resumível via curl. Clique no botão <em>Executar Novamente</em> abaixo para retomar de onde parou."
+                        step2_status = "completed"
+                        step3_status = "failed"
+                        is_failed = True
         except Exception:
             pass
 
@@ -1228,6 +1247,7 @@ def get_host_service_action_status(host: str, service_name: str, target_version:
         "ultima_atualizacao": last_up_str,
         "telemetria_label": telemetria_label,
         "is_updated": is_updated,
+        "is_failed": is_failed,
         "is_finished": (is_updated and acao_solicitada in ("Nenhuma", "", None)) or is_failed,
         "is_success": (is_updated and acao_solicitada in ("Nenhuma", "", None)),
         "current_step": current_step_num,
