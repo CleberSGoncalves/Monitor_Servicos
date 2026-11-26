@@ -20884,7 +20884,7 @@
   <script src="/static/js/detection_monitor.js?v=4.0.0"></script>
   <script src="/static/js/praca_analyzer.js?v=3.9.104"></script>
   <script src="/static/js/sla_matrix.js?v=3.9.102"></script>
-  <script src="/static/js/detection_pipeline_live.js?v=4.1.2"></script>
+  <script src="/static/js/detection_pipeline_live.js?v=4.1.3"></script>
 
 
   <!-- MODAL DE ACOMPANHAMENTO AO VIVO DE CONFIGURAÇÃO / UPDATE (COM CANCELAR) -->
@@ -21033,6 +21033,10 @@
 
               <button onclick="openPipelineLiveGuideModal()" style="background: linear-gradient(135deg, #0284c7, #0369a1); color: #fff; border: 1px solid rgba(56, 189, 248, 0.4); padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 5px; box-shadow: 0 2px 6px rgba(2, 132, 199, 0.3);" title="Abrir Guia Técnico e Playbook do Pipeline Live">
                 <span>📘</span> Guia Técnico &amp; Detecção
+              </button>
+
+              <button onclick="openFmaLiveAiDiagnosis()" style="background: linear-gradient(135deg, #7c3aed, #6d28d9); color: #fff; border: 1px solid rgba(192, 132, 252, 0.4); padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 5px; box-shadow: 0 2px 6px rgba(124, 58, 237, 0.3);" title="Analisar Pipeline com IA &amp; Gerar Plano de Solução">
+                <span>🤖</span> Diagnóstico IA &amp; Solução
               </button>
 
               <label style="display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #cbd5e1; cursor: pointer; background: rgba(30, 41, 59, 0.6); padding: 5px 9px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.1);">
@@ -21209,6 +21213,55 @@
                   <div style="color: #cbd5e1; margin-top: 4px;">
                     Não há arquivos sendo gerados em <code>D:\MediaDNA_V2\Data\emu</code>.<br>
                     <strong>Solução:</strong> Conferir no Cockpit se o serviço Atria Capture está ativo e se o perfil no <code>Multiplexes.xml</code> está gerando blocos de 1 min.
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            <!-- Bloco 5: Diagnóstico com IA & Matriz Operacional Completa -->
+            <div style="background: rgba(15, 23, 42, 0.9); border: 1px solid rgba(192, 132, 252, 0.3); border-radius: 8px; padding: 16px; margin-top: 12px;">
+              <div style="font-size: 13px; font-weight: 800; color: #c084fc; text-transform: uppercase; margin-bottom: 10px; display: flex; align-items: center; gap: 6px;">
+                <span>🧠</span> 5. Diagnóstico Inteligente com IA &amp; Matriz de Resolução de Falhas
+              </div>
+              <div style="font-size: 11.5px; color: #cbd5e1; line-height: 1.5; margin-bottom: 12px;">
+                O botão <strong>🤖 Diagnóstico IA &amp; Solução</strong> no topo do modal executa a auditoria automática dos 4 estágios da esteira e gera o plano passo a passo com botões de 1 clique. Consulte a matriz abaixo para compreender cada cenário:
+              </div>
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; font-size: 11px;">
+                
+                <div style="background: rgba(234, 179, 8, 0.08); border: 1px solid rgba(234, 179, 8, 0.25); border-radius: 6px; padding: 10px;">
+                  <strong style="color: #facc15;">⏳ Cenário: Motor Carregando Spots (Inicialização)</strong>
+                  <div style="color: #cbd5e1; margin-top: 4px;">
+                    <strong>Sintoma:</strong> No <code>fma.log</code> aparecem linhas com IDs numéricos (<code>7999..., FromRecon, DNA EMU Validations in queue</code>) e nenhuma detecção ainda.<br>
+                    <strong>Causa:</strong> O FastMatchingSvc acabou de subir ou recebeu resync do SGG e está indexando os 14.820 spots em memória RAM (Working Set sobe de ~50MB até ~700-800MB).<br>
+                    <strong>Ação:</strong> <em>Aguardar 60 a 120s sem reiniciar</em>. Não interrompa o processo enquanto o catálogo está sendo carregado.
+                  </div>
+                </div>
+
+                <div style="background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.25); border-radius: 6px; padding: 10px;">
+                  <strong style="color: #f87171;">🚨 Cenário: Recon=0 Persistente (Catálogo Vazio)</strong>
+                  <div style="color: #cbd5e1; margin-top: 4px;">
+                    <strong>Sintoma:</strong> O motor está ativo mas o consumo de RAM fica congelado em ~22MB e <code>XmlUpdate</code> acusa <code>recon=0</code>.<br>
+                    <strong>Causa:</strong> Falha de download de templates .mdna pelo ConfigMonitorSVC ou corrupção no <code>FastMatchingSvc.ini</code>.<br>
+                    <strong>Ação:</strong> Clicar em <em>🚨 Auto-Cura Recon=0</em> ou acionar o botão no Diagnóstico de IA.
+                  </div>
+                </div>
+
+                <div style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 6px; padding: 10px;">
+                  <strong style="color: #38bdf8;">📦 Cenário: Ausência de Buffer .EMU (Atria)</strong>
+                  <div style="color: #cbd5e1; margin-top: 4px;">
+                    <strong>Sintoma:</strong> Motor em RAM nominal (&gt; 700MB) porém sem nenhuma detecção há mais de 10 minutos.<br>
+                    <strong>Causa:</strong> O Atria Capture parou de gravar blocos de 1 min em <code>D:\MediaDNA_V2\Data\emu</code> ou o perfil no <code>Multiplexes.xml</code> foi desmarcado.<br>
+                    <strong>Ação:</strong> Reiniciar o AtriaCapture e validar se o perfil <code>EMU MediaDNA 1min</code> está presente em <code>WMProfiles</code>.
+                  </div>
+                </div>
+
+                <div style="background: rgba(34, 197, 94, 0.08); border: 1px solid rgba(34, 197, 94, 0.25); border-radius: 6px; padding: 10px;">
+                  <strong style="color: #4ade80;">✅ Cenário: Operação Nominal com Detecções</strong>
+                  <div style="color: #cbd5e1; margin-top: 4px;">
+                    <strong>Sintoma:</strong> RAM estável (~700-850MB), <code>NEW DETECTION</code> aparecendo conforme os comerciais vão ao ar nos canais monitorados.<br>
+                    <strong>Causa:</strong> Esteira acústica saudável com correlação &gt; 98% e tempo de varredura inferior a 50ms.<br>
+                    <strong>Ação:</strong> Nenhuma intervenção. Operação 100% nominal.
                   </div>
                 </div>
 

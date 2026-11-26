@@ -32,7 +32,7 @@ from datetime import datetime, timezone
 import logging
 from pathlib import Path
 from typing import Dict, Any, List, Optional
-from fastapi import FastAPI, Depends, HTTPException, status, Header, Query, Request
+from fastapi import FastAPI, Depends, HTTPException, status, Header, Query, Request, Body
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -1669,6 +1669,28 @@ async def get_fma_live_endpoint(
         return data
     except Exception as e:
         logger.error(f"[DetectionLiveAPI] Erro no live stream do FastMatching para {hostname}: {e}", exc_info=True)
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
+@app.post("/api/detection/fma-live/ai-diagnosis")
+@app.post("/api/fleet/detection/fma-live/ai-diagnosis")
+async def post_fma_live_ai_diagnosis(
+    payload: dict = Body(...),
+    user: dict = Depends(get_current_user)
+):
+    """
+    Executa diagnóstico avançado do pipeline de detecção com IA e gera plano de solução
+    estruturado (estágios 1 a 4, causa raiz, plano passo a passo e ações de 1 clique).
+    """
+    try:
+        from tracking_detection_monitor import generate_pipeline_ai_solution_plan
+        hostname = (payload.get("hostname") or "").strip()
+        if not hostname:
+            return JSONResponse(status_code=400, content={"success": False, "error": "Hostname é obrigatório."})
+        result = generate_pipeline_ai_solution_plan(hostname)
+        return result
+    except Exception as e:
+        logger.error(f"[DetectionLiveAI] Erro ao gerar plano IA para {payload.get('hostname')}: {e}", exc_info=True)
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
 

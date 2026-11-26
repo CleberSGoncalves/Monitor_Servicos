@@ -246,9 +246,12 @@ function renderFmaLiveDashboard(data) {
                     ${escapeHtml(diag.description || '')}
                 </div>
             </div>
-            <div style="text-align: right;">
+            <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
                 <div style="font-size: 9.5px; color: #94a3b8; font-weight: 700; text-transform: uppercase;">Ação Recomendada:</div>
                 <div style="font-size: 11px; color: #f8fafc; font-weight: 700; max-width: 380px;">${escapeHtml(diag.recommended_action || 'Nenhuma intervenção necessária.')}</div>
+                <button onclick="openFmaLiveAiDiagnosis()" style="background: linear-gradient(135deg, #7c3aed, #6d28d9); color: #fff; border: 1px solid rgba(192, 132, 252, 0.4); padding: 3px 10px; border-radius: 5px; font-size: 10.5px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; margin-top: 2px; box-shadow: 0 2px 6px rgba(124, 58, 237, 0.3);">
+                    <span>🤖</span> Diagnóstico IA &amp; Plano de Ação
+                </button>
             </div>
         </div>
 
@@ -386,8 +389,13 @@ function renderFmaLiveDashboard(data) {
                         <tbody>
                             ${detections.length === 0 ? `
                                 <tr>
-                                    <td colspan="6" style="text-align: center; padding: 24px; color: #64748b;">
-                                        Aguardando novos blocos comerciais ou matches na programação...
+                                    <td colspan="6" style="text-align: center; padding: 24px 16px; color: #94a3b8;">
+                                        <div style="font-size: 20px; margin-bottom: 6px;">📡</div>
+                                        <div style="font-weight: 700; color: #f1f5f9; font-size: 12px;">Nenhuma detecção comercial registrada no período</div>
+                                        <div style="font-size: 11px; color: #94a3b8; margin-top: 4px; max-width: 440px; margin-left: auto; margin-right: auto; line-height: 1.4;">
+                                            ${data.is_live_disk ? 'O arquivo fma.log local foi lido com sucesso e não há registros NEW DETECTION recentes gravados em disco.' : `Motor FastMatching ativo no nó físico (${perf.ram_working_set_mb} MB RAM | CPU: ${perf.host_cpu}). Detecções acústicas são registradas à medida que comerciais cadastrados no SGG são exibidos ao vivo.`}
+                                        </div>
+                                        ${fmaLiveSelectedChannel !== 'ALL' ? `<div style="margin-top: 6px; font-size: 10.5px; color: #38bdf8; font-weight: 700;">Filtro atual: ${escapeHtml(fmaLiveSelectedChannel)} (Clique em 'TODOS OS CANAIS' para visão ampla)</div>` : ''}
                                     </td>
                                 </tr>
                             ` : detections.map(d => `
@@ -616,4 +624,178 @@ function closePipelineLiveGuideModal() {
     }
 }
 window.closePipelineLiveGuideModal = closePipelineLiveGuideModal;
+
+async function openFmaLiveAiDiagnosis() {
+    const targetHost = fmaLiveCurrentHost || "";
+    if (!targetHost) {
+        if (typeof showToast === 'function') showToast('Selecione um host CS01 para análise.', 'warning');
+        return;
+    }
+
+    let modal = document.getElementById("fmaAiDiagnosisModal");
+    if (!modal) {
+        modal = document.createElement("div");
+        modal.id = "fmaAiDiagnosisModal";
+        modal.style.cssText = "display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.88); backdrop-filter: blur(8px); z-index: 10070; align-items: center; justify-content: center; padding: 18px;";
+        modal.onclick = (e) => { if (e.target === modal) closeFmaLiveAiDiagnosis(); };
+        document.body.appendChild(modal);
+    }
+
+    modal.style.display = "flex";
+    modal.innerHTML = `
+        <div style="background: #060b18; border: 1px solid rgba(192, 132, 252, 0.4); border-radius: 12px; max-width: 860px; width: 95%; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 25px 70px rgba(0,0,0,0.85);">
+            <div style="background: linear-gradient(135deg, #4c1d95, #6d28d9); padding: 14px 20px; display: flex; justify-content: space-between; align-items: center; color: #fff;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 22px;">🤖</span>
+                    <div>
+                        <div style="font-size: 15px; font-weight: 800;">Diagnóstico Inteligente &amp; Plano de Ação IA</div>
+                        <div style="font-size: 11px; opacity: 0.9;">Auditoria em 4 estágios do Pipeline FastMatching &amp; EMU — Host: <strong>${escapeHtml(targetHost)}</strong></div>
+                    </div>
+                </div>
+                <button onclick="closeFmaLiveAiDiagnosis()" style="background: none; border: none; color: #fff; font-size: 22px; cursor: pointer; line-height: 1;">✕</button>
+            </div>
+            <div id="fmaAiDiagnosisBody" style="padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px;">
+                <div style="text-align: center; padding: 40px 20px; color: #94a3b8;">
+                    <div style="font-size: 32px; animation: spin 1.5s linear infinite; margin-bottom: 12px;">🧠</div>
+                    <div style="font-size: 14px; font-weight: 700; color: #f8fafc;">Consultando Especialista de IA e analisando esteira do CS01...</div>
+                    <div style="font-size: 11.5px; color: #cbd5e1; margin-top: 4px;">Inspecionando Ingestão .EMU, Carga de Catálogo SGG em RAM, FastMatching C++ e Despacho WCF</div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    try {
+        const token = (typeof getAuthToken === 'function') ? getAuthToken() : ((typeof getFleetAuthToken === 'function') ? getFleetAuthToken() : (localStorage.getItem('fleet_token') || ''));
+        const headers = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = 'Bearer ' + token;
+
+        const res = await fetch('/api/detection/fma-live/ai-diagnosis', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ hostname: targetHost })
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+
+        if (!data.success) {
+            document.getElementById('fmaAiDiagnosisBody').innerHTML = `
+                <div style="color: #f87171; padding: 20px; text-align: center;">${escapeHtml(data.error || 'Falha ao processar diagnóstico IA.')}</div>
+            `;
+            return;
+        }
+
+        renderFmaAiDiagnosisModalContent(data);
+
+    } catch (e) {
+        console.error('[FmaAiDiag] Erro:', e);
+        const bodyEl = document.getElementById('fmaAiDiagnosisBody');
+        if (bodyEl) {
+            bodyEl.innerHTML = `<div style="color: #f87171; padding: 20px; text-align: center;">Erro de conexão com o módulo de IA: ${escapeHtml(e.message)}</div>`;
+        }
+    }
+}
+window.openFmaLiveAiDiagnosis = openFmaLiveAiDiagnosis;
+
+function closeFmaLiveAiDiagnosis() {
+    const modal = document.getElementById("fmaAiDiagnosisModal");
+    if (modal) modal.style.display = "none";
+}
+window.closeFmaLiveAiDiagnosis = closeFmaLiveAiDiagnosis;
+
+function renderFmaAiDiagnosisModalContent(data) {
+    const bodyEl = document.getElementById('fmaAiDiagnosisBody');
+    if (!bodyEl) return;
+
+    const stages = data.stages || [];
+    const steps = data.solution_plan || [];
+    const actions = data.quick_actions || [];
+    const scoreColor = data.health_score >= 90 ? '#4ade80' : (data.health_score >= 60 ? '#facc15' : '#f87171');
+
+    bodyEl.innerHTML = `
+        <!-- KPI TOPO: SCORE E STATUS -->
+        <div style="background: rgba(15, 23, 42, 0.9); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div>
+                <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; font-weight: 700;">Status do Pipeline (${escapeHtml(data.praca)})</div>
+                <div style="font-size: 16px; font-weight: 800; color: ${scoreColor}; margin-top: 2px;">
+                    ${escapeHtml(data.status_title || 'Operação')}
+                </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 14px;">
+                <div style="text-align: right;">
+                    <div style="font-size: 10px; color: #94a3b8; font-weight: 700; text-transform: uppercase;">Índice de Saúde</div>
+                    <div style="font-size: 20px; font-weight: 900; color: ${scoreColor}; font-family: monospace;">${data.health_score}%</div>
+                </div>
+                <div style="background: rgba(255, 255, 255, 0.05); padding: 6px 10px; border-radius: 6px; font-size: 10.5px; color: #cbd5e1; font-family: monospace;">
+                    Auditado: ${escapeHtml(data.timestamp)}
+                </div>
+            </div>
+        </div>
+
+        <!-- 4 ESTÁGIOS DA ESTEIRA -->
+        <div>
+            <div style="font-size: 11px; font-weight: 800; color: #cbd5e1; text-transform: uppercase; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                <span>⚙️</span> Rastreabilidade dos 4 Estágios do Pipeline
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px;">
+                ${stages.map(st => `
+                    <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(255, 255, 255, 0.08); border-top: 3px solid ${st.badge_color}; border-radius: 7px; padding: 8px 10px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-size: 10px; font-weight: 700; color: #94a3b8;">${escapeHtml(st.stage)}</span>
+                            <span style="background: ${st.badge_color}22; color: ${st.badge_color}; border: 1px solid ${st.badge_color}66; border-radius: 4px; font-size: 9px; font-weight: 800; padding: 1px 5px;">${escapeHtml(st.status)}</span>
+                        </div>
+                        <div style="font-size: 10px; color: #cbd5e1; margin-top: 5px; line-height: 1.35;">${escapeHtml(st.detail)}</div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+
+        <!-- PARECER TÉCNICO E CAUSA RAIZ -->
+        <div style="background: rgba(124, 58, 237, 0.08); border: 1px solid rgba(192, 132, 252, 0.25); border-radius: 8px; padding: 12px 16px;">
+            <div style="font-size: 12px; font-weight: 800; color: #c084fc; text-transform: uppercase; display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+                <span>🧠</span> Parecer Diagnóstico da IA &amp; Análise de Causa Raiz
+            </div>
+            <div style="font-size: 12px; color: #e2e8f0; line-height: 1.5;">
+                ${escapeHtml(data.ai_verdict || data.technical_assessment || data.root_cause)}
+            </div>
+        </div>
+
+        <!-- PLANO DE AÇÃO PASSO A PASSO -->
+        <div>
+            <div style="font-size: 11px; font-weight: 800; color: #cbd5e1; text-transform: uppercase; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                <span>🛠️</span> Plano de Resolução Operacional (Passo a Passo N1/N2)
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+                ${steps.map(s => `
+                    <div style="background: rgba(15, 23, 42, 0.9); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 7px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <div style="background: #38bdf8; color: #020617; font-weight: 900; font-size: 11px; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center;">${s.step}</div>
+                            <div>
+                                <div style="font-size: 12px; font-weight: 700; color: #f8fafc;">${escapeHtml(s.title)}</div>
+                                <div style="font-size: 11px; color: #94a3b8; margin-top: 1px;">${escapeHtml(s.desc)}</div>
+                            </div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 10px; color: #64748b; font-family: monospace;">⏱️ ${escapeHtml(s.estimated_time || 'Rápido')}</span>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+
+        <!-- AÇÕES RÁPIDAS DE 1 CLIQUE NO RODAPÉ DO MODAL -->
+        ${actions.length > 0 ? `
+            <div style="background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                <div style="font-size: 11px; font-weight: 700; color: #f8fafc;">Ações Imediatas de 1-Clique Disponíveis:</div>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    ${actions.map(act => `
+                        <button onclick="closeFmaLiveAiDiagnosis(); triggerFmaLiveHeal('${act.mode}')" style="background: linear-gradient(135deg, #0284c7, #0369a1); color: #fff; border: none; padding: 6px 12px; border-radius: 6px; font-size: 11.5px; font-weight: 700; cursor: pointer;">
+                            ${escapeHtml(act.label)}
+                        </button>
+                    `).join('')}
+                </div>
+            </div>
+        ` : ''}
+    `;
+}
+window.renderFmaAiDiagnosisModalContent = renderFmaAiDiagnosisModalContent;
 
