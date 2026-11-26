@@ -63,3 +63,15 @@
 > - Detection + Tracking: **`EMU MDNA`** (`WMProfiles\EMU_EMU MDNA.xml`)
 > - Proibido usar slugs inventados (`emu_mdna_1min`, `emu_mdna`).
 > - Todo script que altere `Multiplexes.xml` deve validar a existência do perfil no host antes (`build_wmprofile_guard_snippet`). Se faltar, não altera nada e a migração de stack é abortada (Detection/Tracking continuam rodando).
+
+---
+
+## 🛡️ REGRA OBRIGATÓRIA DE ENCODING UTF-8 E VALIDAÇÃO PÓS-EDIÇÃO (HTML / JS)
+
+> [!CAUTION]
+> **PROIBIDO USAR `Get-Content | Set-Content` DO POWERSHELL EM ARQUIVOS `.html` / `.js` / `.py`**
+> O PowerShell 5.1 lê arquivos UTF-8 sem BOM como ANSI (Windows-1252) e corrompe toda a acentuação e emojis (mojibake: `MonitoraÃ§Ã£o`).
+> 1. Toda edição programática em `.html`, `.js`, `.css` ou `.py` DEVE usar `edit_file` ou Python com `encoding='utf-8'` explícito.
+> 2. Após qualquer alteração em `dashboard/static/index.html` ou arquivos `.js`:
+>    - Validar sintaxe com `node -c` em todos os arquivos `.js` alterados.
+>    - Validar ausência de mojibake (`Ã§`, `Ã£`, `ðŸ`) e testar a renderização/cliques no **Playwright** antes de dar `git commit` e `git push`.
