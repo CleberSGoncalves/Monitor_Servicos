@@ -3451,7 +3451,8 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
         if p.exists():
             try:
                 with open(p, "r", encoding="utf-8", errors="ignore") as f:
-                    log_lines = [line.rstrip() for line in f.readlines()[-max_lines:]]
+                    all_disk_lines = [line.rstrip() for line in f.readlines()]
+                log_lines = all_disk_lines[-max(max_lines, 500):]
                 log_source = str(p)
                 is_live_disk = True
                 break
@@ -3484,7 +3485,8 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
         for i in range(max_lines):
             t = now - timedelta(seconds=(max_lines - i) * step_seconds)
             ts_str = t.strftime("%Y-%m-%d %H:%M:%S")
-            ch = channels[(h_seed + i) % len(channels)]["name"]
+            # Rotacionar canais tanto por linha quanto por ciclo de detecção (evita travar em 1 canal quando len(channels)==3)
+            ch = channels[(h_seed + (i // 3) + i) % len(channels)]["name"]
 
             if not is_fm_running:
                 if i % 10 == 0:
@@ -3596,7 +3598,7 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
                 "status": "CONFIRMED",
                 "badge_color": "#22c55e"
             })
-            if len(recent_detections) >= 12:
+            if len(recent_detections) >= 40:
                 break
 
         m_dl = re_del.search(line)
@@ -3617,7 +3619,7 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
                 "status": "DELAYED",
                 "badge_color": "#eab308"
             })
-            if len(recent_detections) >= 12:
+            if len(recent_detections) >= 40:
                 break
 
     # 6. Geração de .EMU (D:\MediaDNA_V2\Data\emu)
