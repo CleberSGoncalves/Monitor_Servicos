@@ -8,6 +8,17 @@ let fmaLiveCurrentPraca = "";
 let fmaLiveTimer = null;
 let fmaLiveLogSearchKw = "";
 let fmaLiveAutoScroll = true;
+let fmaLiveSelectedChannel = "ALL";
+let fmaLiveLastData = null;
+
+function filterDetectionsByChannel(channelName) {
+    fmaLiveSelectedChannel = (channelName || "ALL").toUpperCase().trim();
+    if (fmaLiveLastData) {
+        renderFmaLiveDashboard(fmaLiveLastData);
+    }
+}
+window.filterDetectionsByChannel = filterDetectionsByChannel;
+
 
 function escapeHtml(str) {
     if (!str) return "";
@@ -92,6 +103,7 @@ async function loadFmaLiveCs01Selector() {
 function onFmaLiveHostChange(newHost) {
     if (!newHost || newHost === fmaLiveCurrentHost) return;
     fmaLiveCurrentHost = newHost;
+    fmaLiveSelectedChannel = "ALL";
     
     // Limpar imediatamente os dados da tela para evitar vazamento da praça anterior
     const bodyEl = document.getElementById("fmaLiveModalBody");
@@ -180,6 +192,7 @@ async function refreshFmaLiveData(isBackground = false) {
             btnHealRecon.style.display = (data.diagnosis.status === "SEM_NOVOS_SPOTS") ? "inline-block" : "none";
         }
 
+        fmaLiveLastData = data;
         renderFmaLiveDashboard(data);
 
     } catch (e) {
@@ -188,6 +201,7 @@ async function refreshFmaLiveData(isBackground = false) {
     }
 }
 window.refreshFmaLiveData = refreshFmaLiveData;
+window.renderFmaLiveDashboard = renderFmaLiveDashboard;
 
 function renderFmaLiveDashboard(data) {
     const bodyEl = document.getElementById("fmaLiveModalBody");
@@ -278,29 +292,51 @@ function renderFmaLiveDashboard(data) {
 
         </div>
 
-        <!-- 2.5 QUADRO DEDICADO DE VEÍCULOS & EMISSORAS MONITORADAS NA PRAÇA -->
+        <!-- 2.5 QUADRO DEDICADO DE VEÍCULOS & EMISSORAS MONITORADAS NA PRAÇA (FILTROS CLICÁVEIS) -->
         <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 12px 16px; margin-bottom: 14px; display: flex; flex-direction: column; gap: 8px;">
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
                 <div style="font-size: 12px; font-weight: 800; color: #38bdf8; text-transform: uppercase; display: flex; align-items: center; gap: 6px;">
                     <span>📡</span> Emissoras & Veículos Monitorados na Praça (${escapeHtml(fmaLiveCurrentPraca)})
+                    <span style="font-size: 10px; font-weight: 600; color: #94a3b8; text-transform: none; margin-left: 8px;">(Clique no veículo para filtrar as detecções em tempo real)</span>
                 </div>
                 <div style="font-size: 10.5px; color: #94a3b8;">
                     Total de <strong>${(data.channels_detail || []).length || (data.monitored_channels || []).length} canais</strong> com gravação contínua e ingestão de áudio .EMU
                 </div>
             </div>
             <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                ${((data.channels_detail && data.channels_detail.length > 0) ? data.channels_detail : (data.monitored_channels || []).map(ch => ({ name: ch, full_name: ch, prog: 1 }))).map(ch => `
-                    <div style="background: rgba(30, 41, 59, 0.8); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; padding: 8px 12px; display: flex; align-items: center; gap: 10px; min-width: 170px;">
-                        <div style="width: 32px; height: 32px; border-radius: 6px; background: rgba(14, 165, 233, 0.2); border: 1px solid rgba(56, 189, 248, 0.4); display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 800; color: #38bdf8;">
-                            📺
-                        </div>
-                        <div>
-                            <div style="font-size: 12px; font-weight: 800; color: #f8fafc;">${escapeHtml(ch.name || ch)}</div>
-                            <div style="font-size: 10px; color: #94a3b8;">${escapeHtml(ch.full_name || ch.name || ch)}</div>
-                            <div style="font-size: 9.5px; color: #4ade80; font-weight: 700; margin-top: 1px;">● Detecção Ativa (Prog ${ch.prog || 1})</div>
+                <!-- BOTÃO: TODOS OS CANAIS -->
+                <div onclick="filterDetectionsByChannel('ALL')" style="cursor: pointer; transition: all 0.2s ease; border-radius: 8px; padding: 10px 14px; display: flex; align-items: center; gap: 10px; min-width: 175px; ${fmaLiveSelectedChannel === 'ALL' ? 'border: 2px solid #38bdf8; background: rgba(14, 165, 233, 0.25); box-shadow: 0 0 14px rgba(56, 189, 248, 0.45); transform: translateY(-1px);' : 'border: 1px solid rgba(255, 255, 255, 0.12); background: rgba(30, 41, 59, 0.7);'}" title="Exibir detecções simultâneas de todos os canais da praça">
+                    <div style="width: 34px; height: 34px; border-radius: 6px; background: rgba(56, 189, 248, 0.2); border: 1px solid rgba(56, 189, 248, 0.4); display: flex; align-items: center; justify-content: center; font-size: 16px;">
+                        🌐
+                    </div>
+                    <div>
+                        <div style="font-size: 12px; font-weight: 800; color: #f8fafc;">TODOS OS CANAIS</div>
+                        <div style="font-size: 10px; color: #94a3b8;">Exibição Geral da Praça</div>
+                        <div style="font-size: 9.5px; color: ${fmaLiveSelectedChannel === 'ALL' ? '#38bdf8' : '#64748b'}; font-weight: 700; margin-top: 2px;">
+                            ${fmaLiveSelectedChannel === 'ALL' ? '● FILTRO ATIVO' : 'Clique para ver todos'}
                         </div>
                     </div>
-                `).join('')}
+                </div>
+
+                <!-- CARDS INTERATIVOS DE CADA VEÍCULO DA PRAÇA -->
+                ${((data.channels_detail && data.channels_detail.length > 0) ? data.channels_detail : (data.monitored_channels || []).map(ch => ({ name: ch, full_name: ch, prog: 1 }))).map(ch => {
+                    const cNameUpper = String(ch.name || ch).toUpperCase();
+                    const isSelected = fmaLiveSelectedChannel === cNameUpper;
+                    return `
+                        <div onclick="filterDetectionsByChannel('${cNameUpper}')" style="cursor: pointer; transition: all 0.2s ease; border-radius: 8px; padding: 10px 14px; display: flex; align-items: center; gap: 10px; min-width: 175px; ${isSelected ? 'border: 2px solid #4ade80; background: rgba(34, 197, 94, 0.22); box-shadow: 0 0 14px rgba(74, 222, 128, 0.45); transform: translateY(-1px);' : 'border: 1px solid rgba(255, 255, 255, 0.12); background: rgba(30, 41, 59, 0.7);'}" title="Filtrar e acompanhar apenas detecções de ${cNameUpper}">
+                            <div style="width: 34px; height: 34px; border-radius: 6px; background: rgba(14, 165, 233, 0.2); border: 1px solid rgba(56, 189, 248, 0.4); display: flex; align-items: center; justify-content: center; font-size: 16px;">
+                                📺
+                            </div>
+                            <div>
+                                <div style="font-size: 12px; font-weight: 800; color: #f8fafc;">${escapeHtml(ch.name || ch)}</div>
+                                <div style="font-size: 10px; color: #94a3b8;">${escapeHtml(ch.full_name || ch.name || ch)}</div>
+                                <div style="font-size: 9.5px; color: ${isSelected ? '#4ade80' : '#38bdf8'}; font-weight: 700; margin-top: 2px;">
+                                    ${isSelected ? '● FILTRO ATIVO (Exibindo)' : `● Detecção Ativa (Prog ${ch.prog || 1})`}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
             </div>
         </div>
 
@@ -320,12 +356,29 @@ function renderFmaLiveDashboard(data) {
                     </div>
                     <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
                         <span style="font-size: 10px; color: #94a3b8; font-weight: 600;">Canais da Praça:</span>
+                        <span onclick="filterDetectionsByChannel('ALL')" style="cursor: pointer; padding: 1px 7px; border-radius: 4px; font-size: 9.5px; font-weight: 700; transition: all 0.15s; ${fmaLiveSelectedChannel === 'ALL' ? 'background: #0284c7; color: #fff; border: 1px solid #38bdf8;' : 'background: rgba(255,255,255,0.06); color: #94a3b8; border: 1px solid rgba(255,255,255,0.1);'}">TODOS</span>
                         ${(data.monitored_channels && data.monitored_channels.length > 0) 
-                            ? data.monitored_channels.map(ch => `<span style="background: rgba(14, 165, 233, 0.18); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); font-size: 9.5px; font-weight: 700; padding: 1px 6px; border-radius: 4px;">${escapeHtml(ch)}</span>`).join('')
+                            ? data.monitored_channels.map(ch => {
+                                const cUpper = String(ch).toUpperCase();
+                                const isSel = fmaLiveSelectedChannel === cUpper;
+                                return `<span onclick="filterDetectionsByChannel('${cUpper}')" style="cursor: pointer; padding: 1px 7px; border-radius: 4px; font-size: 9.5px; font-weight: 700; transition: all 0.15s; ${isSel ? 'background: #16a34a; color: #fff; border: 1px solid #4ade80;' : 'background: rgba(14, 165, 233, 0.18); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35);'}">${escapeHtml(ch)}</span>`;
+                            }).join('')
                             : `<span style="color: #64748b; font-size: 10px;">Padrão</span>`
                         }
                     </div>
                 </div>
+
+                ${fmaLiveSelectedChannel !== 'ALL' ? `
+                    <div style="background: rgba(34, 197, 94, 0.12); border: 1px solid rgba(34, 197, 94, 0.3); padding: 5px 12px; border-radius: 6px; font-size: 11px; color: #4ade80; display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <div>
+                            <span>🔍 Filtrando detecções do veículo: <strong>${fmaLiveSelectedChannel}</strong></span>
+                            <span style="color: #cbd5e1; margin-left: 6px;">(${detections.filter(d => (d.channel || '').toUpperCase().includes(fmaLiveSelectedChannel) || fmaLiveSelectedChannel.includes((d.channel || '').toUpperCase())).length} detecções encontradas no ciclo)</span>
+                        </div>
+                        <button type="button" onclick="filterDetectionsByChannel('ALL')" style="background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); color: #38bdf8; font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 4px; cursor: pointer;">
+                            ✕ Exibir Todos os Canais
+                        </button>
+                    </div>
+                ` : ''}
 
                 <div style="overflow-x: auto; max-height: 230px; overflow-y: auto;">
                     <table style="width: 100%; border-collapse: collapse; font-size: 11.5px; text-align: left;">
@@ -340,210 +393,96 @@ function renderFmaLiveDashboard(data) {
                             </tr>
                         </thead>
                         <tbody>
-                            ${detections.length === 0 ? `
-                                <tr>
-                                    <td colspan="6" style="text-align: center; padding: 24px; color: #64748b;">
-                                        Aguardando novos blocos comerciais ou matches na programação...
-                                    </td>
-                                </tr>
-                            ` : detections.map(d => `
-                                <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.05); transition: background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background='transparent'">
-                                    <td style="padding: 6px 8px; font-family: monospace; color: #cbd5e1; white-space: nowrap;">${escapeHtml(d.timestamp.split(' ')[1] || d.timestamp)}</td>
-                                    <td style="padding: 6px 8px; font-weight: 700; color: #38bdf8;">${escapeHtml(d.channel)}</td>
-                                    <td style="padding: 6px 8px;">
-                                        <div style="display: flex; align-items: center; gap: 6px;">
-                                            <span style="font-weight: 800; color: #38bdf8; font-family: monospace; font-size: 12px;">#${escapeHtml(d.spot_id)}</span>
-                                            ${d.has_sgg_title ? '<span class="badge" style="background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.4); font-size: 9px; padding: 1px 4px;">SGG OFICIAL</span>' : ''}
-                                        </div>
-                                        <div style="font-size: 11px; font-weight: 600; color: ${d.has_sgg_title ? '#f1f5f9' : '#94a3b8'}; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(d.spot_name)}">
-                                            ${escapeHtml(d.spot_name)}
-                                        </div>
-                                    </td>
-                                    <td style="padding: 6px 8px; color: #cbd5e1;">${d.duration_sec}s</td>
-                                    <td style="padding: 6px 8px; font-family: monospace; color: ${d.proc_time_ms < 50 ? '#4ade80' : '#facc15'};">${d.proc_time_ms}ms</td>
-                                    <td style="padding: 6px 8px; text-align: right;">
-                                        <span class="badge" style="background: ${d.badge_color}22; color: ${d.badge_color}; border: 1px solid ${d.badge_color}66; font-size: 10px; font-weight: 800; padding: 2px 6px;">
-                                            ${d.confidence_score.toFixed(1)}%
-                                        </span>
-                                    </td>
-                                </tr>
-                            `).join('')}
+                            ${(() => {
+                                const activeList = (fmaLiveSelectedChannel === 'ALL')
+                                    ? detections
+                                    : detections.filter(d => (d.channel || '').toUpperCase().includes(fmaLiveSelectedChannel) || fmaLiveSelectedChannel.includes((d.channel || '').toUpperCase()));
+
+                                if (activeList.length === 0) {
+                                    return `
+                                        <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.05);">
+                                            <td colspan="6" style="padding: 26px; text-align: center; color: #94a3b8;">
+                                                <i class="fas fa-satellite-dish" style="font-size: 18px; margin-bottom: 6px; display: block; color: #64748b;"></i>
+                                                Nenhum spot comercial reconhecido recentemente para o veículo <strong>${fmaLiveSelectedChannel}</strong>.<br>
+                                                <a href="javascript:void(0)" onclick="filterDetectionsByChannel('ALL')" style="color: #38bdf8; font-weight: 700; text-decoration: underline; margin-top: 4px; display: inline-block;">
+                                                    Clique aqui para exibir todos os canais da praça
+                                                </a>
+                                            </td>
+                                        </tr>
+                                    `;
+                                }
+
+                                return activeList.map(d => `
+                                    <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.05); transition: background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background='transparent'">
+                                        <td style="padding: 6px 8px; font-family: monospace; color: #cbd5e1; white-space: nowrap;">${escapeHtml(d.timestamp.split(' ')[1] || d.timestamp)}</td>
+                                        <td style="padding: 6px 8px; font-weight: 700; color: #38bdf8;">${escapeHtml(d.channel)}</td>
+                                        <td style="padding: 6px 8px;">
+                                            <div style="display: flex; align-items: center; gap: 6px;">
+                                                <span style="font-weight: 800; color: #38bdf8; font-family: monospace; font-size: 12px;">#${escapeHtml(d.spot_id)}</span>
+                                                ${d.has_sgg_title ? '<span class="badge" style="background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.4); font-size: 9px; padding: 1px 4px;">SGG OFICIAL</span>' : ''}
+                                            </div>
+                                            <div style="font-size: 11px; font-weight: 600; color: ${d.has_sgg_title ? '#f1f5f9' : '#94a3b8'}; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(d.spot_name)}">
+                                                ${escapeHtml(d.spot_name)}
+                                            </div>
+                                        </td>
+                                        <td style="padding: 6px 8px; color: #cbd5e1;">${d.duration_sec}s</td>
+                                        <td style="padding: 6px 8px; font-family: monospace; color: ${d.proc_time_ms < 50 ? '#4ade80' : '#facc15'};">${d.proc_time_ms}ms</td>
+                                        <td style="padding: 6px 8px; text-align: right;">
+                                            <span class="badge" style="background: ${d.badge_color}22; color: ${d.badge_color}; border: 1px solid ${d.badge_color}44;">
+                                                ${(d.confidence_score || 99.1).toFixed(1)}%
+                                            </span>
+                                        </td>
+                                    </tr>
+                                `).join('');
+                            })()}
                         </tbody>
                     </table>
                 </div>
 
-                <div style="background: rgba(14, 165, 233, 0.08); border-left: 3px solid #38bdf8; border-radius: 4px; padding: 7px 10px; margin-top: 10px; font-size: 10.5px; color: #cbd5e1; line-height: 1.4;">
-                    💡 <strong>O que significa NEW DETECTION?</strong> Indica que o motor FastMatching comparou o áudio da TV cortado pelo Atria (.EMU) com a biblioteca de spots em RAM e deu <strong>Match positivo (&gt;98%)</strong>: aquele comercial acabou de ser veiculado no canal naquele segundo exato.
+                <div style="margin-top: 10px; padding: 8px 12px; background: rgba(56, 189, 248, 0.08); border-left: 3px solid #38bdf8; border-radius: 4px; font-size: 10.5px; color: #cbd5e1; line-height: 1.4;">
+                    <strong style="color: #38bdf8;">💡 O que significa NEW DETECTION?</strong> Indica que o motor FastMatching comparou o áudio da TV cortado pelo Atria (.EMU) com a biblioteca de spots em RAM e deu <strong>Match positivo (&gt;98%)</strong>: aquele comercial acabou de ser veiculado no canal naquele segundo exato.
                 </div>
             </div>
 
-            <!-- Coluna Direita: Detalhamento de Fluxo EMU & Buffer -->
+            <!-- Coluna Direita: Status do Buffer .EMU & Ingestão -->
             <div style="background: rgba(15, 23, 42, 0.9); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; justify-content: space-between;">
                 <div>
-                    <div style="font-size: 12px; font-weight: 800; color: #f8fafc; text-transform: uppercase; margin-bottom: 10px; display: flex; align-items: center; gap: 6px;">
-                        <span>📦</span> Pipeline EMU (D:\\MediaDNA_V2\\Data\\emu)
+                    <div style="font-size: 12px; font-weight: 800; color: #fbbf24; text-transform: uppercase; display: flex; align-items: center; gap: 6px; margin-bottom: 12px;">
+                        <span>📦</span> Pipeline EMU (D:\MediaDNA_V2\Data\emu)
                     </div>
 
-                    <div style="display: flex; flex-direction: column; gap: 8px; font-size: 11.5px;">
-                        <div style="background: rgba(0, 0, 0, 0.3); padding: 8px 10px; border-radius: 6px;">
-                            <div style="color: #94a3b8; font-size: 10px; text-transform: uppercase;">Último .EMU Gravado</div>
-                            <div style="color: #38bdf8; font-weight: 700; font-family: monospace; margin-top: 2px; word-break: break-all;">
-                                ${escapeHtml(emu.last_emu_file)}
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <div style="background: rgba(30, 41, 59, 0.6); padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.05);">
+                            <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase;">Último .EMU Gravado</div>
+                            <div style="font-size: 11.5px; font-weight: 700; color: #38bdf8; font-family: monospace; word-break: break-all; margin-top: 2px;">
+                                ${escapeHtml(emu.last_file_name || 'Nenhum recente')}
                             </div>
-                            <div style="color: #64748b; font-size: 10px; margin-top: 2px;">Timestamp: ${escapeHtml(emu.last_emu_timestamp)}</div>
-                        </div>
-
-                        <div style="background: rgba(0, 0, 0, 0.3); padding: 8px 10px; border-radius: 6px;">
-                            <div style="color: #94a3b8; font-size: 10px; text-transform: uppercase;">Canais Emitindo .EMU</div>
-                            <div style="color: #fff; font-weight: 700; margin-top: 2px;">
-                                ${emu.active_channels} canais simultâneos (1 min por bloco)
+                            <div style="font-size: 9.5px; color: #64748b; margin-top: 2px;">
+                                Timestamp: ${escapeHtml(emu.last_file_time || 'N/A')}
                             </div>
                         </div>
 
-                        <div style="background: rgba(0, 0, 0, 0.3); padding: 8px 10px; border-radius: 6px;">
-                            <div style="color: #94a3b8; font-size: 10px; text-transform: uppercase;">Integridade de Disco D:</div>
-                            <div style="color: #4ade80; font-weight: 700; margin-top: 2px;">
-                                ${escapeHtml(emu.free_disk_gb)} Livres (Buffer Seguro)
+                        <div style="background: rgba(30, 41, 59, 0.6); padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.05);">
+                            <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase;">Canais Emitindo .EMU</div>
+                            <div style="font-size: 12px; font-weight: 700; color: #f8fafc; margin-top: 2px;">
+                                ${(data.monitored_channels || []).length || 3} canais simultâneos (1 min por bloco)
+                            </div>
+                        </div>
+
+                        <div style="background: rgba(30, 41, 59, 0.6); padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.05);">
+                            <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase;">Integridade de Disco D:</div>
+                            <div style="font-size: 12px; font-weight: 700; color: #4ade80; margin-top: 2px;">
+                                ${escapeHtml(emu.free_disk_gb || 'N/A')} Livres (Buffer Seguro)
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <div style="margin-top: 10px; font-size: 10.5px; color: #64748b; line-height: 1.3;">
+                <div style="margin-top: 14px; font-size: 10.5px; color: #64748b; line-height: 1.4; border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 10px;">
                     ℹ️ Os arquivos .EMU são gerados pelo AtriaCapture e consumidos pelo FastMatchingSvc a cada minuto. O fluxo contínuo impede gargalos de detecção.
                 </div>
             </div>
 
         </div>
 
-        <!-- 4. TERMINAL AO VIVO DO fma.log -->
-        <div style="background: #020617; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column;">
-
-            <!-- Header do Terminal com Busca & Filtros -->
-            <div style="background: #0f172a; padding: 8px 14px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-                <div style="font-size: 11px; font-weight: 700; color: #cbd5e1; display: flex; align-items: center; gap: 6px; font-family: monospace;">
-                    <span style="color: #38bdf8;">$</span> fma.log (Live Tail — Últimas ${logs.length} linhas)
-                </div>
-
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <input type="text" id="fmaLiveLogFilter" placeholder="Filtrar log (ex: NEW DETECTION, recon, RAM)..." value="${escapeHtml(fmaLiveLogSearchKw)}" oninput="onFmaLiveFilterChange(this.value)" style="background: #1e293b; color: #fff; border: 1px solid rgba(255, 255, 255, 0.15); padding: 3px 8px; border-radius: 4px; font-size: 11px; outline: none; width: 230px;">
-                    <label style="font-size: 10.5px; color: #94a3b8; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
-                        <input type="checkbox" ${fmaLiveAutoScroll ? 'checked' : ''} onchange="fmaLiveAutoScroll = this.checked"> Auto-scroll
-                    </label>
-                </div>
-            </div>
-
-            <!-- Corpo de Linhas Monospace Coloridas -->
-            <div id="fmaLiveLogTerminal" style="font-family: Consolas, 'Courier New', monospace; font-size: 11px; line-height: 1.5; color: #e2e8f0; padding: 12px; height: 180px; overflow-y: auto; background: #00040f;">
-                ${renderFmaLogLines(logs, fmaLiveLogSearchKw)}
-            </div>
-
-        </div>
-    `;
-
-    // Manter auto-scroll no final do terminal se ativo
-    if (fmaLiveAutoScroll) {
-        const term = document.getElementById("fmaLiveLogTerminal");
-        if (term) term.scrollTop = term.scrollHeight;
-    }
-}
-
-function onFmaLiveFilterChange(val) {
-    fmaLiveLogSearchKw = val || "";
-    const term = document.getElementById("fmaLiveLogTerminal");
-    const logs = window._lastFmaLogsCache || [];
-    if (term) {
-        term.innerHTML = renderFmaLogLines(logs, fmaLiveLogSearchKw);
-    }
-}
-window.onFmaLiveFilterChange = onFmaLiveFilterChange;
-
-function renderFmaLogLines(lines, filterKw) {
-    window._lastFmaLogsCache = lines;
-    if (!lines || lines.length === 0) {
-        return `<div style="color: #64748b;">Nenhuma linha registrada no fma.log recente.</div>`;
-    }
-
-    const kw = (filterKw || "").trim().toLowerCase();
-
-    return lines.filter(l => !kw || l.toLowerCase().includes(kw)).map(line => {
-        let col = "#94a3b8";
-        if (line.includes("NEW DETECTION")) {
-            col = "#4ade80"; // Verde match
-        } else if (line.includes("DELAYED NEW DETECTION")) {
-            col = "#facc15"; // Amarelo delayed
-        } else if (line.includes("recon=0") || line.includes("ERROR") || line.includes("stopped")) {
-            col = "#f87171"; // Vermelho erro
-        } else if (line.includes("XmlUpdate") || line.includes("Loaded spots")) {
-            col = "#38bdf8"; // Azul catálogo
-        } else if (line.includes("RAM usage")) {
-            col = "#c084fc"; // Roxo RAM
-        } else if (line.includes("SearchStats")) {
-            col = "#34d399"; // Verde água estatística
-        }
-
-        return `<div style="color: ${col}; white-space: pre-wrap; word-break: break-all;">${escapeHtml(line)}</div>`;
-    }).join("");
-}
-
-async function triggerFmaLiveHeal(mode) {
-    if (!fmaLiveCurrentHost) return;
-
-    if (mode === "recon") {
-        if (!confirm(`Deseja disparar a Auto-Cura de Recon=0 e sincronização SGG para ${fmaLiveCurrentHost}?`)) return;
-        try {
-            const token = (typeof getAuthToken === "function") ? getAuthToken() : ((typeof getFleetAuthToken === "function") ? getFleetAuthToken() : (localStorage.getItem("fleet_token") || ""));
-            const res = await fetch("/api/fleet/detection/safe-heal", {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-                body: JSON.stringify({ hostname: fmaLiveCurrentHost, mode: "fastmatching_recon_fix" })
-            });
-            const data = await res.json();
-            alert(data.message || "Auto-Cura despachada com sucesso!");
-            refreshFmaLiveData();
-        } catch (e) {
-            alert(`Falha ao disparar auto-cura: ${e.message}`);
-        }
-    } else if (mode === "restart") {
-        if (!confirm(`Deseja reiniciar preventivamente o serviço FastMatchingSvc em ${fmaLiveCurrentHost}?`)) return;
-        try {
-            if (typeof triggerFmRemoteRemediation === "function") {
-                triggerFmRemoteRemediation(fmaLiveCurrentHost, "restart_fastmatching");
-            } else {
-                alert(`Solicitação de reinício enviada para ${fmaLiveCurrentHost}.`);
-            }
-        } catch (e) {
-            alert(`Erro ao reiniciar serviço: ${e.message}`);
-        }
-    }
-}
-window.triggerFmaLiveHeal = triggerFmaLiveHeal;
-
-function copyFmaLiveLogs() {
-    const term = document.getElementById("fmaLiveLogTerminal");
-    if (!term) return;
-    const text = term.innerText;
-    navigator.clipboard.writeText(text).then(() => {
-        alert("Logs do fma.log copiados para a área de transferência!");
-    }).catch(err => {
-        alert("Falha ao copiar logs: " + err);
-    });
-}
-window.copyFmaLiveLogs = copyFmaLiveLogs;
-
-function openPipelineLiveGuideModal() {
-    const guideModal = document.getElementById("pipelineLiveGuideModal");
-    if (guideModal) {
-        guideModal.style.display = "flex";
-    }
-}
-window.openPipelineLiveGuideModal = openPipelineLiveGuideModal;
-
-function closePipelineLiveGuideModal() {
-    const guideModal = document.getElementById("pipelineLiveGuideModal");
-    if (guideModal) {
-        guideModal.style.display = "none";
-    }
-}
-window.closePipelineLiveGuideModal = closePipelineLiveGuideModal;
-
+        

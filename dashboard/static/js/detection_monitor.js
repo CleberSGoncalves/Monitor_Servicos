@@ -201,7 +201,17 @@ function renderDetectionTable() {
 
         // Badge do Motor Ativo
         let engineBadgeHtml = "";
-        if (site.engine_tier === "PRIMARY") {
+        const lastKnownEngine = { PRIMARY: "FastMatching", FALLBACK: "DetectionSVC", CONFLICT: "Conflito", NONE: "Nenhum" }[site.engine_tier] || "Indeterminado";
+        if (site.health_status === "COMM_LOST") {
+            // Host sem telemetria: o estado do motor é DESCONHECIDO — nunca exibir INOPERANTE/P0 com dado velho.
+            engineBadgeHtml = `
+                <div style="display: flex; align-items: center; gap: 6px;" title="Último estado conhecido antes da perda de comunicação: ${lastKnownEngine}">
+                    <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #64748b;"></span>
+                    <span style="font-weight: 600; color: #94a3b8; font-size: 12px;">Sem Telemetria</span>
+                    <span style="font-size: 10px; background: rgba(100, 116, 139, 0.15); color: #cbd5e1; padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.3);">Último: ${lastKnownEngine}</span>
+                </div>
+            `;
+        } else if (site.engine_tier === "PRIMARY") {
             engineBadgeHtml = `
                 <div style="display: flex; align-items: center; gap: 6px;">
                     <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 8px #22c55e;"></span>
@@ -276,14 +286,18 @@ function renderDetectionTable() {
         let barWidth = Math.min(100, Math.max(8, (age / detectionCurrentThreshold) * 100));
         let ageLabel = `Há ${age} min`;
 
-        if (comm.is_stale) {
-            ageColor = "#f59e0b";
+        if (site.health_status === "COMM_LOST" || comm.is_stale) {
+            ageColor = "#64748b";
             barWidth = 100;
-            ageLabel = `Sem dados recentes`;
+            ageLabel = `Telemetria suspensa (${comm.label || "sem heartbeat"})`;
+        } else if (site.pipeline_bottleneck === "TELEMETRY_PARTIAL") {
+            ageColor = "#eab308";
+            barWidth = 100;
+            ageLabel = `Aguardando reporte dos motores`;
         } else if (site.engine_tier === "NONE") {
             ageColor = "#ef4444";
             barWidth = 100;
-            ageLabel = `Parado (>180m)`;
+            ageLabel = `Sem motor de matching ativo`;
         } else if (age >= detectionCurrentThreshold) {
             ageColor = "#ef4444";
             barWidth = 100;
@@ -307,9 +321,11 @@ function renderDetectionTable() {
         if (site.health_status === "NOMINAL") {
             statusBadge = `<span style="background: rgba(34, 197, 94, 0.15); color: #86efac; border: 1px solid rgba(34, 197, 94, 0.3); padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 600;">Nominal</span>`;
         } else if (site.health_status === "WARNING") {
-            statusBadge = `<span style="background: rgba(234, 179, 8, 0.15); color: #fde047; border: 1px solid rgba(234, 179, 8, 0.3); padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 600;">Atenção (Fallback)</span>`;
+            const warnText = site.pipeline_bottleneck === "TELEMETRY_PARTIAL" ? "Telemetria Pendente"
+                : (site.engine_tier === "CONFLICT" ? "Conflito de Motores" : (site.pipeline_bottleneck === "TRACKING" ? "TrackingSVC Parado" : "Atenção"));
+            statusBadge = `<span title="${site.severity_label || ""}" style="background: rgba(234, 179, 8, 0.15); color: #fde047; border: 1px solid rgba(234, 179, 8, 0.3); padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 600;">${warnText}</span>`;
         } else if (site.health_status === "COMM_LOST") {
-            statusBadge = `<span style="background: rgba(245, 158, 11, 0.2); color: #fcd34d; border: 1px solid rgba(245, 158, 11, 0.45); padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 600;">Comunicação Perdida</span>`;
+            statusBadge = `<span title="${site.severity_label || ""}" style="background: rgba(245, 158, 11, 0.2); color: #fcd34d; border: 1px solid rgba(245, 158, 11, 0.45); padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 600;">Comunicação Perdida</span>`;
         } else if (site.health_status === "STALLED") {
             statusBadge = `<span style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.4); padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; animation: pulse 2s infinite;">Estagnado (P1)</span>`;
         } else {

@@ -1843,7 +1843,17 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
 
         # LEI DA VALIDADE DE TELEMETRIA:
         # is_agent_stale indica desconexão prolongada do host (> 2h ou agente parado)
-        is_agent_communicating = (agent_comm_hours <= 0.33) and agent_running and (agent_svc is not None)
+        # FONTE ÚNICA DE VERDADE (fix inconsistência "Agente online" + "Comunicação Perdida" na mesma linha):
+        # O heartbeat do host É a prova de vida do agente. Se o host reportou há <= 2h (ONLINE), o agente
+        # está vivo mesmo que a linha do serviço DNA.MonitorServiceSVC esteja ausente/defasada no snapshot.
+        if agent_comm_status == "ONLINE" and (agent_svc is None or not agent_running):
+            agent_running = True
+            agent_status = "Em Execução"
+        if not agent_version or agent_version == "N/A":
+            agent_version = (host_info.get("agent_versao") or host_info.get("versao_agente")
+                             or host_info.get("agent_version") or "N/A")
+        # Stale = host fora da janela ONLINE (> 2h ou sem heartbeat). Mesmo critério do badge de comunicação.
+        is_agent_communicating = agent_comm_status == "ONLINE"
         is_agent_stale = not is_agent_communicating
 
         if agent_comm_hours >= 24.0 or agent_comm_status == "OFFLINE_CRITICAL":
@@ -2001,14 +2011,15 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
             # Se a telemetria não for fresca, ou agente estiver stale, ou ambos os motores constarem como inexistentes/não cadastrados:
             # Trata-se de telemetria pendente / incompleta, e NUNCA de falha operacional mecânica P0!
             if not is_telemetry_fresh_for_p0 or is_agent_stale or both_non_existent:
-                health_status = "COMM_LOST"
-                severity_label = f"Alerta (P1) - Host Desconectado / Telemetria Suspensa ({agent_comm_label})"
+                # Host ONLINE (heartbeat <= 2h), porém evidência dos motores insuficiente para P0.
+                # NÃO é perda de comunicação: é telemetria de motores pendente/incompleta.
+                health_status = "WARNING"
+                severity_label = f"Atenção - Telemetria de Motores Pendente ({agent_comm_label})"
                 incident_description = (
-                    f"Host CS01 sem telemetria conclusiva de motores de matching ({agent_comm_label}). Telemetria suspensa. "
-                    f"O estado real dos processos locais (FastMatching, DetectionSVC, ConfigMonitor) "
-                    f"não pode ser aferido em tempo real até o reporte ativo do agente CS01."
+                    f"Host CS01 comunicando ({agent_comm_label}), mas sem reporte conclusivo de FastMatching/DetectionSVC "
+                    f"dentro da janela de 20 min. Aguardando próximo ciclo do agente antes de declarar P0."
                 )
-                pipeline_bottleneck = "TELEMETRY_OFFLINE"
+                pipeline_bottleneck = "TELEMETRY_PARTIAL"
             else:
                 health_status = "CRITICAL"
                 severity_label = "Crítico (P0) - Sem Motor de Matching"
@@ -2592,6 +2603,14 @@ def build_detection_fleet_snapshot(threshold_minutes: int = DEFAULT_STALLED_THRE
 
 
     comm_lost_count = sum(1 for s in sorted_sites if s["health_status"] == "COMM_LOST")
+
+    # KPIs de motor derivados do MESMO estado exibido na tabela (sem contadores divergentes no loop):
+    # hosts sem comunicação têm motor desconhecido e não entram em Primário/Fallback/Inoperante.
+    _reachable = [s for s in sorted_sites if s["health_status"] != "COMM_LOST"]
+    nominal_fastmatching = sum(1 for s in _reachable if s["engine_tier"] == "PRIMARY")
+    fallback_detection_svc = sum(1 for s in _reachable if s["engine_tier"] == "FALLBACK")
+    concurrent_conflict_count = sum(1 for s in _reachable if s["engine_tier"] == "CONFLICT")
+    inoperant_p0 = sum(1 for s in sorted_sites if s["health_status"] == "CRITICAL" and s["engine_tier"] == "NONE")
 
 
 
