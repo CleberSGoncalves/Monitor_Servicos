@@ -211,12 +211,22 @@ function renderFmaLiveDashboard(data) {
     const emu = data.emu_status || {};
     const perf = data.engine_performance || {};
     const allDetections = data.recent_detections || [];
+    function _chMatch(detChannel, selectedName) {
+        if (selectedName === 'ALL') return true;
+        const dc = String(detChannel || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+        const sc = String(selectedName || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+        if (!dc || !sc) return false;
+        // Match direto ou um contém o outro (ex: GLOBO / REDESGLOBO / RG)
+        if (dc === sc || dc.includes(sc) || sc.includes(dc)) return true;
+        // Match por primeiro token: "RECORD" vs "RECORDTV" -> "RECORD"
+        const dcToken = dc.split(/\d/)[0];
+        const scToken = sc.split(/\d/)[0];
+        if (dcToken && scToken && (dcToken.startsWith(scToken) || scToken.startsWith(dcToken))) return true;
+        return false;
+    }
     const detections = (fmaLiveSelectedChannel === 'ALL')
         ? allDetections
-        : allDetections.filter(d => {
-            const ch = String(d.channel || '').toUpperCase();
-            return ch.includes(fmaLiveSelectedChannel) || fmaLiveSelectedChannel.includes(ch);
-        });
+        : allDetections.filter(d => _chMatch(d.channel, fmaLiveSelectedChannel));
     const logs = data.raw_logs || [];
 
     // Cores determinísticas do diagnóstico
@@ -478,7 +488,7 @@ function renderFmaLiveDashboard(data) {
             </div>
 
             <!-- Corpo de Linhas Monospace Coloridas -->
-            <div id="fmaLiveLogTerminal" style="font-family: Consolas, 'Courier New', monospace; font-size: 11px; line-height: 1.5; color: #e2e8f0; padding: 12px; height: 180px; overflow-y: auto; background: #00040f;">
+            <div id="fmaLiveLogTerminal" style="font-family: Consolas, 'Courier New', monospace; font-size: 11px; line-height: 1.5; color: #e2e8f0; padding: 12px; min-height: 160px; max-height: 320px; overflow-y: auto; background: #00040f;">
                 ${renderFmaLogLines(logs, fmaLiveLogSearchKw)}
             </div>
 
@@ -530,35 +540,65 @@ function renderFmaLogLines(lines, filterKw) {
     }).join("");
 }
 
+function _showFmaConfirm(title, msg, onConfirm) {
+    const pid = 'fma-confirm-modal-' + Date.now();
+    const html = `
+        <div id="${pid}" style="position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:10100;display:flex;align-items:center;justify-content:center;">
+            <div style="background:#0f172a;border:1px solid rgba(239,68,68,0.5);border-radius:12px;max-width:440px;width:94%;padding:22px;box-shadow:0 20px 50px rgba(0,0,0,0.6);">
+                <div style="font-size:14px;font-weight:800;color:#f87171;margin-bottom:10px;">${title}</div>
+                <div style="font-size:12.5px;color:#cbd5e1;line-height:1.5;margin-bottom:18px;">${msg}</div>
+                <div style="display:flex;gap:10px;justify-content:flex-end;">
+                    <button onclick="document.getElementById('${pid}').remove()" style="background:#334155;color:#fff;border:none;padding:8px 18px;border-radius:6px;font-size:12px;cursor:pointer;">Cancelar</button>
+                    <button onclick="document.getElementById('${pid}').remove();(${onConfirm})()" style="background:linear-gradient(135deg,#ef4444,#b91c1c);color:#fff;border:none;padding:8px 18px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;">Confirmar</button>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.insertAdjacentHTML('beforeend', html);
+}
+window._showFmaConfirm = _showFmaConfirm;
+
 async function triggerFmaLiveHeal(mode) {
     if (!fmaLiveCurrentHost) return;
+    const _notify = (msg, type) => typeof showToast === 'function' ? showToast(msg, type || 'info') : console.log(msg);
 
     if (mode === "recon") {
-        if (!confirm(`Deseja disparar a Auto-Cura de Recon=0 e sincronização SGG para ${fmaLiveCurrentHost}?`)) return;
-        try {
-            const token = (typeof getAuthToken === "function") ? getAuthToken() : ((typeof getFleetAuthToken === "function") ? getFleetAuthToken() : (localStorage.getItem("fleet_token") || ""));
-            const res = await fetch("/api/fleet/detection/safe-heal", {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-                body: JSON.stringify({ hostname: fmaLiveCurrentHost, mode: "fastmatching_recon_fix" })
-            });
-            const data = await res.json();
-            alert(data.message || "Auto-Cura despachada com sucesso!");
-            refreshFmaLiveData();
-        } catch (e) {
-            alert(`Falha ao disparar auto-cura: ${e.message}`);
-        }
+        _showFmaConfirm(
+            '⚠️ Confirmar Auto-Cura',
+            `Deseja disparar a Auto-Cura de Recon=0 e sincronização SGG para <strong>${escapeHtml(fmaLiveCurrentHost)}</strong>?`,
+            `async function() {
+                try {
+                    const token = (typeof getAuthToken === 'function') ? getAuthToken() : ((typeof getFleetAuthToken === 'function') ? getFleetAuthToken() : (localStorage.getItem('fleet_token') || ''));
+                    const res = await fetch('/api/fleet/detection/safe-heal', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                        body: JSON.stringify({ hostname: '${escapeHtml(fmaLiveCurrentHost)}', mode: 'fastmatching_recon_fix' })
+                    });
+                    const data = await res.json();
+                    if (typeof showToast === 'function') showToast(data.message || 'Auto-Cura despachada com sucesso!', 'success');
+                    refreshFmaLiveData();
+                } catch (e) {
+                    if (typeof showToast === 'function') showToast('Falha ao disparar auto-cura: ' + e.message, 'error');
+                }
+            }`
+        );
     } else if (mode === "restart") {
-        if (!confirm(`Deseja reiniciar preventivamente o serviço FastMatchingSvc em ${fmaLiveCurrentHost}?`)) return;
-        try {
-            if (typeof triggerFmRemoteRemediation === "function") {
-                triggerFmRemoteRemediation(fmaLiveCurrentHost, "restart_fastmatching");
-            } else {
-                alert(`Solicitação de reinício enviada para ${fmaLiveCurrentHost}.`);
-            }
-        } catch (e) {
-            alert(`Erro ao reiniciar serviço: ${e.message}`);
-        }
+        _showFmaConfirm(
+            '⚠️ Confirmar Reinício',
+            `Deseja reiniciar preventivamente o serviço FastMatchingSvc em <strong>${escapeHtml(fmaLiveCurrentHost)}</strong>?`,
+            `function() {
+                try {
+                    if (typeof triggerFmRemoteRemediation === 'function') {
+                        triggerFmRemoteRemediation('${escapeHtml(fmaLiveCurrentHost)}', 'restart_fastmatching');
+                        if (typeof showToast === 'function') showToast('Reinício de FastMatchingSvc enviado para ${escapeHtml(fmaLiveCurrentHost)}.', 'success');
+                    } else {
+                        if (typeof showToast === 'function') showToast('Solicitação de reinício enviada para ${escapeHtml(fmaLiveCurrentHost)}.', 'info');
+                    }
+                } catch (e) {
+                    if (typeof showToast === 'function') showToast('Erro ao reiniciar serviço: ' + e.message, 'error');
+                }
+            }`
+        );
     }
 }
 window.triggerFmaLiveHeal = triggerFmaLiveHeal;
@@ -568,9 +608,9 @@ function copyFmaLiveLogs() {
     if (!term) return;
     const text = term.innerText;
     navigator.clipboard.writeText(text).then(() => {
-        alert("Logs do fma.log copiados para a área de transferência!");
+        if (typeof showToast === 'function') showToast('📋 Logs do fma.log copiados!', 'success');
     }).catch(err => {
-        alert("Falha ao copiar logs: " + err);
+        if (typeof showToast === 'function') showToast('Falha ao copiar logs: ' + err, 'error');
     });
 }
 window.copyFmaLiveLogs = copyFmaLiveLogs;
