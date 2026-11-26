@@ -38,37 +38,65 @@ def get_channel_cache_metadata(canal: str, praca: str) -> Optional[Dict[str, Any
 
 
 def get_host_hardware_telemetry(host: str, praca: str) -> Dict[str, Any]:
-    """Retorna telemetria física real do host (CPU, Memória, Disco D:) para correlação de sinal/gravação."""
+    """
+    Retorna telemetria física real do host (CPU, Memória, Disco D:) a partir
+    dos dados genuínos reportados pelo agente do nó (WinServiceFleetAgent.exe).
+    Proibido usar psutil da máquina local para simular nós remotos.
+    """
     try:
-        import psutil
-        cpu = psutil.cpu_percent(interval=None)
-        mem = psutil.virtual_memory()
-        ram_pct = mem.percent
-        
-        disk_free_gb = 120.0
-        for d in ["D:\\", "E:\\", "C:\\"]:
-            if os.path.exists(d):
-                du = psutil.disk_usage(d)
-                disk_free_gb = round(du.free / (1024**3), 1)
-                break
-            
-        io_status = "Crítico (Fila > 2.0)" if cpu > 85.0 else ("Alerta (Fila 0.85)" if cpu > 70.0 else "Nominal (Fila < 0.15)")
-        is_bottleneck = (cpu > 80.0 or ram_pct > 85.0 or disk_free_gb < 15.0)
-        return {
-            "cpu_pct": cpu or 22.0,
-            "ram_pct": ram_pct or 45.0,
-            "disk_free_gb": disk_free_gb,
-            "io_status": io_status,
-            "is_bottleneck": is_bottleneck
-        }
+        cache_file = Path(__file__).resolve().parent / "data" / "fleet_cache.json"
+        if cache_file.exists():
+            data = json.loads(cache_file.read_text(encoding="utf-8"))
+            services = data.get("services", [])
+            h_low = host.lower().strip()
+            p_low = praca.lower().strip()
+            matched = [s for s in services if s.get("hostname", "").lower().strip() == h_low]
+            if not matched and p_low:
+                matched = [s for s in services if p_low in s.get("praca", "").lower()]
+            if matched:
+                item = matched[0]
+                raw_cpu = item.get("cpu_uso", "")
+                raw_ram = item.get("ram_uso", "")
+                raw_disk = item.get("disco_d_livre", "")
+                
+                cpu_val = None
+                m_cpu = re.search(r"(\d+)", str(raw_cpu))
+                if m_cpu:
+                    cpu_val = float(m_cpu.group(1))
+
+                ram_val = None
+                m_ram = re.search(r"(\d+)", str(raw_ram))
+                if m_ram:
+                    ram_val = float(m_ram.group(1))
+
+                disk_val = None
+                m_disk = re.search(r"(\d+[\.,]?\d*)", str(raw_disk))
+                if m_disk:
+                    disk_val = float(m_disk.group(1).replace(",", "."))
+
+                io_status = "Nominal"
+                is_bottleneck = False
+                if cpu_val is not None:
+                    io_status = "Crítico (Fila > 2.0)" if cpu_val > 85.0 else ("Alerta (Fila 0.85)" if cpu_val > 70.0 else "Nominal (Fila < 0.15)")
+                    is_bottleneck = (cpu_val > 80.0 or (ram_val and ram_val > 85.0) or (disk_val and disk_val < 15.0))
+
+                return {
+                    "cpu_pct": cpu_val,
+                    "ram_pct": ram_val,
+                    "disk_free_gb": disk_val,
+                    "io_status": io_status,
+                    "is_bottleneck": is_bottleneck
+                }
     except Exception:
-        return {
-            "cpu_pct": 22.0,
-            "ram_pct": 45.0,
-            "disk_free_gb": 348.0,
-            "io_status": "Nominal (Fila < 0.15)",
-            "is_bottleneck": False
-        }
+        pass
+
+    return {
+        "cpu_pct": None,
+        "ram_pct": None,
+        "disk_free_gb": None,
+        "io_status": "Aguardando telemetria do nó",
+        "is_bottleneck": False
+    }
 
 
 def detect_signal_origin_profile(canal: str, praca: str, meio: Optional[str] = None) -> Dict[str, Any]:
@@ -454,70 +482,23 @@ def get_channel_telemetry_history(praca: str, canal: str, period: str = "24h", c
                     "is_outage": r["qualidade_sinal"] < 40 or r["video_congelado"] == "Sim"
                 })
     else:
-        # Gera serie historica realista fundamentada nas caracteristicas do canal e da praca
-        base_quality = 85.0
-        base_strength = 68.0
-
-        p_lower = praca.lower()
-        c_lower = canal.lower()
-        
-        prof_stream = detect_signal_origin_profile(canal, praca)
-        is_stream_radio = (prof_stream["origin_type"] == "streaming_ip")
-
-        if is_stream_radio:
-            base_quality = 98.0  # Buffer de áudio nominal 98%
-            base_strength = 95.0 # Bitrate nominal 128 kbps
-        
-        has_chronic_issue = False
-        if "pelotas" in p_lower and "globo" in c_lower and (selected_cs == 1 or selected_cs is None):
-            base_quality = 0.0
-            base_strength = 0.0
-            has_chronic_issue = True
-        elif "cachoeiro" in p_lower and ("globo" in c_lower or "gazeta" in c_lower):
-            base_quality = 52.0
-            base_strength = 80.0
-        elif "juiz de fora" in p_lower and "sbt" in c_lower:
-            base_quality = 38.0
-            base_strength = 72.0
-            has_chronic_issue = True
-        elif "caxias" in p_lower and "globo" in c_lower:
-            base_quality = 55.0
-            base_strength = 45.0
-        elif "florian" in p_lower and "record" in c_lower:
-            base_quality = 62.0
-            base_strength = 58.0
-
-        for i in range(points_count):
-            dt = start_time + timedelta(hours=i * step_hours)
-            hour = dt.hour
-            
-            morning_dip = -12.0 if (5 <= hour <= 8 and "caxias" in p_lower) else 0.0
-            noise = math.sin(i * 0.4) * 4.0 + (random.random() - 0.5) * 3.0
-            
-            q = max(0.0, min(100.0, base_quality + morning_dip + noise))
-            s = max(0.0, min(100.0, base_strength + noise * 0.7))
-            
-            if "pelotas" in p_lower and "globo" in c_lower and (selected_cs == 1 or selected_cs is None):
-                q = 0.0
-                s = 0.0
-
-            is_drop = q < 40.0
-            points.append({
-                "timestamp": dt.strftime("%Y-%m-%d %H:%M"),
-                "qualidade": round(q, 1),
-                "forca": round(s, 1),
-                "cs": selected_cs,
-                "status_tuner": "Connected with tuner. WORKING." if q > 0 else "N/A (Falha API)",
-                "is_outage": is_drop
-            })
-
-    # Se Cachoeiro de Itapemirim, assegura fidelidade com a telemetria do nó ativo DT01/DT02 (Quality 52%, Strength 80%)
-    if "cachoeiro" in praca.lower() and ("globo" in canal.lower() or "gazeta" in canal.lower()):
-        for p in points:
-            p["qualidade"] = 52.0
-            p["forca"] = 80.0
-            p["is_outage"] = False
-            p["status_tuner"] = "Connected with tuner. WORKING."
+        # Sem dados históricos suficientes no banco para este canal/praça
+        return {
+            "praca": praca,
+            "canal": canal,
+            "cs": selected_cs or 1,
+            "sem_dados": True,
+            "motivo": "Histórico insuficiente no banco. Os dados reais de sinal são coletados a cada ciclo pelo agente do nó.",
+            "points": [],
+            "total_pontos": 0,
+            "avg_qualidade": None,
+            "min_qualidade": None,
+            "max_qualidade": None,
+            "avg_forca": None,
+            "min_forca": None,
+            "max_forca": None,
+            "drops_count": 0
+        }
 
     qualidades = [p["qualidade"] for p in points]
     forcas = [p["forca"] for p in points]

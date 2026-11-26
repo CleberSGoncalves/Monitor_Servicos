@@ -5,16 +5,15 @@ Gera séries temporais para 24h, 7d e 30d, identifica picos reais vs operacionai
 e desmistifica falsos positivos estáticos originados no cache do SharePoint.
 """
 
-from datetime import datetime, timedelta
-import random
+from datetime import datetime
 from typing import Dict, Any, List
 from sharepoint_sync import get_cached_data
 
 
 def get_host_cpu_history(hostname: str, period: str = "24h") -> Dict[str, Any]:
     """
-    Retorna o histórico de telemetria de CPU do host para o período solicitado (24h, 7d, 30d).
-    Identifica se picos são momentâneos de decodificação ou sobrecarga contínua.
+    Retorna a telemetria real de CPU do host (ponto atual reportado pelo agente no Firestore).
+    Sem séries sintéticas ou processos simulados.
     """
     if period not in ("24h", "7d", "30d"):
         period = "24h"
@@ -26,81 +25,34 @@ def get_host_cpu_history(hostname: str, period: str = "24h") -> Dict[str, Any]:
     praca = host_svcs[0].get("praca", "Geral") if host_svcs else "Geral"
     cs_num = host_svcs[0].get("cs", 1) if host_svcs else (2 if "cs2" in hostname.lower() or "02" in hostname else 1)
 
-    # Sanitiza CPU atual (evita falso positivo de 95% estático do SharePoint)
-    raw_cpu_str = host_svcs[0].get("cpu_uso", "26%") if host_svcs else "26%"
-    current_cpu = 26
+    raw_cpu_str = host_svcs[0].get("cpu_uso", "N/D") if host_svcs else "N/D"
+    current_cpu = 0
     try:
         import re
         m = re.search(r"(\d+)", str(raw_cpu_str))
         if m:
-            val = int(m.group(1))
-            current_cpu = 26 if val >= 90 and cs_num in (2, 3) else val
+            current_cpu = int(m.group(1))
     except Exception:
-        current_cpu = 26
+        current_cpu = 0
 
-    ram_str = host_svcs[0].get("ram_uso", "90%") if host_svcs else "90%"
-    disk_str = host_svcs[0].get("disco_d_livre", "234 GB") if host_svcs else "234 GB"
-    uptime_str = host_svcs[0].get("uptime", "2,2 dias") if host_svcs else "2,2 dias"
+    ram_str = host_svcs[0].get("ram_uso", "N/D") if host_svcs else "N/D"
+    disk_str = host_svcs[0].get("disco_d_livre", "N/D") if host_svcs else "N/D"
+    uptime_str = host_svcs[0].get("uptime", "N/D") if host_svcs else "N/D"
 
     now = datetime.now()
     points = []
+    sem_historico = True
 
-    if period == "7d":
-        for i in range(7, -1, -1):
-            dt = now - timedelta(days=i)
-            # Simulação determinística de carga real baseada no nome do host
-            seed_val = (hash(hostname) + i * 37) % 100
-            base_cpu = 22 + (seed_val % 14)
-            peak_cpu = min(88, base_cpu + (seed_val % 25))
-            points.append({
-                "label": dt.strftime("%d/%m"),
-                "timestamp": dt.strftime("%Y-%m-%d"),
-                "avg_cpu": base_cpu,
-                "peak_cpu": peak_cpu,
-                "is_peak": peak_cpu >= 80
-            })
-    elif period == "30d":
-        for i in range(30, -1, -2):
-            dt = now - timedelta(days=i)
-            seed_val = (hash(hostname) + i * 19) % 100
-            base_cpu = 24 + (seed_val % 12)
-            peak_cpu = min(85, base_cpu + (seed_val % 20))
-            points.append({
-                "label": dt.strftime("%d/%m"),
-                "timestamp": dt.strftime("%Y-%m-%d"),
-                "avg_cpu": base_cpu,
-                "peak_cpu": peak_cpu,
-                "is_peak": peak_cpu >= 80
-            })
-    else:  # 24h padrao (24 amostras horarias)
-        for i in range(23, -1, -1):
-            dt = now - timedelta(hours=i)
-            seed_val = (hash(hostname) + i * 13) % 100
-            hour_mult = 1.15 if 8 <= dt.hour <= 22 else 0.9
-            base_cpu = int((20 + (seed_val % 10)) * hour_mult)
-            peak_cpu = min(88, base_cpu + (seed_val % 18))
-            points.append({
-                "label": dt.strftime("%H:%M"),
-                "timestamp": dt.strftime("%Y-%m-%d %H:%M"),
-                "avg_cpu": base_cpu,
-                "peak_cpu": peak_cpu,
-                "is_peak": peak_cpu >= 80
-            })
+    if period == "24h" and host_svcs:
+        points.append({
+            "label": "Agora",
+            "timestamp": now.strftime("%Y-%m-%d %H:%M"),
+            "avg_cpu": current_cpu,
+            "peak_cpu": current_cpu,
+            "is_peak": current_cpu >= 85
+        })
 
-    # Ultimo ponto e o atual
-    if points:
-        points[-1]["avg_cpu"] = current_cpu
-        points[-1]["peak_cpu"] = current_cpu
-        points[-1]["is_peak"] = current_cpu >= 85
-
-    # Processos em execucao que consomem CPU no Capture Site
-    raw_processes = [
-        {"name": "Kantar Media Atria Capture", "cpu": round(current_cpu * 0.75, 1), "ram": "2.4 GB", "desc": "Decodificação de feeds TS e gravação contínua MP4/ASF"},
-        {"name": "DigitalTVReceiver.exe", "cpu": round(current_cpu * 0.12, 1), "ram": "180 MB", "desc": "Processo de sintonia DirectShow/BDA"},
-        {"name": "DNA.MonitorServiceSVC", "cpu": 1.2, "ram": "45 MB", "desc": "Agente de telemetria local e watchdog"},
-        {"name": "DNA.FiletransferSVC", "cpu": 0.8, "ram": "38 MB", "desc": "Transmissão contínua de blocos gravados"},
-        {"name": "Tanium / Defender", "cpu": 1.5, "ram": "210 MB", "desc": "Agente corporativo de segurança"}
-    ]
+    raw_processes: List[Dict[str, Any]] = []
 
     history = [
         {
@@ -114,14 +66,15 @@ def get_host_cpu_history(hostname: str, period: str = "24h") -> Dict[str, Any]:
     ]
 
     spikes_over_90 = sum(1 for p in points if p["peak_cpu"] >= 90)
-    avg_cpu = round(sum(p["avg_cpu"] for p in points) / max(1, len(points)), 1)
+    avg_cpu = round(sum(p["avg_cpu"] for p in points) / max(1, len(points)), 1) if points else current_cpu
     max_cpu = max(p["peak_cpu"] for p in points) if points else current_cpu
 
     summary = {
         "current_cpu": current_cpu,
         "avg_cpu": avg_cpu,
         "max_cpu": max_cpu,
-        "spikes_over_90": spikes_over_90
+        "spikes_over_90": spikes_over_90,
+        "sem_historico": sem_historico
     }
 
     processes = [

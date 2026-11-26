@@ -51,6 +51,29 @@
 > O objetivo central da migração para o Google Workspace / Google Sites é a **eliminação completa e definitiva do SharePoint**.
 > Em nenhuma hipótese telas, botões de ação ("Abrir", "Visualizar"), bibliotecas ou planilhas podem apontar para `adgbl.sharepoint.com`. Todo o acervo deve ser mantido e servido de forma 100% autônoma pelo repositório local e Google Workspace.
 
+---
+
+## 🔥 PROIBIÇÃO ABSOLUTA DE TELEMETRIA VIA SHAREPOINT — FONTE ÚNICA GOOGLE CLOUD FIRESTORE
+
+> [!CAUTION]
+> **NUNCA LER TELEMETRIA DE SERVIÇOS/HOSTS DO SHAREPOINT (`ram_uso`, `cpu_uso`, `status_servico`, etc.)**
+> 
+> Toda a telemetria operacional dos Capture Sites sai em tempo real do agente `DNA.MonitorServiceSVC` diretamente para o **Google Cloud Firestore** (e cache local sincronizado do Firestore).
+> 1. **Proibido usar dados legados do SharePoint** para alimentar qualquer métrica de RAM, CPU, disco, uptime, status de serviço ou saúde de pipeline no dashboard.
+> 2. Se um dado de telemetria estiver ausente no Firestore, exibir explicitamente que o dado não foi reportado pelo agente no Firestore — **NUNCA** fazer fallback para listas ou campos legados do SharePoint.
+
+---
+
+## 🛑 PROIBIÇÃO ABSOLUTA DE AUTO-HEALING E ALTERAÇÕES AUTÔNOMAS NOS CAPTURE SITES
+
+> [!CAUTION]
+> **PROIBIDO QUALQUER COMANDO AUTOMÁTICO SEM AUTORIZAÇÃO EXPLÍCITA DO OPERADOR**
+> 
+> O dashboard é estritamente **PASSIVO / OBSERVACIONAL** por padrão. Nenhuma rotina em background, watchdog, auto-healing ou heurística pode:
+> 1. **Reiniciar, parar, iniciar ou alterar** qualquer serviço (`Atria Capture`, `FastMatchingSvc`, `FileCleaner`, `DNA.DetectionSVC`, `DNA.TrackingSVC`, etc.) automaticamente.
+> 2. **Alterar arquivos XML/configurações** (ex: `Multiplexes.xml`, `EMU_ProfileName`, `EMU MDNA`, `EMU MediaDNA 1min`) ou disparar rollback/migração de stack sem clique/comando explícito do usuário no dashboard ou solicitação direta.
+> 3. Qualquer ação remota (`dispatch_remote_command_to_firestore`, scripts PowerShell, restart/start/stop) **DEVE** ser disparada exclusivamente por ação manual e explícita do operador. Auto-healing em background deve permanecer **permanentemente desativado**.
+
 
 ---
 

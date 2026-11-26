@@ -1,6 +1,5 @@
 # dashboard/mosaic_manager.py
 import base64
-import random
 import time
 import urllib.parse
 from datetime import datetime, timezone

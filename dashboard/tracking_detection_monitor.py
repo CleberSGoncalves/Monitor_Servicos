@@ -496,6 +496,10 @@ def parse_fma_log_content(lines: List[str]) -> Dict[str, Any]:
 # Cache em memória da telemetria FastMatching (com TTL de 45s) para coerência e performance
 _FASTMATCHING_FLEET_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
 
+# Cache persistente de detecções reais por hostname (últimas 50 por host)
+# Nunca é limpo entre requests — acumula detecções reais e exibe as últimas 15 ao abrir o modal
+_FMA_DETECTIONS_HISTORY: Dict[str, list] = {}
+
 
 def parse_ram_to_mb(ram_str: Any) -> Optional[int]:
     """Converte valores de RAM do Capture Site ('1,03 GB', '552 MB', '16 MB', '17% (91 MB)') em MB numérico."""
@@ -3482,7 +3486,7 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
 
     # Se não houver arquivo físico localmente na máquina do Dashboard, compor logstream verídico baseado na telemetria do nó
     if not is_live_disk:
-        log_source = f"[{h_clean}] Telemetria do Agente DNA.MonitorServiceSVC (M365)"
+        log_source = f"[{h_clean}] Telemetria do Agente DNA.MonitorServiceSVC (Google Cloud Firestore)"
         log_lines = []
         ts_now = now.strftime("%Y-%m-%d %H:%M:%S")
 
@@ -3500,10 +3504,12 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
         if is_fm_running:
             if real_ram_mb >= 300:
                 log_lines.append(f"{ts_now}: [CATÁLOGO SGG] Índice acústico em RAM íntegro (~14.820 spots em memória). Motor ativo no nó físico.")
-            elif real_ram_mb >= 50:
+            elif real_ram_mb >= 100:
                 log_lines.append(f"{ts_now}: [CATÁLOGO SGG] FastMatchingSvc inicializado no host. Carga de spots em andamento na RAM ({real_ram_mb} MB carregados)...")
+            elif real_ram_mb > 0:
+                log_lines.append(f"{ts_now}: [INFO RAM PARCIAL] FastMatchingSvc.exe reporta {real_ram_mb} MB no Firestore. O processo motor FastMatchingAutoWindow.exe pode consumir RAM adicional do catálogo SGG fora da métrica do serviço.")
             else:
-                log_lines.append(f"{ts_now}: [ALERTA RECON=0] FastMatchingSvc ativo com memória baixa ({real_ram_mb} MB). Catálogo SGG não carregado.")
+                log_lines.append(f"{ts_now}: [ALERTA RECON=0] FastMatchingSvc ativo sem consumo de RAM reportado (0 MB). Verificar catálogo SGG.")
         else:
             log_lines.append(f"{ts_now}: [ALERTA] FastMatchingSvc parado ou não localizado no Capture Site físico.")
 
@@ -3518,17 +3524,19 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
         recon_count = cat_reload.get("recon_count")
         if recon_count is None:
             recon_count = total_spots if is_fm_running else 0
+        is_ram_partial = False
         is_recon_zero = (recon_count == 0) and is_fm_running
         is_loading = False
         is_synchronized = not is_recon_zero and (total_spots > 0)
     else:
         # Modo Telemetria do Agente (sem disco local montado)
         parsed_log = {"events": [], "search_stats": None, "ram_usage": {"working_set_mb": real_ram_mb, "private_mb": real_ram_mb}}
-        is_recon_zero = (real_ram_mb < 50 and is_fm_running)
-        is_loading = (50 <= real_ram_mb < 300 and is_fm_running)
+        is_ram_partial = (0 < real_ram_mb < 100 and is_fm_running)
+        is_recon_zero = (real_ram_mb == 0 and is_fm_running)
+        is_loading = (100 <= real_ram_mb < 300 and is_fm_running)
         is_synchronized = (real_ram_mb >= 300 and is_fm_running)
-        total_spots = 14820 if is_synchronized else (0 if is_recon_zero else int(14820 * (real_ram_mb / 700)))
-        recon_count = total_spots if is_fm_running else 0
+        total_spots = 14820 if is_synchronized else (0 if is_recon_zero else (None if is_ram_partial else int(14820 * (real_ram_mb / 700))))
+        recon_count = total_spots if (is_fm_running and total_spots is not None) else 0
 
     # 4. Status dos Spots
     if is_live_disk:
@@ -3538,13 +3546,14 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
 
     spots_status = {
         "loaded": is_synchronized,
-        "total_spots_loaded": total_spots if is_fm_running else 0,
+        "total_spots_loaded": (total_spots if total_spots is not None else 0) if is_fm_running else 0,
         "last_sync_timestamp": last_sync_ts,
         "is_synchronized": is_synchronized,
+        "is_ram_partial": is_ram_partial,
         "recon_count": recon_count,
         "new_spots_detected_last_cycle": len(parsed_log.get("events", [])),
-        "status_label": "Sincronizado" if is_synchronized else ("Carregando Catálogo..." if is_loading else ("RECON=0 (Falha de Ingestão)" if is_recon_zero else "Aguardando Carga")),
-        "status_color": "green" if is_synchronized else ("yellow" if is_loading else "red")
+        "status_label": "Sincronizado" if is_synchronized else ("Medição Parcial (Serviço Windows)" if is_ram_partial else ("Carregando Catálogo..." if is_loading else ("RECON=0 (Falha de Ingestão)" if is_recon_zero else "Aguardando Carga"))),
+        "status_color": "green" if is_synchronized else ("yellow" if (is_loading or is_ram_partial) else "red")
     }
 
     # 5. Detecções Automáticas Recentes (Apenas a partir de arquivo físico real)
@@ -3582,17 +3591,20 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
     }
 
     recent_detections = []
+    global _FMA_DETECTIONS_HISTORY
+
     if is_live_disk:
         re_det = re.compile(r"""(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}):\s+\[(.*?)\](?:\(.*?\))?\s+NEW DETECTION\s+(\d+),\s*.*?,.*?,?\s*(\d+)ms,\s*['\"](.*?)['\"].*?ProcTimeMs\s+(\d+)""", re.IGNORECASE)
         re_del = re.compile(r"""(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}):.*?DELAYED NEW DETECTION CANDIDATE\s+(\d+),\s*.*?,.*?,?\s*(\d+)ms,\s*['\"](.*?)['\"].*?,\s*(\d+)""", re.IGNORECASE)
 
+        newly_found = []
         for line in reversed(log_lines):
             m_ok = re_det.search(line)
             if m_ok:
                 s_id = m_ok.group(3)
                 real_name = catalog_spot_names.get(s_id)
                 display_name = real_name if real_name else f"ID: #{s_id} (Título não mapeado no SGG)"
-                recent_detections.append({
+                newly_found.append({
                     "timestamp": m_ok.group(1),
                     "channel": m_ok.group(2).upper(),
                     "spot_id": s_id,
@@ -3605,7 +3617,7 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
                     "status": "CONFIRMED",
                     "badge_color": "#22c55e"
                 })
-                if len(recent_detections) >= 40:
+                if len(newly_found) >= 40:
                     break
 
             m_dl = re_del.search(line)
@@ -3613,7 +3625,7 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
                 s_id = m_dl.group(2)
                 real_name = catalog_spot_names.get(s_id)
                 display_name = real_name if real_name else f"ID: #{s_id} (Candidato sem título SGG)"
-                recent_detections.append({
+                newly_found.append({
                     "timestamp": m_dl.group(1),
                     "channel": "CANAL " + str((int(s_id) % 4) + 1),
                     "spot_id": s_id,
@@ -3626,8 +3638,22 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
                     "status": "DELAYED",
                     "badge_color": "#eab308"
                 })
-                if len(recent_detections) >= 40:
+                if len(newly_found) >= 40:
                     break
+
+        existing = _FMA_DETECTIONS_HISTORY.get(h_clean, [])
+        existing_keys = {(d["timestamp"], d["spot_id"]) for d in existing}
+        for det in newly_found:
+            key = (det["timestamp"], det["spot_id"])
+            if key not in existing_keys:
+                existing.insert(0, det)
+                existing_keys.add(key)
+        existing.sort(key=lambda x: x["timestamp"], reverse=True)
+        _FMA_DETECTIONS_HISTORY[h_clean] = existing[:50]
+        recent_detections = existing[:50]
+    else:
+        # Nó remoto sem disco local: serve histórico persistido em memória (últimas 15-50 detecções reais)
+        recent_detections = _FMA_DETECTIONS_HISTORY.get(h_clean, [])
 
     # 6. Geração de .EMU (D:\MediaDNA_V2\Data\emu)
     emu_files_count = 0
@@ -3674,9 +3700,15 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
     elif is_recon_zero:
         pipeline_status = "SEM_NOVOS_SPOTS"
         diag_title = "Falha de Ingestão de Catálogo (recon=0)"
-        diag_desc = f"O motor FastMatching está ativo, porém o consumo de RAM ({real_ram_mb} MB) indica 0 spots carregados. O catálogo SGG está corrompido ou dessincronizado."
+        diag_desc = f"O motor FastMatching está ativo, porém o consumo de RAM (0 MB) indica 0 spots carregados. O catálogo SGG está corrompido ou dessincronizado."
         diag_color = "red"
         rec_action = "Executar Auto-Cura SGG (Resync ConfigXml + Recycle)."
+    elif is_ram_partial:
+        pipeline_status = "RAM_PARCIAL"
+        diag_title = "Motor Ativo — RAM Medida Apenas no Serviço Windows"
+        diag_desc = f"O serviço FastMatchingSvc.exe reporta {real_ram_mb} MB no Firestore, porém o processo motor complementar (FastMatchingAutoWindow.exe) pode consumir a RAM do catálogo SGG (~900+ MB) fora da métrica do serviço."
+        diag_color = "yellow"
+        rec_action = "Validar no nó físico se FastMatchingAutoWindow.exe está ativo (~900 MB) e se o fma.log registra NEW DETECTION."
     elif not is_live_disk and is_loading:
         pipeline_status = "CARREGANDO_CATALOGO"
         diag_title = "Motor em Inicialização / Carregando Catálogo SGG"

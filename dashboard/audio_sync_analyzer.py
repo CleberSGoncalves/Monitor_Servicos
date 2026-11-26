@@ -510,36 +510,10 @@ def generate_synthetic_audio_waveforms(
     points_count: int = 30
 ) -> Tuple[List[float], List[float]]:
     """
-    Gera curvas de modulação de conteúdo equalizadas (mesma escala de amplitude, sem variação de volume)
-    quando operando em modo de visualização rápida.
+    Telemetria 100% Real: Proibido gerar formas de onda sintéticas ou aleatórias.
+    Retorna listas vazias quando o áudio físico não foi extraído.
     """
-    h_val = int(hashlib.md5(seed_str.encode("utf-8")).hexdigest()[:8], 16)
-    rng = random.Random(h_val)
-
-    wf_cs1: List[float] = []
-    for i in range(points_count):
-        t = i / max(1, points_count - 1)
-        base = 0.48 + 0.32 * math.sin(2.0 * math.pi * 1.8 * t) + 0.14 * math.sin(2.0 * math.pi * 4.2 * t)
-        noise = rng.gauss(0.0, 0.04)
-        val = max(0.10, min(0.92, abs(base + noise)))
-        wf_cs1.append(round(val, 3))
-
-    wf_cs2: List[float] = []
-    if status == "DIVERGENTE":
-        for i in range(points_count):
-            t = i / max(1, points_count - 1)
-            diff_base = 0.48 + 0.30 * math.cos(2.0 * math.pi * 3.1 * t) + 0.18 * math.sin(2.0 * math.pi * 0.9 * t)
-            diff_noise = rng.gauss(0.0, 0.05)
-            val = max(0.10, min(0.92, abs(diff_base + diff_noise)))
-            wf_cs2.append(round(val, 3))
-    else:
-        shift_slots = int(round(offset_sec * 3.5)) % max(1, points_count)
-        rolled = wf_cs1[-shift_slots:] + wf_cs1[:-shift_slots] if shift_slots else list(wf_cs1)
-        for v in rolled:
-            val = max(0.10, min(0.92, v + rng.gauss(0.0, 0.015)))
-            wf_cs2.append(round(val, 3))
-
-    return wf_cs1, wf_cs2
+    return [], []
 
 
 def analyze_single_channel_audio_sync(
@@ -622,31 +596,19 @@ def analyze_single_channel_audio_sync(
 
     if peak_r is None:
         if cs1_meta and cs2_meta:
-            # Par real encontrado no MESMO horário no NAS, mas sem extração PCM no ciclo rápido:
-            # NÃO inventa falso positivo de emissora trocada! Marca como pareado e conforme.
-            status = "SINCRONIZADO"
-            peak_r = 0.94
+            # Par real encontrado no MESMO horário no NAS, mas sem extração PCM no ciclo rápido
+            status = "PAREADO_SEM_EXTRACAO"
+            peak_r = 0.0
             offset_sec = 0.0
-            wf1, wf2 = generate_synthetic_audio_waveforms(f"{idpv}_{matched_time_window}", status, offset_sec, 30)
-            analysis_source = "Bloco de Mesmo Horário Pareado no NAS (Clique em Reanalisar p/ Inspeção Profunda de Áudio)"
+            wf1, wf2 = [], []
+            analysis_source = "Bloco de Mesmo Horário Pareado no NAS (Clique em Reanalisar p/ Extração PCM)"
         else:
-            # Ambiente sem acesso ao NAS local (homologação/offline)
-            seed_hash = hashlib.md5(f"{idpv}_{canal}_{cidade}_{date_str}".encode("utf-8")).hexdigest()
-            seed_num = int(seed_hash[:8], 16) % 1000
-            if seed_num < 35:
-                status = "DIVERGENTE"
-                peak_r = round(0.14 + (seed_num % 15) * 0.01, 2)
-                offset_sec = round(4.5 + (seed_num % 30) * 0.1, 1)
-            elif 35 <= seed_num < 120:
-                status = "DESALINHADO"
-                peak_r = round(0.82 + (seed_num % 12) * 0.01, 2)
-                delay_variants = [2.2, 3.4, 1.5, 4.1, -1.8, 2.8]
-                offset_sec = delay_variants[seed_num % len(delay_variants)]
-            else:
-                status = "SINCRONIZADO"
-                peak_r = round(0.91 + (seed_num % 8) * 0.01, 2)
-                offset_sec = round((seed_num % 4) * 0.05, 2)
-            wf1, wf2 = generate_synthetic_audio_waveforms(f"{idpv}_{cidade}_{canal}", status, offset_sec, 30)
+            # Sem arquivos de gravação no NAS para a janela/data solicitada
+            status = "SEM_GRAVACAO"
+            peak_r = 0.0
+            offset_sec = 0.0
+            wf1, wf2 = [], []
+            analysis_source = "Sem gravações de áudio no NAS para pareamento"
     else:
         # Classificação 100% baseada na correspondência do CONTEÚDO do áudio e no sincronismo temporal
         if peak_r < 0.35:
@@ -656,7 +618,35 @@ def analyze_single_channel_audio_sync(
         else:
             status = "SINCRONIZADO"
 
-    if status == "DIVERGENTE":
+    if status == "PAREADO_SEM_EXTRACAO":
+        status_label = "🟡 Pareado no NAS (Aguardando Extração)"
+        status_badge = "badge badge-yellow"
+        status_color = "yellow"
+        severity = "INFO"
+        diagnosis = (
+            f"Gravações de áudio CS01 ({cs1_format}) e CS02 ({cs2_format}) localizadas no NAS corporativo para o bloco {matched_time_window}. "
+            "A extração espectral PCM não foi processada nesta leitura rápida. "
+            "Clique no botão 'Reanalisar' para executar o cálculo acústico exato via FFmpeg."
+        )
+        remediation_ps = (
+            f"# [DIAGNÓSTICO] Gravações presentes no NAS para o bloco {matched_time_window}.\n"
+            f"# Execute reanálise sob demanda para cálculo de correlação cruzada."
+        )
+    elif status == "SEM_GRAVACAO":
+        status_label = "⚪ Sem Gravação / Aguardando NAS"
+        status_badge = "badge badge-neutral"
+        status_color = "gray"
+        severity = "INFO"
+        diagnosis = (
+            f"Nenhuma gravação de áudio (.MP4 ou .ASF) foi localizada no NAS para o veículo {idpv} ({canal} - {cidade}) nesta data. "
+            "Aguardando geração pelo MediaRecorderSVC e transferência de blocos pelo FileTransferSVC do nó."
+        )
+        remediation_ps = (
+            f"# [VERIFICAÇÃO DE FLUXO DE GRAVAÇÃO] Host Alvo: H{id_host} (CS0{id_cs} - {cidade})\n"
+            f"Get-Service -Name 'DNA.MediaRecorderSVC', 'DNA.FileTransferSVC' | Select-Object Name, Status;\n"
+            f"Test-Path 'D:\\MediaDNA_V2\\Data\\records\\*PV{idpv}*';"
+        )
+    elif status == "DIVERGENTE":
         status_label = "🔴 Conteúdo Divergente (Canal Diferente no BKP!)"
         status_badge = "badge badge-red"
         status_color = "red"

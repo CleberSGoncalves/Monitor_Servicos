@@ -323,140 +323,31 @@ def generate_fleet_host_logs(
     max_lines: int = 100,
     severity: str = "all"
 ) -> Tuple[str, List[str]]:
-    """Gera logs de alta fidelidade técnica e broadcast sob demanda para a praça selecionada."""
+    """
+    Nó remoto sem disco local montado: não gera logs sintéticos.
+    Retorna apenas o caminho físico esperado e lista vazia.
+    """
     mkt = _resolve_market(host)
     host_name = mkt["host"]
     cidade = mkt["cidade"]
     uf = mkt["uf"]
-    channels = mkt["channels"]
 
-    from datetime import timedelta
     now = datetime.now()
-    lines = []
-    
-    # Define arquivo aparente no nó remoto
     service_paths = {
-        "atria": (r"D:\\MediaDNA_V2\Applications\DTVCapture64\Logs", f"DTVCaptureLog_{now.strftime('%Y%m%d')}.txt"),
-        "mediaconverter": (r"D:\\MediaDNA_V2\Applications\MediaConverter\Logs", f"MediaConverter_{now.strftime('%Y%m%d')}.log"),
-        "filetransfer": (r"D:\\MediaDNA_V2\Applications\FileTransfer\Logs", f"FileTransfer_{now.strftime('%Y%m%d')}.log"),
-        "mediarecorder": (r"D:\\MediaDNA_V2\Applications\MediaRecorder\Logs", f"MediaRecorder_{now.strftime('%Y%m%d')}.log"),
-        "detection": (r"D:\\MediaDNA_V2\Applications\DetectionSVC\Logs", f"Detection_{now.strftime('%Y%m%d')}.log"),
-        "monitorservice": (r"D:\\MediaDNA_V2\Applications\MonitorService\logs", f"MonitorService_{now.strftime('%Y%m%d')}.log"),
-        "fastmatching": (r"D:\\MediaDNA_V2\Applications\DTVCapture64\FastMachingSvc", "fma.log"),
-        "configmonitor": (r"D:\\MediaDNA_V2\Applications\DNA.ConfigMonitorSVC\Logs", f"ConfigMonitorSVC_{now.strftime('%Y%m%d')}.log"),
-        "tracking": (r"D:\\MediaDNA_V2\Applications\DNA.TrackingSVC\Logs", f"TrackingSVC_{now.strftime('%Y%m%d')}.log"),
-        "exception": (r"D:\\MediaDNA_V2\Exception", f"Exception_{now.strftime('%Y%m%d')}.log")
+        "atria": (r"D:\MediaDNA_V2\Applications\DTVCapture64\Logs", f"DTVCaptureLog_{now.strftime('%Y%m%d')}.txt"),
+        "mediaconverter": (r"D:\MediaDNA_V2\Applications\MediaConverter\Logs", f"MediaConverter_{now.strftime('%Y%m%d')}.log"),
+        "filetransfer": (r"D:\MediaDNA_V2\Applications\FileTransfer\Logs", f"FileTransfer_{now.strftime('%Y%m%d')}.log"),
+        "mediarecorder": (r"D:\MediaDNA_V2\Applications\MediaRecorder\Logs", f"MediaRecorder_{now.strftime('%Y%m%d')}.log"),
+        "detection": (r"D:\MediaDNA_V2\Applications\DetectionSVC\Logs", f"Detection_{now.strftime('%Y%m%d')}.log"),
+        "monitorservice": (r"D:\MediaDNA_V2\Applications\MonitorService\logs", f"MonitorService_{now.strftime('%Y%m%d')}.log"),
+        "fastmatching": (r"D:\MediaDNA_V2\Applications\DTVCapture64\FastMachingSvc", "fma.log"),
+        "configmonitor": (r"D:\MediaDNA_V2\Applications\DNA.ConfigMonitorSVC\Logs", f"ConfigMonitorSVC_{now.strftime('%Y%m%d')}.log"),
+        "tracking": (r"D:\MediaDNA_V2\Applications\DNA.TrackingSVC\Logs", f"TrackingSVC_{now.strftime('%Y%m%d')}.log"),
+        "exception": (r"D:\MediaDNA_V2\Exception", f"Exception_{now.strftime('%Y%m%d')}.log")
     }
-    dir_path, file_name = service_paths.get(source, (r"D:\\MediaDNA_V2\Logs", f"{source}_{now.strftime('%Y%m%d')}.log"))
-    actual_file = f"[{host_name} ({cidade} - {uf})] {dir_path}\\{file_name}"
-
-    for i in range(max_lines):
-        # Gera timestamps regressivos a cada 15-25 segundos
-        t = now - timedelta(seconds=(max_lines - i) * 20)
-        ts_str = t.strftime("%d/%m/%Y %H:%M:%S")
-        ts_iso = t.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-        ch = channels[i % len(channels)]
-        
-        # Decide severidade da linha conforme o filtro
-        if severity == "grave":
-            line_sev = "grave"
-        elif severity == "atencao":
-            line_sev = "atencao"
-        elif severity == "info":
-            line_sev = "info"
-        else:
-            # Distribuição realista na operação nominal
-            if i % 35 == 0:
-                line_sev = "grave"
-            elif i % 12 == 0:
-                line_sev = "atencao"
-            else:
-                line_sev = "info"
-
-        if source == "atria":
-            if line_sev == "grave":
-                line = f"[{ts_str}]	[1]	[{ch['mux']}]	[{ch['tuner']}]	[{ch['name']}] Signal warning on Mux '{ch['mux']}', Program '{ch['prog']}'. FrozenScreen!! (Repetições: 3)"
-            elif line_sev == "atencao":
-                line = f"[{ts_str}]	[1]	[{ch['mux']}]	[{ch['tuner']}]	[{ch['name']}] Warning [DirectShow]: Audio/Video sync drift detectado (+42ms), compensando via BDA buffer."
-            else:
-                tmpl_idx = i % 4
-                if tmpl_idx == 0:
-                    line = f"[{ts_str}]	[1]	[{ch['mux']}]	[{ch['tuner']}]	[{ch['name']}] Mp4Writer: Encoding [0]: SetOriginStreamTime from AUDIO SAMPLE ts={int(t.timestamp()*1000)}"
-                elif tmpl_idx == 1:
-                    line = f"[{ts_str}]	[1]	[{ch['mux']}]	[{ch['tuner']}]	[{ch['name']}] SignalStatistics: Quality=88 Strength=42 BER=0.0e-7 MER=31.8 dB (Frequencia: {ch['freq']} MHz)"
-                elif tmpl_idx == 2:
-                    line = f"[{ts_str}]	[1]	[{ch['mux']}]	[{ch['tuner']}]	[{ch['name']}] DirectShow BDA Tuner #{ch['tuner']} (TBS6909x) MUX Lock OK • Carrier locked físico {ch['rf_ch']}"
-                else:
-                    line = f"[{ts_str}]	[1]	[{ch['mux']}]	[{ch['tuner']}]	[{ch['name']}] ISDB-Tb Demux: Tabelas PAT/PMT/SDT atualizadas normalmente no Program '{ch['prog']}'"
-        
-        elif source == "mediaconverter":
-            chunk_name = f"H{300 + ch['rf_ch']}_PV{ch['prog']}_{t.strftime('%Y%m%d%H%M00')}"
-            if line_sev == "grave":
-                line = f"[{ts_iso}] [ERROR] [DNA.MediaConverter] Falha ao ler container MP4 corrompido: {chunk_name}.tmp (Tamanho 0 bytes ou arquivo bloqueado por outro processo)."
-            elif line_sev == "atencao":
-                line = f"[{ts_iso}] [WARN] [DNA.MediaConverter] CPU com pico temporario de 86% durante transcode WMV9. Reduzindo paralelismo para 2 threads."
-            else:
-                tmpl_idx = i % 4
-                if tmpl_idx == 0:
-                    line = f"[{ts_iso}] [INFO] [DNA.MediaConverter] Watcher ativo: monitorando pasta D:\\MediaDNA_V2\Data\c_BKP\registered para novos .MP4 ({ch['name']})."
-                elif tmpl_idx == 1:
-                    line = f"[{ts_iso}] [INFO] [DNA.MediaConverter] Arquivo detectado: {chunk_name}.mp4 (Tamanho: 41.2 MB) no canal {ch['name']}."
-                elif tmpl_idx == 2:
-                    line = f"[{ts_iso}] [INFO] [DNA.MediaConverter] Transcodificacao ASF via WMV9 concluida em 3.2s (Velocidade: 9.1x real-time)."
-                else:
-                    line = f"[{ts_iso}] [INFO] [DNA.MediaConverter] Arquivo {chunk_name}.asf gerado com sucesso -> D:\\MediaDNA_V2\Data\video."
-
-        elif source == "filetransfer":
-            chunk_name = f"H{300 + ch['rf_ch']}_PV{ch['prog']}_{t.strftime('%Y%m%d%H%M00')}"
-            if line_sev == "grave":
-                line = f"[{ts_iso}] [ERROR] [DNA.FiletransferSVC] Timeout de conexao HTTP com servidor central Matriz (IP 10.200.1.10:443 apos 30s de retry)."
-            elif line_sev == "atencao":
-                line = f"[{ts_iso}] [WARN] [DNA.FiletransferSVC] Latencia de link WAN elevada: RTT 182ms. Velocidade de upload reduzida para 1.4 MB/s."
-            else:
-                tmpl_idx = i % 4
-                if tmpl_idx == 0:
-                    line = f"[{ts_iso}] [INFO] [DNA.FiletransferSVC] Inspecionando pasta D:\\MediaDNA_V2\Data\records para pacotes finalizados do canal {ch['name']}."
-                elif tmpl_idx == 1:
-                    line = f"[{ts_iso}] [INFO] [DNA.FiletransferSVC] Pacote {chunk_name}.mp4 selecionado para upload (Tamanho: 39.8 MB)."
-                elif tmpl_idx == 2:
-                    line = f"[{ts_iso}] [INFO] [DNA.FiletransferSVC] Hash SHA-256 validado com sucesso pela Matriz (HTTP 200 OK)."
-                else:
-                    line = f"[{ts_iso}] [INFO] [DNA.FiletransferSVC] Arquivo renomeado com sufixo .SENT: {chunk_name}_SENT.mp4. Fila limpa: 0 pendentes."
-
-        elif source == "mediarecorder":
-            chunk_name = f"H{300 + ch['rf_ch']}_PV{ch['prog']}_{t.strftime('%Y%m%d%H%M00')}"
-            if line_sev == "grave":
-                line = f"[{ts_iso}] [ERROR] [DNA.MediaRecorderSVC] Espaço em disco D: abaixo de 15 GB! Risco de interrupção na gravação contínua do canal {ch['name']}."
-            elif line_sev == "atencao":
-                line = f"[{ts_iso}] [WARN] [DNA.MediaRecorderSVC] Buffer de escrita em disco com atraso de I/O de 450ms no fatiamento de {chunk_name}.tmp."
-            else:
-                tmpl_idx = i % 3
-                if tmpl_idx == 0:
-                    line = f"[{ts_iso}] [INFO] [DNA.MediaRecorderSVC] Inicio do bloco de 30 minutos: {chunk_name}.tmp alocado para {ch['name']}."
-                elif tmpl_idx == 1:
-                    line = f"[{ts_iso}] [INFO] [DNA.MediaRecorderSVC] Monitor de fatiamento: 15 minutos decorridos, buffer ativo: 20.4 MB."
-                else:
-                    line = f"[{ts_iso}] [INFO] [DNA.MediaRecorderSVC] Arquivo {chunk_name}.mp4 finalizado com sucesso (Tamanho: 40.8 MB)."
-
-        elif source == "detection":
-            if line_sev == "grave":
-                line = f"[{ts_iso}] [ERROR] [DNA.DetectionSVC] Exceção de OCR: GPU DirectCompute sem resposta no frame #1420 do canal {ch['name']}."
-            elif line_sev == "atencao":
-                line = f"[{ts_iso}] [WARN] [DNA.DetectionSVC] Queda temporária de correlação acústica: audio clipping detectado no áudio L/R de {ch['name']}."
-            else:
-                line = f"[{ts_iso}] [INFO] [DNA.DetectionSVC] Pipeline OCR & Fingerprint nominal no canal {ch['name']} (120 assinaturas/min, latencia: 14ms)."
-
-        else: # monitorservice
-            if line_sev == "grave":
-                line = f"[{ts_iso}] [ERROR] [DNA.MonitorServiceSVC] Placa sintonizadora TBS Tuner #{ch['tuner']} reportou falha de hardware ou timeout PCIe."
-            elif line_sev == "atencao":
-                line = f"[{ts_iso}] [WARN] [DNA.MonitorServiceSVC] Utilização de RAM atingiu 82% no host {host_name}. Monitorando vazamento de memória."
-            else:
-                line = f"[{ts_iso}] [INFO] [DNA.MonitorServiceSVC] Heartbeat v1.0.15.0 transmitido com sucesso (HTTP 200 OK) • CPU: 18% | RAM: 36% | Disco D: 48 GB livres no host {host_name}."
-
-        lines.append(line)
-
-    return actual_file, lines
+    dir_path, file_name = service_paths.get(source, (r"D:\MediaDNA_V2\Logs", f"{source}_{now.strftime('%Y%m%d')}.log"))
+    actual_file = f"[{host_name} ({cidade} - {uf})] {dir_path}\\{file_name} (Acesso direto ao nó físico necessário)"
+    return actual_file, []
 
 def query_fleet_logs(
     source: str = "atria",

@@ -208,12 +208,19 @@ def audit_and_diagnose_fleet() -> Dict[str, Any]:
     }
 
 
-def execute_auto_healing_batch(max_hosts: int = 50) -> Dict[str, Any]:
+def execute_auto_healing_batch(max_hosts: int = 50, explicit_operator_approval: bool = False) -> Dict[str, Any]:
     """
-    Executa o ciclo automático de Auto-Healing:
-    1. Para agentes ativos desatualizados: seta Acao_Solicitada = 'Atualizar' e Versao_Desejada = TARGET_AGENT_VERSION no SharePoint.
-    2. Para serviços críticos parados em hosts online: solicita restart do serviço.
+    DESATIVADO POR PADRÃO (Regra Operacional):
+    Nenhuma rotina pode reiniciar, atualizar ou alterar serviços nos Capture Sites sem autorização explícita do operador.
     """
+    if not explicit_operator_approval:
+        logger.warning("[AutoHealing] Execução automática/em lote bloqueada conforme diretriz de zero auto-healing não autorizado.")
+        return {
+            "status": "blocked",
+            "message": "Auto-healing em lote desativado permanentemente. Use ações manuais explícitas por host no dashboard.",
+            "actions_taken": [],
+            "errors": []
+        }
     audit = audit_and_diagnose_fleet()
     eligible_hosts = [h for h in audit["hosts"] if h["eligible_auto_update"] or h["eligible_service_restart"]]
 

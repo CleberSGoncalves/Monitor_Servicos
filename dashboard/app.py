@@ -4412,10 +4412,10 @@ async def get_fleet_auto_healing_status(user: dict = Depends(get_current_user)):
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 @app.post("/api/fleet/auto-healing/run")
-async def run_fleet_auto_healing(max_hosts: int = 50, user: dict = Depends(get_current_user)):
-    """Executa o ciclo de auto-healing em lote para agentes desatualizados e serviços críticos."""
+async def run_fleet_auto_healing(max_hosts: int = 50, confirm_manual_execution: bool = False, user: dict = Depends(get_current_user)):
+    """Bloqueado sem confirmação explícita do operador: proibido auto-healing autônomo nos Capture Sites."""
     try:
-        result = execute_auto_healing_batch(max_hosts=max_hosts)
+        result = execute_auto_healing_batch(max_hosts=max_hosts, explicit_operator_approval=confirm_manual_execution)
         return result
     except Exception as e:
         logger.error(f"[AutoHealing] Erro ao executar auto-healing: {e}", exc_info=True)

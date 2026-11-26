@@ -387,35 +387,9 @@ def get_fleet_sla_matrix(
             # O dirty check do agente C# no SharePoint não disparava novos PATCHes de CPU/RAM quando
             # os serviços permaneciam estáveis em 'Em Execução', congelando blocos estáticos de múltiplos
             # de 14% (56%, 42%, 28%, 84%) capturados no boot da stack de encoders do Atria.
-            m_cpu = re.search(r"(\d+(?:\.\d+)?)", raw_cpu)
-            base_cpu_val = float(m_cpu.group(1)) if m_cpu else 0.0
-
-            rec_tv_channels = [
-                c for c in chans
-                if not is_radio_channel_type(c)
-                and any(w in str(c.get("gravando_mp4") or "").lower() for w in ["sim", "asf", "gravando"])
-            ]
-            rec_count = len(rec_tv_channels)
-
-            if base_cpu_val in (56.0, 42.0, 28.0, 84.0, 95.0) or (base_cpu_val == 0 and rec_count > 0):
-                # Variação orgânica determinística por host/minuto (±3 a 4%) refletindo carga viva do sistema
-                h_hash = sum(ord(ch) for ch in h)
-                minute_seed = (int(now_dt.timestamp() / 60) + h_hash) % 7 - 3
-
-                if rec_count > 0:
-                    calc_cpu = 4 + (rec_count * 12) + minute_seed
-                elif cs == 3:
-                    calc_cpu = 8 + (minute_seed % 4)
-                else:
-                    calc_cpu = int(base_cpu_val) + minute_seed
-
-                calc_cpu = max(4, min(92, calc_cpu))
-                cpu_str = f"{calc_cpu}%"
-            else:
-                cpu_str = raw_cpu if raw_cpu and raw_cpu not in ("N/A", "N/D") else "<1%"
-
-            ram_str = raw_ram if raw_ram and raw_ram not in ("N/A", "N/D") else "12%"
-            disco_str = raw_disco if raw_disco and raw_disco not in ("N/A", "N/D") else "250 GB"
+            cpu_str = raw_cpu if raw_cpu and raw_cpu not in ("N/A", "N/D") else "N/D"
+            ram_str = raw_ram if raw_ram and raw_ram not in ("N/A", "N/D") else "N/D"
+            disco_str = raw_disco if raw_disco and raw_disco not in ("N/A", "N/D") else "N/D"
 
         # ---------------------------------------------------------
         # G) Link WAN & RTT
