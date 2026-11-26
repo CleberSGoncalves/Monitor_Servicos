@@ -236,100 +236,96 @@ function renderFmaLiveDashboard(data) {
 
     bodyEl.innerHTML = `
         <!-- 1. BARRA DE DIAGNÓSTICO DO PIPELINE -->
-        <div style="background: ${diagBg}; border: 1px solid ${diagBorder}; border-left: 5px solid ${diagBadgeCol}; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+        <div style="background: ${diagBg}; border: 1px solid ${diagBorder}; border-left: 5px solid ${diagBadgeCol}; border-radius: 8px; padding: 7px 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
             <div>
-                <div style="font-size: 13px; font-weight: 800; color: ${diagBadgeCol}; text-transform: uppercase; display: flex; align-items: center; gap: 6px;">
+                <div style="font-size: 12px; font-weight: 800; color: ${diagBadgeCol}; text-transform: uppercase; display: flex; align-items: center; gap: 6px;">
                     <span>${diag.color === 'green' ? '✅' : (diag.color === 'yellow' ? '⚠️' : '🚨')}</span>
                     ${escapeHtml(diag.title || 'Status do Pipeline')}
                 </div>
-                <div style="font-size: 11.5px; color: #cbd5e1; margin-top: 3px;">
+                <div style="font-size: 11px; color: #cbd5e1; margin-top: 1px;">
                     ${escapeHtml(diag.description || '')}
                 </div>
             </div>
             <div style="text-align: right;">
-                <div style="font-size: 10px; color: #94a3b8; font-weight: 700; text-transform: uppercase;">Ação Recomendada:</div>
-                <div style="font-size: 11.5px; color: #f8fafc; font-weight: 700; max-width: 380px;">${escapeHtml(diag.recommended_action || 'Nenhuma intervenção necessária.')}</div>
+                <div style="font-size: 9.5px; color: #94a3b8; font-weight: 700; text-transform: uppercase;">Ação Recomendada:</div>
+                <div style="font-size: 11px; color: #f8fafc; font-weight: 700; max-width: 380px;">${escapeHtml(diag.recommended_action || 'Nenhuma intervenção necessária.')}</div>
             </div>
         </div>
 
         <!-- 2. GRID DE 4 CARDS ANALÍTICOS -->
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px;">
+        <div style="display: grid; grid-template-columns: repeat(4, minmax(180px, 1fr)); gap: 8px;">
 
             <!-- Card 1: Status Geral do Motor -->
-            <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 12px;">
-                <div style="font-size: 10px; font-weight: 800; color: #94a3b8; text-transform: uppercase;">Motor de Detecção C++</div>
-                <div style="font-size: 18px; font-weight: 800; color: ${perf.is_running ? '#4ade80' : '#f87171'}; margin-top: 4px; display: flex; align-items: center; gap: 6px;">
+            <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 8px 10px;">
+                <div style="font-size: 9.5px; font-weight: 800; color: #94a3b8; text-transform: uppercase;">Motor de Detecção C++</div>
+                <div style="font-size: 15px; font-weight: 800; color: ${perf.is_running ? '#4ade80' : '#f87171'}; margin-top: 2px; display: flex; align-items: center; gap: 5px;">
                     <span>${perf.is_running ? '🟢' : '🔴'}</span> ${perf.is_running ? 'FastMatching' : 'Parado'}
                 </div>
-                <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">
-                    Status: <strong style="color: #f8fafc;">${escapeHtml(perf.status_text || 'Desconhecido')}</strong> • CPU CS: ${escapeHtml(perf.host_cpu || 'N/A')}
+                <div style="font-size: 10.5px; color: #94a3b8; margin-top: 2px;">
+                    Status: <strong style="color: #f8fafc;">${escapeHtml(perf.status_text || 'Desconhecido')}</strong> • CPU: ${escapeHtml(perf.host_cpu || 'N/A')}
                 </div>
             </div>
 
             <!-- Card 2: Catálogo & Spots Carregados na RAM -->
-            <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid ${spots.loaded ? 'rgba(56, 189, 248, 0.4)' : 'rgba(239, 68, 68, 0.4)'}; border-radius: 8px; padding: 12px; position: relative;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <div style="font-size: 10px; font-weight: 800; color: #38bdf8; text-transform: uppercase;">Catálogo SGG (Índice em RAM)</div>
-                    <span style="font-size: 8.5px; background: rgba(56, 189, 248, 0.15); color: #38bdf8; padding: 1px 5px; border-radius: 4px; font-weight: 700;">Biblioteca de Busca</span>
+            <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid ${spots.loaded ? 'rgba(56, 189, 248, 0.4)' : 'rgba(239, 68, 68, 0.4)'}; border-radius: 8px; padding: 8px 10px; position: relative;">
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 4px;">
+                    <div style="font-size: 9.5px; font-weight: 800; color: #38bdf8; text-transform: uppercase; white-space: nowrap;">Catálogo SGG (RAM)</div>
+                    <span style="font-size: 8.5px; background: rgba(56, 189, 248, 0.15); color: #38bdf8; padding: 1px 5px; border-radius: 4px; font-weight: 700; white-space: nowrap;">Biblioteca</span>
                 </div>
-                <div style="font-size: 18px; font-weight: 800; color: #f8fafc; margin-top: 4px;">
-                    ${(spots.total_spots_loaded || 0).toLocaleString()} <span style="font-size: 11px; color: #94a3b8; font-weight: 600;">spots cadastrados</span>
+                <div style="font-size: 15px; font-weight: 800; color: #f8fafc; margin-top: 2px;">
+                    ${(spots.total_spots_loaded || 0).toLocaleString()} <span style="font-size: 10.5px; color: #94a3b8; font-weight: 600;">spots</span>
                 </div>
-                <div style="font-size: 11px; color: ${spots.status_color === 'green' ? '#4ade80' : '#f87171'}; margin-top: 4px; font-weight: 700;">
+                <div style="font-size: 10.5px; color: ${spots.status_color === 'green' ? '#4ade80' : '#f87171'}; margin-top: 2px; font-weight: 700;">
                     ${escapeHtml(spots.status_label || 'Aguardando')} ${spots.recon_count !== null && spots.recon_count !== undefined ? `(recon=${spots.recon_count})` : ''}
-                </div>
-                <div style="font-size: 10px; color: #64748b; margin-top: 3px;">
-                    Base de referência SGG para comparação acústica
                 </div>
             </div>
 
             <!-- Card 3: Fluxo de Geração de .EMU -->
-            <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid ${emu.flow_color === 'green' ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'}; border-radius: 8px; padding: 12px;">
-                <div style="font-size: 10px; font-weight: 800; color: #facc15; text-transform: uppercase;">Geração de .EMU (1 min)</div>
-                <div style="font-size: 18px; font-weight: 800; color: #f8fafc; margin-top: 4px;">
-                    ${(Number(emu.generation_rate_cpm) || 0).toFixed(1)} <span style="font-size: 12px; color: #94a3b8; font-weight: 600;">arquivos/min</span>
+            <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid ${emu.flow_color === 'green' ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'}; border-radius: 8px; padding: 8px 10px;">
+                <div style="font-size: 9.5px; font-weight: 800; color: #facc15; text-transform: uppercase;">Geração de .EMU (1 min)</div>
+                <div style="font-size: 15px; font-weight: 800; color: #f8fafc; margin-top: 2px;">
+                    ${(Number(emu.generation_rate_cpm) || 0).toFixed(1)} <span style="font-size: 11px; color: #94a3b8; font-weight: 600;">arquivos/min</span>
                 </div>
-                <div style="font-size: 11px; color: ${emu.flow_color === 'green' ? '#4ade80' : '#f87171'}; margin-top: 4px; font-weight: 700;">
+                <div style="font-size: 10.5px; color: ${emu.flow_color === 'green' ? '#4ade80' : '#f87171'}; margin-top: 2px; font-weight: 700;">
                     ${escapeHtml(emu.flow_label || 'Sem dados')}
                 </div>
             </div>
 
             <!-- Card 4: Performance C++ & Busca -->
-            <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 12px;">
-                <div style="font-size: 10px; font-weight: 800; color: #c084fc; text-transform: uppercase;">Varredura &amp; Memória</div>
-                <div style="font-size: 18px; font-weight: 800; color: #f8fafc; margin-top: 4px;">
-                    ${perf.proc_time_ms_avg || 18} ms <span style="font-size: 12px; color: #94a3b8; font-weight: 600;">ProcTime médio</span>
+            <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 8px 10px;">
+                <div style="font-size: 9.5px; font-weight: 800; color: #c084fc; text-transform: uppercase;">Varredura &amp; Memória</div>
+                <div style="font-size: 15px; font-weight: 800; color: #f8fafc; margin-top: 2px;">
+                    ${perf.proc_time_ms_avg || 18} ms <span style="font-size: 11px; color: #94a3b8; font-weight: 600;">ProcTime</span>
                 </div>
-                <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">
-                    Working Set: <strong style="color: #38bdf8;">${perf.ram_working_set_mb || 0} MB</strong> • Fingers: ${(perf.num_fingers || 0).toLocaleString()}
+                <div style="font-size: 10.5px; color: #94a3b8; margin-top: 2px;">
+                    RAM: <strong style="color: #38bdf8;">${perf.ram_working_set_mb || 0} MB</strong> • Fingers: ${(perf.num_fingers || 0).toLocaleString()}
                 </div>
             </div>
 
         </div>
 
         <!-- 2.5 QUADRO DEDICADO DE VEÍCULOS & EMISSORAS MONITORADAS NA PRAÇA -->
-        <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 12px 16px; margin-bottom: 14px; display: flex; flex-direction: column; gap: 8px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-                <div style="font-size: 12px; font-weight: 800; color: #38bdf8; text-transform: uppercase; display: flex; align-items: center; gap: 6px;">
+        <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 8px 12px; display: flex; flex-direction: column; gap: 6px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
+                <div style="font-size: 11px; font-weight: 800; color: #38bdf8; text-transform: uppercase; display: flex; align-items: center; gap: 6px;">
                     <span>📡</span> Emissoras & Veículos Monitorados na Praça (${escapeHtml(fmaLiveCurrentPraca)})
                 </div>
-                <div style="font-size: 10.5px; color: #94a3b8;">
-                    Total de <strong>${(data.channels_detail || []).length || (data.monitored_channels || []).length} canais</strong> com gravação contínua e ingestão de áudio .EMU
+                <div style="font-size: 10px; color: #94a3b8;">
+                    Total de <strong>${(data.channels_detail || []).length || (data.monitored_channels || []).length} canais</strong> com gravação contínua e ingestão .EMU
                 </div>
             </div>
-            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                 <!-- BOTÃO: TODOS OS CANAIS -->
-                <div onclick="filterDetectionsByChannel('ALL')" style="cursor: pointer; transition: all 0.2s ease; border-radius: 8px; padding: 10px 14px; display: flex; align-items: center; gap: 10px; min-width: 175px; ${fmaLiveSelectedChannel === 'ALL' ? 'border: 2px solid #38bdf8; background: rgba(14, 165, 233, 0.25); box-shadow: 0 0 14px rgba(56, 189, 248, 0.45); transform: translateY(-1px);' : 'border: 1px solid rgba(255, 255, 255, 0.12); background: rgba(30, 41, 59, 0.7);'}" title="Exibir detecções simultâneas de todos os canais da praça">
-                    <div style="width: 34px; height: 34px; border-radius: 6px; background: rgba(56, 189, 248, 0.2); border: 1px solid rgba(56, 189, 248, 0.4); display: flex; align-items: center; justify-content: center; font-size: 16px;">
+                <div onclick="filterDetectionsByChannel('ALL')" style="cursor: pointer; transition: all 0.2s ease; border-radius: 7px; padding: 6px 10px; display: flex; align-items: center; gap: 8px; min-width: 150px; ${fmaLiveSelectedChannel === 'ALL' ? 'border: 2px solid #38bdf8; background: rgba(14, 165, 233, 0.25); box-shadow: 0 0 10px rgba(56, 189, 248, 0.4);' : 'border: 1px solid rgba(255, 255, 255, 0.12); background: rgba(30, 41, 59, 0.7);'}" title="Exibir detecções simultâneas de todos os canais da praça">
+                    <div style="width: 28px; height: 28px; border-radius: 5px; background: rgba(56, 189, 248, 0.2); border: 1px solid rgba(56, 189, 248, 0.4); display: flex; align-items: center; justify-content: center; font-size: 14px;">
                         🌐
                     </div>
                     <div>
-                        <div style="font-size: 12px; font-weight: 800; color: #38bdf8; display: flex; align-items: center; gap: 5px;">
+                        <div style="font-size: 11px; font-weight: 800; color: #38bdf8; display: flex; align-items: center; gap: 4px;">
                             TODOS OS CANAIS
-                            ${fmaLiveSelectedChannel === 'ALL' ? '<span style="font-size: 9px; background: #0284c7; color: #fff; padding: 1px 5px; border-radius: 4px;">ATIVO</span>' : ''}
+                            ${fmaLiveSelectedChannel === 'ALL' ? '<span style="font-size: 8.5px; background: #0284c7; color: #fff; padding: 1px 4px; border-radius: 3px;">ATIVO</span>' : ''}
                         </div>
-                        <div style="font-size: 10px; color: #94a3b8;">Visão global da praça</div>
-                        <div style="font-size: 9.5px; color: #38bdf8; font-weight: 700; margin-top: 1px;">● Exibir Tudo</div>
+                        <div style="font-size: 9.5px; color: #38bdf8; font-weight: 700;">● Exibir Tudo</div>
                     </div>
                 </div>
 
@@ -338,18 +334,17 @@ function renderFmaLiveDashboard(data) {
                     const cNameUpper = String(ch.name || ch).toUpperCase();
                     const isSelected = fmaLiveSelectedChannel === cNameUpper;
                     return `
-                        <div onclick="filterDetectionsByChannel('${cNameUpper}')" style="cursor: pointer; transition: all 0.2s ease; border-radius: 8px; padding: 10px 14px; display: flex; align-items: center; gap: 10px; min-width: 175px; ${isSelected ? 'border: 2px solid #4ade80; background: rgba(34, 197, 94, 0.22); box-shadow: 0 0 14px rgba(74, 222, 128, 0.45); transform: translateY(-1px);' : 'border: 1px solid rgba(255, 255, 255, 0.12); background: rgba(30, 41, 59, 0.7);'}" title="Filtrar e acompanhar apenas detecções de ${cNameUpper}">
-                            <div style="width: 34px; height: 34px; border-radius: 6px; background: rgba(14, 165, 233, 0.2); border: 1px solid rgba(56, 189, 248, 0.4); display: flex; align-items: center; justify-content: center; font-size: 16px;">
+                        <div onclick="filterDetectionsByChannel('${cNameUpper}')" style="cursor: pointer; transition: all 0.2s ease; border-radius: 7px; padding: 6px 10px; display: flex; align-items: center; gap: 8px; min-width: 150px; ${isSelected ? 'border: 2px solid #4ade80; background: rgba(34, 197, 94, 0.22); box-shadow: 0 0 10px rgba(74, 222, 128, 0.4);' : 'border: 1px solid rgba(255, 255, 255, 0.12); background: rgba(30, 41, 59, 0.7);'}" title="Filtrar e acompanhar apenas detecções de ${cNameUpper}">
+                            <div style="width: 28px; height: 28px; border-radius: 5px; background: rgba(14, 165, 233, 0.2); border: 1px solid rgba(56, 189, 248, 0.4); display: flex; align-items: center; justify-content: center; font-size: 14px;">
                                 📺
                             </div>
                             <div>
-                                <div style="font-size: 12.5px; font-weight: 800; color: #f8fafc; display: flex; align-items: center; gap: 5px;">
+                                <div style="font-size: 11.5px; font-weight: 800; color: #f8fafc; display: flex; align-items: center; gap: 4px;">
                                     ${escapeHtml(ch.name || ch)}
-                                    ${isSelected ? '<span style="font-size: 9px; background: #16a34a; color: #fff; padding: 1px 5px; border-radius: 4px;">FILTRADO</span>' : ''}
+                                    ${isSelected ? '<span style="font-size: 8.5px; background: #16a34a; color: #fff; padding: 1px 4px; border-radius: 3px;">FILTRADO</span>' : ''}
                                 </div>
-                                <div style="font-size: 10px; color: #94a3b8;">${escapeHtml(ch.full_name || ch.name || ch)}</div>
-                                <div style="font-size: 9.5px; color: ${isSelected ? '#4ade80' : '#86efac'}; font-weight: 700; margin-top: 1px;">
-                                    ${isSelected ? '● Visualizando Agora' : `● Detecção Ativa (Prog ${ch.prog || 1})`}
+                                <div style="font-size: 9.5px; color: ${isSelected ? '#4ade80' : '#86efac'}; font-weight: 700;">
+                                    ${isSelected ? '● Visualizando Agora' : `● Ativa (Prog ${ch.prog || 1})`}
                                 </div>
                             </div>
                         </div>
@@ -359,29 +354,24 @@ function renderFmaLiveDashboard(data) {
         </div>
 
         <!-- 3. DETECÇÕES RECENTES EM TEMPO REAL & INDICADORES DE FLUXO -->
-        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 14px;">
+        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 10px;">
 
             <!-- Coluna Esquerda: Tabela de Detecções Automáticas -->
-            <div style="background: rgba(15, 23, 42, 0.9); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 14px; display: flex; flex-direction: column;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
-                    <div>
-                        <div style="font-size: 12px; font-weight: 800; color: #4ade80; text-transform: uppercase; display: flex; align-items: center; gap: 6px;">
-                            <span>🎯</span> Detecções no Ar (NEW DETECTION — Match Acústico)
-                        </div>
-                        <div style="font-size: 10.5px; color: #94a3b8; margin-top: 2px;">
-                            Comerciais reconhecidos na transmissão ao vivo com correlação acústica &gt; 98%
-                        </div>
+            <div style="background: rgba(15, 23, 42, 0.9); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; flex-wrap: wrap; gap: 6px;">
+                    <div style="font-size: 11px; font-weight: 800; color: #4ade80; text-transform: uppercase; display: flex; align-items: center; gap: 6px;">
+                        <span>🎯</span> Detecções no Ar (NEW DETECTION — Match Acústico &gt; 98%)
                     </div>
-                    <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                        <span style="font-size: 10px; color: #94a3b8; font-weight: 600;">Canais da Praça:</span>
+                    <div style="display: flex; align-items: center; gap: 5px; flex-wrap: wrap;">
+                        <span style="font-size: 9.5px; color: #94a3b8; font-weight: 600;">Canais:</span>
                         ${(data.monitored_channels && data.monitored_channels.length > 0) 
-                            ? data.monitored_channels.map(ch => `<span style="background: rgba(14, 165, 233, 0.18); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); font-size: 9.5px; font-weight: 700; padding: 1px 6px; border-radius: 4px;">${escapeHtml(ch)}</span>`).join('')
-                            : `<span style="color: #64748b; font-size: 10px;">Padrão</span>`
+                            ? data.monitored_channels.map(ch => `<span style="background: rgba(14, 165, 233, 0.18); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 4px;">${escapeHtml(ch)}</span>`).join('')
+                            : `<span style="color: #64748b; font-size: 9.5px;">Padrão</span>`
                         }
                     </div>
                 </div>
 
-                <div style="overflow-x: auto; max-height: 230px; overflow-y: auto;">
+                <div style="overflow-x: auto; max-height: 145px; overflow-y: auto;">
                     <table style="width: 100%; border-collapse: collapse; font-size: 11.5px; text-align: left;">
                         <thead>
                             <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.1); color: #94a3b8;">
@@ -426,45 +416,41 @@ function renderFmaLiveDashboard(data) {
                     </table>
                 </div>
 
-                <div style="background: rgba(14, 165, 233, 0.08); border-left: 3px solid #38bdf8; border-radius: 4px; padding: 7px 10px; margin-top: 10px; font-size: 10.5px; color: #cbd5e1; line-height: 1.4;">
-                    💡 <strong>O que significa NEW DETECTION?</strong> Indica que o motor FastMatching comparou o áudio da TV cortado pelo Atria (.EMU) com a biblioteca de spots em RAM e deu <strong>Match positivo (&gt;98%)</strong>: aquele comercial acabou de ser veiculado no canal naquele segundo exato.
+                <div style="background: rgba(14, 165, 233, 0.08); border-left: 3px solid #38bdf8; border-radius: 4px; padding: 5px 8px; margin-top: 6px; font-size: 10px; color: #cbd5e1; line-height: 1.3;">
+                    💡 <strong>NEW DETECTION:</strong> FastMatching comparou o áudio da TV (.EMU) com os spots em RAM e deu Match positivo (&gt;98%).
                 </div>
             </div>
 
             <!-- Coluna Direita: Detalhamento de Fluxo EMU & Buffer -->
-            <div style="background: rgba(15, 23, 42, 0.9); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; justify-content: space-between;">
+            <div style="background: rgba(15, 23, 42, 0.9); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; justify-content: space-between;">
                 <div>
-                    <div style="font-size: 12px; font-weight: 800; color: #f8fafc; text-transform: uppercase; margin-bottom: 10px; display: flex; align-items: center; gap: 6px;">
+                    <div style="font-size: 11px; font-weight: 800; color: #f8fafc; text-transform: uppercase; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
                         <span>📦</span> Pipeline EMU (D:\\MediaDNA_V2\\Data\\emu)
                     </div>
 
-                    <div style="display: flex; flex-direction: column; gap: 8px; font-size: 11.5px;">
-                        <div style="background: rgba(0, 0, 0, 0.3); padding: 8px 10px; border-radius: 6px;">
-                            <div style="color: #94a3b8; font-size: 10px; text-transform: uppercase;">Último .EMU Gravado</div>
-                            <div style="color: #38bdf8; font-weight: 700; font-family: monospace; margin-top: 2px; word-break: break-all;">
+                    <div style="display: flex; flex-direction: column; gap: 5px; font-size: 11px;">
+                        <div style="background: rgba(0, 0, 0, 0.3); padding: 6px 8px; border-radius: 5px;">
+                            <div style="color: #94a3b8; font-size: 9.5px; text-transform: uppercase;">Último .EMU Gravado</div>
+                            <div style="color: #38bdf8; font-weight: 700; font-family: monospace; margin-top: 1px; word-break: break-all;">
                                 ${escapeHtml(emu.last_emu_file)}
                             </div>
-                            <div style="color: #64748b; font-size: 10px; margin-top: 2px;">Timestamp: ${escapeHtml(emu.last_emu_timestamp)}</div>
+                            <div style="color: #64748b; font-size: 9.5px;">Timestamp: ${escapeHtml(emu.last_emu_timestamp)}</div>
                         </div>
 
-                        <div style="background: rgba(0, 0, 0, 0.3); padding: 8px 10px; border-radius: 6px;">
-                            <div style="color: #94a3b8; font-size: 10px; text-transform: uppercase;">Canais Emitindo .EMU</div>
-                            <div style="color: #fff; font-weight: 700; margin-top: 2px;">
-                                ${emu.active_channels} canais simultâneos (1 min por bloco)
+                        <div style="background: rgba(0, 0, 0, 0.3); padding: 6px 8px; border-radius: 5px;">
+                            <div style="color: #94a3b8; font-size: 9.5px; text-transform: uppercase;">Canais Emitindo .EMU</div>
+                            <div style="color: #fff; font-weight: 700;">
+                                ${emu.active_channels} canais simultâneos (1 min/bloco)
                             </div>
                         </div>
 
-                        <div style="background: rgba(0, 0, 0, 0.3); padding: 8px 10px; border-radius: 6px;">
-                            <div style="color: #94a3b8; font-size: 10px; text-transform: uppercase;">Integridade de Disco D:</div>
-                            <div style="color: #4ade80; font-weight: 700; margin-top: 2px;">
+                        <div style="background: rgba(0, 0, 0, 0.3); padding: 6px 8px; border-radius: 5px;">
+                            <div style="color: #94a3b8; font-size: 9.5px; text-transform: uppercase;">Disco D:</div>
+                            <div style="color: #4ade80; font-weight: 700;">
                                 ${escapeHtml(emu.free_disk_gb)} Livres (Buffer Seguro)
                             </div>
                         </div>
                     </div>
-                </div>
-
-                <div style="margin-top: 10px; font-size: 10.5px; color: #64748b; line-height: 1.3;">
-                    ℹ️ Os arquivos .EMU são gerados pelo AtriaCapture e consumidos pelo FastMatchingSvc a cada minuto. O fluxo contínuo impede gargalos de detecção.
                 </div>
             </div>
 
@@ -474,7 +460,7 @@ function renderFmaLiveDashboard(data) {
         <div style="background: #020617; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column;">
 
             <!-- Header do Terminal com Busca & Filtros -->
-            <div style="background: #0f172a; padding: 8px 14px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+            <div style="background: #0f172a; padding: 6px 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
                 <div style="font-size: 11px; font-weight: 700; color: #cbd5e1; display: flex; align-items: center; gap: 6px; font-family: monospace;">
                     <span style="color: #38bdf8;">$</span> fma.log (Live Tail — Últimas ${logs.length} linhas)
                 </div>
@@ -488,7 +474,7 @@ function renderFmaLiveDashboard(data) {
             </div>
 
             <!-- Corpo de Linhas Monospace Coloridas -->
-            <div id="fmaLiveLogTerminal" style="font-family: Consolas, 'Courier New', monospace; font-size: 11px; line-height: 1.5; color: #e2e8f0; padding: 12px; min-height: 160px; max-height: 320px; overflow-y: auto; background: #00040f;">
+            <div id="fmaLiveLogTerminal" style="font-family: Consolas, 'Courier New', monospace; font-size: 11px; line-height: 1.45; color: #e2e8f0; padding: 8px 12px; height: 125px; overflow-y: auto; background: #00040f;">
                 ${renderFmaLogLines(logs, fmaLiveLogSearchKw)}
             </div>
 

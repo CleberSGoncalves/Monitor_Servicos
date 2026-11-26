@@ -251,7 +251,7 @@ def on_startup():
     try:
         from remote_commands import init_remote_command_db
         init_remote_command_db()
-        from dashboard.rollback_manager import init_rollback_journal_db
+        from rollback_manager import init_rollback_journal_db
         init_rollback_journal_db()
     except Exception as e:
         logger.warning(f"Aviso ao inicializar banco de comandos remotos no startup: {e}")
@@ -293,7 +293,7 @@ async def get_fleet_rollback_journal(
     user: dict = Depends(get_current_user)
 ):
     """Retorna o histórico de ações no journal de rollback catastrófico."""
-    from dashboard.rollback_manager import get_rollback_journal
+    from rollback_manager import get_rollback_journal
     records = get_rollback_journal(hostname=hostname, action_type=action_type, status=status, limit=limit)
     return {"success": True, "total": len(records), "records": records}
 
@@ -304,7 +304,7 @@ async def get_fleet_rollback_preview(
     user: dict = Depends(get_current_user)
 ):
     """Retorna a pré-visualização do script PowerShell e snapshot de reversão."""
-    from dashboard.rollback_manager import preview_rollback
+    from rollback_manager import preview_rollback
     res = preview_rollback(action_id)
     if not res.get("success"):
         raise HTTPException(status_code=404, detail=res.get("error", "Ação não encontrada"))
@@ -317,7 +317,7 @@ async def post_fleet_rollback_execute(
     user: dict = Depends(get_current_user)
 ):
     """Executa a reversão catastrófica de emergência para o host."""
-    from dashboard.rollback_manager import execute_rollback
+    from rollback_manager import execute_rollback
     operator = user.get("username") if user else "NOC Operator"
     res = execute_rollback(action_id, operator=operator)
     if not res.get("success"):
@@ -1617,7 +1617,7 @@ Write-Host '[SUCESSO] Configuracoes operacionais aplicadas e Atria Capture reini
             details=f"ID Execução: {res} | Canais configurados: {len(req.channels or [])} | LogRotate: rotate {lr_rotate}",
         )
         try:
-            from dashboard.rollback_manager import record_action_for_rollback
+            from rollback_manager import record_action_for_rollback
             record_action_for_rollback(
                 action_id=str(res),
                 action_type="host_config",
@@ -2103,7 +2103,7 @@ async def dispatch_governance_update_endpoint(
                 requested_by=operator,
             )
             try:
-                from dashboard.rollback_manager import record_action_for_rollback
+                from rollback_manager import record_action_for_rollback
                 _act_type = "atria_update" if "atria" in req.service_name.lower() or "capture" in req.service_name.lower() else "service_update"
                 record_action_for_rollback(
                     action_id=cid,

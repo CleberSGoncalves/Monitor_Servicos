@@ -890,7 +890,7 @@ function setupTabNavigation() {
 
 
 
-            const isFleetSubtab = (tabName === "fleet-csconfig" || tabName === "fleet-inventory");
+            const isFleetSubtab = (tabName === "fleet-csconfig" || tabName === "fleet-inventory" || tabName === "fleet-rollback");
             const targetSec = isFleetSubtab ? document.getElementById("tab-fleet") : document.getElementById(`tab-${tabName}`);
 
             if (targetSec) targetSec.classList.add("active");
@@ -907,6 +907,13 @@ function setupTabNavigation() {
                 if (typeof loadFleetInventory === "function") loadFleetInventory(true);
                 setTimeout(() => {
                     const c = document.getElementById("fleetSubtabInventoryContainer");
+                    if (c) c.scrollIntoView({ behavior: "smooth", block: "start" });
+                }, 150);
+            } else if (tabName === "fleet-rollback") {
+                if (typeof switchFleetSubtab === "function") switchFleetSubtab("rollback");
+                if (typeof loadRollbackJournal === "function") loadRollbackJournal();
+                setTimeout(() => {
+                    const c = document.getElementById("fleetSubtabRollbackContainer");
                     if (c) c.scrollIntoView({ behavior: "smooth", block: "start" });
                 }, 150);
             }
