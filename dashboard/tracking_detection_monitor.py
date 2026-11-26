@@ -501,6 +501,25 @@ _FASTMATCHING_FLEET_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
 _FMA_DETECTIONS_HISTORY: Dict[str, list] = {}
 
 
+def clean_target_hostname(raw_h: Any) -> str:
+    """Extrai o hostname canônico exato mesmo se o seletor enviar label formatado ('🟢 Campinas — Campinas-SMME-52-CS1')."""
+    if not raw_h:
+        return ""
+    import re
+    s = str(raw_h).strip()
+    m_smme = re.search(r"([A-Za-z0-9_]+-SMME-\d+-CS\d+)", s, re.IGNORECASE)
+    if m_smme:
+        return m_smme.group(1).upper()
+    m_dt = re.search(r"([A-Za-z0-9_]+-DT\d+)", s, re.IGNORECASE)
+    if m_dt:
+        return m_dt.group(1).upper()
+    if " — " in s:
+        return s.split(" — ")[-1].strip().upper()
+    if " - " in s:
+        return s.split(" - ")[-1].strip().upper()
+    return s.upper()
+
+
 def parse_ram_to_mb(ram_str: Any) -> Optional[int]:
     """Converte valores de RAM do Capture Site ('1,03 GB', '552 MB', '16 MB', '17% (91 MB)') em MB numérico."""
     if not ram_str or str(ram_str).strip() in ("N/A", "N/D", "-", "None", ""):
@@ -535,7 +554,8 @@ def get_fastmatching_node_telemetry(hostname: str = "", praca: str = "", force_r
     global _FASTMATCHING_FLEET_CACHE
     import time
 
-    h_str = (hostname or "DEFAULT").strip().upper()
+    h_raw = clean_target_hostname(hostname)
+    h_str = h_raw or "DEFAULT"
     p_str = (praca or "").strip()
 
     # 1. Se já existe telemetria canônica em cache vivo e válida pelo TTL (45s), retorna
@@ -3404,7 +3424,7 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
 
     now = datetime.now()
     now_utc = datetime.now(timezone.utc)
-    h_clean = (hostname or "").strip().upper()
+    h_clean = clean_target_hostname(hostname)
 
     # 1. Obter telemetria do nó a partir do snapshot canônico
     node_telemetry = get_fastmatching_node_telemetry(h_clean, force_refresh=True)

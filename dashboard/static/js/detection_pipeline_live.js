@@ -10,6 +10,8 @@ let fmaLiveLogSearchKw = "";
 let fmaLiveAutoScroll = true;
 let fmaLiveSelectedChannel = "ALL";
 let fmaLiveLastData = null;
+// Buffer cumulativo persistente de detecções por hostname no cliente
+const fmaLivePersistentDetections = {};
 
 function filterDetectionsByChannel(channelName) {
     fmaLiveSelectedChannel = (channelName || "ALL").toUpperCase().trim();
@@ -190,6 +192,26 @@ async function refreshFmaLiveData(isBackground = false) {
         if (btnHealRecon) {
             btnHealRecon.style.display = (data.diagnosis.status === "SEM_NOVOS_SPOTS") ? "inline-block" : "none";
         }
+
+        // Gerenciamento cumulativo de histórico em memória por host
+        const hKey = (data.hostname || fmaLiveCurrentHost || "").toUpperCase().trim();
+        if (!fmaLivePersistentDetections[hKey]) {
+            fmaLivePersistentDetections[hKey] = [];
+        }
+        const incomingDets = data.recent_detections || [];
+        const existingList = fmaLivePersistentDetections[hKey];
+        const existingKeys = new Set(existingList.map(d => `${d.timestamp}_${d.spot_id}`));
+        for (const det of incomingDets) {
+            const k = `${det.timestamp}_${det.spot_id}`;
+            if (!existingKeys.has(k)) {
+                existingList.unshift(det);
+                existingKeys.add(k);
+            }
+        }
+        if (existingList.length > 50) {
+            fmaLivePersistentDetections[hKey] = existingList.slice(0, 50);
+        }
+        data.recent_detections = fmaLivePersistentDetections[hKey];
 
         fmaLiveLastData = data;
         renderFmaLiveDashboard(data);
@@ -391,9 +413,9 @@ function renderFmaLiveDashboard(data) {
                                 <tr>
                                     <td colspan="6" style="text-align: center; padding: 24px 16px; color: #94a3b8;">
                                         <div style="font-size: 20px; margin-bottom: 6px;">📡</div>
-                                        <div style="font-weight: 700; color: #f1f5f9; font-size: 12px;">Nenhuma detecção comercial registrada no período</div>
-                                        <div style="font-size: 11px; color: #94a3b8; margin-top: 4px; max-width: 440px; margin-left: auto; margin-right: auto; line-height: 1.4;">
-                                            ${data.is_live_disk ? 'O arquivo fma.log local foi lido com sucesso e não há registros NEW DETECTION recentes gravados em disco.' : `Motor FastMatching ativo no nó físico (${perf.ram_working_set_mb} MB RAM | CPU: ${perf.host_cpu}). Detecções acústicas são registradas à medida que comerciais cadastrados no SGG são exibidos ao vivo.`}
+                                        <div style="font-weight: 700; color: #f1f5f9; font-size: 12px;">Aguardando nova inserção comercial ao vivo</div>
+                                        <div style="font-size: 11px; color: #94a3b8; margin-top: 4px; max-width: 480px; margin-left: auto; margin-right: auto; line-height: 1.4;">
+                                            ${data.is_live_disk ? 'O arquivo fma.log local foi lido com sucesso e não há registros NEW DETECTION no trecho tail recente.' : `Motor FastMatching ativo e operando no nó físico (${perf.ram_working_set_mb} MB RAM | CPU: ${perf.host_cpu}). As detecções acústicas reais são transmitidas e acumuladas em tela a cada inserção identificada nas emissoras.`}
                                         </div>
                                         ${fmaLiveSelectedChannel !== 'ALL' ? `<div style="margin-top: 6px; font-size: 10.5px; color: #38bdf8; font-weight: 700;">Filtro atual: ${escapeHtml(fmaLiveSelectedChannel)} (Clique em 'TODOS OS CANAIS' para visão ampla)</div>` : ''}
                                     </td>
