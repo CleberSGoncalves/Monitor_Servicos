@@ -1343,52 +1343,8 @@ def get_host_service_action_status(host: str, service_name: str, target_version:
 
 def build_legacy_stack_remediation_script() -> str:
     """
-    Gera o script PowerShell oficial de contingência e reversão para praças com esteira legada:
-    1. Reverte perfis em Multiplexes.xml para <EMU_ProfileName>EMU MDNA</EMU_ProfileName>
-    2. Desativa e para FastMatchingSvc e DNA.FileCleanerSVC (start= disabled)
-    3. Reconfigura DNA.DetectionSVC e DNA.TrackingSVC para Automático (start= auto) e inicia ambos
-    4. Reinicia Atria Capture de forma graciosa para recarregar as configurações de gravação
+    BLOQUEADO: Proibido reverter stacks ou alterar perfis/serviços de forma automática ou genérica.
     """
-    emu_snippet = build_emu_profile_hardening_snippet(target_profile=EMU_PROFILE_LEGACY)
-    return (
-        "$ErrorActionPreference = 'Continue';\n"
-        "$ProgressPreference = 'SilentlyContinue';\n"
-        "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;\n"
-        "Write-Host '[REVERSAO_LEGADO] Iniciando plano de reversao para stack legada (EMU MDNA + Detection/Tracking)...';\n\n"
-        "# --- ETAPA 1: Blindagem e reversao do perfil EMU para 'EMU MDNA' ---\n"
-        + emu_snippet + "\n"
-        "# --- ETAPA 2: Desativacao de FastMatchingSvc e DNA.FileCleanerSVC ---\n"
-        "Write-Host '[REVERSAO_LEGADO] Desativando e parando servicos de FastMatching...';\n"
-        "Stop-Service -Name FastMatchingSvc, FastMachingSvc, DNA.FileCleanerSVC -Force -ErrorAction SilentlyContinue;\n"
-        "sc.exe stop FastMatchingSvc 2>&1 | Out-Null;\n"
-        "sc.exe stop FastMachingSvc 2>&1 | Out-Null;\n"
-        "sc.exe stop DNA.FileCleanerSVC 2>&1 | Out-Null;\n"
-        "sc.exe config FastMatchingSvc start= disabled 2>&1 | Out-Null;\n"
-        "sc.exe config FastMachingSvc start= disabled 2>&1 | Out-Null;\n"
-        "sc.exe config DNA.FileCleanerSVC start= disabled 2>&1 | Out-Null;\n\n"
-        "# --- ETAPA 3: Reativacao de DNA.DetectionSVC e DNA.TrackingSVC (Automatico) ---\n"
-        "Write-Host '[REVERSAO_LEGADO] Configurando DNA.DetectionSVC e DNA.TrackingSVC como Automatico e iniciando...';\n"
-        "sc.exe config DNA.DetectionSVC start= auto 2>&1 | Out-Null;\n"
-        "sc.exe config DNA.TrackingSVC start= auto 2>&1 | Out-Null;\n"
-        "Set-Service -Name DNA.DetectionSVC -StartupType Automatic -ErrorAction SilentlyContinue;\n"
-        "Set-Service -Name DNA.TrackingSVC -StartupType Automatic -ErrorAction SilentlyContinue;\n"
-        "Start-Service -Name DNA.DetectionSVC -ErrorAction SilentlyContinue;\n"
-        "Start-Service -Name DNA.TrackingSVC -ErrorAction SilentlyContinue;\n\n"
-        "# --- ETAPA 4: Reinicio de Atria Capture para recarregar Multiplexes.xml ---\n"
-        "Write-Host '[REVERSAO_LEGADO] Reiniciando Atria Capture...';\n"
-        "$targetDir = @('D:\\MediaDNA_V2\\Applications\\DTVCapture64', 'C:\\DTV\\DTVCapture', 'C:\\MediaDNA_V2\\Applications\\DTVCapture64') | Where-Object { Test-Path $_ } | Select-Object -First 1;\n"
-        "cmd.exe /c \"taskkill /f /t /im DigitalTVCapture.exe /im DigitalTVReceiver.exe /im AtriaCapture.exe >nul 2>&1\";\n"
-        "Start-Sleep -Seconds 3;\n"
-        "if ($targetDir) {\n"
-        "    $exe = @(\"$targetDir\\DigitalTVCapture.exe\", \"$targetDir\\AtriaCapture.exe\", \"$targetDir\\DTVCapture64.exe\") | Where-Object { Test-Path $_ } | Select-Object -First 1;\n"
-        "    if ($exe) {\n"
-        "        schtasks /delete /tn 'Start_Atria_Interactive' /f >$null 2>&1;\n"
-        "        schtasks /create /tn 'Start_Atria_Interactive' /tr \"`\"$exe`\"\" /sc once /st 00:00 /it /f >$null 2>&1;\n"
-        "        schtasks /run /tn 'Start_Atria_Interactive' >$null 2>&1;\n"
-        "        Write-Host '[REVERSAO_LEGADO] Atria Capture reiniciado com sucesso via schtasks interativo.';\n"
-        "    }\n"
-        "}\n"
-        "Write-Host '[REVERSAO_LEGADO] Processo concluido com sucesso.';\n"
-    )
+    raise RuntimeError("[BLOCKED_BY_POLICY] Reversão para stack legada bloqueada por política de segurança de engenharia. Nenhuma alteração de serviços ou perfis EMU pode ser executada sem solicitação manual explícita.")
 
 

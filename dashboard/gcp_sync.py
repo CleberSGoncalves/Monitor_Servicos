@@ -723,12 +723,24 @@ def dispatch_remote_command_to_firestore(
     target_version: str = "",
     shell_type: str = "powershell",
     script: str = "",
-    requested_by: str = "operador"
+    requested_by: str = "operador",
+    is_autonomous_trigger: bool = False
 ) -> bool:
     """
     Enfileira um comando diretamente no Firestore na coleção 'fleet_commands'.
-    Suporta tanto o identificador canônico ({Praca}-SMME-{idHost}-CS{CS}) quanto o hostname NetBIOS legado.
+    BLINDAGEM OPERACIONAL ABSOLUTA:
+    - Qualquer comando originado de trigger autônomo/background é terminantemente bloqueado.
+    - Scripts contendo reversão de esteira ou parada arbitrária de FastMatching/FileCleaner são rejeitados.
     """
+    if is_autonomous_trigger:
+        logger.error(f"[GCPSync BLOCK] Comando {command_id} para {hostname} bloqueado: triggers autônomos proíbidos.")
+        return False
+
+    script_low = (script or "").lower()
+    if "reversao_legado" in script_low or ("stop-service" in script_low and "fastmatching" in script_low and "sc.exe config" in script_low):
+        logger.error(f"[GCPSync BLOCK] Comando {command_id} para {hostname} bloqueado: tentativa não autorizada de desativação de FastMatching/FileCleaner.")
+        return False
+
     if not command_id:
         return False
 

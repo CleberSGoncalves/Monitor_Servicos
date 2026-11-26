@@ -70,9 +70,11 @@
 > **PROIBIDO QUALQUER COMANDO AUTOMÁTICO SEM AUTORIZAÇÃO EXPLÍCITA DO OPERADOR**
 > 
 > O dashboard é estritamente **PASSIVO / OBSERVACIONAL** por padrão. Nenhuma rotina em background, watchdog, auto-healing ou heurística pode:
-> 1. **Reiniciar, parar, iniciar ou alterar** qualquer serviço (`Atria Capture`, `FastMatchingSvc`, `FileCleaner`, `DNA.DetectionSVC`, `DNA.TrackingSVC`, etc.) automaticamente.
-> 2. **Alterar arquivos XML/configurações** (ex: `Multiplexes.xml`, `EMU_ProfileName`, `EMU MDNA`, `EMU MediaDNA 1min`) ou disparar rollback/migração de stack sem clique/comando explícito do usuário no dashboard ou solicitação direta.
-> 3. Qualquer ação remota (`dispatch_remote_command_to_firestore`, scripts PowerShell, restart/start/stop) **DEVE** ser disparada exclusivamente por ação manual e explícita do operador. Auto-healing em background deve permanecer **permanentemente desativado**.
+> 1. **Reiniciar, parar, iniciar, desativar ou alterar** qualquer serviço (`Atria Capture`, `FastMatchingSvc`, `FileCleaner`, `DNA.DetectionSVC`, `DNA.TrackingSVC`, etc.) automaticamente.
+> 2. **Alterar arquivos XML/configurações** (ex: `Multiplexes.xml`, `EMU_ProfileName`, `EMU MDNA`, `EMU MediaDNA 1min`) ou disparar rollback/migração/reversão de stack sem clique/comando explícito do usuário no dashboard ou solicitação direta.
+> 3. **Proibição estrita de reverter FastMatching/FileCleaner**: NUNCA desativar FastMatching ou FileCleaner nem forçar retorno para Detection/Tracking ou perfil `EMU MDNA` sem comando expresso e nominal do usuário.
+> 4. **Proibição de scripts em lote em background**: Scripts de disparo em massa (`dispatch_*.py`) não podem ser executados autonomamente pelo assistente.
+> 5. Qualquer ação remota (`dispatch_remote_command_to_firestore`, scripts PowerShell, restart/start/stop) **DEVE** ser disparada exclusivamente por ação manual e explícita do operador. Auto-healing em background deve permanecer **permanentemente desativado**.
 
 
 ---
