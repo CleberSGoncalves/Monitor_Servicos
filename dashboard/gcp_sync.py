@@ -715,6 +715,53 @@ def resolve_raw_hostname_for_command(hostname: str) -> str:
     return ""
 
 
+_LEGACY_REVERSAL_MARKERS = ("reversao_legado", "reversão_legado", "[blocked_by_policy]")
+_PACKAGE_DEPLOY_MARKERS = (
+    "invoke-webrequest",
+    "expand-archive",
+    "msiexec",
+    "start-process $exe",
+    "robocopy",
+    "curl.exe -fsl",
+    "curl.exe -f",
+)
+_ENGINE_DISABLE_MARKERS = (
+    "sc.exe config fastmatching",
+    "sc.exe config fastmaching",
+    "sc.exe config filecleaner",
+    "sc.exe config dna.filecleanersvc",
+    "set-service -name fastmatching",
+    "set-service -name filecleaner",
+    "set-service -name dna.filecleanersvc",
+)
+
+
+def is_forbidden_legacy_reversal_script(script: str) -> bool:
+    """
+    Detecta tentativas de reversão/desativação autônoma da esteira FastMatching/FileCleaner.
+
+    Um comando é considerado reversão indevida APENAS quando desativa o motor
+    (FastMatching/FileCleaner) E não executa qualquer deploy de pacote homologado.
+    Atualizações manuais legítimas (Atria Capture, FastMatchingSvc, DNA.*) baixam e
+    instalam binários e, portanto, NÃO são bloqueadas.
+    """
+    low = str(script or "").lower()
+    if not low:
+        return False
+    if any(marker in low for marker in _LEGACY_REVERSAL_MARKERS):
+        return True
+
+    disables_engine = (
+        any(marker in low for marker in _ENGINE_DISABLE_MARKERS)
+        and ("start= disabled" in low or "startuptype disabled" in low)
+    )
+    if not disables_engine:
+        return False
+
+    deploys_package = any(marker in low for marker in _PACKAGE_DEPLOY_MARKERS)
+    return not deploys_package
+
+
 def dispatch_remote_command_to_firestore(
     command_id: str,
     hostname: str,
@@ -730,15 +777,15 @@ def dispatch_remote_command_to_firestore(
     Enfileira um comando diretamente no Firestore na coleção 'fleet_commands'.
     BLINDAGEM OPERACIONAL ABSOLUTA:
     - Qualquer comando originado de trigger autônomo/background é terminantemente bloqueado.
-    - Scripts contendo reversão de esteira ou parada arbitrária de FastMatching/FileCleaner são rejeitados.
+    - Scripts de reversão de esteira (desativar FastMatching/FileCleaner sem deploy de pacote) são rejeitados.
+    - Atualizações manuais solicitadas pelo operador permanecem sempre autorizadas.
     """
     if is_autonomous_trigger:
         logger.error(f"[GCPSync BLOCK] Comando {command_id} para {hostname} bloqueado: triggers autônomos proíbidos.")
         return False
 
-    script_low = (script or "").lower()
-    if "reversao_legado" in script_low or ("stop-service" in script_low and "fastmatching" in script_low and "sc.exe config" in script_low):
-        logger.error(f"[GCPSync BLOCK] Comando {command_id} para {hostname} bloqueado: tentativa não autorizada de desativação de FastMatching/FileCleaner.")
+    if is_forbidden_legacy_reversal_script(script):
+        logger.error(f"[GCPSync BLOCK] Comando {command_id} para {hostname} bloqueado: tentativa não autorizada de reversão/desativação de FastMatching/FileCleaner.")
         return False
 
     if not command_id:
@@ -837,6 +884,7 @@ def get_latest_command_for_host(hostname: str, service_name: str = "") -> Option
     """
     Retorna o comando mais recente registrado para um host (usado no modal de acompanhamento ao vivo).
     Resolve aliases físicos (NetBIOS raw vs canônico) e prioriza comandos concluídos ou em processamento.
+    Busca sem sensibilidade de caixa (case-insensitive) para cobrir tanto o nome canônico quanto o raw.
     """
     client = get_firestore_client()
     if not client or not hostname:
@@ -844,43 +892,73 @@ def get_latest_command_for_host(hostname: str, service_name: str = "") -> Option
 
     try:
         from google.cloud.firestore_v1.base_query import FieldFilter
-        h_clean = hostname.strip().upper()
-        raw_alias = resolve_raw_hostname_for_command(hostname).upper()
+        raw_alias = resolve_raw_hostname_for_command(hostname)
+
+        # Conjunto de variantes para cobrir queries case-sensitive no Firestore
+        hosts_variants = set()
+        for h in [hostname, raw_alias]:
+            if h:
+                h_str = str(h).strip()
+                hosts_variants.add(h_str)
+                hosts_variants.add(h_str.upper())
+                hosts_variants.add(h_str.lower())
+                # Adiciona formato com hífen ou underline
+                hosts_variants.add(h_str.replace("_", "-"))
+                hosts_variants.add(h_str.replace("-", "_"))
 
         found_cmds: List[Dict[str, Any]] = []
 
-        # 1. Busca por hostname direto e raw_alias
-        hosts_to_query = {h_clean, raw_alias}
-        for h_q in hosts_to_query:
+        # 1. Busca por hostname direto e raw_alias (sem order_by no Firestore para não exigir composite index)
+        for h_q in hosts_variants:
             try:
                 docs = (
                     client.collection("fleet_commands")
                     .where(filter=FieldFilter("hostname", "==", h_q))
-                    .limit(10)
                     .stream()
                 )
                 for d in docs:
                     cmd_data = d.to_dict()
                     cmd_data["_doc_id"] = d.id
-                    found_cmds.append(cmd_data)
+                    if not any(x.get("_doc_id") == d.id for x in found_cmds):
+                        found_cmds.append(cmd_data)
             except Exception:
                 pass
 
         # 2. Busca também por canonical_hostname
-        try:
-            docs_canon = (
-                client.collection("fleet_commands")
-                .where(filter=FieldFilter("canonical_hostname", "==", h_clean))
-                .limit(10)
-                .stream()
-            )
-            for d in docs_canon:
-                cmd_data = d.to_dict()
-                cmd_data["_doc_id"] = d.id
-                if not any(x.get("_doc_id") == d.id for x in found_cmds):
-                    found_cmds.append(cmd_data)
-        except Exception:
-            pass
+        for h_q in hosts_variants:
+            try:
+                docs_canon = (
+                    client.collection("fleet_commands")
+                    .where(filter=FieldFilter("canonical_hostname", "==", h_q))
+                    .stream()
+                )
+                for d in docs_canon:
+                    cmd_data = d.to_dict()
+                    cmd_data["_doc_id"] = d.id
+                    if not any(x.get("_doc_id") == d.id for x in found_cmds):
+                        found_cmds.append(cmd_data)
+            except Exception:
+                pass
+
+        # 3. Para cada comando encontrado, se houver documento irmão com sufixo _raw ou sem _raw, traz também
+        sibling_ids_to_fetch = set()
+        for c in list(found_cmds):
+            cid = c.get("_doc_id") or c.get("command_id") or ""
+            if cid:
+                if cid.endswith("_raw"):
+                    sibling_ids_to_fetch.add(cid[:-4])
+                else:
+                    sibling_ids_to_fetch.add(f"{cid}_raw")
+        for s_id in sibling_ids_to_fetch:
+            if not any(x.get("_doc_id") == s_id for x in found_cmds):
+                try:
+                    s_doc = client.collection("fleet_commands").document(s_id).get()
+                    if s_doc.exists:
+                        s_data = s_doc.to_dict()
+                        s_data["_doc_id"] = s_doc.id
+                        found_cmds.append(s_data)
+                except Exception:
+                    pass
 
         # Filtra por serviço se solicitado
         if service_name:
@@ -896,16 +974,28 @@ def get_latest_command_for_host(hostname: str, service_name: str = "") -> Option
             return None
 
         # Priorização inteligente:
-        # 1. Comandos com status 'completed' ou 'processing' têm precedência absoluta sobre 'pending'
-        # 2. Comandos mais recentes primeiro
+        # 1. Comandos com status 'completed' têm precedência absoluta sobre 'failed' ou 'pending'
+        # 2. Se houver um comando 'failed' por timeout mas com irmão '_raw' que deu 'completed',
+        #    promove o status para completed
+        # 3. Comandos mais recentes primeiro
         def _sort_key(c):
             st = str(c.get("status", "")).lower()
-            st_prio = 2 if st == "completed" else (1 if st == "processing" else 0)
-            created = str(c.get("created_at", ""))
+            exit_c = c.get("exit_code")
+            # Se exit_code for 0 ou contiver [OK], é completed
+            if "[OK]" in str(c.get("output", "")) or exit_c == 0:
+                st = "completed"
+            st_prio = 3 if st == "completed" else (2 if st == "processing" else (0 if st == "failed" else 1))
+            created = str(c.get("completed_at") or c.get("created_at") or "")
             return (st_prio, created)
 
         found_cmds.sort(key=_sort_key, reverse=True)
-        return found_cmds[0]
+        best_cmd = found_cmds[0]
+
+        # Se o melhor comando for de um irmão com [OK] ou status completed, ajusta status
+        if "[OK]" in str(best_cmd.get("output", "")) or best_cmd.get("exit_code") == 0:
+            best_cmd["status"] = "completed"
+
+        return best_cmd
     except Exception as e:
         logger.warning(f"[GCPSync] Erro ao buscar latest command para host {hostname}: {e}")
         return None
@@ -1061,6 +1151,85 @@ def merge_firestore_hosts_into_cache(
             if "mediarecorder" in s_low or "mediaconverter" in s_low:
                 return "Inexistente"
             return "Em Execução"
+
+    def _norm_channel_name(val: Any) -> str:
+        """Normaliza nome de canal para casamento determinístico (sem acentos, minúsculo)."""
+        if not val:
+            return ""
+        nfkd = unicodedata.normalize("NFKD", str(val))
+        return "".join(c for c in nfkd if not unicodedata.combining(c)).strip().lower()
+
+    def _channel_display_name(item: Dict[str, Any]) -> str:
+        """Nome do canal como reportado pelo agente (canal > veiculo)."""
+        return str(item.get("canal") or item.get("veiculo") or "").strip()
+
+    def _service_row_template(praca_label: str, cs_int: int) -> Dict[str, Any]:
+        for s in services_list:
+            if _norm_praca(s.get("praca")) == _norm_praca(praca_label) and _norm_cs(s.get("cs") or 1) == cs_int:
+                return s
+        return {}
+
+    def _rebuild_channels_from_firestore(
+        praca_label: str,
+        cs_int: int,
+        host_name: str,
+        channel_items: List[Dict[str, Any]],
+        fresh_ts: str,
+    ) -> List[Dict[str, Any]]:
+        """
+        Reconstrói a lista de canais de uma (praça, CS) a partir EXCLUSIVAMENTE da
+        telemetria real reportada pelo agente (fleet_hosts.channels_json).
+        Canais ausentes no reporte do agente são removidos (não mantidos com valores antigos).
+        """
+        tpl = _service_row_template(praca_label, cs_int)
+        rebuilt: List[Dict[str, Any]] = []
+        used_keys: set = set()
+        for item in channel_items:
+            if not isinstance(item, dict):
+                continue
+            name = _channel_display_name(item)
+            if not name:
+                continue
+            key = _norm_channel_name(name)
+            if key in used_keys:
+                continue
+            used_keys.add(key)
+            try:
+                cs_item = int(float(item.get("cs") or cs_int))
+            except Exception:
+                cs_item = cs_int
+            q_raw = item.get("qualidade_sinal")
+            s_raw = item.get("forca_sinal")
+            rebuilt.append({
+                "id": f"gcp_{_norm_praca(praca_label)}_{cs_item}_{len(rebuilt) + 1}",
+                "canal": name,
+                "veiculo": str(item.get("veiculo") or ""),
+                "cidade": praca_label,
+                "praca": praca_label,
+                "pais": tpl.get("pais") or "Brasil",
+                "id_cs": cs_item,
+                "cs": cs_item,
+                "id_host": tpl.get("id_host"),
+                "host": host_name,
+                "hostname": host_name,
+                "meio": str(item.get("meio") or "Digital Terrestre"),
+                "frequencia": str(item.get("frequencia") or "N/A"),
+                "tuner_id": item.get("tuner_id", -1),
+                "status_tuner": str(item.get("status_tuner") or "N/A"),
+                "qualidade_sinal": None if q_raw is None else float(q_raw),
+                "forca_sinal": None if s_raw is None else float(s_raw),
+                "video_congelado": str(item.get("video_congelado") or "Não"),
+                "audio_mudo": str(item.get("audio_mudo") or "Não"),
+                "gravando_mp4": str(item.get("gravando_mp4") or "Não"),
+                "gravando_mp3": str(item.get("gravando_mp3") or "Não"),
+                "pasta_mp4": str(item.get("pasta_mp4") or "N/A"),
+                "url_streaming": str(item.get("url_streaming") or "N/A"),
+                "ultima_atualizacao": str(item.get("atualizacao") or fresh_ts or ""),
+                "has_outage": bool(item.get("status_tuner") and "falha" in str(item.get("status_tuner")).lower()),
+                "is_degraded": False,
+                "motivo": "Telemetria Google Cloud (Agente Local)",
+            })
+        return rebuilt
 
     updated_hosts_count = 0
     existing_hosts = set()
@@ -1469,33 +1638,33 @@ def merge_firestore_hosts_into_cache(
         existing_hosts.add(h_key)
         updated_hosts_count += 1
 
-    if (praca_cs_channel_fresh or praca_any_fresh) and channels_list:
-        for c in channels_list:
-            p_c = _norm_praca(c.get("cidade") or c.get("praca") or "")
-            cs_c = _norm_cs(c.get("cs") or 1)
-            fresh_ts = praca_cs_channel_fresh.get((p_c, cs_c)) or praca_any_fresh.get(p_c)
-            ch_real_map = parsed_channels_by_praca_cs.get((p_c, cs_c), {})
-            c_name_key = str(c.get("canal") or c.get("veiculo") or "").strip().lower()
-            if c_name_key and c_name_key in ch_real_map:
-                rc = ch_real_map[c_name_key]
-                if rc.get("qualidade_sinal") is not None:
-                    c["qualidade_sinal"] = rc["qualidade_sinal"]
-                if rc.get("forca_sinal") is not None:
-                    c["forca_sinal"] = rc["forca_sinal"]
-                if rc.get("status_tuner"):
-                    c["status_tuner"] = rc["status_tuner"]
-                if rc.get("gravando_mp4"):
-                    c["gravando_mp4"] = rc["gravando_mp4"]
-                if rc.get("gravando_mp3"):
-                    c["gravando_mp3"] = rc["gravando_mp3"]
-
-            if fresh_ts:
-                c["ultima_atualizacao"] = fresh_ts
-                motivo_low = str(c.get("motivo", "")).lower()
-                if "estagnada" in motivo_low or "atrasada" in motivo_low:
-                    c["has_outage"] = False
-                    c["is_degraded"] = False
-                    c["motivo"] = "Operando Normalmente (Telemetria Google Cloud)"
+    if parsed_channels_by_praca_cs and channels_list:
+        # Telemetria de canais do agente (fleet_hosts.channels_json) é a fonte autoritativa.
+        # Para cada (praça, CS) com reporte recente, a lista é reconstruída do zero:
+        # canais ausentes no reporte são removidos e valores obsoletos não são reaproveitados.
+        reported_keys = set(parsed_channels_by_praca_cs.keys())
+        for pcs_key in sorted(reported_keys):
+            p_c, cs_c = pcs_key
+            fresh_ts = praca_cs_channel_fresh.get(pcs_key) or ""
+            if not fresh_ts:
+                continue
+            keep_indices = [
+                idx for idx, c in enumerate(channels_list)
+                if _norm_praca(c.get("cidade") or c.get("praca") or "") == p_c
+                and _norm_cs(c.get("cs") or 1) == cs_c
+            ]
+            if not keep_indices:
+                continue
+            host_name = str(channels_list[keep_indices[0]].get("hostname") or channels_list[keep_indices[0]].get("host") or "")
+            praca_label = str(channels_list[keep_indices[0]].get("cidade") or channels_list[keep_indices[0]].get("praca") or "")
+            rebuilt = _rebuild_channels_from_firestore(
+                praca_label, cs_c, host_name,
+                list(parsed_channels_by_praca_cs[pcs_key].values()),
+                fresh_ts,
+            )
+            for idx in sorted(keep_indices, reverse=True):
+                channels_list.pop(idx)
+            channels_list.extend(rebuilt)
 
     # Passo Final de Auditoria e Consistência Operacional por Host:
     # 1) Evita falsos positivos de FastMatchingSvc 'Parado' quando na verdade está Desativado (praças DNA.DetectionSVC ou CS02/CS03)

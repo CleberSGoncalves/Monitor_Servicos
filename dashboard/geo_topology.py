@@ -2465,6 +2465,37 @@ def _build_channel_terrain_profile(
 
 BRAZIL_CITIES_GEO = {'belo horizonte': {'lat': -19.9167, 'lng': -43.9345, 'uf': 'MG', 'regiao': 'Sudeste', 'alt': 852}, 'goiânia': {'lat': -16.6869, 'lng': -49.2648, 'uf': 'GO', 'regiao': 'Centro-Oeste', 'alt': 749}, 'goiania': {'lat': -16.6869, 'lng': -49.2648, 'uf': 'GO', 'regiao': 'Centro-Oeste', 'alt': 749}, 'curitiba': {'lat': -25.4284, 'lng': -49.2733, 'uf': 'PR', 'regiao': 'Sul', 'alt': 934}, 'belém': {'lat': -1.4558, 'lng': -48.4902, 'uf': 'PA', 'regiao': 'Norte', 'alt': 10}, 'belem': {'lat': -1.4558, 'lng': -48.4902, 'uf': 'PA', 'regiao': 'Norte', 'alt': 10}, 'fortaleza': {'lat': -3.7172, 'lng': -38.5433, 'uf': 'CE', 'regiao': 'Nordeste', 'alt': 21}, 'campo grande': {'lat': -20.4697, 'lng': -54.6201, 'uf': 'MS', 'regiao': 'Centro-Oeste', 'alt': 592}, 'são luís': {'lat': -2.5307, 'lng': -44.3068, 'uf': 'MA', 'regiao': 'Nordeste', 'alt': 24}, 'sao luis': {'lat': -2.5307, 'lng': -44.3068, 'uf': 'MA', 'regiao': 'Nordeste', 'alt': 24}, 'joão pessoa': {'lat': -7.1153, 'lng': -34.861, 'uf': 'PB', 'regiao': 'Nordeste', 'alt': 40}, 'joao pessoa': {'lat': -7.1153, 'lng': -34.861, 'uf': 'PB', 'regiao': 'Nordeste', 'alt': 40}, 'boa vista': {'lat': 2.8235, 'lng': -60.6758, 'uf': 'RR', 'regiao': 'Norte', 'alt': 85}, 'blumenau': {'lat': -26.9194, 'lng': -49.0661, 'uf': 'SC', 'regiao': 'Sul', 'alt': 21}, 'foz do iguaçu': {'lat': -25.5159, 'lng': -54.5878, 'uf': 'PR', 'regiao': 'Sul', 'alt': 192}, 'foz do iguacu': {'lat': -25.5159, 'lng': -54.5878, 'uf': 'PR', 'regiao': 'Sul', 'alt': 192}, 'cascavel': {'lat': -24.9578, 'lng': -53.4595, 'uf': 'PR', 'regiao': 'Sul', 'alt': 781}, 'chapeco': {'lat': -27.1004, 'lng': -52.6152, 'uf': 'SC', 'regiao': 'Sul', 'alt': 674}, 'chapecó': {'lat': -27.1004, 'lng': -52.6152, 'uf': 'SC', 'regiao': 'Sul', 'alt': 674}, 'joinville': {'lat': -26.3045, 'lng': -48.8487, 'uf': 'SC', 'regiao': 'Sul', 'alt': 4}, 'criciúma': {'lat': -28.6775, 'lng': -49.3704, 'uf': 'SC', 'regiao': 'Sul', 'alt': 46}, 'criciuma': {'lat': -28.6775, 'lng': -49.3704, 'uf': 'SC', 'regiao': 'Sul', 'alt': 46}, 'campos': {'lat': -21.7545, 'lng': -41.3244, 'uf': 'RJ', 'regiao': 'Sudeste', 'alt': 14}, 'campos dos goytacazes': {'lat': -21.7545, 'lng': -41.3244, 'uf': 'RJ', 'regiao': 'Sudeste', 'alt': 14}, 'cabo frio': {'lat': -22.889, 'lng': -42.0289, 'uf': 'RJ', 'regiao': 'Sudeste', 'alt': 4}, 'cachoeiro de itapemirim': {'lat': -20.8489, 'lng': -41.1128, 'uf': 'ES', 'regiao': 'Sudeste', 'alt': 36}, 'colatina': {'lat': -19.5397, 'lng': -40.63, 'uf': 'ES', 'regiao': 'Sudeste', 'alt': 71}, 'coronel fabriciano': {'lat': -19.5208, 'lng': -42.6289, 'uf': 'MG', 'regiao': 'Sudeste', 'alt': 250}, 'g valadares': {'lat': -18.8511, 'lng': -41.9494, 'uf': 'MG', 'regiao': 'Sudeste', 'alt': 170}, 'governador valadares': {'lat': -18.8511, 'lng': -41.9494, 'uf': 'MG', 'regiao': 'Sudeste', 'alt': 170}, 'ituiutaba': {'lat': -18.9689, 'lng': -49.465, 'uf': 'MG', 'regiao': 'Sudeste', 'alt': 605}, 'franca': {'lat': -20.5386, 'lng': -47.4008, 'uf': 'SP', 'regiao': 'Sudeste', 'alt': 1040}, 'bauru': {'lat': -22.3145, 'lng': -49.0587, 'uf': 'SP', 'regiao': 'Sudeste', 'alt': 526}, 'itapetininga': {'lat': -23.5917, 'lng': -48.0531, 'uf': 'SP', 'regiao': 'Sudeste', 'alt': 656}, 'anapolis': {'lat': -16.3267, 'lng': -48.9534, 'uf': 'GO', 'regiao': 'Centro-Oeste', 'alt': 1017}, 'anápolis': {'lat': -16.3267, 'lng': -48.9534, 'uf': 'GO', 'regiao': 'Centro-Oeste', 'alt': 1017}, 'jatai': {'lat': -17.8814, 'lng': -51.7144, 'uf': 'GO', 'regiao': 'Centro-Oeste', 'alt': 708}, 'jataí': {'lat': -17.8814, 'lng': -51.7144, 'uf': 'GO', 'regiao': 'Centro-Oeste', 'alt': 708}, 'catalão': {'lat': -18.1658, 'lng': -47.9464, 'uf': 'GO', 'regiao': 'Centro-Oeste', 'alt': 835}, 'catalao': {'lat': -18.1658, 'lng': -47.9464, 'uf': 'GO', 'regiao': 'Centro-Oeste', 'alt': 835}, 'corumbá': {'lat': -19.0094, 'lng': -57.6533, 'uf': 'MS', 'regiao': 'Centro-Oeste', 'alt': 118}, 'corumba': {'lat': -19.0094, 'lng': -57.6533, 'uf': 'MS', 'regiao': 'Centro-Oeste', 'alt': 118}, 'guarapuava': {'lat': -25.3907, 'lng': -51.4628, 'uf': 'PR', 'regiao': 'Sul', 'alt': 1120}, 'bagé': {'lat': -31.3314, 'lng': -54.1069, 'uf': 'RS', 'regiao': 'Sul', 'alt': 212}, 'bage': {'lat': -31.3314, 'lng': -54.1069, 'uf': 'RS', 'regiao': 'Sul', 'alt': 212}, 'feira de santana': {'lat': -12.2664, 'lng': -38.9663, 'uf': 'BA', 'regiao': 'Nordeste', 'alt': 234}, 'barreiras': {'lat': -12.1528, 'lng': -44.9967, 'uf': 'BA', 'regiao': 'Nordeste', 'alt': 452}, 'caruaru': {'lat': -8.2833, 'lng': -35.9761, 'uf': 'PE', 'regiao': 'Nordeste', 'alt': 545}, 'floriano': {'lat': -6.7669, 'lng': -43.0225, 'uf': 'PI', 'regiao': 'Nordeste', 'alt': 116}, 'imperatriz': {'lat': -5.5264, 'lng': -47.4917, 'uf': 'MA', 'regiao': 'Nordeste', 'alt': 95}, 'codo': {'lat': -4.4553, 'lng': -43.8856, 'uf': 'MA', 'regiao': 'Nordeste', 'alt': 47}, 'codó': {'lat': -4.4553, 'lng': -43.8856, 'uf': 'MA', 'regiao': 'Nordeste', 'alt': 47}, 'balsas': {'lat': -7.5325, 'lng': -46.0356, 'uf': 'MA', 'regiao': 'Nordeste', 'alt': 253}, 'araguaína': {'lat': -7.1925, 'lng': -48.2044, 'uf': 'TO', 'regiao': 'Norte', 'alt': 227}, 'araguaina': {'lat': -7.1925, 'lng': -48.2044, 'uf': 'TO', 'regiao': 'Norte', 'alt': 227}, 'gurupi': {'lat': -11.7297, 'lng': -49.0686, 'uf': 'TO', 'regiao': 'Norte', 'alt': 287}, 'castanhal': {'lat': -1.2967, 'lng': -47.9253, 'uf': 'PA', 'regiao': 'Norte', 'alt': 41}, 'itaituba': {'lat': -4.2761, 'lng': -55.9836, 'uf': 'PA', 'regiao': 'Norte', 'alt': 45}, 'itacoatiara': {'lat': -3.1431, 'lng': -58.4442, 'uf': 'AM', 'regiao': 'Norte', 'alt': 40}, 'ji-paraná': {'lat': -10.8828, 'lng': -61.9519, 'uf': 'RO', 'regiao': 'Norte', 'alt': 159}, 'ji-parana': {'lat': -10.8828, 'lng': -61.9519, 'uf': 'RO', 'regiao': 'Norte', 'alt': 159}, 'ariquemes': {'lat': -9.9133, 'lng': -63.0408, 'uf': 'RO', 'regiao': 'Norte', 'alt': 142}, 'cacoal': {'lat': -11.4386, 'lng': -61.4472, 'uf': 'RO', 'regiao': 'Norte', 'alt': 200}, 'vilhena': {'lat': -12.7406, 'lng': -60.1458, 'uf': 'RO', 'regiao': 'Norte', 'alt': 615}, 'brasília': {'lat': -15.7975, 'lng': -47.8919, 'uf': 'DF', 'regiao': 'Centro-Oeste', 'alt': 1172}, 'brasilia': {'lat': -15.7975, 'lng': -47.8919, 'uf': 'DF', 'regiao': 'Centro-Oeste', 'alt': 1172}}
 
+def _channel_freq_from_telemetry(c_obj: Any) -> Optional[float]:
+    """Frequência real reportada pelo agente (fleet_hosts.channels_json)."""
+    if isinstance(c_obj, dict):
+        return parse_frequency_mhz(c_obj.get("frequencia"))
+    return None
+
+
+def _channel_field(c_obj: Any, key: str, default: Any = None) -> Any:
+    """Leitura tolerante de campo de canal (dict do cache ou tupla do catálogo)."""
+    if isinstance(c_obj, dict):
+        return c_obj.get(key, default)
+    return default
+
+
+def _channel_metric_pct(c_obj: Any, key: str) -> Optional[float]:
+    """
+    Telemetria medida real (0-100) reportada pelo agente.
+    Retorna None quando não há medição — nunca fabrica valores.
+    """
+    raw = _channel_field(c_obj, key)
+    if raw is None:
+        return None
+    try:
+        val = float(raw)
+    except (TypeError, ValueError):
+        return None
+    if val <= 0:
+        return None
+    return max(0.0, min(100.0, val))
+
+
 def _synthesize_market_from_praca(p_name: str, channels: list, services: list) -> Dict[str, Any]:
     """Sintetiza um perfil topográfico dinâmico para praças que não estavam no catálogo estático."""
     p_clean = p_name.strip()
@@ -2594,75 +2625,52 @@ def get_markets_map_data(channels: list = None, services: list = None) -> List[D
         m_channels = [c for c in channels if _match_city(c.get("cidade") or c.get("praca") or "", m)]
         m_services = [s for s in services if _match_city(s.get("praca") or s.get("cidade") or "", m)]
 
-        # Identifica todas as CSs disponíveis nesta praça
+        # Identifica as Capture Sites (CS) que REALMENTE reportaram telemetria nesta praça.
+        # Nenhuma CS é fabricada por inferência de nome de host.
         cs_hosts: Dict[int, str] = {}
+        cs_telemetry_ts: Dict[int, str] = {}
         for s in m_services:
             try:
                 cs_num = int(float(s.get("cs", 1) or 1))
             except Exception:
                 cs_num = 1
             h = s.get("hostname")
-            if h and cs_num not in cs_hosts:
+            if not h:
+                continue
+            ts = str(s.get("ultima_atualizacao") or "")
+            if cs_num not in cs_hosts:
                 cs_hosts[cs_num] = h
+                cs_telemetry_ts[cs_num] = ts
+            elif ts and ts > cs_telemetry_ts.get(cs_num, ""):
+                cs_hosts[cs_num] = h
+                cs_telemetry_ts[cs_num] = ts
         for c in m_channels:
             try:
-                cs_num = int(float(c.get("id_cs") or c.get("cs") or 1))
+                cs_num = int(float(_channel_field(c, "id_cs") or _channel_field(c, "cs") or 1))
             except Exception:
                 cs_num = 1
-            h = c.get("host") or c.get("hostname")
+            h = _channel_field(c, "host") or _channel_field(c, "hostname")
             if h and cs_num not in cs_hosts:
                 cs_hosts[cs_num] = h
-
-        # Toda praça de captação monitorada deve OBRIGATORIAMENTE possuir a estação primária CS01!
-        if "cachoeiro" in cidade.lower():
-            cs_hosts[1] = "BRES-CIM-DT01"
-            cs_hosts[2] = "BRES-CIM-DT02"
-        else:
-            if 1 not in cs_hosts or "CS01-" in cs_hosts.get(1, ""):
-                if 2 in cs_hosts:
-                    h2 = cs_hosts[2]
-                    h1 = h2.replace("DT02", "DT01").replace("DT2", "DT1").replace("dt02", "dt01")
-                    if h1 == h2:
-                        h1 = f"{h2}-DT01"
-                    cs_hosts[1] = h1
-                else:
-                    cs_hosts[1] = f"{m.get('id', 'CS')}-DT01"
-            if 2 in cs_hosts and "CS02-" in cs_hosts.get(2, ""):
-                h1 = cs_hosts.get(1, "")
-                if "DT01" in h1:
-                    cs_hosts[2] = h1.replace("DT01", "DT02")
-
-        # Se a praça tiver cs_count >= 2 ou nó backup na frota, assegura CS02 (BKP)
-        if (m.get("cs_count", 1) >= 2 or 2 in cs_hosts) and 2 not in cs_hosts:
-            h1 = cs_hosts[1]
-            h2 = h1.replace("DT01", "DT02").replace("DT1", "DT2").replace("dt01", "dt02")
-            if h2 == h1:
-                h2 = f"{h1}-DT02"
-            cs_hosts[2] = h2
+                cs_telemetry_ts[cs_num] = str(_channel_field(c, "ultima_atualizacao") or "")
 
         available_cs = sorted(list(cs_hosts.keys()))
 
-        # Filtra canais terrestres DTV (com frequência MHz válida ou inferida da cidade)
+        # Filtra canais terrestres DTV SOMENTE com frequência real reportada pelo agente.
+        # Canais sem frequência válida não são inferidos nem descartados silenciosamente:
+        # são marcados explicitamente como sem telemetria de sintonia.
         terrestrial_raw = []
-        c_low = cidade.lower()
+        missing_freq_channels: List[Dict[str, Any]] = []
         for c in m_channels:
-            f_val = parse_frequency_mhz(c.get("frequencia"))
+            f_val = _channel_freq_from_telemetry(c)
             if f_val is None:
-                # Tenta inferir frequência nominal da emissora na cidade
-                ch_title = str(c.get("canal") or c.get("veiculo") or "").lower()
-                for cit_k, cit_chans in DEFAULT_CITY_CHANNELS.items():
-                    if cit_k in c_low or c_low in cit_k:
-                        for tw_cand in cit_chans:
-                            if any(k in ch_title for k in ["globo", "sbt", "record", "band", "gazeta", "mirante", "rpc"]):
-                                f_val = tw_cand[1]
-                                break
-                        if f_val is not None:
-                            break
-                if f_val is None:
-                    # Frequência UHF padrão ISDB-Tb (Canal 21 - 515.143 MHz)
-                    f_val = 515.143
+                missing_freq_channels.append({
+                    "canal": str(_channel_field(c, "canal") or _channel_field(c, "veiculo") or "").strip(),
+                    "motivo": "Frequência não reportada na telemetria do agente (fleet_hosts.channels_json)",
+                })
+                continue
             try:
-                c_cs = int(float(c.get("id_cs") or c.get("cs") or 1))
+                c_cs = int(float(_channel_field(c, "id_cs") or _channel_field(c, "cs") or 1))
             except Exception:
                 c_cs = 1
             terrestrial_raw.append((c, f_val, c_cs))
@@ -2670,52 +2678,23 @@ def get_markets_map_data(channels: list = None, services: list = None) -> List[D
         # Deduplica canais terrestres por (Nome, Frequência, CS) para PRESERVAR canais da CS01 e CS02 separadamente!
         dedup_terrestrial: Dict[tuple, tuple] = {}
         for c, f_val, c_cs in terrestrial_raw:
-            ch_name = str(c.get("canal") or c.get("veiculo") or f_val).strip()
+            ch_name = str(_channel_field(c, "canal") or _channel_field(c, "veiculo") or f_val).strip()
             key = (ch_name.lower(), round(f_val, 2), c_cs)
-            score = float(c.get("qualidade_sinal") or 0) + float(c.get("forca_sinal") or 0)
+            score = float(_channel_field(c, "qualidade_sinal") or 0) + float(_channel_field(c, "forca_sinal") or 0)
             if key not in dedup_terrestrial or score > dedup_terrestrial[key][3]:
                 dedup_terrestrial[key] = (c, f_val, c_cs, score)
 
-        # PARIDADE ABSOLUTA MULTI-CS: Se a praça possui CS01 e CS02 (redundância física)
-        # e os canais sintonizados foram informados apenas para uma das CSs ou de forma parcial,
-        # espelha os canais faltantes para a contrapartida da praça com seu respectivo host
-        if 1 in cs_hosts and 2 in cs_hosts:
-            existing_cs1_names = {k[0]: k for k in dedup_terrestrial.keys() if k[2] == 1}
-            existing_cs2_names = {k[0]: k for k in dedup_terrestrial.keys() if k[2] == 2}
-
-            # Espelha canais faltantes de CS02 para CS01
-            for name, k in list(existing_cs2_names.items()):
-                if name not in existing_cs1_names:
-                    c_orig, f_orig, _, sc_orig = dedup_terrestrial[k]
-                    key_cs1 = (name, k[1], 1)
-                    c_rep = dict(c_orig)
-                    c_rep["id_cs"] = 1
-                    c_rep["cs"] = 1
-                    c_rep["host"] = cs_hosts.get(1, f"{m.get('id', 'CS')}-DT01")
-                    c_rep["hostname"] = c_rep["host"]
-                    dedup_terrestrial[key_cs1] = (c_rep, f_orig, 1, sc_orig)
-
-            # Espelha canais faltantes de CS01 para CS02
-            for name, k in list(existing_cs1_names.items()):
-                if name not in existing_cs2_names:
-                    c_orig, f_orig, _, sc_orig = dedup_terrestrial[k]
-                    key_cs2 = (name, k[1], 2)
-                    c_rep = dict(c_orig)
-                    c_rep["id_cs"] = 2
-                    c_rep["cs"] = 2
-                    c_rep["host"] = cs_hosts.get(2, f"{m.get('id', 'CS')}-DT02")
-                    c_rep["hostname"] = c_rep["host"]
-                    dedup_terrestrial[key_cs2] = (c_rep, f_orig, 2, sc_orig)
+        # Sem espelhamento entre CS: cada Capture Site exibe somente os canais que ele mesmo reportou.
 
         channels_rf_detail = []
         market_towers = m.get("towers", [])
 
-        # 1. Constrói canais a partir dos dados reais do Multiplexes.xml na praça
+        # 1. Constrói canais a partir da telemetria real reportada pelo agente em cada CS
         for idx, (c_obj, freq_mhz, ch_cs, _) in enumerate(dedup_terrestrial.values()):
-            raw_name = str(c_obj.get("canal") or "Canal DTV").strip()
+            raw_name = str(_channel_field(c_obj, "canal") or "Canal DTV").strip()
             raw_lower = raw_name.lower()
-            ch_host = cs_hosts.get(ch_cs, c_obj.get("host") or c_obj.get("hostname") or f"CS{ch_cs}")
-            ch_veiculo = str(c_obj.get("veiculo") or "").strip()
+            ch_host = cs_hosts.get(ch_cs) or str(_channel_field(c_obj, "host") or _channel_field(c_obj, "hostname") or f"CS{ch_cs}")
+            ch_veiculo = str(_channel_field(c_obj, "veiculo") or "").strip()
 
             # Encontra a torre específica desta emissora na praça
             matched_tower = None
@@ -2744,14 +2723,10 @@ def get_markets_map_data(channels: list = None, services: list = None) -> List[D
             ch_attenuation = 6.5 if has_obs else 0.0
             exp_dbm = round(10 * math.log10(max(1.0, tw_erp) * 1000) - ch_fspl + 14 - ch_attenuation, 1)
 
-            q_val = float(c_obj.get("qualidade_sinal") or 0)
-            s_val = float(c_obj.get("forca_sinal") or 0)
-            # Calibração de telemetria ativa real (ex: Cachoeiro de Itapemirim TV Gazeta Sul 515MHz AtriaAPI porta 9000)
-            if "cachoeiro" in cidade.lower() and ("globo" in raw_lower or "gazeta" in raw_lower):
-                if q_val < 50.0: q_val = 52.0
-                if s_val < 75.0: s_val = 80.0
-            measured_pct = int(round(s_val))
-            quality_pct = int(round(q_val))
+            q_val = _channel_metric_pct(c_obj, "qualidade_sinal")
+            s_val = _channel_metric_pct(c_obj, "forca_sinal")
+            measured_pct = int(round(s_val)) if s_val is not None else None
+            quality_pct = int(round(q_val)) if q_val is not None else None
 
             d1 = round(ch_dist_km * 0.52, 2)
             d2 = max(0.2, round(ch_dist_km - d1, 2))
@@ -2799,113 +2774,60 @@ def get_markets_map_data(channels: list = None, services: list = None) -> List[D
                 )
             })
 
-        # 2. Completa canais a partir do catálogo nominal de torres para qualquer emissora ausente em CS01 ou CS02
-        active_towers = market_towers
-        if not active_towers:
-            c_low = cidade.lower()
-            for cit_k, cit_chans in DEFAULT_CITY_CHANNELS.items():
-                if cit_k in c_low or c_low in cit_k:
-                    active_towers = [
-                        {
-                            "emissora": tc[0], "freq_mhz": tc[1], "uhf": tc[2], "erp_kw": tc[3],
-                            "lat": tc[4], "lng": tc[5], "nome": f"Torre {tc[0]} • {tc[6]}",
-                            "bairro": tc[6], "cota_m": tc[7], "mastro_m": tc[8], "has_obstruction": tc[9]
-                        }
-                        for tc in cit_chans
-                    ]
+        # 2. Canais sem telemetria de sintonia reportada pelo agente são listados à parte,
+        #    sem valores medidos e sem inferência de frequência (rastreabilidade total).
+        for mfc in missing_freq_channels:
+            ch_cs = 1
+            for c in m_channels:
+                name_c = str(_channel_field(c, "canal") or _channel_field(c, "veiculo") or "").strip()
+                if name_c and name_c == mfc.get("canal"):
+                    try:
+                        ch_cs = int(float(_channel_field(c, "id_cs") or _channel_field(c, "cs") or 1))
+                    except Exception:
+                        ch_cs = 1
                     break
-
-        for cs_target in available_cs:
-            cs_existing = [c for c in channels_rf_detail if c.get("cs") == cs_target]
-            existing_signatures = set()
-            for c in cs_existing:
-                existing_signatures.add(c.get("emissora", "").lower())
-                existing_signatures.add(c.get("raw_channel_name", "").lower())
-                existing_signatures.add(str(c.get("freq_mhz", "")))
-
-            for t_idx, tw in enumerate(active_towers):
-                tw_emissora = tw["emissora"].lower()
-                freq_val = float(tw["freq_mhz"])
-                freq_str = str(round(freq_val, 3))
-                freq_short = str(round(freq_val, 1))
-
-                already_covered = False
-                for sig in existing_signatures:
-                    if tw_emissora in sig or sig in tw_emissora or freq_str in sig or freq_short in sig:
-                        already_covered = True
-                        break
-                    for mk in tw.get("match_keys", []):
-                        if mk in sig:
-                            already_covered = True
-                            break
-                    if already_covered:
-                        break
-
-                if not already_covered:
-                    freq_mhz = float(tw["freq_mhz"])
-                    tw_lat = tw["lat"]
-                    tw_lng = tw["lng"]
-                    tw_name = tw["nome"]
-                    tw_bairro = tw.get("bairro", cidade)
-                    tw_cota = tw.get("cota_m", site_elevation + 50)
-                    tw_mast = tw.get("mastro_m", 70)
-                    tw_erp = tw.get("erp_kw", 20.0)
-                    has_obs = bool(tw.get("has_obstruction", False))
-
-                    ch_dist_km = calculate_haversine_distance(site_lat, site_lng, tw_lat, tw_lng)
-                    ch_dist_m = int(round(ch_dist_km * 1000))
-                    ch_az = calculate_azimuth(site_lat, site_lng, tw_lat, tw_lng)
-                    cardinal = azimuth_to_cardinal(ch_az)
-                    uhf_num = freq_mhz_to_uhf_channel(freq_mhz)
-                    ch_fspl = round(32.44 + 20 * math.log10(freq_mhz) + 20 * math.log10(max(0.5, ch_dist_km)), 1)
-                    ch_attenuation = 6.5 if has_obs else 0.0
-                    exp_dbm = round(10 * math.log10(max(1.0, tw_erp) * 1000) - ch_fspl + 14 - ch_attenuation, 1)
-
-                    d1 = round(ch_dist_km * 0.52, 2)
-                    d2 = max(0.2, round(ch_dist_km - d1, 2))
-                    r1_m = round(17.32 * math.sqrt((d1 * d2) / (max(0.1, freq_mhz / 1000.0) * max(0.5, ch_dist_km))), 2)
-
-                    channels_rf_detail.append({
-                        "channel_index": len(channels_rf_detail),
-                        "emissora": tw["emissora"],
-                        "raw_channel_name": tw["emissora"],
-                        "cs": cs_target,
-                        "cs_label": f"CS0{cs_target}",
-                        "hostname": cs_hosts.get(cs_target, f"CS0{cs_target}"),
-                        "veiculo": "",
-                        "canal_fisico": f"UHF Canal {uhf_num}",
-                        "uhf_channel": uhf_num,
-                        "freq_mhz": round(freq_mhz, 3),
-                        "erp_kw": tw_erp,
-                        "tower_name": tw_name,
-                        "tower_bairro": tw_bairro,
-                        "tower_lat": tw_lat,
-                        "tower_lng": tw_lng,
-                        "tower_cota_m": tw_cota,
-                        "tower_mast_m": tw_mast,
-                        "tower_total_alt_m": tw_cota + tw_mast,
-                        "distance_m": ch_dist_m,
-                        "distance_km": ch_dist_km,
-                        "azimuth_deg": ch_az,
-                        "cardinal_dir": cardinal,
-                        "fspl_db": ch_fspl,
-                        "rx_level_expected_dbm": exp_dbm,
-                        "rx_level_measured_pct": 78,
-                        "signal_quality_pct": 82,
-                        "rx_quality_pct": 82,
-                        "fresnel_r1_m": r1_m,
-                        "fresnel_clearance_pct": 44 if has_obs else 88,
-                        "has_obstruction": has_obs,
-                        "los_status": "Parcialmente Obstruído (NLOS)" if has_obs else "Visada Desobstruída (LOS)",
-                        "los_analysis": f"Torre em {tw_bairro} ({cardinal} • Az {ch_az}° • {ch_dist_km} km). 1ª Zona de Fresnel (R1={r1_m}m) livre.",
-                        "terrain_profile": _build_channel_terrain_profile(
-                            cidade, site_elevation, rx_mast_h, tw_name, tw_cota, tw_mast, ch_dist_km, has_obs
-                        )
-                    })
+            channels_rf_detail.append({
+                "channel_index": len(channels_rf_detail),
+                "emissora": mfc.get("canal") or "Canal DTV",
+                "raw_channel_name": mfc.get("canal") or "",
+                "cs": ch_cs,
+                "cs_label": f"CS0{ch_cs}",
+                "hostname": cs_hosts.get(ch_cs, f"CS0{ch_cs}"),
+                "veiculo": "",
+                "canal_fisico": "Não reportado",
+                "uhf_channel": None,
+                "freq_mhz": None,
+                "erp_kw": None,
+                "tower_name": "Não reportado",
+                "tower_bairro": "",
+                "tower_lat": None,
+                "tower_lng": None,
+                "tower_cota_m": None,
+                "tower_mast_m": None,
+                "tower_total_alt_m": None,
+                "distance_m": None,
+                "distance_km": None,
+                "azimuth_deg": None,
+                "cardinal_dir": "N/D",
+                "fspl_db": None,
+                "rx_level_expected_dbm": None,
+                "rx_level_measured_pct": None,
+                "rx_quality_pct": None,
+                "fresnel_r1_m": None,
+                "fresnel_clearance_pct": None,
+                "has_obstruction": None,
+                "los_status": "Sem telemetria de sintonia",
+                "los_analysis": mfc.get("motivo") or "Frequência não reportada pelo agente.",
+                "terrain_profile": [],
+                "sem_telemetria": True,
+                "motivo": mfc.get("motivo"),
+            })
 
         # Lista de torres detalhadas com coordenadas
         towers_detail = []
         for ch in channels_rf_detail:
+            if ch.get("sem_telemetria"):
+                continue
             towers_detail.append({
                 "nome": ch["tower_name"],
                 "bairro": ch["tower_bairro"],
@@ -2926,10 +2848,17 @@ def get_markets_map_data(channels: list = None, services: list = None) -> List[D
 
         # Saúde operacional da praça
         total_ch = len(channels_rf_detail)
-        outage_ch = sum(1 for c in m_channels if c.get("has_outage"))
+        outage_ch = sum(1 for c in m_channels if _channel_field(c, "has_outage"))
         degraded_ch = sum(
             1 for c in channels_rf_detail
-            if (0 < c.get("rx_quality_pct", 100) < 45) or (c.get("rx_quality_pct", 100) < 60 and 0 < c.get("rx_level_measured_pct", 100) < 15)
+            if not c.get("sem_telemetria")
+            and (
+                (c.get("rx_quality_pct") is not None and 0 < c["rx_quality_pct"] < 45)
+                or (
+                    c.get("rx_quality_pct") is not None and c["rx_quality_pct"] < 60
+                    and c.get("rx_level_measured_pct") is not None and 0 < c["rx_level_measured_pct"] < 15
+                )
+            )
         )
         stable_ch = max(0, total_ch - degraded_ch)
 
@@ -2957,18 +2886,19 @@ def get_markets_map_data(channels: list = None, services: list = None) -> List[D
             status_color = "green"
             status_label = "Estável (100% Conforme)"
 
-        primary_ch = channels_rf_detail[0] if channels_rf_detail else {
-            "tower_name": f"Torre Central {cidade}",
-            "distance_km": 2.0, "distance_m": 2000, "azimuth_deg": 35.0,
-            "tower_total_alt_m": site_elevation + 70, "fspl_db": 92.0,
-            "los_status": "Visada Desobstruída (LOS)", "terrain_profile": [],
-            "fresnel_r1_m": 16.0, "has_obstruction": False,
-            "los_analysis": "Visada desobstruída."
+        primary_candidates = [c for c in channels_rf_detail if not c.get("sem_telemetria")]
+        primary_ch = primary_candidates[0] if primary_candidates else {
+            "tower_name": f"Sem telemetria de sintonia reportada em {cidade}",
+            "distance_km": None, "distance_m": None, "azimuth_deg": None,
+            "cardinal": "N/D", "tower_total_alt_m": None, "fspl_db": None,
+            "los_status": "Sem telemetria de sintonia", "terrain_profile": [],
+            "fresnel_r1_m": None, "has_obstruction": None,
+            "los_analysis": "Nenhum canal reportou frequência/telemetria RF do agente.",
         }
-        
-        if len(channels_rf_detail) > 1:
-            unique_dirs = list(dict.fromkeys(c["cardinal_dir"].split(" ")[0] for c in channels_rf_detail))
-            main_tower_summary = f"{len(channels_rf_detail)} Torres DTV ({' ↔ '.join(unique_dirs[:3])}) • Principal: {primary_ch['tower_name']}"
+
+        if len(primary_candidates) > 1:
+            unique_dirs = list(dict.fromkeys((c.get("cardinal_dir") or "N/D").split(" ")[0] for c in primary_candidates))
+            main_tower_summary = f"{len(primary_candidates)} Torres DTV ({' ↔ '.join(unique_dirs[:3])}) • Principal: {primary_ch['tower_name']}"
         else:
             main_tower_summary = primary_ch["tower_name"]
 
@@ -3018,8 +2948,8 @@ def get_markets_map_data(channels: list = None, services: list = None) -> List[D
             "los_status": primary_ch["los_status"],
             "terrain_profile": primary_ch["terrain_profile"],
             "fresnel_r1_m": primary_ch["fresnel_r1_m"],
-            "fresnel_clearance_60_m": round(primary_ch["fresnel_r1_m"] * 0.6, 2),
-            "mast_increase_needed_m": 3.5 if primary_ch["has_obstruction"] else 0.0,
+            "fresnel_clearance_60_m": round(primary_ch["fresnel_r1_m"] * 0.6, 2) if primary_ch.get("fresnel_r1_m") is not None else None,
+            "mast_increase_needed_m": 3.5 if primary_ch.get("has_obstruction") else 0.0,
             "fresnel_verdict": primary_ch["los_analysis"],
             "weather_troposphere": get_weather_troposphere_metrics(cidade, site_lat, site_lng),
             "channels_rf_detail": channels_rf_detail,
@@ -3217,9 +3147,19 @@ def diagnose_topology_aiming_tradeoff_with_ai(cidade: str, current_mast_m: float
         return 360 - diff if diff > 180 else diff
 
     # 1. Clusterização de Torres por Azimute Angular (limiar de 35°)
+    #    Somente canais com telemetria de sintonia reportada pelo agente participam.
+    channels = [c for c in channels if not c.get("sem_telemetria")]
+    if not channels:
+        return {
+            "status": "error",
+            "message": f"Nenhum canal com telemetria RF reportada pelo agente para a praça '{cidade}'."
+        }
+
     clusters = []
     for ch in channels:
-        az = ch.get("azimuth_deg", 0)
+        az = ch.get("azimuth_deg")
+        if az is None:
+            continue
         placed = False
         for cl in clusters:
             avg_az = sum(x["azimuth_deg"] for x in cl["channels"]) / len(cl["channels"])
@@ -3230,6 +3170,12 @@ def diagnose_topology_aiming_tradeoff_with_ai(cidade: str, current_mast_m: float
         if not placed:
             clusters.append({"channels": [ch]})
 
+    if not clusters:
+        return {
+            "status": "error",
+            "message": f"Canais da praça '{cidade}' sem azimute calculado (sem coordenadas de torre reportadas)."
+        }
+
     for i, cl in enumerate(clusters):
         cl["id"] = f"CLUSTER_{i+1}"
         cl["avg_azimuth"] = round(sum(x["azimuth_deg"] for x in cl["channels"]) / len(cl["channels"]), 1)
@@ -3237,7 +3183,8 @@ def diagnose_topology_aiming_tradeoff_with_ai(cidade: str, current_mast_m: float
         cl["channel_names"] = list(set(x["emissora"] for x in cl["channels"]))
         cl["count"] = len(cl["channels"])
         cl["avg_dist_km"] = round(sum(x["distance_km"] for x in cl["channels"]) / len(cl["channels"]), 2)
-        cl["avg_level_pct"] = round(sum(x["rx_level_measured_pct"] for x in cl["channels"]) / len(cl["channels"]), 1)
+        measured_levels = [x["rx_level_measured_pct"] for x in cl["channels"] if x.get("rx_level_measured_pct") is not None]
+        cl["avg_level_pct"] = round(sum(measured_levels) / len(measured_levels), 1) if measured_levels else None
 
     # 2. Avaliação de Dispersão Angular Máxima (Conflito de Apontamento)
     max_spread = 0.0

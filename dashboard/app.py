@@ -1705,7 +1705,14 @@ async def get_channels(country: Optional[str] = None, city: Optional[str] = None
     if clean_country:
         channels = [c for c in channels if infer_country_from_record(c).lower() == clean_country.lower()]
     if city:
-        channels = [c for c in channels if city.lower() in str(c.get("cidade") or c.get("praca") or "").lower()]
+        city_low = city.lower().strip()
+        channels = [
+            c for c in channels 
+            if city_low in str(c.get("cidade") or c.get("praca") or "").lower()
+            and (c.get("canal") or c.get("nome_canal"))
+        ]
+    else:
+        channels = [c for c in channels if (c.get("canal") or c.get("nome_canal"))]
     if outage_only:
         channels = [c for c in channels if c.get("has_outage")]
         

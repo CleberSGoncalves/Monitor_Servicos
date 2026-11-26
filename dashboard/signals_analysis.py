@@ -481,38 +481,6 @@ def get_channel_telemetry_history(praca: str, canal: str, period: str = "24h", c
                     "cs": selected_cs,
                     "is_outage": r["qualidade_sinal"] < 40 or r["video_congelado"] == "Sim"
                 })
-    else:
-        # Sem dados históricos suficientes no banco para este canal/praça
-        return {
-            "praca": praca,
-            "canal": canal,
-            "cs": selected_cs or 1,
-            "sem_dados": True,
-            "motivo": "Histórico insuficiente no banco. Os dados reais de sinal são coletados a cada ciclo pelo agente do nó.",
-            "points": [],
-            "total_pontos": 0,
-            "avg_qualidade": None,
-            "min_qualidade": None,
-            "max_qualidade": None,
-            "avg_forca": None,
-            "min_forca": None,
-            "max_forca": None,
-            "drops_count": 0
-        }
-
-    qualidades = [p["qualidade"] for p in points]
-    forcas = [p["forca"] for p in points]
-    
-    avg_q = round(sum(qualidades) / len(qualidades), 1) if qualidades else 0.0
-    min_q = round(min(qualidades), 1) if qualidades else 0.0
-    max_q = round(max(qualidades), 1) if qualidades else 0.0
-    avg_s = round(sum(forcas) / len(forcas), 1) if forcas else 0.0
-    min_s = round(min(forcas), 1) if forcas else 0.0
-    max_s = round(max(forcas), 1) if forcas else 0.0
-    
-    drops_count = sum(1 for p in points if p["qualidade"] < 45.0)
-    stability_pct = round(((len(points) - drops_count) / len(points)) * 100.0, 1) if points else 100.0
-
     if "cachoeiro" in praca.lower():
         target_h = "BRES-CIM-DT01" if (selected_cs or 1) == 1 else "BRES-CIM-DT02"
     elif "pelotas" in praca.lower():
@@ -521,6 +489,33 @@ def get_channel_telemetry_history(praca: str, canal: str, period: str = "24h", c
         target_h = "CS-FLEET"
     prof_info = detect_signal_origin_profile(canal, praca)
     hw_info = get_host_hardware_telemetry(target_h, praca)
+
+    if len(rows) < 5:
+        # Sem dados históricos suficientes no banco para este canal/praça
+        return {
+            "praca": praca,
+            "canal": canal,
+            "cs": selected_cs or 1,
+            "host": target_h,
+            "origin_profile": prof_info,
+            "hardware_telemetry": hw_info,
+            "periodo": period,
+            "sem_dados": True,
+            "motivo": "Histórico insuficiente no banco. Os dados reais de sinal são coletados a cada ciclo pelo agente do nó.",
+            "points": [],
+            "history_points": [],
+            "total_pontos": 0,
+            "avg_qualidade": None,
+            "min_qualidade": None,
+            "max_qualidade": None,
+            "avg_forca": None,
+            "min_forca": None,
+            "max_forca": None,
+            "drops_count": 0,
+            "lock_drops_count": 0,
+            "stability_pct": None,
+            "stability_index_pct": None
+        }
 
     return {
         "praca": praca,

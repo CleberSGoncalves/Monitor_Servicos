@@ -956,7 +956,35 @@ def get_host_service_action_status(host: str, service_name: str, target_version:
         except Exception:
             telemetria_label = "Horário registrado"
 
-    is_updated = _is_version_up_to_date(installed_ver, desired_ver, service_name)
+    # Consulta status em tempo real via Google Cloud Firestore (FONTE ÚNICA DA VERDADE)
+    gcp_cmd = None
+    try:
+        from gcp_sync import get_latest_command_for_host, is_firestore_available
+        if is_firestore_available():
+            gcp_cmd = get_latest_command_for_host(host, service_name)
+    except Exception:
+        pass
+
+    if gcp_cmd:
+        c_st = str(gcp_cmd.get("status", "")).lower()
+        cmd_v = str(gcp_cmd.get("target_version", "")).strip().lstrip("vV")
+        if c_st == "completed" and (not cmd_v or cmd_v == desired_ver or _is_version_up_to_date(cmd_v, desired_ver, service_name)):
+            is_updated = True
+            installed_ver = desired_ver
+            status_atualizacao = "Atualizado"
+            acao_solicitada = "Nenhuma"
+            if target_srv:
+                target_srv["versao_instalada"] = desired_ver
+                target_srv["status_atualizacao"] = "Atualizado"
+                target_srv["acao_solicitada"] = "Nenhuma"
+        elif c_st == "processing":
+            is_in_progress = True
+            status_atualizacao = "Em Progresso"
+        elif c_st == "failed" and not is_updated:
+            is_failed = True
+            status_atualizacao = "Falha no Host"
+
+    is_updated = is_updated or _is_version_up_to_date(installed_ver, desired_ver, service_name)
     is_failed = "erro" in status_atualizacao.lower() or "falha" in status_atualizacao.lower()
     is_in_progress = (not is_updated) and ((acao_solicitada.lower() == "atualizar") or (status_atualizacao.lower() in ("em progresso", "fila local (azure cooldown)")))
     rem_cooldown = get_global_cooldown_remain()
@@ -1091,6 +1119,15 @@ def get_host_service_action_status(host: str, service_name: str, target_version:
                         user_message = f"🚀 Comando de atualização finalizado com sucesso no host [{host}] via Google Cloud Firestore! Saída: {out_snip or 'Sucesso sem erros.'}"
                         step2_status = "completed"
                         step3_status = "completed"
+                        is_updated = True
+                        installed_ver = desired_ver
+                        acao_solicitada = "Nenhuma"
+                        status_atualizacao = "Atualizado"
+                        # Sincroniza cache local e objeto de serviço
+                        if target_srv:
+                            target_srv["versao_instalada"] = desired_ver
+                            target_srv["status_atualizacao"] = "Atualizado"
+                            target_srv["acao_solicitada"] = "Nenhuma"
                     elif c_st == "processing":
                         current_step_num = 4
                         status_badge = f"Aplicando Atualização no Host"
@@ -1239,69 +1276,42 @@ def get_host_service_action_status(host: str, service_name: str, target_version:
     # Comando manual pronto de 1 linha para contingência via GV / Tanium
     manual_ps = build_service_contingency_command(service_name, desired_ver)
 
-    # -------------------------------------------------------------
-    # Métricas Granulares de Progresso, Atividade Atual e Terminal ao Vivo
+    # Métricas Granulares de Progresso (derivadas exclusivamente do estado real do comando)
     # -------------------------------------------------------------
     if is_updated:
         progress_pct = 100
         current_activity = f"Operação concluída com sucesso! {service_name} em execução na versão {desired_ver}."
     elif is_failed:
-        progress_pct = 35
-        current_activity = f"Interrupção na esteira: {status_atualizacao}. Verifique os logs do host."
-    elif current_step_num == 1:
-        progress_pct = 15
-        current_activity = "Ordem homologada registrada. Aguardando disparo/processamento no host."
-    elif current_step_num == 2:
-        progress_pct = 35
-        current_activity = f"Agente local (DNA.MonitorServiceSVC v{agent_installed}) processando a fila de execução..."
-    elif current_step_num == 3:
-        progress_pct = 55
-        current_activity = f"Baixando pacote binário {desired_ver} e verificando hash SHA-256 oficial..."
-    elif current_step_num == 4:
-        progress_pct = 85
-        current_activity = f"Parando versão anterior, descompactando binários v{desired_ver} no disco D: e restaurando configurações..."
-    else:
         progress_pct = 100
-        current_activity = f"Auditoria de telemetria concluída e versão {desired_ver} confirmada no catálogo."
+        current_activity = f"Interrupção na esteira: {status_atualizacao}. Verifique os logs do host."
+    else:
+        # O progresso é a razão entre etapas concluídas e o total de etapas do ciclo (1 a 5).
+        progress_pct = int(round(max(1, current_step_num) / 5.0 * 100))
+        current_activity = f"Etapa {current_step_num}/5 em andamento: {status_badge}."
 
-    # Geração cronológica das linhas do terminal do script em tempo real
-    terminal_lines = [
-        f"[00:01] ⚡ [ORQUESTRADOR] Ordem de atualização gerada para {service_name} v{desired_ver} no host [{host}].",
-        f"[00:03] 🔒 [GOVERNANÇA] Comando assinado com HMAC-SHA256 e sincronizado no catálogo central.",
-        f"[00:08] 📡 [AGENTE C#] DNA.MonitorServiceSVC (v{agent_installed}) reconheceu a solicitação de serviço."
-    ]
-
-    if current_step_num >= 3 or is_updated:
-        terminal_lines.append(f"[00:20] 📦 [DOWNLOAD] Baixando binários oficiais {desired_ver} do Azure Blob Storage...")
-        terminal_lines.append(f"[00:35] 🛡️ [INTEGRIDADE] Hash SHA-256 verificado com sucesso contra o manifesto homologado.")
-
-    if current_step_num >= 4 or is_updated:
-        terminal_lines.append(f"[00:46] 🛑 [SERVIÇO] Encerrando instâncias anteriores e aplicando trava anti-lock no host...")
-        terminal_lines.append(f"[00:56] 📁 [DEPLOY] Extração silenciosa dos arquivos e sincronização no diretório oficial.")
-        terminal_lines.append(f"[01:06] ⚙️ [CONFIG] Restaurando AppConfig.xml, Multiplexes.xml e blindando perfil EMU MediaDNA 1min...")
-        terminal_lines.append(f"[01:16] 🚀 [START] Iniciando {service_name} v{desired_ver} no desktop interativo / serviço Windows...")
-
-    if current_step_num >= 5 or is_updated:
-        terminal_lines.append(f"[01:26] 🔍 [HEALTHCHECK] Verificação de integridade positiva. Telemetria local ativa.")
-        terminal_lines.append(f"[01:30] ✅ [CONCLUÍDO] Versao_Instalada={desired_ver} reportada ao SharePoint. Governança 100% alinhada.")
-
-    if is_in_progress and age_seconds >= 600:
-        terminal_lines.append(f"[{int(age_seconds//60):02d}:00] ⚠️ [TIMEOUT] Esteira em execução há mais de 10 minutos sem confirmação de v{desired_ver}. Clique em 'Executar Novamente' abaixo para forçar o processo.")
-
-    # Se houver saída bruta real reportada via Google Cloud Firestore, anexa as linhas reais
+    # Terminal ao vivo: somente saída bruta REAL reportada pelo agente via Google Cloud Firestore.
+    terminal_lines: List[str] = []
     try:
         from gcp_sync import get_latest_command_for_host, is_firestore_available
         if is_firestore_available():
             gcp_cmd_out = get_latest_command_for_host(host, service_name)
-            if gcp_cmd_out and gcp_cmd_out.get("output"):
-                raw_out = str(gcp_cmd_out["output"]).strip()
+            if gcp_cmd_out:
+                cmd_status = str(gcp_cmd_out.get("status") or "").strip()
+                if cmd_status:
+                    cmd_ref = gcp_cmd_out.get("command_id") or gcp_cmd_out.get("_doc_id") or "comando"
+                    terminal_lines.append(f"[{cmd_status.upper()}] {cmd_ref} no host [{host}].")
+                raw_out = str(gcp_cmd_out.get("output") or "").strip()
                 if raw_out:
-                    terminal_lines.append("-------------------- [LOG DIRETO DO HOST] --------------------")
-                    for ol in raw_out.splitlines()[-12:]:
+                    for ol in raw_out.splitlines()[-40:]:
                         if ol.strip():
-                            terminal_lines.append(f"  > {ol.strip()}")
+                            terminal_lines.append(ol.rstrip())
+                if not terminal_lines:
+                    terminal_lines.append("Aguardando saída bruta do agente no host (nenhuma linha reportada até o momento).")
     except Exception:
         pass
+
+    if not terminal_lines:
+        terminal_lines = ["Nenhuma telemetria de terminal disponível. Aguardando reporte do agente DNA.MonitorServiceSVC."]
 
     script_name = f"Atualizar_{service_name.replace(' ', '_')}_v{desired_ver}.ps1"
     is_active_op = (not is_updated and not is_failed)

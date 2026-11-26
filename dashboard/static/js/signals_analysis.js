@@ -265,11 +265,12 @@ async function onSignalsPracaChanged() {
     }
 
     canalSelect.innerHTML = channels.map(c => {
+        const canalName = c.canal || c.nome_canal || "Canal Sem Nome";
         const outageIcon = c.has_outage ? "⚠️ " : "";
-        const q = (c.qualidade_sinal !== null && c.qualidade_sinal !== undefined) ? `${c.qualidade_sinal}%` : "N/A";
+        const qVal = (c.qualidade_sinal !== null && c.qualidade_sinal !== undefined) ? `${c.qualidade_sinal}%` : "N/D";
         const csVal = Number(c.id_cs || c.cs || 1);
         const csTag = csVal === 2 ? "CS 2 - BKP" : (csVal === 1 ? "CS 1 - Principal" : `CS ${csVal}`);
-        return `<option value="${escapeHtml(c.canal)}" data-cs="${csVal}">${outageIcon}${escapeHtml(c.canal)} (Q: ${q} | ${csTag})</option>`;
+        return `<option value="${escapeHtml(canalName)}" data-cs="${csVal}">${outageIcon}${escapeHtml(canalName)} (Q: ${qVal} | ${csTag})</option>`;
     }).join("");
 
     const problemChannel = channels.find(c => c.has_outage) || channels[0];
@@ -374,12 +375,19 @@ function updateSignalsKPIs(data) {
     const titleStab = stab?.parentElement?.querySelector(".kpi-title");
     const titleDrops = drops?.parentElement?.querySelector(".kpi-title");
 
+    const hasQ = data.avg_qualidade !== null && data.avg_qualidade !== undefined;
+    const hasMinQ = data.min_qualidade !== null && data.min_qualidade !== undefined;
+    const hasF = data.avg_forca !== null && data.avg_forca !== undefined;
+    const hasMinF = data.min_forca !== null && data.min_forca !== undefined;
+    const stabVal = data.stability_index_pct !== undefined && data.stability_index_pct !== null ? data.stability_index_pct : (data.stability_pct !== undefined && data.stability_pct !== null ? data.stability_pct : null);
+    const dropsVal = data.lock_drops_count !== undefined && data.lock_drops_count !== null ? data.lock_drops_count : (data.lock_drops !== undefined && data.lock_drops !== null ? data.lock_drops : (data.drops_count !== undefined && data.drops_count !== null ? data.drops_count : null));
+
     if (isStream) {
         if (titleQ) titleQ.innerHTML = '<i class="fas fa-wave-square text-cyan"></i> Buffer de Áudio';
         if (titleF) titleF.innerHTML = '<i class="fas fa-network-wired text-blue"></i> Throughput IP (Bitrate)';
         if (titleStab) titleStab.innerHTML = '<i class="fas fa-shield-alt text-purple"></i> Estabilidade de Stream';
         if (titleDrops) titleDrops.innerHTML = '<i class="fas fa-plug text-yellow"></i> Quedas de Conexão IP';
-        if (minQ) minQ.innerText = `Buffer Mínimo: ${data.min_qualidade}%`;
+        if (minQ) minQ.innerText = hasMinQ ? `Buffer Mínimo: ${data.min_qualidade}%` : "Buffer Mínimo: --";
         if (minF) minF.innerText = `Throughput Nominal: 128 kbps`;
         if (drops?.parentElement?.querySelector(".kpi-desc")) {
             drops.parentElement.querySelector(".kpi-desc").innerText = "Timeouts de socket / reconexões";
@@ -389,29 +397,31 @@ function updateSignalsKPIs(data) {
         if (titleF) titleF.innerHTML = '<i class="fas fa-sliders-h text-blue"></i> Nível de Áudio (dBFS)';
         if (titleStab) titleStab.innerHTML = '<i class="fas fa-shield-alt text-purple"></i> Fase Estéreo';
         if (titleDrops) titleDrops.innerHTML = '<i class="fas fa-exclamation-triangle text-yellow"></i> Saturação / Clipping';
+        if (minQ) minQ.innerText = hasMinQ ? `Mínima: ${data.min_qualidade} dB` : "Mínima: --";
+        if (minF) minF.innerText = hasMinF ? `Mínima: ${data.min_forca} dBFS` : "Mínima: --";
     } else {
         if (titleQ) titleQ.innerHTML = 'Qualidade Média';
         if (titleF) titleF.innerHTML = 'Força Média (RSSI)';
         if (titleStab) titleStab.innerHTML = 'Estabilidade RF';
         if (titleDrops) titleDrops.innerHTML = 'Quedas de Lock (< 45%)';
-        if (minQ) minQ.innerText = `Mínima: ${data.min_qualidade}%`;
-        if (minF) minF.innerText = `Mínima: ${data.min_forca !== undefined && data.min_forca !== null ? data.min_forca : 0}%`;
+        if (minQ) minQ.innerText = hasMinQ ? `Mínima: ${data.min_qualidade}%` : "Mínima: --";
+        if (minF) minF.innerText = hasMinF ? `Mínima: ${data.min_forca}%` : "Mínima: --";
         if (drops?.parentElement?.querySelector(".kpi-desc")) {
             drops.parentElement.querySelector(".kpi-desc").innerText = "Perda de sincronismo ISDB-Tb";
         }
     }
 
-    if (avgQ) avgQ.innerText = `${data.avg_qualidade}%`;
-    if (avgF) avgF.innerText = isStream ? "128 kbps" : `${data.avg_forca}%`;
-    if (stab) stab.innerText = `${data.stability_index_pct}%`;
-    if (drops) drops.innerText = data.lock_drops_count;
+    if (avgQ) avgQ.innerText = hasQ ? `${data.avg_qualidade}%` : "--";
+    if (avgF) avgF.innerText = isStream ? "128 kbps" : (hasF ? `${data.avg_forca}%` : "--");
+    if (stab) stab.innerText = stabVal !== null ? `${stabVal}%` : "--";
+    if (drops) drops.innerText = dropsVal !== null ? dropsVal : "0";
 
     // Cores de alerta
     if (avgQ) {
-        avgQ.style.color = data.avg_qualidade < 45 ? "#ef4444" : data.avg_qualidade < 65 ? "#f59e0b" : "#10b981";
+        avgQ.style.color = hasQ ? (data.avg_qualidade < 45 ? "#ef4444" : data.avg_qualidade < 65 ? "#f59e0b" : "#10b981") : "#94a3b8";
     }
     if (drops) {
-        drops.style.color = data.lock_drops_count > 0 ? "#ef4444" : "#10b981";
+        drops.style.color = (dropsVal !== null && dropsVal > 0) ? "#ef4444" : "#10b981";
     }
 
     renderSignalsHardwareBadge(data);
