@@ -218,21 +218,28 @@ async function refreshFmaLiveData(isBackground = false) {
             btnHealRecon.style.display = (data.diagnosis.status === "SEM_NOVOS_SPOTS") ? "inline-block" : "none";
         }
 
-        // Gerenciamento cumulativo de histórico em memória por host
+        // Gerenciamento cumulativo de histórico em memória por host (com expurgo de dados defasados)
         const hKey = (data.hostname || fmaLiveCurrentHost || "").toUpperCase().trim();
-        if (!fmaLivePersistentDetections[hKey]) {
+        const todayStr = (data.timestamp || "").split(" ")[0] || new Date().toISOString().slice(0, 10);
+
+        // Se houver detecções com data diferente de hoje ou se não existir buffer, reinicializar
+        if (!fmaLivePersistentDetections[hKey] || fmaLivePersistentDetections[hKey].some(d => !(d.timestamp || "").startsWith(todayStr))) {
             fmaLivePersistentDetections[hKey] = [];
         }
         const incomingDets = data.recent_detections || [];
         const existingList = fmaLivePersistentDetections[hKey];
         const existingKeys = new Set(existingList.map(d => `${d.timestamp}_${d.spot_id}`));
         for (const det of incomingDets) {
-            const k = `${det.timestamp}_${det.spot_id}`;
-            if (!existingKeys.has(k)) {
-                existingList.unshift(det);
-                existingKeys.add(k);
+            if ((det.timestamp || "").startsWith(todayStr)) {
+                const k = `${det.timestamp}_${det.spot_id}`;
+                if (!existingKeys.has(k)) {
+                    existingList.push(det);
+                    existingKeys.add(k);
+                }
             }
         }
+        // Ordenar decrescente (mais recente no topo)
+        existingList.sort((a, b) => (b.timestamp || "").localeCompare(a.timestamp || ""));
         if (existingList.length > 50) {
             fmaLivePersistentDetections[hKey] = existingList.slice(0, 50);
         }
@@ -252,6 +259,12 @@ window.renderFmaLiveDashboard = renderFmaLiveDashboard;
 function renderFmaLiveDashboard(data) {
     const bodyEl = document.getElementById("fmaLiveModalBody");
     if (!bodyEl) return;
+
+    // Preservar foco e posição do cursor caso o usuário esteja filtrando logs
+    const filterInput = document.getElementById("fmaLiveLogFilter");
+    const isFilterFocused = (document.activeElement === filterInput);
+    const selStart = filterInput ? filterInput.selectionStart : null;
+    const selEnd = filterInput ? filterInput.selectionEnd : null;
 
     const diag = data.diagnosis || {};
     const spots = data.spots_status || {};
@@ -533,7 +546,7 @@ function renderFmaLiveDashboard(data) {
                 <div style="display: flex; align-items: center; gap: 10px;">
                     <input type="text" id="fmaLiveLogFilter" placeholder="Filtrar log (ex: NEW DETECTION, recon, RAM)..." value="${escapeHtml(fmaLiveLogSearchKw)}" oninput="onFmaLiveFilterChange(this.value)" style="background: #1e293b; color: #fff; border: 1px solid rgba(255, 255, 255, 0.15); padding: 3px 8px; border-radius: 4px; font-size: 11px; outline: none; width: 230px;">
                     <label style="font-size: 10.5px; color: #94a3b8; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
-                        <input type="checkbox" ${fmaLiveAutoScroll ? 'checked' : ''} onchange="fmaLiveAutoScroll = this.checked"> Auto-scroll
+                        <input type="checkbox" id="fmaLiveAutoScrollCheckbox" ${fmaLiveAutoScroll ? 'checked' : ''} onchange="fmaLiveAutoScroll = this.checked"> Auto-scroll
                     </label>
                 </div>
             </div>
@@ -546,10 +559,33 @@ function renderFmaLiveDashboard(data) {
         </div>
     `;
 
-    // Manter auto-scroll no final do terminal se ativo
-    if (fmaLiveAutoScroll) {
-        const term = document.getElementById("fmaLiveLogTerminal");
-        if (term) term.scrollTop = term.scrollHeight;
+    // Restaurar foco do filtro se estava em uso
+    if (isFilterFocused) {
+        const newFilterInput = document.getElementById("fmaLiveLogFilter");
+        if (newFilterInput) {
+            newFilterInput.focus();
+            if (selStart !== null && selEnd !== null) {
+                newFilterInput.setSelectionRange(selStart, selEnd);
+            }
+        }
+    }
+
+    // Auto-scroll confiável com requestAnimationFrame e detecção de rolagem manual
+    const term = document.getElementById("fmaLiveLogTerminal");
+    if (term) {
+        term.onscroll = function() {
+            const distFromBottom = term.scrollHeight - term.scrollTop - term.clientHeight;
+            if (distFromBottom > 35 && fmaLiveAutoScroll) {
+                const toggle = document.getElementById("fmaLiveAutoScrollCheckbox");
+                if (toggle) toggle.checked = false;
+                fmaLiveAutoScroll = false;
+            }
+        };
+        if (fmaLiveAutoScroll) {
+            requestAnimationFrame(() => {
+                term.scrollTop = term.scrollHeight;
+            });
+        }
     }
 }
 
