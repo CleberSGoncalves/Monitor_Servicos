@@ -481,11 +481,10 @@ def build_service_raw_script(service_name: str, target_version: str, migrate_to_
     target_v = str(target_version or "2.0.0.2").strip().lstrip("vV")
 
     # 1. Atria Capture (DTVCapture64 / DigitalTVCapture)
-    # REGRA ABSOLUTA DE ENGENHARIA: Atualizar Atria Capture NUNCA deve alterar a stack de detecção,
-    # NUNCA desativar FastMatching ou FileCleaner e NUNCA alterar Multiplexes.xml.
     if "atria" in s_lower or "dtvcapture" in s_lower:
         dest_d = r"D:\MediaDNA_V2\Applications\DTVCapture64"
         dest_c = r"C:\DTV\DTVCapture"
+        mig_code = build_fastmatching_cleaner_migration_snippet(dest_d) if migrate_to_fastmatching else build_legacy_stack_migration_snippet(dest_d)
         return (
             "$ErrorActionPreference = 'Continue';\n"
             "$ProgressPreference = 'SilentlyContinue';\n"
@@ -498,15 +497,21 @@ def build_service_raw_script(service_name: str, target_version: str, migrate_to_
             "# 1. Criacao defensiva de Junction C:\\DTV\\DTVCapture -> D:\\MediaDNA_V2\\Applications\\DTVCapture64\n"
             "if (-not (Test-Path 'C:\\DTV')) { New-Item -ItemType Directory -Path 'C:\\DTV' -Force | Out-Null };\n"
             "if (-not (Test-Path $defaultDir)) { try { New-Item -ItemType Junction -Path $defaultDir -Target $targetDir -Force | Out-Null } catch {} };\n"
-            "# 2. Backup previo das configuracoes locais da praca (AppConfig.xml)\n"
+            "# 2. Backup previo das configuracoes locais da praca (AppConfig.xml e FastMatching config.json)\n"
             "$cfgBackup = Join-Path $env:TEMP 'AtriaConfigBackup';\n"
             "if (-not (Test-Path $cfgBackup)) { New-Item -ItemType Directory -Force -Path $cfgBackup | Out-Null };\n"
             "$existingCfg = @(\"$targetDir\\Config\\AppConfig.xml\", \"$defaultDir\\Config\\AppConfig.xml\") | Where-Object { Test-Path $_ } | Select-Object -First 1;\n"
             "if ($existingCfg) { Copy-Item -Path (Split-Path $existingCfg -Parent) -Destination $cfgBackup -Recurse -Force -ErrorAction SilentlyContinue };\n"
-            "# 3. Encerramento seguro estritamente das interfaces graficas do Atria (NUNCA toca em FastMatching ou FileCleaner!)\n"
-            "cmd.exe /c \"taskkill /f /t /im DigitalTVCapture.exe /im DigitalTVReceiver.exe /im AtriaCapture.exe /im DTVCapture64.exe >nul 2>&1\";\n"
+            "$fmaCfg = @(\"$targetDir\\FastMatchingSvc\\config.json\", \"$targetDir\\FastMachingSvc\\config.json\") | Where-Object { Test-Path $_ } | Select-Object -First 1;\n"
+            "if ($fmaCfg) { Copy-Item -Path $fmaCfg -Destination $cfgBackup -Force -ErrorAction SilentlyContinue };\n"
+            "# 3. Encerramento seguro de processos e servicos associados\n"
+            "Stop-Service -Name FastMatchingSvc, FastMachingSvc -Force -ErrorAction SilentlyContinue;\n"
+            "cmd.exe /c \"taskkill /f /t /im DigitalTVCapture.exe /im DigitalTVReceiver.exe /im AtriaCapture.exe /im DTVCapture64.exe /im FastMatchingSvc.exe >nul 2>&1\";\n"
             "Start-Sleep -Seconds 1;\n"
-            "# 4. Download direto do pacote binario oficial Atria Capture 2.0.0.2 do Azure Blob\n"
+            "# 4. Desativacao profilatica do DNA.DetectionSVC legado para evitar lock de arquivos EMU e deteccoes duplicadas\n"
+            "Stop-Service -Name DNA.DetectionSVC -Force -ErrorAction SilentlyContinue;\n"
+            "Set-Service -Name DNA.DetectionSVC -StartupType Manual -ErrorAction SilentlyContinue;\n"
+            "# 5. Download direto do pacote binario oficial Atria Capture 2.0.0.2 do Azure Blob\n"
             "$zipUrl = 'https://stgengineeringreleases.blob.core.windows.net/atriacapture/v2.0.0.0_x64_AVX2/AtriaCapture_v2002_x64.zip';\n"
             "$zipFile = Join-Path $env:TEMP 'AtriaCapture_v2002_x64.zip';\n"
             "$stgUnzip = Join-Path $env:TEMP 'AtriaCapture_v2002_x64_unzip';\n"
@@ -524,25 +529,39 @@ def build_service_raw_script(service_name: str, target_version: str, migrate_to_
             "if (Test-Path $stgUnzip) { Remove-Item $stgUnzip -Recurse -Force -ErrorAction SilentlyContinue };\n"
             "New-Item -ItemType Directory -Force -Path $stgUnzip | Out-Null;\n"
             "Expand-Archive -Path $zipFile -DestinationPath $stgUnzip -Force;\n"
-            "# 5. Extracao direta de arquivos e instalacao MSI silenciosa\n"
+            "# 6. Instalacao do MSI v2.0.0.2 silenciosa com TARGETDIR no disco D:\n"
             "$msi = if (Test-Path \"$stgUnzip\\DTVCaptureInstaller_x64.msi\") { \"$stgUnzip\\DTVCaptureInstaller_x64.msi\" } elseif (Test-Path \"$stgUnzip\\setup\\DTVCaptureInstaller_x64.msi\") { \"$stgUnzip\\setup\\DTVCaptureInstaller_x64.msi\" } else { $null };\n"
             "if ($msi) { Start-Process 'msiexec.exe' -ArgumentList \"/i `\"$msi`\" TARGETDIR=`\"$targetDir`\" INSTALLDIR=`\"$targetDir`\" /qn /norestart\" -Wait -ErrorAction SilentlyContinue };\n"
-            "# 6. Garantia Anti-Lock: copiar arquivos binarios diretamente para targetDir\n"
+            "# 7. Garantia Anti-Lock: matar qualquer processo antes de sincronizar arquivos\n"
             "cmd.exe /c \"taskkill /f /t /im DigitalTVCapture.exe /im DigitalTVReceiver.exe /im AtriaCapture.exe >nul 2>&1\";\n"
-            "Start-Sleep -Seconds 1;\n"
+            "Start-Sleep -Seconds 2;\n"
+            "# Copia direta do payload descompactado para targetDir\n"
             "if (Test-Path $stgUnzip) {\n"
             "    Get-ChildItem -Path $stgUnzip -File | ForEach-Object { Copy-Item -Path $_.FullName -Destination $targetDir -Force -ErrorAction SilentlyContinue };\n"
             "    if (Test-Path \"$stgUnzip\\bin\") { Get-ChildItem -Path \"$stgUnzip\\bin\" -File | ForEach-Object { Copy-Item -Path $_.FullName -Destination $targetDir -Force -ErrorAction SilentlyContinue } };\n"
             "};\n"
-            "# 7. Expurgacao obrigatoria de bcrypt.dll incompativel da pasta local\n"
+            "# 8. Expurgacao obrigatoria de bcrypt.dll incompativel (previne Erro 1053 / 0xc0e90002 no FastMatchingSvc)\n"
             "Get-ChildItem -Path @($targetDir, $defaultDir) -Recurse -Filter 'bcrypt.dll' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue;\n"
-            "# 8. Restauracao transparente da configuracao original dos multiplexes e AppConfig\n"
+            "# 9. Blindagem de binPath do FastMatchingSvc no disco D:\n"
+            "$fmaCandidates = @(\"$targetDir\\FastMatchingSvc\\FastMatchingSvc.exe\", \"$targetDir\\FastMachingSvc\\FastMatchingSvc.exe\");\n"
+            "$fmaExe = $fmaCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1;\n"
+            "if ($fmaExe) {\n"
+            "    cmd.exe /c \"sc.exe config FastMatchingSvc binPath= `\"$fmaExe`\" >nul 2>&1\";\n"
+            "};\n"
+            "# 10. Restauracao transparente da configuracao original dos multiplexes e FastMatching\n"
             "if (Test-Path \"$cfgBackup\\Config\\AppConfig.xml\") {\n"
             "    Copy-Item -Path \"$cfgBackup\\Config\\*\" -Destination \"$targetDir\\Config\" -Recurse -Force -ErrorAction SilentlyContinue;\n"
             "};\n"
-            "# 9. Liberacao da trava do agente local\n"
+            "if (Test-Path \"$cfgBackup\\config.json\") {\n"
+            "    $fmaDir = if (Test-Path \"$targetDir\\FastMatchingSvc\") { \"$targetDir\\FastMatchingSvc\" } else { \"$targetDir\\FastMachingSvc\" };\n"
+            "    Copy-Item -Path \"$cfgBackup\\config.json\" -Destination $fmaDir -Force -ErrorAction SilentlyContinue;\n"
+            "};\n"
+            "# 10.5 Migracao de Stack e Blindagem do Perfil EMU (EMU MediaDNA 1min vs EMU MDNA, validado em WMProfiles)\n"
+            f"{mig_code}"
+            + ("if ($emuProfileOk) { Start-Service -Name FastMatchingSvc -ErrorAction SilentlyContinue };\n" if migrate_to_fastmatching else "# FastMatchingSvc mantido desativado (operacao legada)\n") +
+            "# 12. Liberacao da trava do agente local\n"
             "Remove-Item -Path $lockFile -Force -ErrorAction SilentlyContinue;\n"
-            "# 10. Reabertura do Atria Capture no ambiente interativo\n"
+            "# 13. Reabertura do Atria Capture no ambiente interativo\n"
             "$exe = if (Test-Path (Join-Path $targetDir 'DigitalTVCapture.exe')) { Join-Path $targetDir 'DigitalTVCapture.exe' } elseif (Test-Path (Join-Path $defaultDir 'DigitalTVCapture.exe')) { Join-Path $defaultDir 'DigitalTVCapture.exe' } else { $null };\n"
             "if ($exe) {\n"
             "    schtasks /delete /tn 'Start_Atria_Interactive' /f >$null 2>&1;\n"
@@ -710,6 +729,10 @@ def force_execute_service_update(
     target_v_clean = str(target_version or gov_default).strip().lstrip("vV")
     if "monitorservice" in service_name.lower() and _parse_ver_tuple(target_v_clean) < _parse_ver_tuple(gov_default):
         target_v_clean = gov_default
+
+    if "atria" in service_name.lower() and not migrate_to_fastmatching:
+        # Por diretriz operacional, a atualização do Atria Capture via Dashboard migra e blinda FastMatching + FileCleaner (EMU MediaDNA 1min)
+        migrate_to_fastmatching = True
 
     # 1. Monta o script de execução direta (raw PowerShell para execução no agente)
     raw_script = build_service_raw_script(service_name, target_v_clean, migrate_to_fastmatching=migrate_to_fastmatching)
