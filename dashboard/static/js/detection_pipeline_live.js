@@ -222,28 +222,9 @@ async function refreshFmaLiveData(isBackground = false) {
         const hKey = (data.hostname || fmaLiveCurrentHost || "").toUpperCase().trim();
         const todayStr = (data.timestamp || "").split(" ")[0] || new Date().toISOString().slice(0, 10);
 
-        // Se houver detecções com data diferente de hoje ou se não existir buffer, reinicializar
-        if (!fmaLivePersistentDetections[hKey] || fmaLivePersistentDetections[hKey].some(d => !(d.timestamp || "").startsWith(todayStr))) {
-            fmaLivePersistentDetections[hKey] = [];
-        }
         const incomingDets = data.recent_detections || [];
-        const existingList = fmaLivePersistentDetections[hKey];
-        const existingKeys = new Set(existingList.map(d => `${d.timestamp}_${d.spot_id}`));
-        for (const det of incomingDets) {
-            if ((det.timestamp || "").startsWith(todayStr)) {
-                const k = `${det.timestamp}_${det.spot_id}`;
-                if (!existingKeys.has(k)) {
-                    existingList.push(det);
-                    existingKeys.add(k);
-                }
-            }
-        }
-        // Ordenar decrescente (mais recente no topo)
-        existingList.sort((a, b) => (b.timestamp || "").localeCompare(a.timestamp || ""));
-        if (existingList.length > 50) {
-            fmaLivePersistentDetections[hKey] = existingList.slice(0, 50);
-        }
-        data.recent_detections = fmaLivePersistentDetections[hKey];
+        fmaLivePersistentDetections[hKey] = incomingDets;
+        data.recent_detections = incomingDets;
 
         fmaLiveLastData = data;
         renderFmaLiveDashboard(data);

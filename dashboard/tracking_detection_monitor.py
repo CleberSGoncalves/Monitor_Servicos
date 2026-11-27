@@ -3875,21 +3875,9 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
                 if len(recent_detections) >= 50:
                     break
 
-    # Se o nó remoto não tiver fma.log em disco local, conectar ao stream contínuo de detecções e logs sincronizados com o relógio atual (now):
+    # Se não houver detecções no fma.log lido (ou nó remoto não possuir NEW DETECTION ainda):
     if not recent_detections:
-        stream_dets, stream_logs = get_or_advance_fma_live_stream(
-            h_clean=h_clean,
-            praca=praca,
-            channels=channels,
-            is_fm_running=is_fm_running,
-            atria_running=atria_running,
-            real_ram_mb=real_ram_mb,
-            max_lines=max_lines
-        )
-        recent_detections = stream_dets
-        log_lines = (log_lines + stream_logs)[-max_lines:]
-        is_live_disk = True
-        log_source = f"[{h_clean}] Telemetria em Tempo Real (FastMatching Live Stream)"
+        recent_detections = []
 
     # Normaliza timestamps das linhas de log para o horário local de Brasília
     norm_log_lines = []
