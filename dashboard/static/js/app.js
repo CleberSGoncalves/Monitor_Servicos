@@ -18418,9 +18418,10 @@ function updateMaintenanceDatalist() {
     const dl = document.getElementById("maintPracaDatalist");
     if (!dl) return;
     const pracas = new Set();
-    if (Array.isArray(allHostsData)) {
-        allHostsData.forEach(h => { if (h.praca) pracas.add(h.praca); });
-    }
+    const list = (typeof allHostsData !== 'undefined' && Array.isArray(allHostsData)) ? allHostsData :
+                 (typeof cachedFleetEvolutionData !== 'undefined' && cachedFleetEvolutionData && Array.isArray(cachedFleetEvolutionData.hosts)) ? cachedFleetEvolutionData.hosts :
+                 (window.fleetHostsList && Array.isArray(window.fleetHostsList)) ? window.fleetHostsList : [];
+    list.forEach(h => { if (h.praca) pracas.add(h.praca); });
     dl.innerHTML = Array.from(pracas).sort().map(p => `<option value="${escapeHtml(p)}"></option>`).join("");
 }
 

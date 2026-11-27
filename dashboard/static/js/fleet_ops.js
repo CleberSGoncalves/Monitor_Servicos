@@ -1441,6 +1441,16 @@ async function openFleetUpdateProgressModal(host, serviceName, targetVersion = n
     const elDes = document.getElementById("upProgDesired");
     if (elDes && currentUpdateProgressTargetVersion) elDes.innerText = `v${currentUpdateProgressTargetVersion}`;
 
+    const badgeEl = document.getElementById("upProgStatusBadge");
+    if (badgeEl) {
+        badgeEl.className = "badge badge-yellow";
+        badgeEl.innerText = "Consultando telemetria...";
+    }
+    const descEl = document.getElementById("upProgDynamicDesc");
+    if (descEl) descEl.innerHTML = "";
+    const btnCancel = document.getElementById("btnCancelFleetUpdate");
+    if (btnCancel) btnCancel.disabled = false;
+
     const pBar = document.getElementById("upProgressBar");
     if (pBar) pBar.style.width = "0%";
     const pctText = document.getElementById("upProgPercentText");

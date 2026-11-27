@@ -1885,7 +1885,7 @@ async def update_desired_action_alias_endpoint(
 
 
 @app.get("/api/fleet/action/status")
-async def get_fleet_action_status_endpoint(
+def get_fleet_action_status_endpoint(
     host: str,
     service_name: str,
     target_version: Optional[str] = None,
@@ -4049,7 +4049,7 @@ async def export_execution(exec_id: str, format: str = Query("txt", pattern="^(t
         )
 
 @app.get("/api/remote-commands/ai-suggestions")
-async def get_remote_cmd_ai_suggestions(refresh: bool = False, user: dict = Depends(get_current_user)):
+def get_remote_cmd_ai_suggestions(refresh: bool = False, user: dict = Depends(get_current_user)):
     data = get_cached_data()
     return get_ai_command_recommendations(fleet_data=data, refresh=refresh)
 

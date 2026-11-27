@@ -10,6 +10,8 @@ from config import DATA_DIR
 DB_PATH = DATA_DIR / "fleet.db"
 
 _ai_cmd_rotation_index = 0
+_cached_gemini_recommendation = None
+_cached_gemini_timestamp = 0.0
 
 # Catálogo Mestre de Comandos Recomendados pela IA (Consultas e Correções do SO/Frota)
 SYSTEMIC_AI_COMMANDS_POOL = [
@@ -978,7 +980,7 @@ def get_ai_command_recommendations(fleet_data: Optional[Dict[str, Any]] = None, 
     Consulta Google Gemini Pro com a telemetria dos Capture Sites para sintetizar
     comandos inéditos e não-repetitivos direcionados às praças com problemas reais.
     """
-    global _ai_cmd_rotation_index
+    global _ai_cmd_rotation_index, _cached_gemini_recommendation, _cached_gemini_timestamp
     import random
 
     if refresh:
@@ -988,52 +990,58 @@ def get_ai_command_recommendations(fleet_data: Optional[Dict[str, Any]] = None, 
     services = fleet.get("services", [])
     channels = fleet.get("channels", [])
 
-    # Tenta gerar uma recomendação sob medida com o Google Gemini Pro
+    # Tenta gerar uma recomendação sob medida com o Google Gemini Pro (com cache de 10 min)
     gemini_recommendation = None
-    try:
-        from gemini_service import execute_gemini_prompt, get_ai_settings
-        ai_cfg = get_ai_settings()
-        if ai_cfg.get("enabled"):
-            stopped_svcs = [f"{s.get('praca')}: {s.get('nome_servico')}" for s in services if s.get("status_servico") in ["Parado", "Inexistente"]][:3]
-            outage_chs = [f"{c.get('cidade')}: {c.get('canal')}" for c in channels if c.get("has_outage")][:3]
-            
-            p_text = (
-                f"Engenharia Broadcast MediaDNA/Kantar IBOPE (Recomendação de Comando Remoto):\n"
-                f"Serviços Parados: {', '.join(stopped_svcs) or 'Nenhum'}\n"
-                f"Canais com Falha: {', '.join(outage_chs) or 'Nenhum'}\n"
-                f"Capture Sites: Pelotas (BRRS-PLT-DT01/DT02), Caxias do Sul (BRRS-CSL-DT01/DT02), São Paulo, Juiz de Fora.\n"
-                f"Gere 1 recomendação de PowerShell inovadora para manutenção preventiva/corretiva no formato:\n"
-                f"TITULO: <titulo curto>\n"
-                f"COMANDO: <comando powershell em 1 linha>\n"
-                f"MOTIVO: <motivo tecnico>\n"
-                f"ROTULO: <texto do botao>"
-            )
-            g_out = execute_gemini_prompt(p_text, module="remote_commands_ai", target="Fleet AI Suggestions", operator="suportesmme")
-            if g_out and "COMANDO:" in g_out:
-                lines = [l.strip() for l in g_out.splitlines() if l.strip()]
-                t_val = "Diagnóstico Avançado de Processos e I/O"
-                c_val = "Get-Process | Sort-Object CPU -Descending | Select-Object -First 8"
-                m_val = "Auditoria contextual gerada por IA baseada na saúde dos Capture Sites."
-                r_val = "Executar Ação IA"
-                for l in lines:
-                    if l.startswith("TITULO:"): t_val = l.replace("TITULO:", "").strip()
-                    elif l.startswith("COMANDO:"): c_val = l.replace("COMANDO:", "").strip()
-                    elif l.startswith("MOTIVO:"): m_val = l.replace("MOTIVO:", "").strip()
-                    elif l.startswith("ROTULO:"): r_val = l.replace("ROTULO:", "").strip()
+    now_ts = time.time()
+    if not refresh and _cached_gemini_recommendation and (now_ts - _cached_gemini_timestamp < 600):
+        gemini_recommendation = _cached_gemini_recommendation
+    else:
+        try:
+            from gemini_service import execute_gemini_prompt, get_ai_settings
+            ai_cfg = get_ai_settings()
+            if ai_cfg.get("enabled"):
+                stopped_svcs = [f"{s.get('praca')}: {s.get('nome_servico')}" for s in services if s.get("status_servico") in ["Parado", "Inexistente"]][:3]
+                outage_chs = [f"{c.get('cidade')}: {c.get('canal')}" for c in channels if c.get("has_outage")][:3]
+                
+                p_text = (
+                    f"Engenharia Broadcast MediaDNA/Kantar IBOPE (Recomendação de Comando Remoto):\n"
+                    f"Serviços Parados: {', '.join(stopped_svcs) or 'Nenhum'}\n"
+                    f"Canais com Falha: {', '.join(outage_chs) or 'Nenhum'}\n"
+                    f"Capture Sites: Pelotas (BRRS-PLT-DT01/DT02), Caxias do Sul (BRRS-CSL-DT01/DT02), São Paulo, Juiz de Fora.\n"
+                    f"Gere 1 recomendação de PowerShell inovadora para manutenção preventiva/corretiva no formato:\n"
+                    f"TITULO: <titulo curto>\n"
+                    f"COMANDO: <comando powershell em 1 linha>\n"
+                    f"MOTIVO: <motivo tecnico>\n"
+                    f"ROTULO: <texto do botao>"
+                )
+                g_out = execute_gemini_prompt(p_text, module="remote_commands_ai", target="Fleet AI Suggestions", operator="suportesmme")
+                if g_out and "COMANDO:" in g_out:
+                    lines = [l.strip() for l in g_out.splitlines() if l.strip()]
+                    t_val = "Diagnóstico Avançado de Processos e I/O"
+                    c_val = "Get-Process | Sort-Object CPU -Descending | Select-Object -First 8"
+                    m_val = "Auditoria contextual gerada por IA baseada na saúde dos Capture Sites."
+                    r_val = "Executar Ação IA"
+                    for l in lines:
+                        if l.startswith("TITULO:"): t_val = l.replace("TITULO:", "").strip()
+                        elif l.startswith("COMANDO:"): c_val = l.replace("COMANDO:", "").strip()
+                        elif l.startswith("MOTIVO:"): m_val = l.replace("MOTIVO:", "").strip()
+                        elif l.startswith("ROTULO:"): r_val = l.replace("ROTULO:", "").strip()
 
-                gemini_recommendation = {
-                    "id": f"ai_gemini_{int(time.time())}",
-                    "title": f"✨ [Gemini Pro] {t_val}",
-                    "category": "correcao" if "restart" in c_val.lower() or "stop" in c_val.lower() else "consulta",
-                    "shell_type": "powershell",
-                    "command": c_val,
-                    "reason": f"[Sintetizado por IA em tempo real]: {m_val}",
-                    "action_label": r_val,
-                    "risk_level": "medio" if "restart" in c_val.lower() else "baixo",
-                    "risk_warning": "Comando gerado dinamicamente para resolução de anomalias ativas na frota."
-                }
-    except Exception:
-        gemini_recommendation = None
+                    gemini_recommendation = {
+                        "id": f"ai_gemini_{int(time.time())}",
+                        "title": f"✨ [Gemini Pro] {t_val}",
+                        "category": "correcao" if "restart" in c_val.lower() or "stop" in c_val.lower() else "consulta",
+                        "shell_type": "powershell",
+                        "command": c_val,
+                        "reason": f"[Sintetizado por IA em tempo real]: {m_val}",
+                        "action_label": r_val,
+                        "risk_level": "medio" if "restart" in c_val.lower() else "baixo",
+                        "risk_warning": "Comando gerado dinamicamente para resolução de anomalias ativas na frota."
+                    }
+                    _cached_gemini_recommendation = gemini_recommendation
+                    _cached_gemini_timestamp = now_ts
+        except Exception:
+            gemini_recommendation = None
 
     has_stopped_services = any(s.get("status_servico") in ["Parado", "Inexistente"] or "crash-loop" in str(s.get("status_servico", "")).lower() for s in services)
     has_channel_outages = any(c.get("has_outage") or c.get("qualidade_sinal", 100) < 30 for c in channels)
