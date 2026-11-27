@@ -239,13 +239,11 @@ async function onSignalsPracaChanged() {
     }
 
     if (channels.length === 0) {
-        channels = [
-            { canal: "Rede Globo", qualidade_sinal: 0, has_outage: true, id_cs: 1 },
-            { canal: "SBT", qualidade_sinal: 85, has_outage: false, id_cs: 1 },
-            { canal: "Record TV", qualidade_sinal: 92, has_outage: false, id_cs: 1 },
-            { canal: "Band", qualidade_sinal: 78, has_outage: false, id_cs: 1 },
-            { canal: "Rede TV", qualidade_sinal: 88, has_outage: false, id_cs: 1 }
-        ];
+        canalSelect.innerHTML = "<option value=''>Nenhum canal sintonizado no nó</option>";
+        if (typeof updateSignalsKPIs === "function") {
+            updateSignalsKPIs({ avg_qualidade: null, avg_forca: null, stability_index_pct: null, lock_drops_count: null });
+        }
+        return;
     }
 
     const distinctCs = Array.from(new Set(channels.map(c => Number(c.id_cs || c.cs || 1)))).sort();

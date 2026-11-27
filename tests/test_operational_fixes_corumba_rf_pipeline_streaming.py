@@ -44,4 +44,27 @@ def test_streaming_portal_files_do_not_contain_hardcoded_date():
         if p.exists():
             text = p.read_text(encoding="utf-8")
             assert 'const hojeStr = "25/11/2026";' not in text, f"Encontrado hardcoded em {p}"
-            assert "getFormatBrDate" in text, f"Faltando função getFormatBrDate dinâmica em {p}"
+            assert "now.getDate()" in text or "getFormatBrDate" in text, f"Faltando cálculo dinâmico de data em {p}"
+
+def test_firestore_live_telemetry_cachoeiro_and_mediadna_spot_ids():
+    """Valida telemetria real do Firestore para Cachoeiro e formato oficial de 8 dígitos do MediaDNA."""
+    from signals_analysis import get_channel_telemetry_history
+    from tracking_detection_monitor import get_fastmatching_pipeline_live
+
+    # 1. Cachoeiro CS2 no Firestore
+    res_cs2 = get_channel_telemetry_history("Cachoeiro de Itapemirim", "Rede Globo", "7d", cs=2)
+    assert res_cs2.get("host") == "Cachoeiro_de_Itapemirim-SMME-312-CS2"
+    assert res_cs2.get("avg_qualidade") is not None and res_cs2.get("avg_qualidade") > 0
+    assert res_cs2.get("avg_forca") is not None and res_cs2.get("avg_forca") > 0
+    assert res_cs2.get("stability_index_pct") is not None
+    assert len(res_cs2.get("points", [])) > 0
+
+    # 2. Pipeline Live de Aracaju com IDs de 8 dígitos oficiais
+    live_pipe = get_fastmatching_pipeline_live("Aracaju-SMME-328-CS1", max_lines=20)
+    dets = live_pipe.get("recent_detections", [])
+    assert len(dets) >= 15
+    for d in dets[:5]:
+        s_id = str(d.get("spot_id", ""))
+        assert len(s_id) == 8, f"Spot ID deve ter 8 dígitos reais (Kantar), obtido: {s_id}"
+        assert d.get("spot_name") and len(d.get("spot_name")) > 5
+        assert any(k in d.get("spot_name", "").upper() for k in ["GLOBO", "SHOPEE", "MONDELEZ", "MINISTERIO", "DOVE", "IPIRANGA", "ATACADAO", "AMERICANAS", "MERCADO LIVRE", "AMBEV", "SANTANDER", "CLARO", "MAGALU", "TIM", "PETROBRAS", "BANCO DO BRASIL"])

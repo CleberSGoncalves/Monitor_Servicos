@@ -2560,14 +2560,24 @@ def get_markets_map_data(channels: list = None, services: list = None) -> List[D
     """
     if channels is None or len(channels) == 0:
         try:
-            from sharepoint_sync import get_cached_data
-            cached = get_cached_data()
-            channels = cached.get("channels", [])
-            if not services:
-                services = cached.get("services", [])
+            from gcp_sync import fetch_fleet_from_firestore
+            f_data = fetch_fleet_from_firestore()
+            if f_data and f_data.get("channels"):
+                channels = f_data.get("channels", [])
+                if not services:
+                    services = f_data.get("services", [])
         except Exception:
-            channels = channels or []
-            services = services or []
+            pass
+        if not channels:
+            try:
+                from sharepoint_sync import get_cached_data
+                cached = get_cached_data()
+                channels = cached.get("channels", [])
+                if not services:
+                    services = cached.get("services", [])
+            except Exception:
+                channels = channels or []
+                services = services or []
 
     # 1. Determina todas as praças únicas ativas na frota a partir de canais e serviços
     active_monitored_pracas_map: Dict[str, str] = {} # lower -> original_name
@@ -3099,10 +3109,16 @@ def diagnose_topology_aiming_tradeoff_with_ai(cidade: str, current_mast_m: float
     Utiliza IA Gemini (ou heurística técnica de RF caso offline) para gerar soluções práticas
     como antenas bidirecionais, dual-antenna combinada ou lóbulos largos de compromisso.
     """
-    from sharepoint_sync import get_cached_data
+    try:
+        from gcp_sync import fetch_fleet_from_firestore
+        cached = fetch_fleet_from_firestore()
+    except Exception:
+        cached = None
+    if not cached:
+        from sharepoint_sync import get_cached_data
+        cached = get_cached_data()
     from gemini_service import execute_gemini_prompt
     
-    cached = get_cached_data()
     chans = cached.get("channels", [])
     servs = cached.get("services", [])
     markets = get_markets_map_data(chans, servs)
