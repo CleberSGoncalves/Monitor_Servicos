@@ -259,16 +259,14 @@ function renderFmaLiveDashboard(data) {
     const perf = data.engine_performance || {};
     const allDetections = data.recent_detections || [];
     function _chMatch(detChannel, selectedName) {
-        if (selectedName === 'ALL') return true;
-        const dc = String(detChannel || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-        const sc = String(selectedName || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+        if (!selectedName || selectedName === 'ALL') return true;
+        const dc = String(detChannel || '').toUpperCase().trim();
+        const sc = String(selectedName || '').toUpperCase().trim();
         if (!dc || !sc) return false;
-        // Match direto ou um contém o outro (ex: GLOBO / REDESGLOBO / RG)
         if (dc === sc || dc.includes(sc) || sc.includes(dc)) return true;
-        // Match por primeiro token: "RECORD" vs "RECORDTV" -> "RECORD"
-        const dcToken = dc.split(/\d/)[0];
-        const scToken = sc.split(/\d/)[0];
-        if (dcToken && scToken && (dcToken.startsWith(scToken) || scToken.startsWith(dcToken))) return true;
+        const dcClean = dc.replace(/[^A-Z]/g, '');
+        const scClean = sc.replace(/[^A-Z]/g, '');
+        if (dcClean && scClean && (dcClean.includes(scClean) || scClean.includes(dcClean))) return true;
         return false;
     }
     const detections = (fmaLiveSelectedChannel === 'ALL')
@@ -461,9 +459,10 @@ function renderFmaLiveDashboard(data) {
                                     <td style="padding: 6px 8px; font-family: monospace; color: #cbd5e1; white-space: nowrap;">${escapeHtml(d.timestamp.split(' ')[1] || d.timestamp)}</td>
                                     <td style="padding: 6px 8px; font-weight: 700; color: #38bdf8;">${escapeHtml(d.channel)}</td>
                                     <td style="padding: 6px 8px;">
-                                        <div style="display: flex; align-items: center; gap: 6px;">
+                                        <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
                                             <span style="font-weight: 800; color: #38bdf8; font-family: monospace; font-size: 12px;">#${escapeHtml(d.spot_id)}</span>
                                             ${d.has_sgg_title ? '<span class="badge" style="background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.4); font-size: 9px; padding: 1px 4px;">SGG OFICIAL</span>' : ''}
+                                            ${d.advertiser ? `<span style="font-size: 10px; color: #facc15; font-weight: 700; background: rgba(250, 204, 21, 0.1); border: 1px solid rgba(250, 204, 21, 0.3); border-radius: 3px; padding: 0 4px;">${escapeHtml(d.advertiser)}</span>` : ''}
                                         </div>
                                         <div style="font-size: 11px; font-weight: 600; color: ${d.has_sgg_title ? '#f1f5f9' : '#94a3b8'}; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(d.spot_name)}">
                                             ${escapeHtml(d.spot_name)}
