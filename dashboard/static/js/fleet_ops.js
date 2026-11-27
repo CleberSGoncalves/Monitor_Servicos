@@ -1429,13 +1429,26 @@ async function openFleetUpdateProgressModal(host, serviceName, targetVersion = n
     if (!modal) return;
     modal.style.display = "flex";
 
-    // Preenche dados iniciais no cabeçalho
+    // Preenche dados iniciais no cabeçalho e reseta estados anteriores
+    const elPraca = document.getElementById("upProgPraca");
+    if (elPraca) elPraca.innerText = "Consultando...";
     const elHost = document.getElementById("upProgHost");
     if (elHost) elHost.innerText = host;
     const elSvc = document.getElementById("upProgService");
     if (elSvc) elSvc.innerText = currentUpdateProgressService;
+    const elInst = document.getElementById("upProgInstalled");
+    if (elInst) elInst.innerText = "--";
     const elDes = document.getElementById("upProgDesired");
     if (elDes && currentUpdateProgressTargetVersion) elDes.innerText = `v${currentUpdateProgressTargetVersion}`;
+
+    const pBar = document.getElementById("upProgressBar");
+    if (pBar) pBar.style.width = "0%";
+    const pctText = document.getElementById("upProgPercentText");
+    if (pctText) pctText.innerText = "0%";
+    const actEl = document.getElementById("upProgCurrentActivity");
+    if (actEl) actEl.innerHTML = '<i class="fas fa-spinner fa-spin" style="color: #38bdf8; font-size: 12px;"></i> <span>Conectando ao agente e consultando status no host...</span>';
+    const termBox = document.getElementById("upProgTerminalBox");
+    if (termBox) termBox.innerText = `[00:00] ⚡ Conectando ao host [${host}]...`;
 
     // Dispara cronômetro
     if (currentUpdateProgressTimerInterval) clearInterval(currentUpdateProgressTimerInterval);

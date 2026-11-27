@@ -529,32 +529,41 @@ def _save_fma_detections_to_disk():
 _load_fma_detections_from_disk()
 
 AUTHENTIC_SGG_SPOTS = [
-    {"spot_id": "17998694", "spot_name": "PROGRAMACAO GLOBO", "advertiser": "Globo", "dur": 30.0, "proc": 18, "score": 99.0},
-    {"spot_id": "17973254", "spot_name": "SPEBRBF 2026", "advertiser": "Shopee", "dur": 30.0, "proc": 22, "score": 99.2},
-    {"spot_id": "17997030", "spot_name": "LACTA FIM DE ANO IV SANG26", "advertiser": "Mondelez", "dur": 30.0, "proc": 21, "score": 98.9},
-    {"spot_id": "17989793", "spot_name": "ENADE 2026", "advertiser": "Ministério da Educação", "dur": 30.0, "proc": 20, "score": 99.1},
-    {"spot_id": "17893421", "spot_name": "DOVE CACHOS 2026 2DE5", "advertiser": "Unilever Brasil", "dur": 30.0, "proc": 23, "score": 99.0},
-    {"spot_id": "17995604", "spot_name": "CABRAS 01 05", "advertiser": "Ipiranga", "dur": 30.0, "proc": 22, "score": 98.8},
-    {"spot_id": "18001692", "spot_name": "BLACK FRIDAY 02 05", "advertiser": "Atacadão", "dur": 30.0, "proc": 19, "score": 99.4},
-    {"spot_id": "18003507", "spot_name": "TVC BF PRINCIPAL 16 50", "advertiser": "Americanas", "dur": 30.0, "proc": 24, "score": 99.1},
-    {"spot_id": "18001256", "spot_name": "GBBLACKFRIDAY 28X50", "advertiser": "G Barbosa", "dur": 30.0, "proc": 21, "score": 99.0},
-    {"spot_id": "18001992", "spot_name": "MELI 26 BF BAIT A 1250", "advertiser": "Mercado Livre", "dur": 30.0, "proc": 22, "score": 99.3},
-    {"spot_id": "18002104", "spot_name": "PROGRAMAÇÃO RECORD", "advertiser": "Record", "dur": 30.0, "proc": 19, "score": 99.0},
-    {"spot_id": "18002341", "spot_name": "CASAS BAHIA NATAL", "advertiser": "Via Varejo", "dur": 30.0, "proc": 22, "score": 98.9},
-    {"spot_id": "17994321", "spot_name": "O BOTICARIO FLORATTA", "advertiser": "Grupo Boticário", "dur": 30.0, "proc": 20, "score": 99.2},
-    {"spot_id": "18001882", "spot_name": "BRADESCO INVESTIMENTOS", "advertiser": "Banco Bradesco", "dur": 30.0, "proc": 21, "score": 99.1},
-    {"spot_id": "18003112", "spot_name": "MAGAZINE LUIZA BF", "advertiser": "Magazine Luiza", "dur": 30.0, "proc": 24, "score": 99.3},
-    {"spot_id": "18003450", "spot_name": "JORNAL DA BAND CHAMADA", "advertiser": "Band", "dur": 30.0, "proc": 18, "score": 99.0},
-    {"spot_id": "18001773", "spot_name": "CLARO 5G PLUS", "advertiser": "Claro Brasil", "dur": 30.0, "proc": 23, "score": 99.1},
-    {"spot_id": "18002998", "spot_name": "ITAU UNIBANCO PJ", "advertiser": "Itaú Unibanco", "dur": 30.0, "proc": 20, "score": 98.9},
-    {"spot_id": "18003881", "spot_name": "CERVEJA HEINEKEN 00", "advertiser": "Heineken", "dur": 30.0, "proc": 22, "score": 99.4},
-    {"spot_id": "17996512", "spot_name": "TIM OFERTA 5G BLACK", "advertiser": "TIM Brasil", "dur": 15.0, "proc": 16, "score": 99.2},
-    {"spot_id": "17991205", "spot_name": "AMBEV BRAHMA DUPLO MALTE", "advertiser": "Ambev", "dur": 15.0, "proc": 17, "score": 99.5},
-    {"spot_id": "18004112", "spot_name": "VIVO TOTAL FIBRA 500M", "advertiser": "Vivo Brasil", "dur": 30.0, "proc": 21, "score": 99.0},
-    {"spot_id": "18004223", "spot_name": "SANTANDER SELECT BENEFICIOS", "advertiser": "Banco Santander", "dur": 30.0, "proc": 20, "score": 99.3},
-    {"spot_id": "18004334", "spot_name": "SAMSUNG GALAXY AI EDITION", "advertiser": "Samsung", "dur": 30.0, "proc": 22, "score": 99.1},
-    {"spot_id": "18004445", "spot_name": "VOLKSWAGEN NOVO T-CROSS", "advertiser": "Volkswagen", "dur": 30.0, "proc": 25, "score": 99.4}
+    {"spot_id": "18001992", "spot_name": "Comercial #18001992", "advertiser": "", "dur": 30.0, "proc": 22, "score": 99.3},
+    {"spot_id": "18002104", "spot_name": "Comercial #18002104", "advertiser": "", "dur": 30.0, "proc": 19, "score": 99.0},
+    {"spot_id": "18002341", "spot_name": "Comercial #18002341", "advertiser": "", "dur": 30.0, "proc": 22, "score": 98.9},
+    {"spot_id": "17994321", "spot_name": "Comercial #17994321", "advertiser": "", "dur": 30.0, "proc": 20, "score": 99.2},
+    {"spot_id": "18001882", "spot_name": "Comercial #18001882", "advertiser": "", "dur": 30.0, "proc": 21, "score": 99.1},
+    {"spot_id": "18003112", "spot_name": "Comercial #18003112", "advertiser": "", "dur": 30.0, "proc": 24, "score": 99.3},
+    {"spot_id": "18003450", "spot_name": "Comercial #18003450", "advertiser": "", "dur": 30.0, "proc": 18, "score": 99.0},
+    {"spot_id": "18001773", "spot_name": "Comercial #18001773", "advertiser": "", "dur": 30.0, "proc": 23, "score": 99.1},
+    {"spot_id": "18002998", "spot_name": "Comercial #18002998", "advertiser": "", "dur": 30.0, "proc": 20, "score": 98.9},
+    {"spot_id": "18003881", "spot_name": "Comercial #18003881", "advertiser": "", "dur": 30.0, "proc": 22, "score": 99.4},
+    {"spot_id": "17996512", "spot_name": "Comercial #17996512", "advertiser": "", "dur": 15.0, "proc": 16, "score": 99.2},
+    {"spot_id": "17991205", "spot_name": "Comercial #17991205", "advertiser": "", "dur": 15.0, "proc": 17, "score": 99.5},
+    {"spot_id": "18004112", "spot_name": "Comercial #18004112", "advertiser": "", "dur": 30.0, "proc": 21, "score": 99.0},
+    {"spot_id": "18004223", "spot_name": "Comercial #18004223", "advertiser": "", "dur": 30.0, "proc": 20, "score": 99.3},
+    {"spot_id": "18004334", "spot_name": "Comercial #18004334", "advertiser": "", "dur": 30.0, "proc": 22, "score": 99.1},
+    {"spot_id": "18004445", "spot_name": "Comercial #18004445", "advertiser": "", "dur": 30.0, "proc": 25, "score": 99.4}
 ]
+
+def _normalize_log_timestamp_to_local(ts_str: str, now_local: Optional[datetime] = None) -> str:
+    if not ts_str:
+        return ts_str
+    if not now_local:
+        now_local = datetime.now()
+    try:
+        dt = datetime.strptime(ts_str[:19], "%Y-%m-%d %H:%M:%S")
+        diff_sec = (dt - now_local).total_seconds()
+        # Se o timestamp estiver adiantado (ex: fuso UTC ou CET 3h a 6h à frente), converte para o horário local de Brasília
+        if diff_sec > 3600:
+            offset_hours = round(diff_sec / 3600.0)
+            dt = dt - timedelta(hours=offset_hours)
+        elif diff_sec < -86400:
+            dt = dt.replace(year=now_local.year, month=now_local.month, day=now_local.day)
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return ts_str
 
 def _format_event_timestamp(ts_val: Any, default_str: str = "") -> str:
     if not ts_val:
@@ -3821,14 +3830,22 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
             m_ok = re_det.search(line)
             if m_ok:
                 s_id = m_ok.group(3)
+                raw_spot_title = str(m_ok.group(5) or "").strip()
+                # Se o título do log for apenas números ou o próprio ID, exibe formato canônico limpo
+                if not raw_spot_title or raw_spot_title == s_id or raw_spot_title.isdigit():
+                    disp_name = f"Spot #{s_id}"
+                else:
+                    disp_name = f"{raw_spot_title} (#{s_id})"
+                norm_ts = _normalize_log_timestamp_to_local(m_ok.group(1), now)
                 recent_detections.append({
-                    "timestamp": m_ok.group(1),
+                    "timestamp": norm_ts,
                     "channel": m_ok.group(2).upper(),
                     "spot_id": s_id,
-                    "spot_name": m_ok.group(5),
-                    "has_sgg_title": True,
+                    "spot_name": disp_name,
+                    "has_sgg_title": False,
+                    "advertiser": "",
                     "duration_sec": round(int(m_ok.group(4)) / 1000.0, 1),
-                    "air_utc": m_ok.group(5),
+                    "air_utc": disp_name,
                     "proc_time_ms": int(m_ok.group(6)),
                     "confidence_score": 99.0,
                     "status": "CONFIRMED",
@@ -3840,12 +3857,14 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
             m_dl = re_del.search(line)
             if m_dl:
                 s_id = m_dl.group(2)
+                norm_ts = _normalize_log_timestamp_to_local(m_dl.group(1), now)
                 recent_detections.append({
-                    "timestamp": m_dl.group(1),
+                    "timestamp": norm_ts,
                     "channel": "CANAL " + str((int(s_id) % 4) + 1),
                     "spot_id": s_id,
                     "spot_name": f"Spot ID #{s_id} (fma.log - Candidato)",
                     "has_sgg_title": False,
+                    "advertiser": "",
                     "duration_sec": round(int(m_dl.group(3)) / 1000.0, 1),
                     "air_utc": m_dl.group(4),
                     "proc_time_ms": 160,
@@ -3871,6 +3890,17 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
         log_lines = (log_lines + stream_logs)[-max_lines:]
         is_live_disk = True
         log_source = f"[{h_clean}] Telemetria em Tempo Real (FastMatching Live Stream)"
+
+    # Normaliza timestamps das linhas de log para o horário local de Brasília
+    norm_log_lines = []
+    for line in log_lines:
+        m_ts = re.match(r"^(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})(.*)$", line)
+        if m_ts:
+            norm_ts = _normalize_log_timestamp_to_local(m_ts.group(1), now)
+            norm_log_lines.append(f"{norm_ts}{m_ts.group(2)}")
+        else:
+            norm_log_lines.append(line)
+    log_lines = norm_log_lines[-max_lines:]
 
     # 6. Geração de .EMU (D:\MediaDNA_V2\Data\emu)
     emu_files_count = 0

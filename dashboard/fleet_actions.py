@@ -481,10 +481,11 @@ def build_service_raw_script(service_name: str, target_version: str, migrate_to_
     target_v = str(target_version or "2.0.0.2").strip().lstrip("vV")
 
     # 1. Atria Capture (DTVCapture64 / DigitalTVCapture)
+    # REGRA ABSOLUTA DE ENGENHARIA: Atualizar Atria Capture NUNCA deve alterar a stack de detecção,
+    # NUNCA desativar FastMatching ou FileCleaner e NUNCA alterar Multiplexes.xml.
     if "atria" in s_lower or "dtvcapture" in s_lower:
         dest_d = r"D:\MediaDNA_V2\Applications\DTVCapture64"
         dest_c = r"C:\DTV\DTVCapture"
-        mig_code = build_fastmatching_cleaner_migration_snippet(dest_d) if migrate_to_fastmatching else build_legacy_stack_migration_snippet(dest_d)
         return (
             "$ErrorActionPreference = 'Continue';\n"
             "$ProgressPreference = 'SilentlyContinue';\n"
@@ -497,21 +498,15 @@ def build_service_raw_script(service_name: str, target_version: str, migrate_to_
             "# 1. Criacao defensiva de Junction C:\\DTV\\DTVCapture -> D:\\MediaDNA_V2\\Applications\\DTVCapture64\n"
             "if (-not (Test-Path 'C:\\DTV')) { New-Item -ItemType Directory -Path 'C:\\DTV' -Force | Out-Null };\n"
             "if (-not (Test-Path $defaultDir)) { try { New-Item -ItemType Junction -Path $defaultDir -Target $targetDir -Force | Out-Null } catch {} };\n"
-            "# 2. Backup previo das configuracoes locais da praca (AppConfig.xml e FastMatching config.json)\n"
+            "# 2. Backup previo das configuracoes locais da praca (AppConfig.xml)\n"
             "$cfgBackup = Join-Path $env:TEMP 'AtriaConfigBackup';\n"
             "if (-not (Test-Path $cfgBackup)) { New-Item -ItemType Directory -Force -Path $cfgBackup | Out-Null };\n"
             "$existingCfg = @(\"$targetDir\\Config\\AppConfig.xml\", \"$defaultDir\\Config\\AppConfig.xml\") | Where-Object { Test-Path $_ } | Select-Object -First 1;\n"
             "if ($existingCfg) { Copy-Item -Path (Split-Path $existingCfg -Parent) -Destination $cfgBackup -Recurse -Force -ErrorAction SilentlyContinue };\n"
-            "$fmaCfg = @(\"$targetDir\\FastMatchingSvc\\config.json\", \"$targetDir\\FastMachingSvc\\config.json\") | Where-Object { Test-Path $_ } | Select-Object -First 1;\n"
-            "if ($fmaCfg) { Copy-Item -Path $fmaCfg -Destination $cfgBackup -Force -ErrorAction SilentlyContinue };\n"
-            "# 3. Encerramento seguro de processos e servicos associados\n"
-            "Stop-Service -Name FastMatchingSvc, FastMachingSvc -Force -ErrorAction SilentlyContinue;\n"
-            "cmd.exe /c \"taskkill /f /t /im DigitalTVCapture.exe /im DigitalTVReceiver.exe /im AtriaCapture.exe /im DTVCapture64.exe /im FastMatchingSvc.exe >nul 2>&1\";\n"
+            "# 3. Encerramento seguro estritamente das interfaces graficas do Atria (NUNCA toca em FastMatching ou FileCleaner!)\n"
+            "cmd.exe /c \"taskkill /f /t /im DigitalTVCapture.exe /im DigitalTVReceiver.exe /im AtriaCapture.exe /im DTVCapture64.exe >nul 2>&1\";\n"
             "Start-Sleep -Seconds 1;\n"
-            "# 4. Desativacao profilatica do DNA.DetectionSVC legado para evitar lock de arquivos EMU e deteccoes duplicadas\n"
-            "Stop-Service -Name DNA.DetectionSVC -Force -ErrorAction SilentlyContinue;\n"
-            "Set-Service -Name DNA.DetectionSVC -StartupType Manual -ErrorAction SilentlyContinue;\n"
-            "# 5. Download direto do pacote binario oficial Atria Capture 2.0.0.2 do Azure Blob\n"
+            "# 4. Download direto do pacote binario oficial Atria Capture 2.0.0.2 do Azure Blob\n"
             "$zipUrl = 'https://stgengineeringreleases.blob.core.windows.net/atriacapture/v2.0.0.0_x64_AVX2/AtriaCapture_v2002_x64.zip';\n"
             "$zipFile = Join-Path $env:TEMP 'AtriaCapture_v2002_x64.zip';\n"
             "$stgUnzip = Join-Path $env:TEMP 'AtriaCapture_v2002_x64_unzip';\n"
@@ -529,38 +524,25 @@ def build_service_raw_script(service_name: str, target_version: str, migrate_to_
             "if (Test-Path $stgUnzip) { Remove-Item $stgUnzip -Recurse -Force -ErrorAction SilentlyContinue };\n"
             "New-Item -ItemType Directory -Force -Path $stgUnzip | Out-Null;\n"
             "Expand-Archive -Path $zipFile -DestinationPath $stgUnzip -Force;\n"
-            "# 6. Instalacao do MSI v2.0.0.2 silenciosa com TARGETDIR no disco D:\n"
+            "# 5. Extracao direta de arquivos e instalacao MSI silenciosa\n"
             "$msi = if (Test-Path \"$stgUnzip\\DTVCaptureInstaller_x64.msi\") { \"$stgUnzip\\DTVCaptureInstaller_x64.msi\" } elseif (Test-Path \"$stgUnzip\\setup\\DTVCaptureInstaller_x64.msi\") { \"$stgUnzip\\setup\\DTVCaptureInstaller_x64.msi\" } else { $null };\n"
-            "if ($msi) { Start-Process 'msiexec.exe' -ArgumentList \"/i `\"$msi`\" TARGETDIR=`\"$targetDir`\" INSTALLDIR=`\"$targetDir`\" /qn /norestart\" -Wait };\n"
-            "# 7. Garantia Anti-Lock: matar qualquer processo antes de sincronizar arquivos\n"
+            "if ($msi) { Start-Process 'msiexec.exe' -ArgumentList \"/i `\"$msi`\" TARGETDIR=`\"$targetDir`\" INSTALLDIR=`\"$targetDir`\" /qn /norestart\" -Wait -ErrorAction SilentlyContinue };\n"
+            "# 6. Garantia Anti-Lock: copiar arquivos binarios diretamente para targetDir\n"
             "cmd.exe /c \"taskkill /f /t /im DigitalTVCapture.exe /im DigitalTVReceiver.exe /im AtriaCapture.exe >nul 2>&1\";\n"
-            "Start-Sleep -Seconds 2;\n"
-            "# Copia direta do payload descompactado para targetDir\n"
+            "Start-Sleep -Seconds 1;\n"
             "if (Test-Path $stgUnzip) {\n"
             "    Get-ChildItem -Path $stgUnzip -File | ForEach-Object { Copy-Item -Path $_.FullName -Destination $targetDir -Force -ErrorAction SilentlyContinue };\n"
+            "    if (Test-Path \"$stgUnzip\\bin\") { Get-ChildItem -Path \"$stgUnzip\\bin\" -File | ForEach-Object { Copy-Item -Path $_.FullName -Destination $targetDir -Force -ErrorAction SilentlyContinue } };\n"
             "};\n"
-            "# 8. Expurgacao obrigatoria de bcrypt.dll incompativel (previne Erro 1053 / 0xc0e90002 no FastMatchingSvc)\n"
+            "# 7. Expurgacao obrigatoria de bcrypt.dll incompativel da pasta local\n"
             "Get-ChildItem -Path @($targetDir, $defaultDir) -Recurse -Filter 'bcrypt.dll' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue;\n"
-            "# 9. Blindagem de binPath do FastMatchingSvc no disco D:\n"
-            "$fmaCandidates = @(\"$targetDir\\FastMatchingSvc\\FastMatchingSvc.exe\", \"$targetDir\\FastMachingSvc\\FastMatchingSvc.exe\");\n"
-            "$fmaExe = $fmaCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1;\n"
-            "if ($fmaExe) {\n"
-            "    cmd.exe /c \"sc.exe config FastMatchingSvc binPath= `\"$fmaExe`\" >nul 2>&1\";\n"
-            "};\n"
-            "# 10. Restauracao transparente da configuracao original dos multiplexes e FastMatching\n"
+            "# 8. Restauracao transparente da configuracao original dos multiplexes e AppConfig\n"
             "if (Test-Path \"$cfgBackup\\Config\\AppConfig.xml\") {\n"
             "    Copy-Item -Path \"$cfgBackup\\Config\\*\" -Destination \"$targetDir\\Config\" -Recurse -Force -ErrorAction SilentlyContinue;\n"
             "};\n"
-            "if (Test-Path \"$cfgBackup\\config.json\") {\n"
-            "    $fmaDir = if (Test-Path \"$targetDir\\FastMatchingSvc\") { \"$targetDir\\FastMatchingSvc\" } else { \"$targetDir\\FastMachingSvc\" };\n"
-            "    Copy-Item -Path \"$cfgBackup\\config.json\" -Destination $fmaDir -Force -ErrorAction SilentlyContinue;\n"
-            "};\n"
-            "# 10.5 Migracao de Stack e Blindagem do Perfil EMU (EMU MediaDNA 1min vs EMU MDNA, validado em WMProfiles)\n"
-            f"{mig_code}"
-            + ("if ($emuProfileOk) { Start-Service -Name FastMatchingSvc -ErrorAction SilentlyContinue };\n" if migrate_to_fastmatching else "# FastMatchingSvc mantido desativado (operacao legada)\n") +
-            "# 12. Liberacao da trava do agente local\n"
+            "# 9. Liberacao da trava do agente local\n"
             "Remove-Item -Path $lockFile -Force -ErrorAction SilentlyContinue;\n"
-            "# 13. Reabertura do Atria Capture no ambiente interativo\n"
+            "# 10. Reabertura do Atria Capture no ambiente interativo\n"
             "$exe = if (Test-Path (Join-Path $targetDir 'DigitalTVCapture.exe')) { Join-Path $targetDir 'DigitalTVCapture.exe' } elseif (Test-Path (Join-Path $defaultDir 'DigitalTVCapture.exe')) { Join-Path $defaultDir 'DigitalTVCapture.exe' } else { $null };\n"
             "if ($exe) {\n"
             "    schtasks /delete /tn 'Start_Atria_Interactive' /f >$null 2>&1;\n"
@@ -841,14 +823,7 @@ def get_host_service_action_status(host: str, service_name: str, target_version:
     from gcp_sync import merge_firestore_hosts_into_cache
     from version_governance import get_desired_versions, _parse_ver_tuple, _is_version_up_to_date
 
-    # Força a leitura imediata e fresca do Google Cloud Firestore para o modal de acompanhamento ao vivo
-    try:
-        c_temp = get_cached_data()
-        merge_firestore_hosts_into_cache(c_temp.get("services", []), c_temp.get("channels", []), force=True)
-    except Exception:
-        pass
-
-    sanitize_and_recalculate_cache()
+    # Lê diretamente do cache operacional (sincronizado continuamente em background pelo gcp_sync)
     c_data = get_cached_data()
     services = c_data.get("services", [])
     desired_versions_map = get_desired_versions()
@@ -922,17 +897,11 @@ def get_host_service_action_status(host: str, service_name: str, target_version:
             if u_ts:
                 host_ts_candidates.append(u_ts)
 
-    try:
-        from gcp_sync import _fetch_firestore_hosts_rest
-        docs = _fetch_firestore_hosts_rest()
-        for doc_k, doc_v in docs.items():
-            if doc_k.strip().lower() == h_clean or h_clean in doc_k.strip().lower() or doc_k.strip().lower() in h_clean:
-                for f_field in ["channels_updated_at", "last_heartbeat", "updated_at"]:
-                    val = str(doc_v.get(f_field) or "").strip()
-                    if val:
-                        host_ts_candidates.append(val)
-    except Exception:
-        pass
+    for c in c_data.get("channels", []):
+        if str(c.get("hostname", "")).strip().lower() == h_clean:
+            c_ts = str(c.get("last_updated") or c.get("ultima_atualizacao") or "").strip()
+            if c_ts:
+                host_ts_candidates.append(c_ts)
 
     ref_ts = max(host_ts_candidates) if host_ts_candidates else (agent_up_str or last_up_str)
     if ref_ts:
@@ -1104,46 +1073,43 @@ def get_host_service_action_status(host: str, service_name: str, target_version:
             step3_hint = "Download direto via repositório homologado"
             step3_desc = f"Baixando binários {desired_ver} e dependências oficiais no host."
 
-        # Consulta status em tempo real via Google Cloud Firestore
+        # Avalia comando já consultado do Google Cloud Firestore
         try:
-            from gcp_sync import get_latest_command_for_host, is_firestore_available
-            if is_firestore_available():
-                gcp_cmd = get_latest_command_for_host(host, service_name)
-                if gcp_cmd:
-                    c_st = str(gcp_cmd.get("status", "")).lower()
-                    if c_st == "completed":
-                        current_step_num = 5
-                        status_badge = f"Concluído via Google Cloud (v{desired_ver})"
-                        badge_color = "green"
-                        out_snip = gcp_cmd.get("output", "")[:220].strip()
-                        user_message = f"🚀 Comando de atualização finalizado com sucesso no host [{host}] via Google Cloud Firestore! Saída: {out_snip or 'Sucesso sem erros.'}"
-                        step2_status = "completed"
-                        step3_status = "completed"
-                        is_updated = True
-                        installed_ver = desired_ver
-                        acao_solicitada = "Nenhuma"
-                        status_atualizacao = "Atualizado"
-                        # Sincroniza cache local e objeto de serviço
-                        if target_srv:
-                            target_srv["versao_instalada"] = desired_ver
-                            target_srv["status_atualizacao"] = "Atualizado"
-                            target_srv["acao_solicitada"] = "Nenhuma"
-                    elif c_st == "processing":
-                        current_step_num = 4
-                        status_badge = f"Aplicando Atualização no Host"
-                        badge_color = "blue"
-                        user_message = f"⚡ Agente local executando silenciosamente a aplicação de {service_name} v{desired_ver} em [{host}] (Google Cloud em tempo real)."
-                        step2_status = "completed"
-                        step3_status = "completed"
-                    elif c_st == "failed":
-                        current_step_num = 3
-                        status_badge = "Falha no Host (Timeout/Erro)"
-                        badge_color = "red"
-                        out_snip = gcp_cmd.get("output", "")[:350].strip()
-                        user_message = f"❌ <strong>Falha na Execução no Host [{host}]:</strong> {out_snip or 'Processo interrompido.'}<br>O agente local encerrou a execução para proteção do Capture Site. O script foi otimizado com cache local e download resumível via curl. Clique no botão <em>Executar Novamente</em> abaixo para retomar de onde parou."
-                        step2_status = "completed"
-                        step3_status = "failed"
-                        is_failed = True
+            if gcp_cmd:
+                c_st = str(gcp_cmd.get("status", "")).lower()
+                if c_st == "completed":
+                    current_step_num = 5
+                    status_badge = f"Concluído via Google Cloud (v{desired_ver})"
+                    badge_color = "green"
+                    out_snip = gcp_cmd.get("output", "")[:220].strip()
+                    user_message = f"🚀 Comando de atualização finalizado com sucesso no host [{host}] via Google Cloud Firestore! Saída: {out_snip or 'Sucesso sem erros.'}"
+                    step2_status = "completed"
+                    step3_status = "completed"
+                    is_updated = True
+                    installed_ver = desired_ver
+                    acao_solicitada = "Nenhuma"
+                    status_atualizacao = "Atualizado"
+                    # Sincroniza cache local e objeto de serviço
+                    if target_srv:
+                        target_srv["versao_instalada"] = desired_ver
+                        target_srv["status_atualizacao"] = "Atualizado"
+                        target_srv["acao_solicitada"] = "Nenhuma"
+                elif c_st == "processing":
+                    current_step_num = 4
+                    status_badge = f"Aplicando Atualização no Host"
+                    badge_color = "blue"
+                    user_message = f"⚡ Agente local executando silenciosamente a aplicação de {service_name} v{desired_ver} em [{host}] (Google Cloud em tempo real)."
+                    step2_status = "completed"
+                    step3_status = "completed"
+                elif c_st == "failed":
+                    current_step_num = 3
+                    status_badge = "Falha no Host (Timeout/Erro)"
+                    badge_color = "red"
+                    out_snip = gcp_cmd.get("output", "")[:350].strip()
+                    user_message = f"❌ <strong>Falha na Execução no Host [{host}]:</strong> {out_snip or 'Processo interrompido.'}<br>O agente local encerrou a execução para proteção do Capture Site. O script foi otimizado com cache local e download resumível via curl. Clique no botão <em>Executar Novamente</em> abaixo para retomar de onde parou."
+                    step2_status = "completed"
+                    step3_status = "failed"
+                    is_failed = True
         except Exception:
             pass
 

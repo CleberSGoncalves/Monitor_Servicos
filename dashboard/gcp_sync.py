@@ -907,13 +907,14 @@ def get_latest_command_for_host(hostname: str, service_name: str = "") -> Option
                 hosts_variants.add(h_str.replace("-", "_"))
 
         found_cmds: List[Dict[str, Any]] = []
+        v_list = list(hosts_variants)[:30]
 
-        # 1. Busca por hostname direto e raw_alias (sem order_by no Firestore para não exigir composite index)
-        for h_q in hosts_variants:
+        # 1. Busca otimizada usando operador 'in' do Firestore (1 única requisição com até 30 variantes)
+        if v_list:
             try:
                 docs = (
                     client.collection("fleet_commands")
-                    .where(filter=FieldFilter("hostname", "==", h_q))
+                    .where(filter=FieldFilter("hostname", "in", v_list))
                     .stream()
                 )
                 for d in docs:
@@ -924,12 +925,11 @@ def get_latest_command_for_host(hostname: str, service_name: str = "") -> Option
             except Exception:
                 pass
 
-        # 2. Busca também por canonical_hostname
-        for h_q in hosts_variants:
+            # 2. Busca otimizada por canonical_hostname também com operador 'in'
             try:
                 docs_canon = (
                     client.collection("fleet_commands")
-                    .where(filter=FieldFilter("canonical_hostname", "==", h_q))
+                    .where(filter=FieldFilter("canonical_hostname", "in", v_list))
                     .stream()
                 )
                 for d in docs_canon:

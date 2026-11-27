@@ -398,120 +398,16 @@ namespace WinServiceFleetAgent.Core
             string dataMaintLock3 = @"C:\MediaDNA_V2\data\maintenance.lock";
             bool isLocalMaintenance = File.Exists(tempMaintLock) || File.Exists(atriaLockFile) || File.Exists(dataMaintLock1) || File.Exists(dataMaintLock2) || File.Exists(dataMaintLock3);
 
-            // Avaliação de AutoRestart para serviços detectados como Parado
+            // Passo 2: Inventário e Telemetria (PROIBIÇÃO ABSOLUTA DE AUTO-RESTART NO AGENTE)
+            // O agente é estritamente observacional e passivo por diretriz de engenharia.
+            // Nenhum serviço deve ser iniciado, reiniciado, parado ou alterado autonomamente.
             foreach (var srvInfo in serviceStatuses)
             {
                 var srv = srvInfo.Def;
                 string statusServico = srvInfo.Status;
-                bool isStandaloneApp = srvInfo.IsStandalone || srv.ServiceName.Contains("Atria", StringComparison.OrdinalIgnoreCase);
-
                 if (statusServico.Equals("Parado", StringComparison.OrdinalIgnoreCase))
                 {
-                    string autoRestartSetting = srv.ServiceName.Equals("FastMatchingSvc", StringComparison.OrdinalIgnoreCase) ? "Não" : "Sim";
-                    if (batchAutoRestartMap.TryGetValue(srv.ServiceName, out var ar)) autoRestartSetting = ar;
-                    else if (cleanAutoRestartMap.TryGetValue(srv.ServiceName, out var car)) autoRestartSetting = car;
-
-                    // REGRA DE OURO 1: ATRIA Capture é aplicação interativa de desktop (GUI). NUNCA auto-reiniciar ATRIA no Auto-Healing!
-                    if (isStandaloneApp)
-                    {
-                        autoRestartSetting = "Não";
-                    }
-
-                    // REGRA DE OURO 2: Se ATRIA Capture está no Capture Site e não está em execução (técnicos fecharam para manutenção ou teste),
-                    // É ESTRITAMENTE PROIBIDO ativar Auto-Healing para QUALQUER serviço ou aplicação no Capture Site!
-                    if (hasAtriaConfigured && !isAtriaRunning)
-                    {
-                        autoRestartSetting = "Não";
-                    }
-
-                    // REGRA DE OURO 3: Se houver trava de manutenção local ativa no host, nenhum serviço é auto-reiniciado
-                    if (isLocalMaintenance)
-                    {
-                        autoRestartSetting = "Não";
-                    }
-
-                    // Exclusão mútua estrita: nunca iniciar DetectionSVC/TrackingSVC se FastMatching estiver ativo ou em CS02/CS03
-                    if ((srv.ServiceName.Contains("DetectionSVC", StringComparison.OrdinalIgnoreCase) ||
-                         srv.ServiceName.Contains("TrackingSVC", StringComparison.OrdinalIgnoreCase)) &&
-                        (isFastMatchingRunning || metadata.CS >= 2))
-                    {
-                        autoRestartSetting = "Não";
-                    }
-                    else if (srv.ServiceName.Contains("FastMatching", StringComparison.OrdinalIgnoreCase) &&
-                             (isDetectionRunning || metadata.CS >= 2))
-                    {
-                        autoRestartSetting = "Não";
-                    }
-                    else if (srv.ServiceName.Contains("MediaRecorder", StringComparison.OrdinalIgnoreCase) &&
-                             (isAtriaRunning || metadata.CS >= 2))
-                    {
-                        autoRestartSetting = "Não";
-                    }
-
-                    bool isAutoRestartEnabled = autoRestartSetting.Equals("Sim", StringComparison.OrdinalIgnoreCase) ||
-                                                autoRestartSetting.Equals("True", StringComparison.OrdinalIgnoreCase);
-
-                    if (isAutoRestartEnabled)
-                    {
-                        // Verificação de Flapping / Prevenção de Crash-Loop (Item 1)
-                        if (!_serviceRestartHistory.TryGetValue(srv.ServiceName, out var restartList))
-                        {
-                            restartList = new List<DateTime>();
-                            _serviceRestartHistory[srv.ServiceName] = restartList;
-                        }
-                        restartList.RemoveAll(t => (DateTime.UtcNow - t).TotalMinutes > 15);
-
-                        if (restartList.Count >= 3)
-                        {
-                            FileLogger.Log($"[FleetOrchestrator] 🚨 CRASH-LOOP DETECTADO para '{srv.ServiceName}'. O serviço reiniciou {restartList.Count} vezes nos últimos 15 min. AutoRestart pausado para proteger o host!", writeToEventLog: true, eventId: 3001);
-                        }
-                        else
-                        {
-                            FileLogger.Log($"[FleetOrchestrator] ⚠️ {(isStandaloneApp ? "Aplicação" : "Serviço")} '{srv.ServiceName}' detectado como PARADO. AutoRestart='Sim'. Executando auto-recuperação (Tentativa {restartList.Count + 1}/3)...");
-                            try
-                            {
-                                bool restarted = false;
-                                if (isStandaloneApp)
-                                {
-                                    // Standalone apps não são auto-iniciados por design
-                                    restarted = false;
-                                }
-                                else
-                                {
-                                    restarted = WinController.StartService(srv.ServiceName);
-                                }
-
-                                if (restarted)
-                                {
-                                    restartList.Add(DateTime.UtcNow);
-                                    FileLogger.Log($"[FleetOrchestrator] 🩹 AutoRestart ativado: '{srv.ServiceName}' reiniciado com sucesso!");
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                FileLogger.LogError($"[FleetOrchestrator] Falha no AutoRestart para '{srv.ServiceName}'", ex);
-                            }
-                        }
-                    }
-                    else
-                    {
-                        if (isStandaloneApp)
-                        {
-                            FileLogger.Log($"[FleetOrchestrator] ℹ️ ATRIA Capture está PARADO. AutoRestart desativado permanentemente por design de engenharia (manutenção/sessão interativa manual).");
-                        }
-                        else if (hasAtriaConfigured && !isAtriaRunning)
-                        {
-                            FileLogger.Log($"[FleetOrchestrator] ⏸️ Auto-Healing suspenso para '{srv.ServiceName}': ATRIA Capture está FECHADO no Capture Site (técnicos em manutenção/teste). Nenhum serviço será reiniciado.");
-                        }
-                        else if (isLocalMaintenance)
-                        {
-                            FileLogger.Log($"[FleetOrchestrator] ⏸️ Auto-Healing suspenso para '{srv.ServiceName}': Host em manutenção local detectado.");
-                        }
-                        else
-                        {
-                            FileLogger.Log($"[FleetOrchestrator] ℹ️ '{srv.ServiceName}' está PARADO, mas AutoRestart está configurado como '{autoRestartSetting}'. Nenhuma tentativa de inicialização necessária.");
-                        }
-                    }
+                    FileLogger.Log($"[FleetOrchestrator] ℹ️ Serviço/Aplicação '{srv.ServiceName}' detectado como PARADO. AutoRestart desativado permanentemente (observacional puro).");
                 }
             }
 
