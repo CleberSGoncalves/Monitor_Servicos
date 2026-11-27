@@ -1672,6 +1672,50 @@ async def get_fma_live_endpoint(
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
 
+@app.post("/api/detection/fma-live/{hostname}/fetch-real")
+@app.post("/api/fleet/detection/fma-live/{hostname}/fetch-real")
+async def post_fetch_real_fma_log(hostname: str, user: dict = Depends(get_current_user)):
+    """Dispara leitura read-only do fma.log real no Capture Site sob clique explícito do operador."""
+    import asyncio
+    try:
+        from remote_commands import dispatch_remote_command, get_execution_details
+        from tracking_detection_monitor import get_fastmatching_pipeline_live, _REMOTE_FMA_LOG_CACHE
+    except ImportError:
+        from tracking_detection_monitor import get_fastmatching_pipeline_live
+        _REMOTE_FMA_LOG_CACHE = None
+
+    try:
+        from remote_commands import dispatch_remote_command, get_execution_details
+        ps_cmd = (
+            "$paths = @('D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMatchingSvc\\fma.log',"
+            "'D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMachingSvc\\fma.log',"
+            "'C:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMatchingSvc\\fma.log');"
+            "$p = $paths | Where-Object { Test-Path $_ } | Select-Object -First 1;"
+            "if ($p) { Get-Content $p -Tail 200 -Encoding UTF8 } else { Write-Output 'FMA_LOG_NOT_FOUND' }"
+        )
+        res = dispatch_remote_command(
+            hostname=hostname,
+            command_text=ps_cmd,
+            operator=user.get("username", "operator"),
+            description="Leitura read-only fma.log (Pipeline Live)"
+        )
+        exec_id = res.get("execution_id")
+        if exec_id:
+            for _ in range(12):
+                await asyncio.sleep(1.0)
+                det = get_execution_details(exec_id)
+                if det and det.get("status") in ("concluido", "sucesso", "erro", "falha"):
+                    out = det.get("output") or ""
+                    if out and "FMA_LOG_NOT_FOUND" not in out:
+                        lines = [l.strip() for l in out.splitlines() if l.strip()]
+                        from tracking_detection_monitor import set_remote_fma_log_cache
+                        set_remote_fma_log_cache(hostname, lines)
+                    break
+        return get_fastmatching_pipeline_live(hostname, max_lines=150)
+    except Exception as e:
+        logger.error(f"[DetectionLiveFetch] Erro ao buscar fma.log em {hostname}: {e}", exc_info=True)
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
 @app.post("/api/detection/fma-live/ai-diagnosis")
 @app.post("/api/fleet/detection/fma-live/ai-diagnosis")
 async def post_fma_live_ai_diagnosis(

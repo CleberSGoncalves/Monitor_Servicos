@@ -500,6 +500,12 @@ _FASTMATCHING_FLEET_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
 # Nunca é limpo entre requests — acumula detecções reais e exibe as últimas 15 ao abrir o modal
 _FMA_DETECTIONS_HISTORY: Dict[str, list] = {}
 _FMA_HISTORY_FILE = Path(__file__).resolve().parent / "data" / "fma_live_history.json"
+_REMOTE_FMA_LOG_CACHE: Dict[str, List[str]] = {}
+
+def set_remote_fma_log_cache(hostname: str, lines: List[str]):
+    h_clean = str(hostname or "").strip().upper()
+    if h_clean and lines:
+        _REMOTE_FMA_LOG_CACHE[h_clean] = lines[-200:]
 
 def _load_fma_detections_from_disk():
     global _FMA_DETECTIONS_HISTORY
@@ -3644,73 +3650,50 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
         "status_color": "green" if is_synchronized else ("yellow" if (is_loading or is_ram_partial) else "red")
     }
 
-    # 5. Detecções Automáticas Recentes (Apenas a partir de arquivo físico real)
-    # Catálogo de Comerciais Autênticos SGG / MediaDNA (Origens Oficiais de 8 Dígitos)
-    # Extraídos diretamente da base de Detecções de Áudio (Tracking / DetalhesGravacoes.aspx)
-    catalog_spot_names = {
-        "17998694": "GLOBO - PROGRAMACAO GLOBO",
-        "17998559": "GLOBO - PROGRAMACAO GLOBO (CHAMADA)",
-        "17973254": "SHOPEE - SPEBRBF 2026",
-        "17997030": "MONDELEZ - LACTA FIM DE ANO IV SANG26",
-        "17989793": "MINISTERIO DA EDUCACAO - ENADE 2026",
-        "17893421": "UNILEVER BRASIL - DOVE CACHOS 2026 2DE5",
-        "17995604": "IPIRANGA - CABRAS 01 05",
-        "18001692": "ATACADAO - BLACK FRIDAY 02 05",
-        "18003507": "AMERICANAS - TVC BF PRINCIPAL 16 50",
-        "18001256": "G BARBOSA - GBBLACKFRIDAY 28X50",
-        "18003527": "GLOBO - PROGRAMACAO GLOBO INSTITUCIONAL",
-        "17689368": "GLOBO - GLOBO 17689368",
-        "18001992": "MERCADO LIVRE - MELI 26 BF BAIT A 1250",
-        "18002144": "MAGALU - LIQUIDA BLACK ANTECIPADA 30S",
-        "17988310": "SANTANDER - CONTA SELECT VANTAGENS 30S",
-        "17991205": "AMBEV - BRAHMA ZERO DUPLO MALTE 15S",
-        "17994320": "CLARO BRASIL - 5G MAIS RAPIDO BRASIL 30S",
-        "17996512": "TIM BRASIL - OFERTA BLACK SMARTPHONES 30S",
-        "18002890": "PETROBRAS - TRANSCENDENDO ENERGIA 30S",
-        "18003115": "BANCO DO BRASIL - CIRCUITO AGRO SUSTENTAVEL 30S"
-    }
+    # 5. Detecções Automáticas Recentes (ESTRITAMENTE a partir de fma.log real — local ou telemetria real do agente)
+    # Proibido gerar detecções sintéticas/simuladas em nós remotos sem fma.log real.
+    firestore_fma_lines = fm_tel.get("fma_log") or cs_tel.get("fma_log") or _REMOTE_FMA_LOG_CACHE.get(h_clean.upper()) or []
+    if isinstance(firestore_fma_lines, str):
+        firestore_fma_lines = [l.strip() for l in firestore_fma_lines.splitlines() if l.strip()]
+    if not is_live_disk and firestore_fma_lines:
+        log_lines = firestore_fma_lines[-max(max_lines, 200):]
+        is_live_disk = True
+        log_source = f"[{h_clean}] fma.log Real via Agente"
 
     recent_detections = []
-    global _FMA_DETECTIONS_HISTORY
-
-    if is_live_disk:
+    if is_live_disk and log_lines:
         re_det = re.compile(r"""(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}):\s+\[(.*?)\](?:\(.*?\))?\s+NEW DETECTION\s+(\d+),\s*.*?,.*?,?\s*(\d+)ms,\s*['\"](.*?)['\"].*?ProcTimeMs\s+(\d+)""", re.IGNORECASE)
         re_del = re.compile(r"""(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}):.*?DELAYED NEW DETECTION CANDIDATE\s+(\d+),\s*.*?,.*?,?\s*(\d+)ms,\s*['\"](.*?)['\"].*?,\s*(\d+)""", re.IGNORECASE)
 
-        newly_found = []
         for line in reversed(log_lines):
             m_ok = re_det.search(line)
             if m_ok:
                 s_id = m_ok.group(3)
-                real_name = catalog_spot_names.get(s_id)
-                display_name = real_name if real_name else f"ID: #{s_id} (Título não mapeado no SGG)"
-                newly_found.append({
+                recent_detections.append({
                     "timestamp": m_ok.group(1),
                     "channel": m_ok.group(2).upper(),
                     "spot_id": s_id,
-                    "spot_name": display_name,
-                    "has_sgg_title": bool(real_name),
+                    "spot_name": f"Spot ID #{s_id} (fma.log)",
+                    "has_sgg_title": False,
                     "duration_sec": round(int(m_ok.group(4)) / 1000.0, 1),
                     "air_utc": m_ok.group(5),
                     "proc_time_ms": int(m_ok.group(6)),
-                    "confidence_score": 98.6 + ((int(s_id) % 15) * 0.08),
+                    "confidence_score": 99.0,
                     "status": "CONFIRMED",
                     "badge_color": "#22c55e"
                 })
-                if len(newly_found) >= 40:
+                if len(recent_detections) >= 50:
                     break
 
             m_dl = re_del.search(line)
             if m_dl:
                 s_id = m_dl.group(2)
-                real_name = catalog_spot_names.get(s_id)
-                display_name = real_name if real_name else f"ID: #{s_id} (Candidato sem título SGG)"
-                newly_found.append({
+                recent_detections.append({
                     "timestamp": m_dl.group(1),
                     "channel": "CANAL " + str((int(s_id) % 4) + 1),
                     "spot_id": s_id,
-                    "spot_name": display_name,
-                    "has_sgg_title": bool(real_name),
+                    "spot_name": f"Spot ID #{s_id} (fma.log - Candidato)",
+                    "has_sgg_title": False,
                     "duration_sec": round(int(m_dl.group(3)) / 1000.0, 1),
                     "air_utc": m_dl.group(4),
                     "proc_time_ms": 160,
@@ -3718,65 +3701,8 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
                     "status": "DELAYED",
                     "badge_color": "#eab308"
                 })
-                if len(newly_found) >= 40:
+                if len(recent_detections) >= 50:
                     break
-
-        existing = _FMA_DETECTIONS_HISTORY.get(h_clean, [])
-        existing_keys = {(d["timestamp"], d["spot_id"]) for d in existing}
-        for det in newly_found:
-            key = (det["timestamp"], det["spot_id"])
-            if key not in existing_keys:
-                existing.insert(0, det)
-                existing_keys.add(key)
-        existing.sort(key=lambda x: x["timestamp"], reverse=True)
-        _FMA_DETECTIONS_HISTORY[h_clean] = existing[:50]
-        recent_detections = existing[:50]
-        _save_fma_detections_to_disk()
-    else:
-        # Nó remoto sem disco local: serve histórico persistido (últimas 15-50 detecções reais)
-        existing = _FMA_DETECTIONS_HISTORY.get(h_clean, [])
-        if len(existing) < 15:
-            existing = _init_host_canonical_detections(h_clean, channels, catalog_spot_names)
-            _FMA_DETECTIONS_HISTORY[h_clean] = existing
-            _save_fma_detections_to_disk()
-        else:
-            # Se já tem histórico e o serviço FastMatching está em execução, adiciona novas inserções comerciais ao vivo
-            last_det_time_str = existing[0]["timestamp"] if existing else ""
-            now_dt = datetime.now()
-            should_add = False
-            if last_det_time_str:
-                try:
-                    ldt = datetime.strptime(last_det_time_str, "%Y-%m-%d %H:%M:%S")
-                    if (now_dt - ldt).total_seconds() > 90 and is_fm_running:
-                        should_add = True
-                except Exception:
-                    pass
-            if should_add:
-                ch_names = [c.get("name") or c.get("canal") or c.get("nome_canal") or "" for c in (channels or [])]
-                ch_names = [c.upper() for c in ch_names if c] or ["GLOBO", "RECORD", "BAND"]
-                spot_items = list(catalog_spot_names.items())
-                idx = len(existing) % len(spot_items)
-                s_id, s_title = spot_items[idx]
-                ch_target = ch_names[len(existing) % len(ch_names)]
-                dur = 30.0 if "30s" in s_title else 15.0
-                new_det = {
-                    "timestamp": now_dt.strftime("%Y-%m-%d %H:%M:%S"),
-                    "channel": ch_target,
-                    "spot_id": s_id,
-                    "spot_name": s_title,
-                    "has_sgg_title": True,
-                    "duration_sec": dur,
-                    "air_utc": (now_dt - timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S"),
-                    "proc_time_ms": 15 + (int(s_id) % 8),
-                    "confidence_score": round(98.7 + ((int(s_id) % 15) * 0.08), 1),
-                    "status": "CONFIRMED",
-                    "badge_color": "#22c55e"
-                }
-                existing.insert(0, new_det)
-                _FMA_DETECTIONS_HISTORY[h_clean] = existing[:50]
-                _save_fma_detections_to_disk()
-
-        recent_detections = existing[:50]
 
     # 6. Geração de .EMU (D:\MediaDNA_V2\Data\emu)
     emu_files_count = 0

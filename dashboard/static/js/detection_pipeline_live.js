@@ -21,6 +21,31 @@ function filterDetectionsByChannel(channelName) {
 }
 window.filterDetectionsByChannel = filterDetectionsByChannel;
 
+async function fetchRealFmaLogFromHost(hostname) {
+    const btn = document.getElementById("btnFetchRealFmaLog");
+    if (btn) {
+        btn.disabled = true;
+        btn.innerText = "⏳ Lendo fma.log real no Capture Site...";
+    }
+    try {
+        const token = (typeof getAuthToken === "function") ? getAuthToken() : ((typeof getFleetAuthToken === "function") ? getFleetAuthToken() : (localStorage.getItem("fleet_token") || ""));
+        const headers = token ? { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" } : { "Content-Type": "application/json" };
+        const res = await fetch(`/api/detection/fma-live/${encodeURIComponent(hostname)}/fetch-real`, { method: "POST", headers });
+        const data = await res.json();
+        if (data && data.success) {
+            fmaLiveLastData = data;
+            renderFmaLiveDashboard(data);
+        } else {
+            alert(data.error || "Não foi possível obter o fma.log deste nó no momento.");
+            if (btn) { btn.disabled = false; btn.innerText = "📡 Ler fma.log Real do Capture Site Agora"; }
+        }
+    } catch (e) {
+        alert("Erro ao consultar fma.log remoto: " + e.message);
+        if (btn) { btn.disabled = false; btn.innerText = "📡 Ler fma.log Real do Capture Site Agora"; }
+    }
+}
+window.fetchRealFmaLogFromHost = fetchRealFmaLogFromHost;
+
 function escapeHtml(str) {
     if (!str) return "";
     return String(str)
@@ -411,13 +436,24 @@ function renderFmaLiveDashboard(data) {
                         <tbody>
                             ${detections.length === 0 ? `
                                 <tr>
-                                    <td colspan="6" style="text-align: center; padding: 24px 16px; color: #94a3b8;">
+                                    <td colspan="6" style="text-align: center; padding: 20px 16px; color: #94a3b8;">
                                         <div style="font-size: 20px; margin-bottom: 6px;">📡</div>
-                                        <div style="font-weight: 700; color: #f1f5f9; font-size: 12px;">Aguardando nova inserção comercial ao vivo</div>
-                                        <div style="font-size: 11px; color: #94a3b8; margin-top: 4px; max-width: 480px; margin-left: auto; margin-right: auto; line-height: 1.4;">
-                                            ${data.is_live_disk ? 'O arquivo fma.log local foi lido com sucesso e não há registros NEW DETECTION no trecho tail recente.' : `Motor FastMatching ativo e operando no nó físico (${perf.ram_working_set_mb} MB RAM | CPU: ${perf.host_cpu}). As detecções acústicas reais são transmitidas e acumuladas em tela a cada inserção identificada nas emissoras.`}
+                                        <div style="font-weight: 700; color: #f1f5f9; font-size: 12px;">
+                                            ${fmaLiveSelectedChannel !== 'ALL' && allDetections.length > 0
+                                                ? `Nenhuma detecção recente para ${escapeHtml(fmaLiveSelectedChannel)} neste trecho do fma.log`
+                                                : (data.is_live_disk ? 'Nenhuma linha NEW DETECTION no trecho recente do fma.log' : 'Telemetria de detecções aguardando leitura real do fma.log')}
                                         </div>
-                                        ${fmaLiveSelectedChannel !== 'ALL' ? `<div style="margin-top: 6px; font-size: 10.5px; color: #38bdf8; font-weight: 700;">Filtro atual: ${escapeHtml(fmaLiveSelectedChannel)} (Clique em 'TODOS OS CANAIS' para visão ampla)</div>` : ''}
+                                        <div style="font-size: 11px; color: #94a3b8; margin-top: 4px; max-width: 520px; margin-left: auto; margin-right: auto; line-height: 1.4;">
+                                            ${data.is_live_disk
+                                                ? 'O fma.log real foi lido com sucesso. Novas inserções aparecerão aqui automaticamente assim que ocorrerem.'
+                                                : `O agente deste nó (${escapeHtml(data.hostname)}) reporta status e RAM em tempo real, mas não envia o arquivo fma.log continuamente. Clique abaixo para ler o fma.log real diretamente do Capture Site.`}
+                                        </div>
+                                        ${!data.is_live_disk ? `
+                                            <button type="button" id="btnFetchRealFmaLog" onclick="fetchRealFmaLogFromHost('${escapeHtml(data.hostname)}')" style="margin-top: 10px; background: linear-gradient(135deg, #0284c7, #2563eb); color: #fff; border: 1px solid rgba(56, 189, 248, 0.5); padding: 6px 14px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer;">
+                                                📡 Ler fma.log Real do Capture Site Agora
+                                            </button>
+                                        ` : ''}
+                                        ${fmaLiveSelectedChannel !== 'ALL' ? `<div style="margin-top: 8px; font-size: 10.5px; color: #38bdf8; font-weight: 700; cursor: pointer;" onclick="filterDetectionsByChannel('ALL')">↩ Filtro atual: ${escapeHtml(fmaLiveSelectedChannel)} (Clique aqui ou em 'TODOS OS CANAIS' para exibir tudo)</div>` : ''}
                                     </td>
                                 </tr>
                             ` : detections.map(d => `

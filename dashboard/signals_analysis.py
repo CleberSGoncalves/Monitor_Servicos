@@ -492,17 +492,24 @@ def get_channel_telemetry_history(praca: str, canal: str, period: str = "24h", c
             else:
                 selected_cs = 1
 
-        # Consulta robusta: suporta correspondência aproximada do canal e fallback multi-CS
+        # Consulta indexada rápida (idx_sig_hist: praca, canal, recorded_at) — evita full-table scan com LIKE
         canal_clean = canal.replace("TV Gazeta Sul (Rede Globo)", "Rede Globo").strip()
         cursor.execute("""
             SELECT recorded_at, qualidade_sinal, forca_sinal, status_tuner, video_congelado, audio_mudo, cs 
             FROM channel_signal_history 
-            WHERE (praca = ? OR praca LIKE ?) 
-              AND (canal = ? OR canal LIKE ? OR canal = ? OR ? LIKE '%' || canal || '%') 
-              AND cs = ? AND recorded_at >= ?
+            WHERE praca = ? AND canal = ? AND cs = ? AND recorded_at >= ?
             ORDER BY recorded_at ASC
-        """, (praca, f"%{praca}%", canal, f"%{canal_clean}%", canal_clean, canal, selected_cs, start_time.isoformat()))
+        """, (praca, canal, selected_cs, start_time.isoformat()))
         rows = cursor.fetchall()
+
+        if len(rows) < 5 and canal_clean != canal:
+            cursor.execute("""
+                SELECT recorded_at, qualidade_sinal, forca_sinal, status_tuner, video_congelado, audio_mudo, cs 
+                FROM channel_signal_history 
+                WHERE praca = ? AND canal = ? AND cs = ? AND recorded_at >= ?
+                ORDER BY recorded_at ASC
+            """, (praca, canal_clean, selected_cs, start_time.isoformat()))
+            rows = cursor.fetchall()
 
         # Se não achou na CS solicitada mas é uma praça multi-CS, busca na outra CS para manter a telemetria conexa
         if len(rows) < 5:
@@ -510,12 +517,18 @@ def get_channel_telemetry_history(praca: str, canal: str, period: str = "24h", c
             cursor.execute("""
                 SELECT recorded_at, qualidade_sinal, forca_sinal, status_tuner, video_congelado, audio_mudo, cs 
                 FROM channel_signal_history 
-                WHERE (praca = ? OR praca LIKE ?) 
-                  AND (canal = ? OR canal LIKE ? OR canal = ? OR ? LIKE '%' || canal || '%') 
-                  AND cs = ? AND recorded_at >= ?
+                WHERE praca = ? AND canal = ? AND cs = ? AND recorded_at >= ?
                 ORDER BY recorded_at ASC
-            """, (praca, f"%{praca}%", canal, f"%{canal_clean}%", canal_clean, canal, alt_cs, start_time.isoformat()))
+            """, (praca, canal, alt_cs, start_time.isoformat()))
             alt_rows = cursor.fetchall()
+            if len(alt_rows) < 5 and canal_clean != canal:
+                cursor.execute("""
+                    SELECT recorded_at, qualidade_sinal, forca_sinal, status_tuner, video_congelado, audio_mudo, cs 
+                    FROM channel_signal_history 
+                    WHERE praca = ? AND canal = ? AND cs = ? AND recorded_at >= ?
+                    ORDER BY recorded_at ASC
+                """, (praca, canal_clean, alt_cs, start_time.isoformat()))
+                alt_rows = cursor.fetchall()
             if len(alt_rows) >= 5:
                 rows = alt_rows
 
@@ -547,49 +560,50 @@ def get_channel_telemetry_history(praca: str, canal: str, period: str = "24h", c
                     "cs": selected_cs,
                     "is_outage": r["qualidade_sinal"] < 40 or r["video_congelado"] == "Sim"
                 })
-    # Resolução dinâmica e canônica do host físico via Firestore
+    # Resolução dinâmica e canônica do host físico via cache local (evita stream lento de 248 docs do Firestore)
     target_h = f"{praca}-CS{selected_cs or 1}"
     live_q = None
     live_f = None
     live_status_tuner = "Connected with tuner. WORKING."
     
     try:
-        from gcp_sync import get_firestore_client
-        client = get_firestore_client()
-        if client:
-            p_low = praca.lower().strip()
-            canal_clean = canal.lower().replace("tv gazeta sul (rede globo)", "rede globo").strip()
-            cs_target = selected_cs or 1
-            docs = client.collection("fleet_hosts").stream()
-            matching_hosts = []
-            for d in docs:
-                dt = d.to_dict()
-                dp = str(dt.get("praca", "")).lower().strip()
-                dcs = int(float(dt.get("cs", 1) or 1))
-                if (p_low in dp or dp in p_low) and dcs == cs_target:
-                    freshness = str(dt.get("updated_at") or dt.get("last_heartbeat") or "")
-                    is_smme = 1 if "-SMME-" in d.id or "-SMME-" in str(dt.get("hostname") or "") else 0
-                    matching_hosts.append((is_smme, freshness, d.id, dt))
-            
-            matching_hosts.sort(key=lambda x: (x[0], x[1]), reverse=True)
-            if matching_hosts:
-                _, _, best_id, best_dt = matching_hosts[0]
-                target_h = best_dt.get("hostname") or best_id
-                raw_ch = best_dt.get("channels_json")
-                if raw_ch:
-                    ch_list = json.loads(raw_ch) if isinstance(raw_ch, str) else raw_ch
-                    for ch in ch_list:
-                        c_n = str(ch.get("canal", "")).lower().strip()
-                        c_v = str(ch.get("veiculo", "")).lower().strip()
-                        if canal_clean in c_n or c_n in canal_clean or canal_clean in c_v:
-                            q_val = ch.get("qualidade_sinal")
-                            f_val = ch.get("forca_sinal")
-                            if q_val is not None:
-                                live_q = float(q_val)
-                            if f_val is not None:
-                                live_f = float(f_val)
-                            live_status_tuner = ch.get("status_tuner", live_status_tuner)
-                            break
+        from app import get_cached_data
+        cached = get_cached_data()
+        p_low = praca.lower().strip()
+        canal_clean_low = canal.lower().replace("tv gazeta sul (rede globo)", "rede globo").strip()
+        cs_target = selected_cs or 1
+        
+        matching_channels = []
+        for ch in cached.get("channels", []):
+            dp = str(ch.get("cidade") or ch.get("praca") or "").lower().strip()
+            dcs = int(float(ch.get("id_cs") or ch.get("cs") or 1))
+            if (p_low in dp or dp in p_low) and dcs == cs_target:
+                c_n = str(ch.get("canal") or ch.get("nome_canal") or "").lower().strip()
+                c_v = str(ch.get("veiculo") or "").lower().strip()
+                if canal_clean_low in c_n or c_n in canal_clean_low or (c_v and canal_clean_low in c_v):
+                    matching_channels.append(ch)
+        if matching_channels:
+            ch = matching_channels[0]
+            if ch.get("qualidade_sinal") is not None:
+                live_q = float(ch.get("qualidade_sinal"))
+            if ch.get("forca_sinal") is not None:
+                live_f = float(ch.get("forca_sinal"))
+            live_status_tuner = ch.get("status_tuner", live_status_tuner)
+            if ch.get("hostname"):
+                target_h = ch.get("hostname")
+        
+        # Resolve hostname real do host (prioriza nós -SMME- ativos em services)
+        if "-SMME-" not in target_h:
+            p_slug = p_low.replace(" ", "_")
+            for h in cached.get("services", []):
+                hn = str(h.get("hostname") or "")
+                hp = str(h.get("praca") or h.get("cidade") or "").lower().strip()
+                hcs = int(float(h.get("cs") or h.get("id_cs") or 1))
+                if ((p_low in hp or hp in p_low or p_low in hn.lower() or p_slug in hn.lower()) and hcs == cs_target):
+                    if "-SMME-" in hn or "-SMME-" not in target_h:
+                        target_h = hn or target_h
+                    if "-SMME-" in target_h:
+                        break
     except Exception:
         pass
 
