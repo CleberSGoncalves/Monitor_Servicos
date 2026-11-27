@@ -317,8 +317,8 @@ function renderFmaLiveDashboard(data) {
                 <div style="font-size: 15px; font-weight: 800; color: #f8fafc; margin-top: 2px;">
                     ${(spots.total_spots_loaded || 0).toLocaleString()} <span style="font-size: 10.5px; color: #94a3b8; font-weight: 600;">spots</span>
                 </div>
-                <div style="font-size: 10.5px; color: ${spots.status_color === 'green' ? '#4ade80' : '#f87171'}; margin-top: 2px; font-weight: 700;">
-                    ${escapeHtml(spots.status_label || 'Aguardando')} ${spots.recon_count !== null && spots.recon_count !== undefined ? `(recon=${spots.recon_count})` : ''}
+                <div style="font-size: 10.5px; color: ${spots.status_color === 'green' ? '#4ade80' : (spots.status_color === 'yellow' ? '#facc15' : '#f87171')}; margin-top: 2px; font-weight: 700;">
+                    ${escapeHtml(spots.status_label || 'Aguardando')} ${!spots.is_ram_partial && spots.recon_count !== null && spots.recon_count !== undefined ? `(recon=${spots.recon_count})` : ''}
                 </div>
             </div>
 
