@@ -18664,6 +18664,9 @@
 
             </div>
 
+            <!-- Barra de Seleção Rápida de Emissoras do Radar (Pills Interativos) -->
+            <div id="rfRadarChannelFilterBar" style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px;"></div>
+
             <canvas id="rfMarketRadarCanvas" width="960" height="340" style="width: 100%; height: 340px; display: block; background: #040812; border-radius: 6px;"></canvas>
 
             <div id="rfAtmosphericConditionsNotice" style="font-size: 11px; margin-top: 6px; padding: 6px 10px; border-radius: 4px; background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(56, 189, 248, 0.2); color: #cbd5e1; display: flex; align-items: center; justify-content: space-between;">
@@ -18672,6 +18675,19 @@
 
               <div id="rfAtmosphericBadge" class="badge badge-blue">Telemetria RF</div>
 
+            </div>
+
+            <!-- Guia Rápido de Interpretação e Diagnóstico RF -->
+            <div style="margin-top: 8px; padding: 8px 12px; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(56, 189, 248, 0.15); border-radius: 6px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; font-size: 11px; color: #94a3b8;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-weight: 700; color: #38bdf8;">💡 Instruções de Diagnóstico:</span>
+                <span>Clique em qualquer emissora nos botões acima ou na tabela para <strong>isolar o feixe de visada</strong>, traçar a <strong>1ª Zona de Fresnel</strong> e ver azimute de apontamento exato.</span>
+              </div>
+              <div style="display: flex; gap: 10px; font-size: 10.5px;">
+                <span style="color: #4ade80;">● Verde (≥60%): Sinal Forte</span>
+                <span style="color: #facc15;">● Amarelo (&lt;60%): Atenção</span>
+                <span style="color: #94a3b8;">● Cinza: Não reportado</span>
+              </div>
             </div>
 
           </div>

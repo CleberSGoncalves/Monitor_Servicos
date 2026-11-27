@@ -808,6 +808,36 @@ function switchRfModalCs(csNum) {
 }
 window.switchRfModalCs = switchRfModalCs;
 
+function renderRadarChannelPillBar(market, channels) {
+    const bar = document.getElementById("rfRadarChannelFilterBar");
+    if (!bar) return;
+    if (!channels || channels.length === 0) {
+        bar.innerHTML = "";
+        return;
+    }
+    const isAll = (selectedRfChannelIndex === null || selectedRfChannelIndex === undefined);
+    let html = `
+        <button type="button" style="font-size: 11px; padding: 4px 10px; border-radius: 5px; border: 1px solid ${isAll ? '#38bdf8' : 'rgba(255,255,255,0.14)'}; background: ${isAll ? 'rgba(14,165,233,0.3)' : 'rgba(30,41,59,0.7)'}; color: ${isAll ? '#38bdf8' : '#cbd5e1'}; font-weight: 700; cursor: pointer; transition: all 0.15s ease;" onclick="selectRfModalChannel(null)">
+            🌐 Todos os Canais (${channels.length})
+        </button>
+    `;
+    channels.forEach((ch, idx) => {
+        const isSel = (selectedRfChannelIndex === idx);
+        const rawName = (ch.emissora || ch.raw_channel_name || `Canal ${idx+1}`).replace("TV Gazeta Sul (Rede Globo)", "Rede Globo");
+        const shortName = rawName.length > 20 ? rawName.slice(0, 19) + "…" : rawName;
+        const az = Number(ch.azimuth_deg || 0).toFixed(0);
+        const dist = Number(ch.distance_km || 0).toFixed(1);
+        const pal = CHANNEL_COLORS[idx % CHANNEL_COLORS.length];
+        html += `
+            <button type="button" style="font-size: 11px; padding: 4px 10px; border-radius: 5px; border: 1px solid ${isSel ? pal.stroke : 'rgba(255,255,255,0.12)'}; background: ${isSel ? pal.fill : 'rgba(30,41,59,0.5)'}; color: ${isSel ? '#ffffff' : pal.badge}; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; transition: all 0.15s ease;" onclick="selectRfModalChannel(${idx})" title="Clique para focar exclusivamente em ${escapeHtml(rawName)}">
+                <span>📡</span> ${escapeHtml(shortName)} <span style="font-size: 9.5px; opacity: 0.85; font-family: monospace;">(${az}° • ${dist}km)</span>
+            </button>
+        `;
+    });
+    bar.innerHTML = html;
+}
+window.renderRadarChannelPillBar = renderRadarChannelPillBar;
+
 function selectRfModalChannel(channelIdx) {
     if (channelIdx === null || channelIdx === undefined || selectedRfChannelIndex === channelIdx) {
         selectedRfChannelIndex = null; // Volta para Visão Ampla
@@ -853,6 +883,8 @@ function renderRfModalChannelsTable(market) {
             </button>` : ''}
         `;
     }
+
+    renderRadarChannelPillBar(market, channels);
 
     if (!tbody) return;
     if (channels.length === 0) {
