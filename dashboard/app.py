@@ -1713,6 +1713,16 @@ async def get_channels(country: Optional[str] = None, city: Optional[str] = None
         ]
     else:
         channels = [c for c in channels if (c.get("canal") or c.get("nome_canal"))]
+    
+    # Eliminar canais fantasmas / tuners não alocados (-1) com zero sinal
+    channels = [
+        c for c in channels
+        if not (
+            c.get("tuner_id") in [-1, "-1"]
+            and (c.get("qualidade_sinal") in [0, 0.0, None, "0", "0%"])
+            and (c.get("forca_sinal") in [0, 0.0, None, "0", "0%"])
+        )
+    ]
     if outage_only:
         channels = [c for c in channels if c.get("has_outage")]
         

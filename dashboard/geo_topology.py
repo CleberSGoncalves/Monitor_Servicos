@@ -2796,6 +2796,20 @@ def get_markets_map_data(channels: list = None, services: list = None) -> List[D
                     except Exception:
                         ch_cs = 1
                     break
+            
+            # Anti-duplicação: não reinserir canal se emissora ou canal idêntico já estiver mapeado para o mesmo CS
+            mfc_name = (mfc.get("canal") or "").strip().lower()
+            if any(
+                (
+                    ch.get("emissora", "").strip().lower() == mfc_name or
+                    ch.get("raw_channel_name", "").strip().lower() == mfc_name or
+                    (mfc_name and mfc_name in ch.get("emissora", "").strip().lower())
+                )
+                and ch.get("cs") == ch_cs
+                for ch in channels_rf_detail
+            ):
+                continue
+
             channels_rf_detail.append({
                 "channel_index": len(channels_rf_detail),
                 "emissora": mfc.get("canal") or "Canal DTV",

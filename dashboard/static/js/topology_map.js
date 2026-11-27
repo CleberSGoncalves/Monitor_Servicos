@@ -1963,24 +1963,27 @@ function renderMarketRadarCanvas(market, selectedChannelIdx = undefined) {
         ctx.lineWidth = 2;
         ctx.stroke();
 
-        // Card de Informações da Emissora / Torre (com prevenção de colisão)
-        const cardW = 235;
-        const cardH = 54;
-        const placeRight = (xTower >= cx - 10);
-        let cardX = placeRight ? (xTower + 16) : (xTower - cardW - 16);
+        // Card de Informações da Emissora / Torre (design compacto e anti-colisão inteligente)
+        const cardW = 205;
+        const cardH = 46;
+        let placeRight = (xTower >= cx - 10);
+        let cardX = placeRight ? (xTower + 14) : (xTower - cardW - 14);
         let cardY = yTower - cardH / 2;
 
-        // Mantém dentro do canvas
-        cardX = Math.max(10, Math.min(w - cardW - 10, cardX));
-        cardY = Math.max(10, Math.min(h - cardH - 10, cardY));
+        // Mantém estritamente dentro da borda visual do canvas
+        cardX = Math.max(8, Math.min(w - cardW - 8, cardX));
+        cardY = Math.max(8, Math.min(h - cardH - 8, cardY));
 
-        // Anti-colisão vertical entre cards próximos
+        // Anti-colisão vertical & horizontal entre cards contíguos
         placedCards.forEach(prev => {
-            const overlapX = Math.abs(cardX - prev.x) < cardW;
-            const overlapY = Math.abs(cardY - prev.y) < (cardH + 6);
+            const overlapX = Math.abs(cardX - prev.x) < (cardW - 10);
+            const overlapY = Math.abs(cardY - prev.y) < (cardH + 4);
             if (overlapX && overlapY) {
-                if (cardY >= cy) cardY = Math.min(h - cardH - 8, prev.y + cardH + 8);
-                else cardY = Math.max(8, prev.y - cardH - 8);
+                if (cardY >= cy) {
+                    cardY = Math.min(h - cardH - 6, prev.y + cardH + 6);
+                } else {
+                    cardY = Math.max(6, prev.y - cardH - 6);
+                }
             }
         });
         placedCards.push({ x: cardX, y: cardY });
@@ -1996,44 +1999,46 @@ function renderMarketRadarCanvas(market, selectedChannelIdx = undefined) {
         ctx.fillStyle = "rgba(11, 19, 43, 0.96)";
         ctx.fillRect(cardX, cardY, cardW, cardH);
         ctx.strokeStyle = pal.stroke;
-        ctx.lineWidth = (selectedChannelIdx === idx) ? 2.2 : 1.3;
+        ctx.lineWidth = (selectedChannelIdx === idx) ? 2.0 : 1.1;
         ctx.strokeRect(cardX, cardY, cardW, cardH);
 
         const freqStr = Number(ch.freq_mhz).toFixed(3).replace(".", ",") + " MHz";
         const cardDir = ch.cardinal || ch.cardinal_dir || "";
-        const shortEmissora = String(ch.emissora || "Canal").length > 21
-            ? String(ch.emissora).slice(0, 20) + "…"
+        const shortEmissora = String(ch.emissora || "Canal").length > 18
+            ? String(ch.emissora).slice(0, 17) + "…"
             : String(ch.emissora || "Canal");
         ctx.fillStyle = "#fff";
-        ctx.font = "bold 9.5px Inter, sans-serif";
+        ctx.font = "bold 9px Inter, sans-serif";
         ctx.textAlign = "left";
-        ctx.fillText(`📡 ${shortEmissora}`, cardX + 8, cardY + 14);
+        ctx.fillText(`📡 ${shortEmissora}`, cardX + 7, cardY + 12);
 
         ctx.fillStyle = pal.badge;
-        ctx.font = "bold 9px monospace";
+        ctx.font = "bold 8.5px monospace";
         ctx.textAlign = "right";
-        ctx.fillText(`${ch.canal_fisico}`, cardX + cardW - 8, cardY + 14);
+        ctx.fillText(`${ch.canal_fisico}`, cardX + cardW - 7, cardY + 12);
 
         ctx.fillStyle = pal.stroke;
-        ctx.font = "bold 9px monospace";
+        ctx.font = "bold 8.5px monospace";
         ctx.textAlign = "left";
-        ctx.fillText(`${freqStr}`, cardX + 8, cardY + 28);
+        ctx.fillText(`${freqStr}`, cardX + 7, cardY + 25);
 
         ctx.fillStyle = "#e2e8f0";
+        ctx.font = "8.5px monospace";
         ctx.textAlign = "right";
-        ctx.fillText(`Az ${azDeg.toFixed(1)}° (${cardDir.split(' ')[0]})`, cardX + cardW - 8, cardY + 28);
+        ctx.fillText(`Az ${azDeg.toFixed(1)}° (${cardDir.split(' ')[0]})`, cardX + cardW - 7, cardY + 25);
 
         ctx.fillStyle = "#94a3b8";
-        ctx.font = "9px Inter, sans-serif";
+        ctx.font = "8.5px Inter, sans-serif";
         ctx.textAlign = "left";
-        const locLabel = ch.tower_bairro || ch.tower_name;
-        ctx.fillText(`📍 ${locLabel.slice(0, 32)}`, cardX + 8, cardY + 43);
+        const locLabel = ch.tower_bairro || ch.tower_name || "Torre Transmissora";
+        ctx.fillText(`📍 ${locLabel.slice(0, 26)}`, cardX + 7, cardY + 38);
 
-        const sigColor = ch.rx_level_measured_pct >= 60 ? "#34d399" : "#facc15";
+        const sigColor = (ch.rx_level_measured_pct >= 60) ? "#34d399" : (ch.rx_level_measured_pct > 0 ? "#facc15" : "#94a3b8");
+        const sigText = ch.rx_level_measured_pct !== null && ch.rx_level_measured_pct !== undefined ? `${ch.rx_level_measured_pct}%` : "--";
         ctx.fillStyle = sigColor;
-        ctx.font = "bold 9px monospace";
+        ctx.font = "bold 8.5px monospace";
         ctx.textAlign = "right";
-        ctx.fillText(`${ch.rx_level_measured_pct}%`, cardX + cardW - 8, cardY + 43);
+        ctx.fillText(sigText, cardX + cardW - 7, cardY + 38);
 
         ctx.restore();
     });

@@ -531,7 +531,7 @@ def _init_host_canonical_detections(h_clean: str, channels: list, catalog_spot_n
     ch_names = []
     if channels:
         for c in channels:
-            c_name = c.get("canal") or c.get("nome_canal") or ""
+            c_name = c.get("name") or c.get("canal") or c.get("nome_canal") or ""
             if c_name and c_name not in ch_names:
                 ch_names.append(c_name.upper())
     if not ch_names:
@@ -3752,7 +3752,7 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
                 except Exception:
                     pass
             if should_add:
-                ch_names = [c.get("canal") or c.get("nome_canal") or "" for c in (channels or [])]
+                ch_names = [c.get("name") or c.get("canal") or c.get("nome_canal") or "" for c in (channels or [])]
                 ch_names = [c.upper() for c in ch_names if c] or ["GLOBO", "RECORD", "BAND"]
                 spot_items = list(catalog_spot_names.items())
                 idx = len(existing) % len(spot_items)

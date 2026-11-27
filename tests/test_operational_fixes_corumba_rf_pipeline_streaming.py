@@ -68,3 +68,52 @@ def test_firestore_live_telemetry_cachoeiro_and_mediadna_spot_ids():
         assert len(s_id) == 8, f"Spot ID deve ter 8 dígitos reais (Kantar), obtido: {s_id}"
         assert d.get("spot_name") and len(d.get("spot_name")) > 5
         assert any(k in d.get("spot_name", "").upper() for k in ["GLOBO", "SHOPEE", "MONDELEZ", "MINISTERIO", "DOVE", "IPIRANGA", "ATACADAO", "AMERICANAS", "MERCADO LIVRE", "AMBEV", "SANTANDER", "CLARO", "MAGALU", "TIM", "PETROBRAS", "BANCO DO BRASIL"])
+
+def test_itumbiara_no_phantom_tuners():
+    """Valida que Itumbiara não exibe o canal fantasma 'BAND 497143' (tuner -1 com 0% sinal)."""
+    from app import get_cached_data
+    data = get_cached_data()
+    channels = data.get("channels", [])
+    itumbiara_chans = [
+        c for c in channels 
+        if "itumbiara" in str(c.get("cidade") or c.get("praca") or "").lower()
+    ]
+    # Filtro aplicado no endpoint get_channels
+    clean_chans = [
+        c for c in itumbiara_chans
+        if not (
+            c.get("tuner_id") in [-1, "-1"]
+            and (c.get("qualidade_sinal") in [0, 0.0, None, "0", "0%"])
+            and (c.get("forca_sinal") in [0, 0.0, None, "0", "0%"])
+        )
+    ]
+    names = [c.get("canal") for c in clean_chans]
+    assert "BAND 497143" not in names, f"Canal fantasma BAND 497143 não deveria existir: {names}"
+    assert any("globo" in n.lower() for n in names)
+    assert any("bandeirantes" in n.lower() for n in names)
+
+def test_cachoeiro_rf_topology_deduplication():
+    """Valida que em Topologia RF, canais não são duplicados na mesma CS (ex: TV Gazeta Sul em Cachoeiro CS01)."""
+    from geo_topology import get_markets_map_data
+    markets = get_markets_map_data()
+    cachoeiro = next((m for m in markets if "cachoeiro" in m.get("cidade", "").lower()), None)
+    assert cachoeiro is not None, "Mercado de Cachoeiro de Itapemirim não encontrado no mapa de topologia"
+    
+    rf_details = cachoeiro.get("channels_rf_detail", [])
+    seen_combos = set()
+    for ch in rf_details:
+        cs = ch.get("cs", 1)
+        emissora = ch.get("emissora", "").strip().lower()
+        combo = (cs, emissora)
+        assert combo not in seen_combos, f"Canal duplicado detectado na topologia RF: CS{cs} - {emissora}"
+        seen_combos.add(combo)
+
+def test_itumbiara_history_telemetry():
+    """Valida histórico de telemetria para Itumbiara CS01 Rede Globo com dados consistentes."""
+    from signals_analysis import get_channel_telemetry_history
+    res = get_channel_telemetry_history("Itumbiara", "Rede Globo", "24h", cs=1)
+    assert res.get("host") == "Itumbiara-SMME-289-CS1"
+    assert res.get("avg_qualidade") == 84.0
+    assert res.get("avg_forca") == 59.0
+    assert len(res.get("history_points", [])) > 0
+

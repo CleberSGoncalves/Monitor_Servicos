@@ -18,6 +18,7 @@ let currentSignalsPraca = "";
 let currentSignalsCanal = "";
 let signalsHistoryDataCache = null;
 let chronicIssuesCache = [];
+let signalsCurrentPracaChannels = [];
 
 function switchSignalsSubtab(subtabId) {
     console.log("[SignalsAnalysis] Trocando para subaba:", subtabId);
@@ -216,6 +217,7 @@ async function populateSignalsPracaFilter() {
 
 async function onSignalsPracaChanged() {
     const pracaSelect = document.getElementById("signalsFilterPraca");
+    const csSelect = document.getElementById("signalsFilterCs");
     const canalSelect = document.getElementById("signalsFilterCanal");
     if (!pracaSelect || !canalSelect) return;
 
@@ -231,14 +233,22 @@ async function onSignalsPracaChanged() {
         if (resp.ok) {
             const resData = await resp.json();
             if (Array.isArray(resData) && resData.length > 0) {
-                channels = resData;
+                // Eliminar canais fantasmas (tuner -1 com 0% sinal)
+                channels = resData.filter(c => !(
+                    (c.tuner_id === -1 || c.tuner_id === "-1" || c.tuner_id === null) &&
+                    (c.qualidade_sinal === 0 || c.qualidade_sinal === null || c.qualidade_sinal === "0%") &&
+                    (c.forca_sinal === 0 || c.forca_sinal === null || c.forca_sinal === "0%")
+                ));
             }
         }
     } catch (err) {
         console.warn("[SignalsAnalysis] Erro ao buscar canais da praça, usando fallback:", err);
     }
 
+    signalsCurrentPracaChannels = channels;
+
     if (channels.length === 0) {
+        if (csSelect) csSelect.innerHTML = "<option value='1'>CS 1 (Principal)</option>";
         canalSelect.innerHTML = "<option value=''>Nenhum canal sintonizado no nó</option>";
         if (typeof updateSignalsKPIs === "function") {
             updateSignalsKPIs({ avg_qualidade: null, avg_forca: null, stability_index_pct: null, lock_drops_count: null });
@@ -246,7 +256,17 @@ async function onSignalsPracaChanged() {
         return;
     }
 
+    // Identificar CSs distintos disponíveis para a praça
     const distinctCs = Array.from(new Set(channels.map(c => Number(c.id_cs || c.cs || 1)))).sort();
+    if (distinctCs.length === 0) distinctCs.push(1);
+
+    if (csSelect) {
+        csSelect.innerHTML = distinctCs.map(n => {
+            const label = n === 2 ? "CS 2 (BKP)" : (n === 1 ? "CS 1 (Principal)" : `CS ${n}`);
+            return `<option value="${n}">${label}</option>`;
+        }).join("");
+    }
+
     let csInfoPill = document.getElementById("signalsCsTopologyNotice");
     if (!csInfoPill) {
         csInfoPill = document.createElement("div");
@@ -262,24 +282,60 @@ async function onSignalsPracaChanged() {
         csInfoPill.innerHTML = `<span class="badge badge-blue" style="font-size: 10px; font-weight: 700;">✨ Praça Multi-CS: ${distinctCs.map(n => `CS0${n}`).join(" e ")}</span> <span style="color: var(--text-muted); font-size: 10px;">(Redundância física ativa)</span>`;
     }
 
-    canalSelect.innerHTML = channels.map(c => {
-        const canalName = c.canal || c.nome_canal || "Canal Sem Nome";
-        const outageIcon = c.has_outage ? "⚠️ " : "";
-        const qVal = (c.qualidade_sinal !== null && c.qualidade_sinal !== undefined) ? `${c.qualidade_sinal}%` : "N/D";
-        const csVal = Number(c.id_cs || c.cs || 1);
-        const csTag = csVal === 2 ? "CS 2 - BKP" : (csVal === 1 ? "CS 1 - Principal" : `CS ${csVal}`);
-        return `<option value="${escapeHtml(canalName)}" data-cs="${csVal}">${outageIcon}${escapeHtml(canalName)} (Q: ${qVal} | ${csTag})</option>`;
-    }).join("");
-
-    const problemChannel = channels.find(c => c.has_outage) || channels[0];
-    currentSignalsCanal = problemChannel.canal;
-    canalSelect.value = currentSignalsCanal;
-    await loadSignalsHistoryData();
+    await onSignalsCsChanged();
 }
 window.onSignalsPracaChanged = onSignalsPracaChanged;
 
+async function onSignalsCsChanged() {
+    const csSelect = document.getElementById("signalsFilterCs");
+    const canalSelect = document.getElementById("signalsFilterCanal");
+    if (!canalSelect) return;
+
+    const selectedCs = Number(csSelect?.value || 1);
+    let channelsForCs = (signalsCurrentPracaChannels || []).filter(c => Number(c.id_cs || c.cs || 1) === selectedCs);
+
+    if (channelsForCs.length === 0 && signalsCurrentPracaChannels.length > 0) {
+        channelsForCs = signalsCurrentPracaChannels;
+    }
+
+    // Deduplicação estrita de canais por nome limpo
+    const seen = new Set();
+    const uniqueChannels = [];
+    for (const c of channelsForCs) {
+        const rawName = (c.canal || c.nome_canal || "").trim();
+        if (!rawName) continue;
+        const normKey = rawName.toLowerCase();
+        if (!seen.has(normKey)) {
+            seen.add(normKey);
+            uniqueChannels.push(c);
+        }
+    }
+
+    if (uniqueChannels.length === 0) {
+        canalSelect.innerHTML = "<option value=''>Nenhum canal sintonizado nesta CS</option>";
+        if (typeof updateSignalsKPIs === "function") {
+            updateSignalsKPIs({ avg_qualidade: null, avg_forca: null, stability_index_pct: null, lock_drops_count: null });
+        }
+        return;
+    }
+
+    // Exibir apenas o nome limpo do canal, sem nível de sinal poluindo o combobox
+    canalSelect.innerHTML = uniqueChannels.map(c => {
+        const canalName = c.canal || c.nome_canal || "Canal Sem Nome";
+        const outageIcon = c.has_outage ? "⚠️ " : "";
+        return `<option value="${escapeHtml(canalName)}" data-cs="${selectedCs}">${outageIcon}${escapeHtml(canalName)}</option>`;
+    }).join("");
+
+    const problemChannel = uniqueChannels.find(c => c.has_outage) || uniqueChannels[0];
+    currentSignalsCanal = problemChannel.canal || problemChannel.nome_canal;
+    canalSelect.value = currentSignalsCanal;
+    await loadSignalsHistoryData();
+}
+window.onSignalsCsChanged = onSignalsCsChanged;
+
 async function loadSignalsHistoryData() {
     const pracaSelect = document.getElementById("signalsFilterPraca");
+    const csSelect = document.getElementById("signalsFilterCs");
     const canalSelect = document.getElementById("signalsFilterCanal");
     if (!pracaSelect || !canalSelect) return;
 
@@ -292,8 +348,7 @@ async function loadSignalsHistoryData() {
     if (diagPanel) diagPanel.style.display = "none";
 
     try {
-        const selectedOpt = canalSelect.options[canalSelect.selectedIndex];
-        const csVal = selectedOpt ? selectedOpt.getAttribute("data-cs") : "";
+        const csVal = csSelect ? csSelect.value : (canalSelect.options[canalSelect.selectedIndex]?.getAttribute("data-cs") || "");
         const url = `/api/fleet/channels/history?praca=${encodeURIComponent(currentSignalsPraca)}&canal=${encodeURIComponent(currentSignalsCanal)}&period=${currentSignalsPeriod}${csVal ? `&cs=${csVal}` : ""}`;
         const resp = await fetch(url, {
             headers: { "Authorization": `Bearer ${getSignalsAuthToken()}` }
