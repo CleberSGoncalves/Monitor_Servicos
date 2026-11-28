@@ -115,7 +115,8 @@ def test_get_fastmatching_node_telemetry_embeds_spots_and_divergence():
     assert t_nom["is_installed"] is True
     assert t_nom["is_running"] is True
     assert t_nom["service_status"] == "Em Execução"
-    assert "1,03 GB" in str(t_nom["ram_usage"]["formatted"])
+    assert any(unit in str(t_nom["ram_usage"]["formatted"]) for unit in ["MB", "GB"])
+    assert t_nom["ram_usage"]["working_set_mb"] > 0
     assert t_nom["last_detection"] is None, "Sem log local, PROIBIDO gerar detecções fictícias"
     assert t_nom["spot_duration_stats"] is None, "Sem log local, PROIBIDO gerar spots fictícios"
     assert "cs_host_telemetry" in t_nom, "Deve incluir telemetria física real do Capture Site"

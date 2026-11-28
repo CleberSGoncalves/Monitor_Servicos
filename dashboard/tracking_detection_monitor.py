@@ -745,16 +745,16 @@ def clean_target_hostname(raw_h: Any) -> str:
         return ""
     import re
     s = str(raw_h).strip()
+    if " — " in s:
+        s = s.split(" — ")[-1].strip()
+    elif " - " in s:
+        s = s.split(" - ")[-1].strip()
     m_smme = re.search(r"([A-Za-z0-9_]+-SMME-\d+-CS\d+)", s, re.IGNORECASE)
     if m_smme:
         return m_smme.group(1).upper()
-    m_dt = re.search(r"([A-Za-z0-9_]+-DT\d+)", s, re.IGNORECASE)
+    m_dt = re.search(r"((?:CS-)?[A-Za-z0-9]+-[A-Za-z0-9_]+-DT[A-Za-z0-9_\-]*|[A-Za-z0-9_]+-DT\d+)", s, re.IGNORECASE)
     if m_dt:
         return m_dt.group(1).upper()
-    if " — " in s:
-        return s.split(" — ")[-1].strip().upper()
-    if " - " in s:
-        return s.split(" - ")[-1].strip().upper()
     return s.upper()
 
 
