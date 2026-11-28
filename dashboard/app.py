@@ -1677,15 +1677,17 @@ async def get_fma_live_endpoint(
 async def post_fetch_real_fma_log(hostname: str, user: dict = Depends(get_current_user)):
     """Dispara leitura read-only do fma.log real no Capture Site sob clique explícito do operador."""
     import asyncio
+    import uuid
     try:
+        from gcp_sync import dispatch_remote_command_to_firestore, get_command_by_id
         from remote_commands import dispatch_remote_command, get_execution_details
-        from tracking_detection_monitor import get_fastmatching_pipeline_live, _REMOTE_FMA_LOG_CACHE
-    except ImportError:
-        from tracking_detection_monitor import get_fastmatching_pipeline_live
-        _REMOTE_FMA_LOG_CACHE = None
+        from tracking_detection_monitor import get_fastmatching_pipeline_live, set_remote_fma_log_cache
 
-    try:
-        from remote_commands import dispatch_remote_command, get_execution_details
+        h_clean = str(hostname or "").strip()
+        op_tag = f"{user.get('full_name', user.get('username', 'operador'))} ({user.get('username', 'operador')})"
+        cmd_uuid = uuid.uuid4().hex[:10]
+        exec_id = f"fma_read_{cmd_uuid}"
+
         ps_cmd = (
             "$paths = @('D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMatchingSvc\\fma.log',"
             "'D:\\MediaDNA_V2\\Applications\\DTVCapture64\\FastMachingSvc\\fma.log',"
@@ -1693,25 +1695,68 @@ async def post_fetch_real_fma_log(hostname: str, user: dict = Depends(get_curren
             "$p = $paths | Where-Object { Test-Path $_ } | Select-Object -First 1;"
             "if ($p) { Get-Content $p -Tail 200 -Encoding UTF8 } else { Write-Output 'FMA_LOG_NOT_FOUND' }"
         )
-        res = dispatch_remote_command(
-            hostname=hostname,
-            command_text=ps_cmd,
-            operator=user.get("username", "operator"),
-            description="Leitura read-only fma.log (Pipeline Live)"
-        )
-        exec_id = res.get("execution_id")
-        if exec_id:
-            for _ in range(12):
-                await asyncio.sleep(1.0)
-                det = get_execution_details(exec_id)
-                if det and det.get("status") in ("concluido", "sucesso", "erro", "falha"):
-                    out = det.get("output") or ""
-                    if out and "FMA_LOG_NOT_FOUND" not in out:
-                        lines = [l.strip() for l in out.splitlines() if l.strip()]
-                        from tracking_detection_monitor import set_remote_fma_log_cache
-                        set_remote_fma_log_cache(hostname, lines)
-                    break
-        return get_fastmatching_pipeline_live(hostname, max_lines=150)
+
+        # 1. Enfileira comando no Firestore para o agente físico (DNA.MonitorServiceSVC) consumir
+        try:
+            dispatch_remote_command_to_firestore(
+                command_id=exec_id,
+                hostname=h_clean,
+                service_name="FastMatching fma.log Tail",
+                action="ReadFmaLog",
+                target_version="",
+                shell_type="powershell",
+                script=ps_cmd,
+                requested_by=op_tag,
+            )
+        except Exception as e_gcp:
+            logger.warning(f"[DetectionLiveFetch] Aviso Firestore ao despachar fma.log para {h_clean}: {e_gcp}")
+
+        # 2. Registra na tabela SQLite de comandos remotos (auditoria central NOC)
+        sql_exec_id = None
+        try:
+            sql_exec_id = dispatch_remote_command(
+                hosts=[h_clean],
+                shell_type="powershell",
+                command_script=ps_cmd,
+                command_title=f"Leitura read-only fma.log ({h_clean})",
+                requested_by=op_tag
+            )
+        except Exception as e_sql:
+            logger.warning(f"[DetectionLiveFetch] Aviso SQLite ao despachar fma.log para {h_clean}: {e_sql}")
+
+        # 3. Aguarda retorno real do agente físico (até 8 segundos)
+        found_real = False
+        for _ in range(8):
+            await asyncio.sleep(1.0)
+            # Verifica Firestore
+            cmd_data = get_command_by_id(exec_id)
+            if cmd_data and str(cmd_data.get("status", "")).lower() in ("completed", "concluido", "sucesso"):
+                out = cmd_data.get("output") or ""
+                if out and "FMA_LOG_NOT_FOUND" not in out:
+                    lines = [l.strip() for l in out.splitlines() if l.strip()]
+                    if lines:
+                        set_remote_fma_log_cache(h_clean, lines)
+                        found_real = True
+                        break
+
+            # Verifica SQLite / Fila
+            if sql_exec_id:
+                det = get_execution_details(sql_exec_id)
+                if det and det.get("status") in ("concluido", "sucesso"):
+                    res_list = det.get("results") or []
+                    if res_list:
+                        out = res_list[0].get("stdout") or ""
+                        if out and "FMA_LOG_NOT_FOUND" not in out and not out.startswith("["):
+                            lines = [l.strip() for l in out.splitlines() if l.strip()]
+                            if lines:
+                                set_remote_fma_log_cache(h_clean, lines)
+                                found_real = True
+                                break
+
+        live_data = get_fastmatching_pipeline_live(h_clean, max_lines=150)
+        if not found_real and not live_data.get("is_live_disk"):
+            live_data["fetch_notice"] = "Comando enviado ao agente no nó físico. Aguardando transmissão do fma.log..."
+        return live_data
     except Exception as e:
         logger.error(f"[DetectionLiveFetch] Erro ao buscar fma.log em {hostname}: {e}", exc_info=True)
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})

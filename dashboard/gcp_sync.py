@@ -1001,6 +1001,40 @@ def get_latest_command_for_host(hostname: str, service_name: str = "") -> Option
         return None
 
 
+def get_command_by_id(command_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Busca um comando específico pelo seu command_id no Firestore (via client gRPC ou REST).
+    """
+    if not command_id:
+        return None
+    doc_id = sanitize_doc_id(command_id)
+    client = get_firestore_client()
+    if client:
+        try:
+            doc = client.collection("fleet_commands").document(doc_id).get()
+            if doc.exists:
+                d = doc.to_dict() or {}
+                d["_doc_id"] = doc.id
+                return d
+        except Exception as e:
+            logger.debug(f"[GCPSync] Falha gRPC ao buscar comando {doc_id}: {e}")
+
+    # Fallback REST
+    try:
+        import requests
+        tok = _get_gcp_rest_token()
+        if tok:
+            url = f"https://firestore.googleapis.com/v1/projects/{_gcp_project_id}/databases/(default)/documents/fleet_commands/{doc_id}"
+            r = requests.get(url, headers={"Authorization": f"Bearer {tok}"}, timeout=5)
+            if r.ok:
+                res = _parse_firestore_rest_fields(r.json().get("fields", {}))
+                res["_doc_id"] = doc_id
+                return res
+    except Exception as ex:
+        logger.debug(f"[GCPSync] Falha REST ao buscar comando {doc_id}: {ex}")
+    return None
+
+
 def complete_remote_command(command_id: str, status: str, output: str = "", exit_code: int = 0) -> bool:
     """
     Atualiza o status de um comando concluído ou com falha no Firestore.

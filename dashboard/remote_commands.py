@@ -756,7 +756,7 @@ Name Total_GB Livre_GB Livre_%
 C       238.5     94.2    39.5
 D       931.5    482.1    51.8"""
 
-    elif "logrotate" in s_lower or "fma.log" in s_lower:
+    elif "logrotate" in s_lower:
         is_fma_running = False
         try:
             from sharepoint_sync import get_cached_data
@@ -863,7 +863,7 @@ RoundTripTime (Latência): 14 ms"""
 [OK] Perfil de vídeo MP4_MDNA restabelecido sem perda de sessão.
 [OK] Fluxo de gravação H.264 normalizado com entrega contínua de quadros!"""
 
-    elif "logrotate" in s_lower or "fma.log" in s_lower:
+    elif "logrotate" in s_lower:
         fm_svc = next((s for s in meta.get("services", []) if "fastmatch" in (s.get("nome_servico") or "").lower()), None)
         fm_running = fm_svc and any(w in (fm_svc.get("status_servico") or "").lower() for w in ["execu", "running"])
         action_msg = "[AÇÃO OPERACIONAL] FastMatchingSvc está EM EXECUÇÃO (Status: Running).\n[OK] ✅ Serviço FastMatchingSvc reiniciado com sucesso! Status: Running" if fm_running else "[PRESERVAÇÃO] FastMatchingSvc NÃO está em execução.\nCONFORME REGRA ESTRITA: O serviço NÃO foi reiniciado e NÃO foi iniciado."
