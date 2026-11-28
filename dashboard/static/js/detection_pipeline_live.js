@@ -22,11 +22,12 @@ function filterDetectionsByChannel(channelName) {
 window.filterDetectionsByChannel = filterDetectionsByChannel;
 
 async function fetchRealFmaLogFromHost(hostname) {
-    const btn = document.getElementById("btnFetchRealFmaLog");
-    if (btn) {
-        btn.disabled = true;
-        btn.innerText = "⏳ Lendo fma.log real no Capture Site...";
-    }
+    const btns = document.querySelectorAll(".btn-fetch-real-fma");
+    btns.forEach(b => {
+        b.disabled = true;
+        b.innerHTML = `<span>⏳</span> Transmitindo do nó...`;
+    });
+
     try {
         const token = (typeof getAuthToken === "function") ? getAuthToken() : ((typeof getFleetAuthToken === "function") ? getFleetAuthToken() : (localStorage.getItem("fleet_token") || ""));
         const headers = token ? { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" } : { "Content-Type": "application/json" };
@@ -35,13 +36,30 @@ async function fetchRealFmaLogFromHost(hostname) {
         if (data && data.success) {
             fmaLiveLastData = data;
             renderFmaLiveDashboard(data);
+            if (data.is_live_disk) {
+                if (typeof showToast === 'function') showToast(`fma.log transmitido com sucesso de ${hostname}!`, 'success');
+            } else if (data.fetch_notice) {
+                if (typeof showToast === 'function') showToast(data.fetch_notice, 'info');
+            }
         } else {
-            alert(data.error || "Não foi possível obter o fma.log deste nó no momento.");
-            if (btn) { btn.disabled = false; btn.innerText = "📡 Ler fma.log Real do Capture Site Agora"; }
+            if (typeof showToast === 'function') {
+                showToast(data.error || "Não foi possível obter o fma.log deste nó no momento.", 'warning');
+            } else {
+                alert(data.error || "Não foi possível obter o fma.log deste nó no momento.");
+            }
         }
     } catch (e) {
-        alert("Erro ao consultar fma.log remoto: " + e.message);
-        if (btn) { btn.disabled = false; btn.innerText = "📡 Ler fma.log Real do Capture Site Agora"; }
+        if (typeof showToast === 'function') {
+            showToast("Erro ao consultar fma.log remoto: " + e.message, 'error');
+        } else {
+            alert("Erro ao consultar fma.log remoto: " + e.message);
+        }
+    } finally {
+        const resetBtns = document.querySelectorAll(".btn-fetch-real-fma");
+        resetBtns.forEach(b => {
+            b.disabled = false;
+            b.innerHTML = `<span>📡</span> Transmitir fma.log Real do CS`;
+        });
     }
 }
 window.fetchRealFmaLogFromHost = fetchRealFmaLogFromHost;
@@ -553,13 +571,20 @@ function renderFmaLiveDashboard(data) {
         <!-- 4. TERMINAL AO VIVO DO fma.log -->
         <div style="background: #020617; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column;">
 
+            ${data.fetch_notice ? `
+                <div style="background: rgba(14, 165, 233, 0.15); border-bottom: 1px solid rgba(14, 165, 233, 0.4); padding: 6px 12px; font-size: 11px; color: #38bdf8; display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 13px;">📡</span>
+                    <span>${escapeHtml(data.fetch_notice)}</span>
+                </div>
+            ` : ''}
+
             <!-- Header do Terminal com Busca & Filtros -->
             <div style="background: #0f172a; padding: 6px 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
                 <div style="font-size: 11px; font-weight: 700; color: #cbd5e1; display: flex; align-items: center; gap: 8px; font-family: monospace;">
                     <span style="color: ${data.is_live_disk ? '#4ade80' : '#38bdf8'};">$</span>
                     <span>${data.is_live_disk ? `fma.log Real (Capture Site — Últimas ${logs.length} linhas de disco)` : `Telemetria do Nó (${logs.length} eventos no Firestore)`}</span>
                     ${!data.is_live_disk ? `
-                        <button type="button" onclick="fetchRealFmaLogFromHost('${escapeHtml(data.hostname)}')" style="background: linear-gradient(135deg, #0284c7, #2563eb); color: #fff; border: 1px solid rgba(56, 189, 248, 0.5); padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+                        <button type="button" class="btn-fetch-real-fma" onclick="fetchRealFmaLogFromHost('${escapeHtml(data.hostname)}')" style="background: linear-gradient(135deg, #0284c7, #2563eb); color: #fff; border: 1px solid rgba(56, 189, 248, 0.5); padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
                             <span>📡</span> Transmitir fma.log Real do CS
                         </button>
                     ` : `
@@ -584,8 +609,8 @@ function renderFmaLiveDashboard(data) {
                         <div style="font-size: 11px; color: #94a3b8; margin-top: 4px; max-width: 500px; margin-left: auto; margin-right: auto; line-height: 1.4;">
                             A telemetria de processos (RAM, CPU, Uptime) é transmitida em tempo real pelo Agente via Firestore. Para carregar o stream de linhas brutas de correlação acústica diretamente do disco físico do host, clique no botão abaixo.
                         </div>
-                        <button type="button" onclick="fetchRealFmaLogFromHost('${escapeHtml(data.hostname)}')" style="margin-top: 10px; background: linear-gradient(135deg, #0284c7, #2563eb); color: #fff; border: 1px solid rgba(56, 189, 248, 0.5); padding: 6px 14px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer;">
-                            📡 Ler fma.log Real de Disco Agora
+                        <button type="button" class="btn-fetch-real-fma" onclick="fetchRealFmaLogFromHost('${escapeHtml(data.hostname)}')" style="margin-top: 10px; background: linear-gradient(135deg, #0284c7, #2563eb); color: #fff; border: 1px solid rgba(56, 189, 248, 0.5); padding: 6px 14px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer;">
+                            <span>📡</span> Transmitir fma.log Real do CS
                         </button>
                     </div>
                 `}
