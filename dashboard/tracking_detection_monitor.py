@@ -500,11 +500,67 @@ _FASTMATCHING_FLEET_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
 _FMA_DETECTIONS_HISTORY: Dict[str, list] = {}
 _FMA_HISTORY_FILE = Path(__file__).resolve().parent / "data" / "fma_live_history.json"
 _REMOTE_FMA_LOG_CACHE: Dict[str, List[str]] = {}
+_FMA_LOGS_DIR = Path(__file__).resolve().parent / "data" / "fma_logs"
 
 def set_remote_fma_log_cache(hostname: str, lines: List[str]):
     h_clean = str(hostname or "").strip().upper()
     if h_clean and lines:
-        _REMOTE_FMA_LOG_CACHE[h_clean] = lines[-200:]
+        _REMOTE_FMA_LOG_CACHE[h_clean] = lines[-300:]
+        try:
+            _FMA_LOGS_DIR.mkdir(parents=True, exist_ok=True)
+            cache_file = _FMA_LOGS_DIR / f"{h_clean}.json"
+            with open(cache_file, "w", encoding="utf-8") as f:
+                json.dump({"hostname": h_clean, "lines": lines[-300:], "saved_at": datetime.now(timezone.utc).isoformat()}, f, ensure_ascii=False)
+        except Exception as e:
+            logger.warning(f"Erro ao persistir cache de fma.log em disco para {h_clean}: {e}")
+
+def get_remote_fma_log_cache(hostname: str) -> List[str]:
+    h_clean = str(hostname or "").strip().upper()
+    if not h_clean:
+        return []
+    
+    # 1. Checa memória
+    if h_clean in _REMOTE_FMA_LOG_CACHE and _REMOTE_FMA_LOG_CACHE[h_clean]:
+        return _REMOTE_FMA_LOG_CACHE[h_clean]
+    
+    # 2. Checa arquivo em disco
+    cache_file = _FMA_LOGS_DIR / f"{h_clean}.json"
+    if cache_file.exists():
+        try:
+            with open(cache_file, "r", encoding="utf-8") as f:
+                d = json.load(f)
+                lines = d.get("lines") or []
+                if lines:
+                    _REMOTE_FMA_LOG_CACHE[h_clean] = lines
+                    return lines
+        except Exception as e:
+            logger.warning(f"Erro ao ler cache de fma.log em disco para {h_clean}: {e}")
+            
+    # 3. Consulta Firestore na coleção fleet_commands (comandos completados recentemente)
+    try:
+        from gcp_sync import get_firestore_client, resolve_raw_hostname_for_command
+        client = get_firestore_client()
+        if client:
+            raw_h = resolve_raw_hostname_for_command(h_clean) or ""
+            candidate_hosts = [h_clean]
+            if raw_h and raw_h.upper() != h_clean:
+                candidate_hosts.append(raw_h.upper())
+            
+            # Busca últimos comandos ReadFmaLog concluídos
+            cmds = client.collection("fleet_commands").where("action", "==", "ReadFmaLog").where("hostname", "in", candidate_hosts).limit(6).stream()
+            for c in cmds:
+                cd = c.to_dict()
+                if str(cd.get("status", "")).lower() in ("completed", "concluido", "sucesso"):
+                    out = cd.get("output") or ""
+                    if out and "FMA_LOG_NOT_FOUND" not in out:
+                        lines = [l.strip() for l in out.splitlines() if l.strip()]
+                        if lines:
+                            set_remote_fma_log_cache(h_clean, lines)
+                            return lines
+    except Exception as e:
+        logger.warning(f"Erro ao recuperar fma.log do Firestore para {h_clean}: {e}")
+        
+    return []
 
 def _load_fma_detections_from_disk():
     global _FMA_DETECTIONS_HISTORY
@@ -3764,20 +3820,16 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
         {"name": "BAND", "full_name": "Rede Bandeirantes", "prog": 3}
     ]
 
-    # Se não houver arquivo físico localmente na máquina do Dashboard, compor logstream verídico baseado na telemetria do nó
+    # Se não houver arquivo físico localmente na máquina do Dashboard, verifica se há cache/fma.log real transmitido pelo nó
     if not is_live_disk:
-        log_source = f"[{h_clean}] Telemetria do Agente DNA.MonitorServiceSVC (Google Cloud Firestore)"
-        ts_now_str = now.strftime("%Y-%m-%d %H:%M:%S")
-        channels_str = ", ".join(c["name"] for c in channels) if channels else "GLOBO, RECORD, BAND"
-        log_lines = [
-            f"{ts_now_str}: [FASTMATCHING C++] FastMatchingSvc: {fm_svc_status} | RAM Real: {real_ram_mb} MB | CPU: {real_cpu} | Versão: {fm_tel.get('version', '1.1.0.0')}",
-            f"{ts_now_str}: [ATRIA CAPTURE] Atria Capture: {'Em Execução' if atria_running else 'Parado'} | RAM: {cs_tel.get('capture', {}).get('ram', 'N/A')} | Versão: {cs_tel.get('capture', {}).get('version', '2.0.0.2')}",
-            f"{ts_now_str}: [SGG / CONFIG] DNA.ConfigMonitorSVC: Em Execução | RAM: {cs_tel.get('config_monitor', {}).get('ram', 'N/A')} | WCF SGG: {cs_tel.get('config_monitor', {}).get('wcf', 'Conectado')}",
-            f"{ts_now_str}: [HOST CS01] Agente v{agent_version} | Disco D Livre: {real_disk_d} | Uptime: {real_uptime} | CPU Host: {cs_tel.get('agent', {}).get('cpu', cpu_host)}",
-            f"{ts_now_str}: [ARMAZENAMENTO] Disco D: {real_disk_d} livres | Buffer de áudio D:\\MediaDNA_V2\\Data\\emu",
-            f"{ts_now_str}: [STATUS MATCHES] Monitoramento contínuo de comerciais nos canais ({channels_str})",
-            f"{ts_now_str}: [INFO NO FISICO] Nó físico '{h_clean}' monitorado via Agente (Heartbeat Firestore OK)"
-        ]
+        remote_fma_lines = get_remote_fma_log_cache(h_clean)
+        if remote_fma_lines:
+            log_lines = remote_fma_lines[-max(max_lines, 300):]
+            is_live_disk = True
+            log_source = f"[{h_clean}] fma.log Real via Agente (Capture Site)"
+        else:
+            log_source = f"[{h_clean}] Telemetria do Agente DNA.MonitorServiceSVC (Google Cloud Firestore)"
+            log_lines = []
 
     # 3. Parsing dos Logs e Determinação do Estado do Catálogo
     if is_live_disk:
@@ -3818,7 +3870,7 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
     }
 
     # 5. Detecções Automáticas Recentes (ESTRITAMENTE a partir de fma.log real ou telemetria canônica MediaDNA)
-    firestore_fma_lines = fm_tel.get("fma_log") or cs_tel.get("fma_log") or _REMOTE_FMA_LOG_CACHE.get(h_clean.upper()) or []
+    firestore_fma_lines = fm_tel.get("fma_log") or cs_tel.get("fma_log") or get_remote_fma_log_cache(h_clean) or []
     if isinstance(firestore_fma_lines, str):
         firestore_fma_lines = [l.strip() for l in firestore_fma_lines.splitlines() if l.strip()]
     if not is_live_disk and firestore_fma_lines:
