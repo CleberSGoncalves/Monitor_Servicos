@@ -3850,6 +3850,9 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
             log_lines = []
 
     # 3. Parsing dos Logs e Determinação do Estado do Catálogo
+    search_stats: Dict[str, Any] = {}
+    cat_reload: Dict[str, Any] = {}
+
     if is_live_disk:
         parsed_log = parse_fma_log_content(log_lines)
         cat_reload = parsed_log.get("catalog_reload") or {}
@@ -3879,6 +3882,8 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
     else:
         # Modo Telemetria do Agente (sem disco local montado - DADOS ESTRITAMENTE REAIS, ZERO MOCK)
         parsed_log = {"events": [], "search_stats": None, "ram_usage": {"working_set_mb": real_ram_mb, "private_mb": real_ram_mb}}
+        search_stats = {}
+        cat_reload = {}
         is_ram_partial = (0 < real_ram_mb < 100 and is_fm_running)
         is_recon_zero = (real_ram_mb == 0 and is_fm_running)
         is_loading = False

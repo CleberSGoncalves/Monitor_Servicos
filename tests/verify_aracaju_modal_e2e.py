@@ -2,7 +2,7 @@ import sys, os
 from playwright.sync_api import sync_playwright
 
 def test_aracaju_modal():
-    print("Iniciando Playwright para validacao do modal FastMatching Aracaju...")
+    print("Iniciando Playwright para validacao do modal FastMatching no IP real http://127.0.0.1:8092...")
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         context = browser.new_context(viewport={"width": 1600, "height": 950})
@@ -13,9 +13,10 @@ def test_aracaju_modal():
             localStorage.setItem("user_role", "admin");
         """)
 
-        print("Navegando para http://127.0.0.1:8092...")
-        page.goto("http://127.0.0.1:8092", wait_until="networkidle", timeout=30000)
-        page.wait_for_timeout(2000)
+        target_url = "http://127.0.0.1:8092"
+        print(f"Navegando para {target_url}...")
+        page.goto(target_url, wait_until="domcontentloaded", timeout=15000)
+        page.wait_for_timeout(3000)
 
         # Abre o modal do FastMatching para Aracaju
         print("Abrindo modal FastMatching para Aracaju-SMME-328-CS1...")
@@ -27,6 +28,12 @@ def test_aracaju_modal():
 
         # Aguarda a requisicao da API e a renderizacao dos dados
         page.wait_for_timeout(4000)
+
+        # Verifica se ocorreu erro 500
+        footer = page.locator("#fmaLiveFooterStatus")
+        footer_text = footer.inner_text() if footer.is_visible() else ""
+        print(f"Status do rodapé: {footer_text}")
+        assert "HTTP 500" not in footer_text, f"Erro 500 detectado no rodapé: {footer_text}"
 
         # Inspeciona o terminal
         terminal = page.locator("#fmaLiveLogTerminal")
@@ -59,11 +66,7 @@ def test_aracaju_modal():
 
         # Tira screenshot do modal centralizado
         evidence_path = os.path.abspath("tests/evidence_aracaju_fma_live_real.png")
-        modal_box = modal.locator("> div, div[style*='background: #0b1120']").first
-        if modal_box.is_visible():
-            modal_box.screenshot(path=evidence_path)
-        else:
-            page.screenshot(path=evidence_path)
+        page.screenshot(path=evidence_path)
         print(f"\nScreenshot salvo com sucesso em: {evidence_path}")
 
         # Copia tambem para pasta brain para exibicao em artifacts
