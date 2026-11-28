@@ -320,7 +320,7 @@ function renderFmaLiveDashboard(data) {
                     <span style="font-size: 8.5px; background: rgba(56, 189, 248, 0.15); color: #38bdf8; padding: 1px 5px; border-radius: 4px; font-weight: 700; white-space: nowrap;">Biblioteca</span>
                 </div>
                 <div style="font-size: 15px; font-weight: 800; color: #f8fafc; margin-top: 2px;">
-                    ${(spots.total_spots_loaded || 0).toLocaleString()} <span style="font-size: 10.5px; color: #94a3b8; font-weight: 600;">spots</span>
+                    ${spots.total_spots_loaded !== null && spots.total_spots_loaded !== undefined ? `${(spots.total_spots_loaded).toLocaleString()} <span style="font-size: 10.5px; color: #94a3b8; font-weight: 600;">spots</span>` : (spots.loaded ? `<span style="font-size: 13px; color: #4ade80;">Ativo em Memória</span>` : `<span style="font-size: 13px; color: #f87171;">Não Carregado</span>`)}
                 </div>
                 <div style="font-size: 10.5px; color: ${spots.status_color === 'green' ? '#4ade80' : (spots.status_color === 'yellow' ? '#facc15' : '#f87171')}; margin-top: 2px; font-weight: 700;">
                     ${escapeHtml(spots.status_label || 'Aguardando')} ${!spots.is_ram_partial && spots.recon_count !== null && spots.recon_count !== undefined ? `(recon=${spots.recon_count})` : ''}
@@ -331,7 +331,7 @@ function renderFmaLiveDashboard(data) {
             <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid ${emu.flow_color === 'green' ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'}; border-radius: 8px; padding: 8px 10px;">
                 <div style="font-size: 9.5px; font-weight: 800; color: #facc15; text-transform: uppercase;">Geração de .EMU (1 min)</div>
                 <div style="font-size: 15px; font-weight: 800; color: #f8fafc; margin-top: 2px;">
-                    ${(Number(emu.generation_rate_cpm) || 0).toFixed(1)} <span style="font-size: 11px; color: #94a3b8; font-weight: 600;">arquivos/min</span>
+                    ${emu.generation_rate_cpm !== null && emu.generation_rate_cpm !== undefined ? `${(Number(emu.generation_rate_cpm)).toFixed(1)} <span style="font-size: 11px; color: #94a3b8; font-weight: 600;">arquivos/min</span>` : (emu.flow_status === 'FLOWING' ? `<span style="font-size: 13px; color: #4ade80;">Atria em Gravação</span>` : `<span style="font-size: 13px; color: #f87171;">Parado</span>`)}
                 </div>
                 <div style="font-size: 10.5px; color: ${emu.flow_color === 'green' ? '#4ade80' : '#f87171'}; margin-top: 2px; font-weight: 700;">
                     ${escapeHtml(emu.flow_label || 'Sem dados')}
@@ -342,10 +342,10 @@ function renderFmaLiveDashboard(data) {
             <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 8px 10px;">
                 <div style="font-size: 9.5px; font-weight: 800; color: #c084fc; text-transform: uppercase;">Varredura &amp; Memória</div>
                 <div style="font-size: 15px; font-weight: 800; color: #f8fafc; margin-top: 2px;">
-                    ${perf.proc_time_ms_avg || 18} ms <span style="font-size: 11px; color: #94a3b8; font-weight: 600;">ProcTime</span>
+                    ${perf.proc_time_ms_avg !== null && perf.proc_time_ms_avg !== undefined ? `${perf.proc_time_ms_avg} ms <span style="font-size: 11px; color: #94a3b8; font-weight: 600;">ProcTime</span>` : `<span style="font-size: 13px; color: #38bdf8;">Em Execução</span>`}
                 </div>
                 <div style="font-size: 10.5px; color: #94a3b8; margin-top: 2px;">
-                    RAM: <strong style="color: #38bdf8;">${perf.ram_working_set_mb || 0} MB</strong> • Fingers: ${(perf.num_fingers || 0).toLocaleString()}
+                    RAM: <strong style="color: #38bdf8;">${perf.ram_working_set_mb || 0} MB</strong> • Fingers: ${perf.num_fingers !== null && perf.num_fingers !== undefined ? perf.num_fingers.toLocaleString() : 'N/A (Requer fma.log)'}
                 </div>
             </div>
 
@@ -496,9 +496,9 @@ function renderFmaLiveDashboard(data) {
                         <div style="background: rgba(0, 0, 0, 0.3); padding: 6px 8px; border-radius: 5px;">
                             <div style="color: #94a3b8; font-size: 9.5px; text-transform: uppercase;">Último .EMU Gravado</div>
                             <div style="color: #38bdf8; font-weight: 700; font-family: monospace; margin-top: 1px; word-break: break-all;">
-                                ${escapeHtml(emu.last_emu_file)}
+                                ${emu.last_emu_file ? escapeHtml(emu.last_emu_file) : `<span style="color: #94a3b8; font-weight: 400; font-family: sans-serif;">Buffer remoto em D:\\MediaDNA_V2\\Data\\emu</span>`}
                             </div>
-                            <div style="color: #64748b; font-size: 9.5px;">Timestamp: ${escapeHtml(emu.last_emu_timestamp)}</div>
+                            <div style="color: #64748b; font-size: 9.5px;">${emu.last_emu_timestamp ? `Timestamp: ${escapeHtml(emu.last_emu_timestamp)}` : `(Aguardando leitura de disco)`}</div>
                         </div>
 
                         <div style="background: rgba(0, 0, 0, 0.3); padding: 6px 8px; border-radius: 5px;">
@@ -547,7 +547,18 @@ function renderFmaLiveDashboard(data) {
 
             <!-- Corpo de Linhas Monospace Coloridas -->
             <div id="fmaLiveLogTerminal" style="font-family: Consolas, 'Courier New', monospace; font-size: 11px; line-height: 1.45; color: #e2e8f0; padding: 8px 12px; height: 125px; overflow-y: auto; background: #00040f;">
-                ${renderFmaLogLines(logs, fmaLiveLogSearchKw)}
+                ${logs.length > 0 ? renderFmaLogLines(logs, fmaLiveLogSearchKw) : `
+                    <div style="color: #94a3b8; padding: 20px 10px; text-align: center; font-family: sans-serif;">
+                        <div style="font-size: 20px; margin-bottom: 6px;">📡</div>
+                        <div style="font-weight: 700; color: #f8fafc; font-size: 12px;">Arquivo fma.log no disco físico do Capture Site</div>
+                        <div style="font-size: 11px; color: #94a3b8; margin-top: 4px; max-width: 500px; margin-left: auto; margin-right: auto; line-height: 1.4;">
+                            A telemetria de processos (RAM, CPU, Uptime) é transmitida em tempo real pelo Agente via Firestore. Para carregar o stream de linhas brutas de correlação acústica diretamente do disco físico do host, clique no botão abaixo.
+                        </div>
+                        <button type="button" onclick="fetchRealFmaLogFromHost('${escapeHtml(data.hostname)}')" style="margin-top: 10px; background: linear-gradient(135deg, #0284c7, #2563eb); color: #fff; border: 1px solid rgba(56, 189, 248, 0.5); padding: 6px 14px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer;">
+                            📡 Ler fma.log Real de Disco Agora
+                        </button>
+                    </div>
+                `}
             </div>
 
         </div>

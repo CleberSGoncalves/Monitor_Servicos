@@ -3746,52 +3746,36 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
     if not is_live_disk:
         log_source = f"[{h_clean}] Telemetria do Agente DNA.MonitorServiceSVC (Google Cloud Firestore)"
         log_lines = []
-        ts_now = now.strftime("%Y-%m-%d %H:%M:%S")
-
-        # Registros reais de eventos do nó reportados pelo agente (convertidos para horário local)
-        for ev in node_telemetry.get("events", []):
-            ev_ts = _format_event_timestamp(ev.get("timestamp"), ts_now)
-            log_lines.append(f"{ev_ts}: [{ev.get('badge', 'TELEMETRIA')}] {ev.get('summary', '')}")
-
-        if not log_lines:
-            log_lines.append(f"{ts_now}: [TELEMETRIA DO AGENTE] Nó físico '{h_clean}' ({praca}) monitorado via Agente v{agent_version} (Uptime: {real_uptime}).")
-            log_lines.append(f"{ts_now}: [FASTMATCHING] Serviço {fm_svc_status} | Working Set em RAM: {real_ram_mb} MB | CPU: {real_cpu}.")
-            log_lines.append(f"{ts_now}: [BUFFER EMU] Disco D: {real_disk_d} livres | Buffer de áudio D:\\MediaDNA_V2\\Data\\emu.")
-            log_lines.append(f"{ts_now}: [CANAL DE ÁUDIO] Sintonização contínua nos canais ({', '.join([c['name'] for c in channels])}).")
-            log_lines.append(f"{ts_now}: [INFO FMA.LOG] O arquivo físico fma.log reside no disco do Capture Site remoto.")
-            log_lines.append(f"{ts_now}: [AÇÃO DISPONÍVEL] Clique no botão '📡 Transmitir fma.log Real' acima para ler as linhas de disco do Capture Site ao vivo.")
 
     # 3. Parsing dos Logs e Determinação do Estado do Catálogo
     if is_live_disk:
         parsed_log = parse_fma_log_content(log_lines)
         cat_reload = parsed_log.get("catalog_reload") or {}
-        total_spots = cat_reload.get("spots_count") or 14820
+        total_spots = cat_reload.get("spots_count")
         recon_count = cat_reload.get("recon_count")
-        if recon_count is None:
-            recon_count = total_spots if is_fm_running else 0
         is_ram_partial = False
         is_recon_zero = (recon_count == 0) and is_fm_running
         is_loading = False
-        is_synchronized = not is_recon_zero and (total_spots > 0)
+        is_synchronized = not is_recon_zero and (total_spots is not None and total_spots > 0)
     else:
-        # Modo Telemetria do Agente (sem disco local montado)
+        # Modo Telemetria do Agente (sem disco local montado - DADOS ESTRITAMENTE REAIS, ZERO MOCK)
         parsed_log = {"events": [], "search_stats": None, "ram_usage": {"working_set_mb": real_ram_mb, "private_mb": real_ram_mb}}
         is_ram_partial = (0 < real_ram_mb < 100 and is_fm_running)
         is_recon_zero = (real_ram_mb == 0 and is_fm_running)
         is_loading = False
         is_synchronized = (real_ram_mb > 0 and is_fm_running)
-        total_spots = 14820 if is_synchronized else 0
-        recon_count = 14820 if is_synchronized else 0
+        total_spots = None
+        recon_count = None
 
     # 4. Status dos Spots
     if is_live_disk:
-        last_sync_ts = cat_reload.get("timestamp") or (now - timedelta(minutes=15)).strftime("%Y-%m-%d %H:%M:%S")
+        last_sync_ts = cat_reload.get("timestamp") or ""
     else:
-        last_sync_ts = now.strftime("%Y-%m-%d %H:%M:%S")
+        last_sync_ts = ""
 
     spots_status = {
         "loaded": is_synchronized,
-        "total_spots_loaded": total_spots if is_fm_running else 0,
+        "total_spots_loaded": total_spots,
         "last_sync_timestamp": last_sync_ts,
         "is_synchronized": is_synchronized,
         "is_ram_partial": is_ram_partial,
@@ -3881,8 +3865,8 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
 
     # 6. Geração de .EMU (D:\MediaDNA_V2\Data\emu)
     emu_files_count = 0
-    last_emu_name = f"{now.strftime('%Y%m%d_%H%M00')}_CH01.emu"
-    last_emu_time = (now - timedelta(seconds=25)).strftime("%Y-%m-%d %H:%M:%S")
+    last_emu_name = None
+    last_emu_time = None
     emu_path = Path(r"D:\MediaDNA_V2\Data\emu")
 
     if emu_path.exists():
@@ -3897,7 +3881,7 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
 
     active_channels_count = len(channels) if channels else 3
     expected_cpm = float(active_channels_count)
-    actual_cpm = expected_cpm if (is_fm_running and atria_running) else 0.0
+    actual_cpm = float(emu_files_count) if is_live_disk and emu_path.exists() else None
 
     emu_flow_status = "FLOWING" if (is_fm_running and atria_running) else ("STOPPED" if not atria_running else "BUFFER_DELAY")
     free_disk_val = real_disk_d if not is_live_disk else disk_d_livre
@@ -3952,19 +3936,18 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
         diag_color = "green"
         rec_action = "Nenhuma intervenção necessária. Parâmetros nominais."
 
-    # 8. Estatísticas do Motor C++
-    search_stats = parsed_log.get("search_stats") or {
-        "num_fingers": 8442 if (is_synchronized or is_ram_partial) else 0,
-        "search_ms": 3.4 if (is_synchronized or is_ram_partial) else 0.0,
-        "content_ms": 60000,
-        "packets": 120
-    }
+    # 8. Estatísticas do Motor C++ (DADOS ESTRITAMENTE REAIS, ZERO SINTÉTICO)
+    search_stats = parsed_log.get("search_stats") or {}
     ram_usage = parsed_log.get("ram_usage") or {
         "working_set_mb": real_ram_mb,
         "private_mb": real_ram_mb
     }
     ram_ws = real_ram_mb if not is_live_disk else (ram_usage.get("working_set_mb", real_ram_mb) or real_ram_mb)
     ram_priv = real_ram_mb if not is_live_disk else (ram_usage.get("private_mb", real_ram_mb) or real_ram_mb)
+
+    proc_time_real = round(sum(d["proc_time_ms"] for d in recent_detections[:5]) / max(1, len(recent_detections[:5])), 1) if recent_detections else None
+    num_fingers_real = search_stats.get("num_fingers")
+    search_ms_real = search_stats.get("search_ms")
 
     return {
         "success": True,
@@ -3987,9 +3970,9 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
         "engine_performance": {
             "is_running": is_fm_running,
             "status_text": fm_svc_status,
-            "proc_time_ms_avg": round(sum(d["proc_time_ms"] for d in recent_detections[:5]) / max(1, len(recent_detections[:5])), 1) if recent_detections else (18.0 if (is_synchronized or is_ram_partial) else 0.0),
-            "num_fingers": search_stats.get("num_fingers", 8442 if (is_synchronized or is_ram_partial) else 0),
-            "search_time_ms": search_stats.get("search_ms", 3.4 if (is_synchronized or is_ram_partial) else 0.0),
+            "proc_time_ms_avg": proc_time_real,
+            "num_fingers": num_fingers_real,
+            "search_time_ms": search_ms_real,
             "ram_working_set_mb": ram_ws,
             "ram_private_mb": ram_priv,
             "host_cpu": real_cpu,

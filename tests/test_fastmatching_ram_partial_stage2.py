@@ -34,12 +34,10 @@ def test_ariquemes_ram_partial_stage2_is_nominal_and_not_failed():
         live_data = get_fastmatching_pipeline_live("ARIQUEMES-SMME-261-CS1")
         assert live_data["success"] is True
         
-        # 1. Valida Card do Catálogo SGG
+        # 1. Valida Card do Catálogo SGG (Sem dados sintéticos inventados)
         spots = live_data["spots_status"]
         assert spots["loaded"] is True
         assert spots["is_ram_partial"] is True
-        assert spots["total_spots_loaded"] == 14820
-        assert spots["recon_count"] == 14820
         assert spots["status_color"] == "green"
         assert "Sincronizado" in spots["status_label"]
 
@@ -49,11 +47,10 @@ def test_ariquemes_ram_partial_stage2_is_nominal_and_not_failed():
         assert diag["status"] == "NOMINAL"
         assert "Normal" in diag["title"]
 
-        # 3. Valida Card Varredura & Memória
+        # 3. Valida Card Varredura & Memória (RAM real do nó, sem ProcTime sintético)
         perf = live_data["engine_performance"]
-        assert perf["num_fingers"] > 0
-        assert perf["proc_time_ms_avg"] > 0
         assert perf["ram_working_set_mb"] == 90
+        assert perf["is_running"] is True
 
         # 4. Valida Modal de Diagnóstico IA / 4 Estágios
         plan = generate_pipeline_ai_solution_plan("ARIQUEMES-SMME-261-CS1")
