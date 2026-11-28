@@ -111,10 +111,24 @@ async function loadFmaLiveCs01Selector() {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
 
-        const hosts = data.hosts || [];
-        if (hosts.length === 0) {
+        const rawHosts = data.hosts || [];
+        if (rawHosts.length === 0) {
             selectEl.innerHTML = `<option value="">Nenhum nó CS01 localizado</option>`;
             return;
+        }
+
+        // Deduplicação estrita de praças/hosts para o dropdown (elimina qualquer duplicata de praça ou nó legado)
+        const seenPracas = new Set();
+        const seenHosts = new Set();
+        const hosts = [];
+        for (const h of rawHosts) {
+            const pKey = String(h.praca || "").trim().toLowerCase();
+            const hKey = String(h.hostname || "").trim().toUpperCase();
+            if (pKey && seenPracas.has(pKey)) continue;
+            if (hKey && seenHosts.has(hKey)) continue;
+            if (pKey) seenPracas.add(pKey);
+            if (hKey) seenHosts.add(hKey);
+            hosts.push(h);
         }
 
         selectEl.innerHTML = hosts.map(h => {
@@ -215,7 +229,10 @@ async function refreshFmaLiveData(isBackground = false) {
             subEl.textContent = `Praça: ${fmaLiveCurrentPraca} (CS01) • Origem: ${data.log_source} • Timestamp: ${data.timestamp}`;
         }
         if (footerEl) {
-            footerEl.textContent = `Modo: ${data.is_live_disk ? "🟢 Arquivo em Disco Vivo" : "⚡ Telemetria Real do Nó"} | RAM Motor: ${data.engine_performance.ram_working_set_mb}MB | Fingers: ${data.engine_performance.num_fingers.toLocaleString()} | Disco D: ${data.emu_status.free_disk_gb} livres`;
+            const ramVal = (data.engine_performance && data.engine_performance.ram_working_set_mb != null) ? data.engine_performance.ram_working_set_mb : 0;
+            const fingersVal = (data.engine_performance && data.engine_performance.num_fingers != null) ? Number(data.engine_performance.num_fingers).toLocaleString('pt-BR') : 'N/A';
+            const diskVal = (data.emu_status && data.emu_status.free_disk_gb != null) ? data.emu_status.free_disk_gb : 'N/A';
+            footerEl.textContent = `Modo: ${data.is_live_disk ? "🟢 Arquivo em Disco Vivo" : "⚡ Telemetria Real do Nó"} | RAM Motor: ${ramVal}MB | Fingers: ${fingersVal} | Disco D: ${diskVal} livres`;
         }
 
         // Exibe botão de auto-cura se recon=0
@@ -320,7 +337,7 @@ function renderFmaLiveDashboard(data) {
                     <span style="font-size: 8.5px; background: rgba(56, 189, 248, 0.15); color: #38bdf8; padding: 1px 5px; border-radius: 4px; font-weight: 700; white-space: nowrap;">Biblioteca</span>
                 </div>
                 <div style="font-size: 15px; font-weight: 800; color: #f8fafc; margin-top: 2px;">
-                    ${spots.total_spots_loaded !== null && spots.total_spots_loaded !== undefined ? `${(spots.total_spots_loaded).toLocaleString()} <span style="font-size: 10.5px; color: #94a3b8; font-weight: 600;">spots</span>` : (spots.loaded ? `<span style="font-size: 13px; color: #4ade80;">Ativo em Memória</span>` : `<span style="font-size: 13px; color: #f87171;">Não Carregado</span>`)}
+                    ${spots.total_spots_loaded !== null && spots.total_spots_loaded !== undefined ? `${(Number(spots.total_spots_loaded) || 0).toLocaleString('pt-BR')} <span style="font-size: 10.5px; color: #94a3b8; font-weight: 600;">spots</span>` : (spots.loaded ? `<span style="font-size: 13px; color: #4ade80;">Ativo em Memória</span>` : `<span style="font-size: 13px; color: #f87171;">Não Carregado</span>`)}
                 </div>
                 <div style="font-size: 10.5px; color: ${spots.status_color === 'green' ? '#4ade80' : (spots.status_color === 'yellow' ? '#facc15' : '#f87171')}; margin-top: 2px; font-weight: 700;">
                     ${escapeHtml(spots.status_label || 'Aguardando')} ${!spots.is_ram_partial && spots.recon_count !== null && spots.recon_count !== undefined ? `(recon=${spots.recon_count})` : ''}
@@ -345,7 +362,7 @@ function renderFmaLiveDashboard(data) {
                     ${perf.proc_time_ms_avg !== null && perf.proc_time_ms_avg !== undefined ? `${perf.proc_time_ms_avg} ms <span style="font-size: 11px; color: #94a3b8; font-weight: 600;">ProcTime</span>` : `<span style="font-size: 13px; color: #38bdf8;">Em Execução</span>`}
                 </div>
                 <div style="font-size: 10.5px; color: #94a3b8; margin-top: 2px;">
-                    RAM: <strong style="color: #38bdf8;">${perf.ram_working_set_mb || 0} MB</strong> • Fingers: ${perf.num_fingers !== null && perf.num_fingers !== undefined ? perf.num_fingers.toLocaleString() : 'N/A (Requer fma.log)'}
+                    RAM: <strong style="color: #38bdf8;">${perf.ram_working_set_mb || 0} MB</strong> • Fingers: ${perf.num_fingers !== null && perf.num_fingers !== undefined ? Number(perf.num_fingers).toLocaleString('pt-BR') : 'N/A (Requer fma.log)'}
                 </div>
             </div>
 

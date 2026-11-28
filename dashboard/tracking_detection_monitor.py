@@ -3490,28 +3490,50 @@ def get_cs01_fastmatching_hosts() -> List[Dict[str, Any]]:
     """
     Retorna a relação de todos os Capture Sites CS01 elegíveis para
     monitoramento ao vivo do FastMatching, ordenados alfabeticamente por praça.
+    Garante deduplicação estrita: uma única entrada por praça, priorizando
+    nós canônicos SMME e com telemetria ativa (eliminando lixo legado).
     """
     snapshot = build_detection_fleet_snapshot(threshold_minutes=60)
     sites = snapshot.get("sites", [])
-    cs01_list = []
+    praca_map: Dict[str, Dict[str, Any]] = {}
 
     for s in sites:
-        h = s.get("hostname", "")
-        p = s.get("praca", "")
-        fm_svc = s.get("pipeline_services", {}).get("fastmatching", {})
+        h = str(s.get("hostname", "")).strip()
+        p = str(s.get("praca", "")).strip()
+        if not h or not p:
+            continue
 
-        cs01_list.append({
+        p_key = p.lower()
+        fm_svc = s.get("pipeline_services", {}).get("fastmatching", {})
+        is_running = fm_svc.get("running", False)
+        is_smme = "-SMME-" in h.upper()
+
+        host_item = {
             "hostname": h,
             "praca": p,
             "engine_tier": s.get("engine_tier", "PRIMARY"),
-            "fastmatching_running": fm_svc.get("running", False),
+            "fastmatching_running": is_running,
             "fastmatching_status": fm_svc.get("status", "Parado"),
             "health_status": s.get("health_status", "NOMINAL"),
             "cpu_uso": s.get("cpu_uso", "N/A"),
             "ram_uso": s.get("ram_uso", "N/A"),
             "is_stalled": s.get("is_stalled", False)
-        })
+        }
 
+        if p_key not in praca_map:
+            praca_map[p_key] = host_item
+        else:
+            existing = praca_map[p_key]
+            exist_smme = "-SMME-" in existing["hostname"].upper()
+            exist_running = existing["fastmatching_running"]
+
+            # Prioriza:
+            # 1. Hostname canônico (-SMME-) sobre raw/legado (ex: Campinas-SMME-52-CS1 sobre BRSP-CAS-ATRIA-)
+            # 2. FastMatching em execução sobre parado
+            if (is_smme and not exist_smme) or (is_running and not exist_running and is_smme == exist_smme):
+                praca_map[p_key] = host_item
+
+    cs01_list = list(praca_map.values())
     cs01_list.sort(key=lambda x: (not x["fastmatching_running"], x["praca"]))
     return cs01_list
 

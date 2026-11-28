@@ -11,11 +11,18 @@
 
 ---
 
-## 🧪 DIRETRIZ OBRIGATÓRIA DE TESTES E VALIDAÇÃO REAL
+## 🧪 DIRETRIZ OBRIGATÓRIA E PRIMORDIAL DE TESTES E VALIDAÇÃO REAL
 
-> [!IMPORTANT]
-> **OBRIGATORIEDADE DE TESTES E VALIDAÇÃO REAL A CADA NOVA FUNÇÃO OU CORREÇÃO**
-> Sempre que desenvolver ou entregar uma função nova, modificação arquitetural ou correção de bug neste projeto, o agente DEVE OBRIGATORIAMENTE escrever e executar testes automatizados reais (unitários, integração e/ou validação de ponta a ponta E2E) comprovando o funcionamento correto antes de concluir a resposta. NUNCA entregar código baseado em suposições sem validação prática.
+> [!CAUTION]
+> **É PRIMORDIAL E INEGOCIÁVEL TESTAR TUDO O QUE FOI FEITO ANTES DE RESPONDER AO USUÁRIO**
+> 
+> 1. **Proibição Absoluta de Entrega sem Testes**: O agente NUNCA deve concluir ou entregar qualquer função nova, modificação arquitetural, ajuste de layout ou correção de bug sem ANTES testar e validar na prática aquilo que desenvolveu.
+> 2. **Validação Prática de Ponta a Ponta**:
+>    - Para arquivos JavaScript (`.js`): Rodar obrigatoriamente validação de sintaxe (`node -c`) e testes de renderização/comportamento via Playwright ou suíte de frontend.
+>    - Para telas e modais (UI): Testar com dados reais e dados nulos/ausentes para garantir que NENHUM erro de runtime (ex: `Cannot read properties of null`) quebre a interface do operador.
+>    - Para rotas/APIs Python: Escrever e rodar testes automatizados com `pytest` cobrindo o fluxo completo de entrada e saída.
+>    - Para serviços de background: Validar que os processos sobem e respondem com HTTP 200 via `api/health` antes de finalizar.
+> 3. **Tolerância Zero a Suposições**: Todo código entregue deve ter comprovação empírica de funcionamento registrada na execução dos testes. Se não foi testado e comprovado, o trabalho NÃO está pronto.
 
 ---
 
