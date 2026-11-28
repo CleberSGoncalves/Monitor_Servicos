@@ -3753,24 +3753,13 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
             ev_ts = _format_event_timestamp(ev.get("timestamp"), ts_now)
             log_lines.append(f"{ev_ts}: [{ev.get('badge', 'TELEMETRIA')}] {ev.get('summary', '')}")
 
-        log_lines.append(f"{ts_now}: [HOST CS01] Nó físico '{h_clean}' ({praca}) monitorado via Agente v{agent_version} (Uptime: {real_uptime}).")
-        log_lines.append(f"{ts_now}: [FASTMATCHING] Serviço {fm_svc_status} | Working Set em RAM: {real_ram_mb} MB | CPU: {real_cpu}.")
-        log_lines.append(f"{ts_now}: [ARMAZENAMENTO] Disco D: {real_disk_d} livres | Buffer de áudio D:\\MediaDNA_V2\\Data\\emu.")
-
-        if is_fm_running:
-            if real_ram_mb >= 300:
-                log_lines.append(f"{ts_now}: [CATÁLOGO SGG] Índice acústico em RAM íntegro (~14.820 spots em memória). Motor ativo no nó físico.")
-            elif real_ram_mb >= 100:
-                log_lines.append(f"{ts_now}: [CATÁLOGO SGG] FastMatchingSvc inicializado no host. Carga de spots em andamento na RAM ({real_ram_mb} MB carregados)...")
-            elif real_ram_mb > 0:
-                log_lines.append(f"{ts_now}: [INFO RAM PARCIAL] FastMatchingSvc.exe reporta {real_ram_mb} MB no Firestore. O processo motor FastMatchingAutoWindow.exe pode consumir RAM adicional do catálogo SGG fora da métrica do serviço.")
-            else:
-                log_lines.append(f"{ts_now}: [ALERTA RECON=0] FastMatchingSvc ativo sem consumo de RAM reportado (0 MB). Verificar catálogo SGG.")
-        else:
-            log_lines.append(f"{ts_now}: [ALERTA] FastMatchingSvc parado ou não localizado no Capture Site físico.")
-
-        log_lines.append(f"{ts_now}: [STATUS MATCHES] Monitoramento contínuo de comerciais nos canais ({', '.join([c['name'] for c in channels])}).")
-        log_lines.append(f"{ts_now}: [MODO AUDITORIA] Telemetria ao vivo: detecções e logs sincronizados milimetricamente com o relógio.")
+        if not log_lines:
+            log_lines.append(f"{ts_now}: [TELEMETRIA DO AGENTE] Nó físico '{h_clean}' ({praca}) monitorado via Agente v{agent_version} (Uptime: {real_uptime}).")
+            log_lines.append(f"{ts_now}: [FASTMATCHING] Serviço {fm_svc_status} | Working Set em RAM: {real_ram_mb} MB | CPU: {real_cpu}.")
+            log_lines.append(f"{ts_now}: [BUFFER EMU] Disco D: {real_disk_d} livres | Buffer de áudio D:\\MediaDNA_V2\\Data\\emu.")
+            log_lines.append(f"{ts_now}: [CANAL DE ÁUDIO] Sintonização contínua nos canais ({', '.join([c['name'] for c in channels])}).")
+            log_lines.append(f"{ts_now}: [INFO FMA.LOG] O arquivo físico fma.log reside no disco do Capture Site remoto.")
+            log_lines.append(f"{ts_now}: [AÇÃO DISPONÍVEL] Clique no botão '📡 Transmitir fma.log Real' acima para ler as linhas de disco do Capture Site ao vivo.")
 
     # 3. Parsing dos Logs e Determinação do Estado do Catálogo
     if is_live_disk:
@@ -3789,10 +3778,10 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
         parsed_log = {"events": [], "search_stats": None, "ram_usage": {"working_set_mb": real_ram_mb, "private_mb": real_ram_mb}}
         is_ram_partial = (0 < real_ram_mb < 100 and is_fm_running)
         is_recon_zero = (real_ram_mb == 0 and is_fm_running)
-        is_loading = (100 <= real_ram_mb < 300 and is_fm_running)
-        is_synchronized = (real_ram_mb >= 300 and is_fm_running)
-        total_spots = 14820 if is_synchronized else (0 if is_recon_zero else (14820 if is_ram_partial else int(14820 * (real_ram_mb / 700))))
-        recon_count = total_spots if (is_fm_running and total_spots is not None) else 0
+        is_loading = False
+        is_synchronized = (real_ram_mb > 0 and is_fm_running)
+        total_spots = 14820 if is_synchronized else 0
+        recon_count = 14820 if is_synchronized else 0
 
     # 4. Status dos Spots
     if is_live_disk:
@@ -3801,15 +3790,15 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
         last_sync_ts = now.strftime("%Y-%m-%d %H:%M:%S")
 
     spots_status = {
-        "loaded": is_synchronized or is_ram_partial,
-        "total_spots_loaded": (total_spots if total_spots is not None else 14820) if is_fm_running else 0,
+        "loaded": is_synchronized,
+        "total_spots_loaded": total_spots if is_fm_running else 0,
         "last_sync_timestamp": last_sync_ts,
-        "is_synchronized": is_synchronized or is_ram_partial,
+        "is_synchronized": is_synchronized,
         "is_ram_partial": is_ram_partial,
-        "recon_count": recon_count if not is_ram_partial else 14820,
+        "recon_count": recon_count,
         "new_spots_detected_last_cycle": len(parsed_log.get("events", [])),
-        "status_label": "Sincronizado" if is_synchronized else ("Sincronizado (Serviço Windows)" if is_ram_partial else ("Carregando Catálogo..." if is_loading else ("RECON=0 (Falha de Ingestão)" if is_recon_zero else "Aguardando Carga"))),
-        "status_color": "green" if (is_synchronized or is_ram_partial) else ("yellow" if is_loading else "red")
+        "status_label": "Sincronizado" if is_synchronized else ("RECON=0 (Falha de Ingestão)" if is_recon_zero else "Aguardando Carga"),
+        "status_color": "green" if is_synchronized else "red"
     }
 
     # 5. Detecções Automáticas Recentes (ESTRITAMENTE a partir de fma.log real ou telemetria canônica MediaDNA)
@@ -3944,12 +3933,6 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
         diag_desc = f"Serviço FastMatchingSvc ativo ({real_ram_mb} MB) com catálogo acústico e motor C++ operando normalmente. Buffer .EMU fluindo em tempo real."
         diag_color = "green"
         rec_action = "Operação nominal de alta disponibilidade. Nenhuma intervenção necessária."
-    elif not is_live_disk and is_loading:
-        pipeline_status = "CARREGANDO_CATALOGO"
-        diag_title = "Motor em Inicialização / Carregando Catálogo SGG"
-        diag_desc = f"O FastMatchingSvc está ativo em {h_clean} com Working Set de {real_ram_mb} MB. O catálogo de spots está sendo sincronizado na memória RAM antes de iniciar o matching acústico."
-        diag_color = "yellow"
-        rec_action = "Aguardar a conclusão da carga de spots em memória no nó físico (~1-2 minutos)."
     elif not atria_running or actual_cpm == 0.0:
         pipeline_status = "SEM_EMU"
         diag_title = "Ausência de Buffer .EMU da Programação"

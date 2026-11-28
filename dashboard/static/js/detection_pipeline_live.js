@@ -82,6 +82,11 @@ async function openDetectionPipelineLiveModal(hostname, praca) {
     // 3. Primeira leitura imediata
     await refreshFmaLiveData();
 
+    // Se o nó ainda não tiver fma.log de disco em cache, disparar busca automática
+    if (fmaLiveLastData && !fmaLiveLastData.is_live_disk) {
+        fetchRealFmaLogFromHost(fmaLiveCurrentHost);
+    }
+
     // 4. Iniciar loop de auto-refresh de 3s
     startFmaLiveAutoRefreshLoop();
 }
@@ -520,8 +525,16 @@ function renderFmaLiveDashboard(data) {
 
             <!-- Header do Terminal com Busca & Filtros -->
             <div style="background: #0f172a; padding: 6px 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-                <div style="font-size: 11px; font-weight: 700; color: #cbd5e1; display: flex; align-items: center; gap: 6px; font-family: monospace;">
-                    <span style="color: #38bdf8;">$</span> fma.log (Live Tail — Últimas ${logs.length} linhas)
+                <div style="font-size: 11px; font-weight: 700; color: #cbd5e1; display: flex; align-items: center; gap: 8px; font-family: monospace;">
+                    <span style="color: ${data.is_live_disk ? '#4ade80' : '#38bdf8'};">$</span>
+                    <span>${data.is_live_disk ? `fma.log Real (Capture Site — Últimas ${logs.length} linhas de disco)` : `Telemetria do Nó (${logs.length} eventos no Firestore)`}</span>
+                    ${!data.is_live_disk ? `
+                        <button type="button" onclick="fetchRealFmaLogFromHost('${escapeHtml(data.hostname)}')" style="background: linear-gradient(135deg, #0284c7, #2563eb); color: #fff; border: 1px solid rgba(56, 189, 248, 0.5); padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+                            <span>📡</span> Transmitir fma.log Real do CS
+                        </button>
+                    ` : `
+                        <span style="font-size: 9.5px; background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.4); padding: 1px 6px; border-radius: 3px; font-weight: 700;">● DISCO AO VIVO</span>
+                    `}
                 </div>
 
                 <div style="display: flex; align-items: center; gap: 10px;">
