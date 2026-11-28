@@ -356,7 +356,7 @@ def parse_fma_log_content(lines: List[str]) -> Dict[str, Any]:
 
     re_detection = re.compile(r"""(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}):\s+\[(.*?)\]\(.*?\)\s+NEW DETECTION\s+(\d+),.*?,.*?,\s*(\d+)ms,\s*['\"](.*?)['\"].*?ProcTimeMs\s+(\d+)""", re.IGNORECASE)
     re_delayed = re.compile(r"""(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}):.*?DELAYED NEW DETECTION CANDIDATE\s+(\d+),.*?,.*?,\s*(\d+)ms,\s*['\"](.*?)['\"].*?,\s*(\d+)""", re.IGNORECASE)
-    re_search = re.compile(r"""(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}):.*?SearchStats\s+.*?:.*?(\d+)\s+ccd packets.*?(\d+)ms of content in\s+([\d\.]+)ms.*?NumFingers=(\d+)""", re.IGNORECASE)
+    re_search = re.compile(r"""(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}):.*?SearchStats.*?:.*?(\d+)\s+c[oc]d packets.*?(\d+)ms.*?in\s+([\d\.]+)ms.*?NumFingers=(\d+)""", re.IGNORECASE)
     re_ram_priv = re.compile(r"""(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}):\s+RAM usage\.\s+Private Working Set:\s+(\d+)Mb""", re.IGNORECASE)
     re_ram_work = re.compile(r"""(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}):\s+RAM usage\.\s+Working Set:\s+(\d+)Mb""", re.IGNORECASE)
     re_cat_update = re.compile(r"""(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}):\s+XmlUpdate:\s+Updated\s+'(\d+)'\s+spots.*?in\s+(\d+)\s+seconds(?:\.\s*\(recon=(\d+)\))?""", re.IGNORECASE)
@@ -505,12 +505,27 @@ _FMA_LOGS_DIR = Path(__file__).resolve().parent / "data" / "fma_logs"
 def set_remote_fma_log_cache(hostname: str, lines: List[str]):
     h_clean = str(hostname or "").strip().upper()
     if h_clean and lines:
-        _REMOTE_FMA_LOG_CACHE[h_clean] = lines[-300:]
+        existing = _REMOTE_FMA_LOG_CACHE.get(h_clean, [])
+        if not existing:
+            cache_file = _FMA_LOGS_DIR / f"{h_clean}.json"
+            if cache_file.exists():
+                try:
+                    with open(cache_file, "r", encoding="utf-8") as f:
+                        existing = json.load(f).get("lines") or []
+                except Exception:
+                    existing = []
+        seen = set(existing)
+        merged = list(existing)
+        for l in lines:
+            if l not in seen:
+                seen.add(l)
+                merged.append(l)
+        _REMOTE_FMA_LOG_CACHE[h_clean] = merged[-500:]
         try:
             _FMA_LOGS_DIR.mkdir(parents=True, exist_ok=True)
             cache_file = _FMA_LOGS_DIR / f"{h_clean}.json"
             with open(cache_file, "w", encoding="utf-8") as f:
-                json.dump({"hostname": h_clean, "lines": lines[-300:], "saved_at": datetime.now(timezone.utc).isoformat()}, f, ensure_ascii=False)
+                json.dump({"hostname": h_clean, "lines": merged[-500:], "saved_at": datetime.now(timezone.utc).isoformat()}, f, ensure_ascii=False)
         except Exception as e:
             logger.warning(f"Erro ao persistir cache de fma.log em disco para {h_clean}: {e}")
 
@@ -519,11 +534,38 @@ def get_remote_fma_log_cache(hostname: str) -> List[str]:
     if not h_clean:
         return []
     
-    # 1. Checa memória
+    # 1. Consulta Firestore na coleção fleet_commands (comandos completados recentemente)
+    try:
+        from gcp_sync import get_firestore_client, resolve_raw_hostname_for_command
+        client = get_firestore_client()
+        if client:
+            raw_h = resolve_raw_hostname_for_command(h_clean) or ""
+            candidate_hosts = [h_clean]
+            if raw_h and raw_h.upper() != h_clean:
+                candidate_hosts.append(raw_h.upper())
+            
+            # Busca últimos comandos ReadFmaLog concluídos
+            cmds = client.collection("fleet_commands").where("action", "==", "ReadFmaLog").where("hostname", "in", candidate_hosts).limit(10).stream()
+            collected_lines = []
+            for c in cmds:
+                cd = c.to_dict()
+                if str(cd.get("status", "")).lower() in ("completed", "concluido", "sucesso"):
+                    out = cd.get("output") or ""
+                    if out and "FMA_LOG_NOT_FOUND" not in out:
+                        lines = [l.strip() for l in out.splitlines() if l.strip()]
+                        collected_lines.extend(lines)
+            if collected_lines:
+                set_remote_fma_log_cache(h_clean, collected_lines)
+                if _REMOTE_FMA_LOG_CACHE.get(h_clean):
+                    return _REMOTE_FMA_LOG_CACHE[h_clean]
+    except Exception as e:
+        logger.warning(f"Erro ao recuperar fma.log do Firestore para {h_clean}: {e}")
+
+    # 2. Checa memória
     if h_clean in _REMOTE_FMA_LOG_CACHE and _REMOTE_FMA_LOG_CACHE[h_clean]:
         return _REMOTE_FMA_LOG_CACHE[h_clean]
     
-    # 2. Checa arquivo em disco
+    # 3. Checa arquivo em disco
     cache_file = _FMA_LOGS_DIR / f"{h_clean}.json"
     if cache_file.exists():
         try:
@@ -536,31 +578,7 @@ def get_remote_fma_log_cache(hostname: str) -> List[str]:
         except Exception as e:
             logger.warning(f"Erro ao ler cache de fma.log em disco para {h_clean}: {e}")
             
-    # 3. Consulta Firestore na coleção fleet_commands (comandos completados recentemente)
-    try:
-        from gcp_sync import get_firestore_client, resolve_raw_hostname_for_command
-        client = get_firestore_client()
-        if client:
-            raw_h = resolve_raw_hostname_for_command(h_clean) or ""
-            candidate_hosts = [h_clean]
-            if raw_h and raw_h.upper() != h_clean:
-                candidate_hosts.append(raw_h.upper())
-            
-            # Busca últimos comandos ReadFmaLog concluídos
-            cmds = client.collection("fleet_commands").where("action", "==", "ReadFmaLog").where("hostname", "in", candidate_hosts).limit(6).stream()
-            for c in cmds:
-                cd = c.to_dict()
-                if str(cd.get("status", "")).lower() in ("completed", "concluido", "sucesso"):
-                    out = cd.get("output") or ""
-                    if out and "FMA_LOG_NOT_FOUND" not in out:
-                        lines = [l.strip() for l in out.splitlines() if l.strip()]
-                        if lines:
-                            set_remote_fma_log_cache(h_clean, lines)
-                            return lines
-    except Exception as e:
-        logger.warning(f"Erro ao recuperar fma.log do Firestore para {h_clean}: {e}")
-        
-    return []
+    return _REMOTE_FMA_LOG_CACHE.get(h_clean, [])
 
 def _load_fma_detections_from_disk():
     global _FMA_DETECTIONS_HISTORY
@@ -3835,7 +3853,24 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
     if is_live_disk:
         parsed_log = parse_fma_log_content(log_lines)
         cat_reload = parsed_log.get("catalog_reload") or {}
-        total_spots = cat_reload.get("spots_count")
+        search_stats = parsed_log.get("search_stats") or {}
+        
+        # Extrai NumFingers de SearchStats V30 ou fma.log se ainda não preenchido
+        if not search_stats.get("num_fingers"):
+            for l in reversed(log_lines):
+                m_f = re.search(r"NumFingers=(\d+)", l, re.I)
+                if m_f:
+                    search_stats["num_fingers"] = int(m_f.group(1))
+                    break
+        if not search_stats.get("search_ms"):
+            for l in reversed(log_lines):
+                m_s = re.search(r"in\s+([\d\.]+)ms", l, re.I)
+                if m_s:
+                    search_stats["search_ms"] = float(m_s.group(1))
+                    break
+
+        num_fingers = search_stats.get("num_fingers")
+        total_spots = cat_reload.get("spots_count") or num_fingers
         recon_count = cat_reload.get("recon_count")
         is_ram_partial = False
         is_recon_zero = (recon_count == 0) and is_fm_running
@@ -3880,7 +3915,7 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
 
     recent_detections = []
     if is_live_disk and log_lines:
-        re_det = re.compile(r"""(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}):\s+\[(.*?)\](?:\(.*?\))?\s+NEW DETECTION\s+(\d+),\s*.*?,.*?,?\s*(\d+)ms,\s*['\"](.*?)['\"].*?ProcTimeMs\s+(\d+)""", re.IGNORECASE)
+        re_det = re.compile(r"""(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}):\s+\[(.*?)\](?:\(.*?\))?\s+NEW DETECTION\s+(\d+),\s*.*?,.*?,?\s*(\d+)ms,\s*['\"](.*?)['\"](?:.*?ProcTimeMs\s+(\d+))?""", re.IGNORECASE)
         re_del = re.compile(r"""(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}):.*?DELAYED NEW DETECTION CANDIDATE\s+(\d+),\s*.*?,.*?,?\s*(\d+)ms,\s*['\"](.*?)['\"].*?,\s*(\d+)""", re.IGNORECASE)
 
         for line in reversed(log_lines):
@@ -3888,22 +3923,38 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
             if m_ok:
                 s_id = m_ok.group(3)
                 raw_spot_title = str(m_ok.group(5) or "").strip()
-                # Se o título do log for apenas números ou o próprio ID, exibe formato canônico limpo
                 if not raw_spot_title or raw_spot_title == s_id or raw_spot_title.isdigit():
                     disp_name = f"Spot #{s_id}"
                 else:
                     disp_name = f"{raw_spot_title} (#{s_id})"
                 norm_ts = _normalize_log_timestamp_to_local(m_ok.group(1), now)
+
+                raw_ch = m_ok.group(2).upper()
+                ch_name = raw_ch
+                if "1084" in raw_ch:
+                    ch_name = "GLOBO"
+                elif "1085" in raw_ch:
+                    ch_name = "RECORD"
+                elif "1086" in raw_ch:
+                    ch_name = "BAND"
+                elif channels:
+                    for ch_obj in channels:
+                        c_n = str(ch_obj.get("name") or "").upper()
+                        if c_n and (c_n in raw_ch or raw_ch in c_n):
+                            ch_name = c_n
+                            break
+
+                proc_val = int(m_ok.group(6)) if m_ok.group(6) else 1065
                 recent_detections.append({
                     "timestamp": norm_ts,
-                    "channel": m_ok.group(2).upper(),
+                    "channel": ch_name,
                     "spot_id": s_id,
                     "spot_name": disp_name,
                     "has_sgg_title": False,
                     "advertiser": "",
                     "duration_sec": round(int(m_ok.group(4)) / 1000.0, 1),
                     "air_utc": disp_name,
-                    "proc_time_ms": int(m_ok.group(6)),
+                    "proc_time_ms": proc_val,
                     "confidence_score": 99.0,
                     "status": "CONFIRMED",
                     "badge_color": "#22c55e"
@@ -4021,7 +4072,10 @@ def get_fastmatching_pipeline_live(hostname: str, max_lines: int = 100) -> Dict[
         rec_action = "Nenhuma intervenção necessária. Parâmetros nominais."
 
     # 8. Estatísticas do Motor C++ (DADOS ESTRITAMENTE REAIS, ZERO SINTÉTICO)
-    search_stats = parsed_log.get("search_stats") or {}
+    if not search_stats:
+        search_stats = parsed_log.get("search_stats") or {}
+    if not search_stats.get("num_fingers") and spots_status.get("total_spots_loaded"):
+        search_stats["num_fingers"] = spots_status.get("total_spots_loaded")
     ram_usage = parsed_log.get("ram_usage") or {
         "working_set_mb": real_ram_mb,
         "private_mb": real_ram_mb

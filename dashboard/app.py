@@ -1728,8 +1728,10 @@ async def post_fetch_real_fma_log(hostname: str, user: dict = Depends(get_curren
         found_real = False
         for _ in range(8):
             await asyncio.sleep(1.0)
-            # Verifica Firestore
+            # Verifica Firestore: checa tanto exec_id quanto exec_id_raw
             cmd_data = get_command_by_id(exec_id)
+            if not cmd_data or str(cmd_data.get("status", "")).lower() not in ("completed", "concluido", "sucesso"):
+                cmd_data = get_command_by_id(f"{exec_id}_raw")
             if cmd_data and str(cmd_data.get("status", "")).lower() in ("completed", "concluido", "sucesso"):
                 out = cmd_data.get("output") or ""
                 if out and "FMA_LOG_NOT_FOUND" not in out:
