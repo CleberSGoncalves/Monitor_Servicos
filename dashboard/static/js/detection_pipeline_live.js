@@ -82,11 +82,6 @@ async function openDetectionPipelineLiveModal(hostname, praca) {
     // 3. Primeira leitura imediata
     await refreshFmaLiveData();
 
-    // Se o nó ainda não tiver fma.log de disco em cache, disparar busca automática
-    if (fmaLiveLastData && !fmaLiveLastData.is_live_disk) {
-        fetchRealFmaLogFromHost(fmaLiveCurrentHost);
-    }
-
     // 4. Iniciar loop de auto-refresh de 3s
     startFmaLiveAutoRefreshLoop();
 }
@@ -215,7 +210,18 @@ async function refreshFmaLiveData(isBackground = false) {
         const token = (typeof getAuthToken === "function") ? getAuthToken() : ((typeof getFleetAuthToken === "function") ? getFleetAuthToken() : (localStorage.getItem("fleet_token") || ""));
         const headers = token ? { "Authorization": `Bearer ${token}` } : {};
 
-        const res = await fetch(`/api/detection/fma-live/${encodeURIComponent(fmaLiveCurrentHost)}?lines=80`, { headers });
+        let res;
+        if (typeof AbortController !== "undefined") {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 8000);
+            try {
+                res = await fetch(`/api/detection/fma-live/${encodeURIComponent(fmaLiveCurrentHost)}?lines=80`, { headers, signal: controller.signal });
+            } finally {
+                clearTimeout(timeoutId);
+            }
+        } else {
+            res = await fetch(`/api/detection/fma-live/${encodeURIComponent(fmaLiveCurrentHost)}?lines=80`, { headers });
+        }
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
 
@@ -242,8 +248,6 @@ async function refreshFmaLiveData(isBackground = false) {
 
         // Gerenciamento cumulativo de histórico em memória por host (com expurgo de dados defasados)
         const hKey = (data.hostname || fmaLiveCurrentHost || "").toUpperCase().trim();
-        const todayStr = (data.timestamp || "").split(" ")[0] || new Date().toISOString().slice(0, 10);
-
         const incomingDets = data.recent_detections || [];
         fmaLivePersistentDetections[hKey] = incomingDets;
         data.recent_detections = incomingDets;
@@ -252,8 +256,17 @@ async function refreshFmaLiveData(isBackground = false) {
         renderFmaLiveDashboard(data);
 
     } catch (e) {
-        console.error("[FmaLive] Erro ao sincronizar:", e);
-        if (footerEl) footerEl.textContent = `Erro na sincronização: ${e.message}`;
+        console.warn("[FmaLive] Aviso na sincronização:", e);
+        if (footerEl) {
+            if (fmaLiveLastData && isBackground) {
+                const ramVal = (fmaLiveLastData.engine_performance && fmaLiveLastData.engine_performance.ram_working_set_mb != null) ? fmaLiveLastData.engine_performance.ram_working_set_mb : 0;
+                const fingersVal = (fmaLiveLastData.engine_performance && fmaLiveLastData.engine_performance.num_fingers != null) ? Number(fmaLiveLastData.engine_performance.num_fingers).toLocaleString('pt-BR') : 'N/A';
+                const diskVal = (fmaLiveLastData.emu_status && fmaLiveLastData.emu_status.free_disk_gb != null) ? fmaLiveLastData.emu_status.free_disk_gb : 'N/A';
+                footerEl.innerHTML = `Modo: ${fmaLiveLastData.is_live_disk ? "🟢 Arquivo em Disco Vivo" : "⚡ Telemetria Real do Nó"} | RAM Motor: ${ramVal}MB | Fingers: ${fingersVal} | Disco D: ${diskVal} livres <span style="color: #94a3b8; font-size: 10px; margin-left: 6px;">(sincronizando...)</span>`;
+            } else {
+                footerEl.textContent = `Erro na sincronização: ${e.message}`;
+            }
+        }
     }
 }
 window.refreshFmaLiveData = refreshFmaLiveData;
